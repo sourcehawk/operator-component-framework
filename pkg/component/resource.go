@@ -15,9 +15,6 @@ type Resource interface {
 	// SetMutable applies mutable fields on the resource.
 	// These fields are updated every time the component is reconciled.
 	SetMutable() error
-	// SetObject sets the underlying k8s resource object.
-	// This is used to initialize the wrapper with an existing object from the cluster.
-	SetObject(object client.Object) error
 	// Object returns the underlying k8s resource object.
 	Object() (client.Object, error)
 	// Identity returns a unique identifier for the resource in the format <apiVersion>/<kind>/<name>.

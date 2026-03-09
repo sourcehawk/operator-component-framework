@@ -70,18 +70,11 @@ func createOrUpdateResources(
 
 // mutateResource is the controllerutil.MutateFn used by CreateOrUpdate.
 // It orchestrates the application of desired state to the Kubernetes object:
-//  1. Sync: Updates the resource wrapper with the current object state from the cluster.
-//  2. Immutable Fields: If the object is being created (no creation timestamp),
+//  1. Immutable Fields: If the object is being created (no creation timestamp),
 //     calls SetImmutable() to apply fields that cannot be changed later.
-//  3. Mutable Fields: Calls SetMutable() to apply updates to the desired state.
-//  4. Ownership: Ensures the object has a controller reference pointing to the owner CRD.
+//  2. Mutable Fields: Calls SetMutable() to apply updates to the desired state.
+//  3. Ownership: Ensures the object has a controller reference pointing to the owner CRD.
 func mutateResource(resource Resource, obj client.Object, owner client.Object, scheme *runtime.Scheme) error {
-	// current
-	err := resource.SetObject(obj)
-	if err != nil {
-		return fmt.Errorf("failed to set resource %w", err)
-	}
-
 	// creation
 	created := obj.GetCreationTimestamp()
 	if created.IsZero() {

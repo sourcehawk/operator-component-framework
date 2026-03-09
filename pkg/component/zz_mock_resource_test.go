@@ -21,11 +21,6 @@ func (m *MockResource) SetMutable() error {
 	return args.Error(0)
 }
 
-func (m *MockResource) SetObject(object client.Object) error {
-	args := m.Called(object)
-	return args.Error(0)
-}
-
 func (m *MockResource) Object() (client.Object, error) {
 	args := m.Called()
 	obj := args.Get(0)

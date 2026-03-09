@@ -32,7 +32,7 @@ func deleteResources(
 	var errs []error
 
 	for _, resource := range resources {
-		object, err := resource.Object()
+		object, err := resource.DesiredDefaultObject()
 		if err != nil {
 			errs = append(errs, fmt.Errorf(
 				"failed to get resource %s's underlying object on deletion: %w",

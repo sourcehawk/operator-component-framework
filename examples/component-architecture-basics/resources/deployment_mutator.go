@@ -1,6 +1,7 @@
 package resources
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -10,7 +11,7 @@ import (
 // This keeps feature mutations simple and expressive while allowing the mutator
 // to own mutation mechanics and resolve slice updates efficiently.
 type DeploymentResourceMutator struct {
-	res *DeploymentResource
+	current *appsv1.Deployment
 
 	// envOps stores the desired env var operations per container.
 	// Keyed by container index, then env var name.
@@ -34,11 +35,11 @@ type argOp struct {
 // NewDeploymentResourceMutator creates a new planner-style mutator for the given resource.
 //
 // The mutator records intended changes and applies them later via Apply().
-func NewDeploymentResourceMutator(res *DeploymentResource) *DeploymentResourceMutator {
+func NewDeploymentResourceMutator(current *appsv1.Deployment) *DeploymentResourceMutator {
 	return &DeploymentResourceMutator{
-		res:    res,
-		envOps: map[int]map[string]envOp{},
-		argOps: map[int]map[string]argOp{},
+		current: current,
+		envOps:  map[int]map[string]envOp{},
+		argOps:  map[int]map[string]argOp{},
 	}
 }
 
@@ -48,7 +49,7 @@ func NewDeploymentResourceMutator(res *DeploymentResource) *DeploymentResourceMu
 // If it does not exist, it will be appended.
 // If the same env var was previously marked for removal, this overrides that removal.
 func (m *DeploymentResourceMutator) EnsureContainerEnvVar(name, value string) {
-	for i := range m.res.deployment.Spec.Template.Spec.Containers {
+	for i := range m.current.Spec.Template.Spec.Containers {
 		if _, ok := m.envOps[i]; !ok {
 			m.envOps[i] = map[string]envOp{}
 		}
@@ -64,7 +65,7 @@ func (m *DeploymentResourceMutator) EnsureContainerEnvVar(name, value string) {
 // If the same env var was previously ensured, removal takes precedence unless another ensure call
 // later overrides it.
 func (m *DeploymentResourceMutator) RemoveContainerEnvVar(name string) {
-	for i := range m.res.deployment.Spec.Template.Spec.Containers {
+	for i := range m.current.Spec.Template.Spec.Containers {
 		if _, ok := m.envOps[i]; !ok {
 			m.envOps[i] = map[string]envOp{}
 		}
@@ -80,7 +81,7 @@ func (m *DeploymentResourceMutator) RemoveContainerEnvVar(name string) {
 // If it is missing, it is appended.
 // If the arg was previously marked for removal, this overrides that removal.
 func (m *DeploymentResourceMutator) EnsureContainerArg(arg string) {
-	for i := range m.res.deployment.Spec.Template.Spec.Containers {
+	for i := range m.current.Spec.Template.Spec.Containers {
 		if _, ok := m.argOps[i]; !ok {
 			m.argOps[i] = map[string]argOp{}
 		}
@@ -96,7 +97,7 @@ func (m *DeploymentResourceMutator) EnsureContainerArg(arg string) {
 // If the same arg was previously ensured, removal takes precedence unless another ensure call
 // later overrides it.
 func (m *DeploymentResourceMutator) RemoveContainerArg(arg string) {
-	for i := range m.res.deployment.Spec.Template.Spec.Containers {
+	for i := range m.current.Spec.Template.Spec.Containers {
 		if _, ok := m.argOps[i]; !ok {
 			m.argOps[i] = map[string]argOp{}
 		}
@@ -108,11 +109,9 @@ func (m *DeploymentResourceMutator) RemoveContainerArg(arg string) {
 }
 
 // Apply computes and writes the final Deployment state from the recorded mutation intent.
-//
-// The Deployment remains the source of truth. This method reads the current state,
-// applies all planned mutations, and writes the resulting env vars and args once per container.
+// The core desired state is already applied in Mutate() before this is called.
 func (m *DeploymentResourceMutator) Apply() error {
-	for i := range m.res.deployment.Spec.Template.Spec.Containers {
+	for i := range m.current.Spec.Template.Spec.Containers {
 		m.applyEnvOps(i)
 		m.applyArgOps(i)
 	}
@@ -126,7 +125,10 @@ func (m *DeploymentResourceMutator) applyEnvOps(containerIndex int) {
 		return
 	}
 
-	container := &m.res.deployment.Spec.Template.Spec.Containers[containerIndex]
+	container := &m.current.Spec.Template.Spec.Containers[containerIndex]
+
+	// Create a copy of the env slice to avoid modifying the original if it was shared.
+	// But actually, we want to modify m.current.
 
 	// Start from current env vars and filter/update them.
 	newEnv := make([]corev1.EnvVar, 0, len(container.Env))
@@ -171,7 +173,7 @@ func (m *DeploymentResourceMutator) applyArgOps(containerIndex int) {
 		return
 	}
 
-	container := &m.res.deployment.Spec.Template.Spec.Containers[containerIndex]
+	container := &m.current.Spec.Template.Spec.Containers[containerIndex]
 
 	// Start from current args and filter them.
 	newArgs := make([]string, 0, len(container.Args))

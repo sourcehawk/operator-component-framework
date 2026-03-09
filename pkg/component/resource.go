@@ -9,11 +9,27 @@ import (
 // Implementations of this interface wrap a specific Kubernetes object and define
 // how its immutable and mutable fields are applied during reconciliation.
 type Resource interface {
-	// Mutate applies all fields on the resource.
-	// These fields are updated every time the component is reconciled.
-	Mutate() error
-	// Object returns the underlying k8s resource object.
-	Object() (client.Object, error)
+	// Mutate applies all applicable mutations on the resource retrieved from the kubernetes api.
+	//
+	// If the object exists: `current` is the object fetched from the API server.
+	// If it does not exist: `current` is the same base object returned by DesiredDefaultObject() and passed into CreateOrUpdate,
+	// not a fetched server object.
+	//
+	// The Resource implementation is responsible for applying all desired fields from its
+	// internal core state to the current resource before proceeding with feature mutations.
+	// Only fields that are defined as mutable by the k8s api server should be applied.
+	//
+	// The mutations are applied every time the component is reconciled.
+	Mutate(current client.Object) error
+	// DesiredDefaultObject returns a copy of the **desired** core resource object.
+	// This object represents the baseline state of the resource before any feature-driven
+	// mutations or side effects are applied.
+	//
+	// It is used as the starting point for reconciliation:
+	//   - When a resource is created, this object (plus mutations from Mutate) defines the initial state.
+	//   - When a resource is updated, this object provides the "core" desired fields that the
+	//     Resource implementation must apply to the current server state during Mutate.
+	DesiredDefaultObject() (client.Object, error)
 	// Identity returns a unique identifier for the resource in the format <apiVersion>/<kind>/<name>.
 	Identity() string
 }

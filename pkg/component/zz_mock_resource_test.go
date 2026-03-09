@@ -11,12 +11,12 @@ type MockResource struct {
 	mock.Mock
 }
 
-func (m *MockResource) Mutate() error {
-	args := m.Called()
+func (m *MockResource) Mutate(current client.Object) error {
+	args := m.Called(current)
 	return args.Error(0)
 }
 
-func (m *MockResource) Object() (client.Object, error) {
+func (m *MockResource) DesiredDefaultObject() (client.Object, error) {
 	args := m.Called()
 	obj := args.Get(0)
 	if obj == nil {

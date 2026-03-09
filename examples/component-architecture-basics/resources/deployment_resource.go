@@ -5,6 +5,7 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -17,8 +18,8 @@ import (
 // This abstraction exists to decouple the reconciliation logic from the specific
 // Kubernetes type, allowing the framework to handle lifecycle and status aggregation.
 type DeploymentResource struct {
-	// deployment is the underlying Kubernetes object.
-	deployment *appsv1.Deployment
+	// desired is the underlying Kubernetes object.
+	desired *appsv1.Deployment
 	// mutations is a list of feature-gated changes to apply to the resource.
 	mutations []feature.Mutation[*DeploymentResourceMutator]
 
@@ -34,7 +35,7 @@ type DeploymentResource struct {
 	suspendDeletionDecisionHandler func(*appsv1.Deployment) bool
 
 	// suspender is a deferred mutation applied during Mutate() to handle suspension.
-	suspender func() error
+	suspender func(*appsv1.Deployment) error
 
 	// dataExtractors are functions that pull information from the reconciled resource.
 	dataExtractors []func(appsv1.Deployment) error
@@ -42,19 +43,30 @@ type DeploymentResource struct {
 
 // Identity returns a unique identifier for the resource, used by the framework for logging and tracking.
 func (r *DeploymentResource) Identity() string {
-	return fmt.Sprintf("apps/v1/Deployment/%s", r.deployment.Name)
+	return fmt.Sprintf("apps/v1/Deployment/%s", r.desired.Name)
 }
 
-// Object returns the underlying Kubernetes object. It implements the Resource interface.
-func (r *DeploymentResource) Object() (client.Object, error) {
-	return r.deployment, nil
+// DesiredDefaultObject returns the underlying Kubernetes object. It implements the Resource interface.
+func (r *DeploymentResource) DesiredDefaultObject() (client.Object, error) {
+	return r.desired.DeepCopy(), nil
 }
 
 // Mutate applies the desired state to the resource, including Feature Mutations.
 // It demonstrates how the Mutator pattern is used to safely apply version-gated changes.
-func (r *DeploymentResource) Mutate() error {
-	// 1. Apply feature mutations via a restricted mutator interface
-	mutator := NewDeploymentResourceMutator(r)
+func (r *DeploymentResource) Mutate(current client.Object) error {
+	currentDeployment, ok := current.(*appsv1.Deployment)
+	if !ok {
+		return fmt.Errorf("expected *appsv1.Deployment, got %T", current)
+	}
+
+	// 1. Apply core desired state to the current object.
+	// This ensures that the base fields are always correct before features apply their changes.
+	r.applyCoreDesiredState(currentDeployment)
+
+	// 2. Apply feature mutations via a restricted mutator interface
+	// We've applied all desired fields from the core object and can now continue working
+	// on mutations against the current object exclusively.
+	mutator := NewDeploymentResourceMutator(currentDeployment)
 
 	for _, m := range r.mutations {
 		// Apply the **intent** of each mutator
@@ -70,27 +82,67 @@ func (r *DeploymentResource) Mutate() error {
 
 	// 3. Apply a deferred suspension mutation if one was requested.
 	if r.suspender != nil {
-		if err := r.suspender(); err != nil {
+		if err := r.suspender(currentDeployment); err != nil {
 			return err
 		}
 	}
 
+	// 4. Update internal desired state with the mutated current object.
+	// This ensures that subsequent calls to ConvergingStatus and ExtractData
+	// use the fully mutated state, including status.
+	r.desired = currentDeployment.DeepCopy()
+
 	return nil
+}
+
+// applyCoreDesiredState applies the core fields from the desired to the current object.
+// It only applies fields that are considered mutable and should be managed by the component baseline.
+func (r *DeploymentResource) applyCoreDesiredState(current *appsv1.Deployment) {
+	if current == nil {
+		return
+	}
+
+	// Apply labels and annotations
+	if current.Labels == nil {
+		current.Labels = make(map[string]string)
+	}
+	for k, v := range r.desired.Labels {
+		current.Labels[k] = v
+	}
+
+	if current.Annotations == nil {
+		current.Annotations = make(map[string]string)
+	}
+	for k, v := range r.desired.Annotations {
+		current.Annotations[k] = v
+	}
+
+	// Apply Spec fields
+	current.Spec.Replicas = r.desired.Spec.Replicas
+	current.Spec.Selector = r.desired.Spec.Selector
+	current.Spec.Template.Labels = r.desired.Spec.Template.Labels
+	current.Spec.Template.Annotations = r.desired.Spec.Template.Annotations
+
+	// For containers, we might want a more sophisticated merge, but for this example
+	// we just ensure the core containers exist with their base settings.
+	// This is where the "core" part of the resource definition is enforced.
+	current.Spec.Template.Spec.Containers = make([]corev1.Container, len(r.desired.Spec.Template.Spec.Containers))
+	copy(current.Spec.Template.Spec.Containers, r.desired.Spec.Template.Spec.Containers)
 }
 
 // ConvergingStatus reports the progress of the resource toward its desired state.
 // It implements the Alive interface, allowing the Component to aggregate status.
 func (r *DeploymentResource) ConvergingStatus(op component.ConvergingOperation) (component.ConvergingStatusWithReason, error) {
 	if r.convergeStatusHandler != nil {
-		return r.convergeStatusHandler(op, r.deployment)
+		return r.convergeStatusHandler(op, r.desired)
 	}
 
 	desiredReplicas := int32(1)
-	if r.deployment.Spec.Replicas != nil {
-		desiredReplicas = *r.deployment.Spec.Replicas
+	if r.desired.Spec.Replicas != nil {
+		desiredReplicas = *r.desired.Spec.Replicas
 	}
 
-	if r.deployment.Status.ReadyReplicas == desiredReplicas {
+	if r.desired.Status.ReadyReplicas == desiredReplicas {
 		return component.ConvergingStatusWithReason{
 			Status: component.ConvergingStatusReady,
 			Reason: "All replicas are ready",
@@ -111,7 +163,7 @@ func (r *DeploymentResource) ConvergingStatus(op component.ConvergingOperation) 
 		Status: status,
 		Reason: fmt.Sprintf(
 			"Waiting for replicas: %d/%d ready",
-			r.deployment.Status.ReadyReplicas,
+			r.desired.Status.ReadyReplicas,
 			desiredReplicas,
 		),
 	}, nil
@@ -121,10 +173,10 @@ func (r *DeploymentResource) ConvergingStatus(op component.ConvergingOperation) 
 // It's part of the Alive interface used for sophisticated status reporting.
 func (r *DeploymentResource) GraceStatus() (component.GraceStatusWithReason, error) {
 	if r.graceStatusHandler != nil {
-		return r.graceStatusHandler(r.deployment)
+		return r.graceStatusHandler(r.desired)
 	}
 
-	if r.deployment.Status.ReadyReplicas > 0 {
+	if r.desired.Status.ReadyReplicas > 0 {
 		return component.GraceStatusWithReason{
 			Status: component.GraceStatusDegraded,
 			Reason: "Deployment partially available",
@@ -140,13 +192,13 @@ func (r *DeploymentResource) GraceStatus() (component.GraceStatusWithReason, err
 // IsSuspended checks if the resource is currently in a suspended state (e.g., scaled to 0).
 // It implements the Suspendable interface.
 func (r *DeploymentResource) IsSuspended() bool {
-	return r.deployment.Spec.Replicas != nil && *r.deployment.Spec.Replicas == 0
+	return r.desired.Spec.Replicas != nil && *r.desired.Spec.Replicas == 0
 }
 
 // DeleteOnSuspend determines if the resource should be deleted when the component is suspended.
 func (r *DeploymentResource) DeleteOnSuspend() bool {
 	if r.suspendDeletionDecisionHandler != nil {
-		return r.suspendDeletionDecisionHandler(r.deployment)
+		return r.suspendDeletionDecisionHandler(r.desired)
 	}
 	return false
 }
@@ -156,16 +208,16 @@ func (r *DeploymentResource) Suspend() error {
 	// Suspension intent is recorded here and applied later in Mutate().
 	// This keeps all desired-state mutation in one place.
 	if r.suspendMutationHandler != nil {
-		r.suspender = func() error {
+		r.suspender = func(obj *appsv1.Deployment) error {
 			defer func() { r.suspender = nil }()
-			return r.suspendMutationHandler(r.deployment)
+			return r.suspendMutationHandler(obj)
 		}
 		return nil
 	}
 
-	r.suspender = func() error {
+	r.suspender = func(obj *appsv1.Deployment) error {
 		defer func() { r.suspender = nil }()
-		r.deployment.Spec.Replicas = ptr.To(int32(0))
+		obj.Spec.Replicas = ptr.To(int32(0))
 		return nil
 	}
 
@@ -175,10 +227,10 @@ func (r *DeploymentResource) Suspend() error {
 // SuspensionStatus reports the progress of the resource toward a suspended state.
 func (r *DeploymentResource) SuspensionStatus() (component.SuspensionStatusWithReason, error) {
 	if r.suspendStatusHandler != nil {
-		return r.suspendStatusHandler(r.deployment)
+		return r.suspendStatusHandler(r.desired)
 	}
 
-	if r.deployment.Status.Replicas == 0 {
+	if r.desired.Status.Replicas == 0 {
 		return component.SuspensionStatusWithReason{
 			Status: component.SuspensionStatusSuspended,
 			Reason: "Deployment scaled to zero",
@@ -189,7 +241,7 @@ func (r *DeploymentResource) SuspensionStatus() (component.SuspensionStatusWithR
 		Status: component.SuspensionStatusSuspending,
 		Reason: fmt.Sprintf(
 			"Waiting for replicas to scale down, %d replicas still running.",
-			r.deployment.Status.Replicas,
+			r.desired.Status.Replicas,
 		),
 	}, nil
 }
@@ -198,7 +250,7 @@ func (r *DeploymentResource) SuspensionStatus() (component.SuspensionStatusWithR
 // It implements the DataExtractable interface.
 func (r *DeploymentResource) ExtractData() error {
 	// We enure no data mutations are applied by extractors
-	deploymentCopy := r.deployment.DeepCopy()
+	deploymentCopy := r.desired.DeepCopy()
 
 	for _, extractor := range r.dataExtractors {
 		if extractor == nil {

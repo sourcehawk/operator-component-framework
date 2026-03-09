@@ -21,6 +21,13 @@ import (
 //  3. Status Collection: For each resource that implements the Alive interface, its
 //     converging status is collected after the CreateOrUpdate operation.
 //
+// CreateOrUpdate behavior:
+//   - If the object doesn't exist, MutateFn will be called, and it will be created.
+//   - If the object exists, CreateOrUpdate first populates the object with the server state,
+//     then calls MutateFn.
+//   - If the object did not exist, the object remains the one returned by DesiredDefaultObject(),
+//     typically just with name/namespace/type metadata set.
+//
 // Returns a slice of convergingResults for all processed Alive resources, or an error if
 // any operation fails.
 func createOrUpdateResources(
@@ -30,10 +37,10 @@ func createOrUpdateResources(
 
 	for _, resource := range resources {
 		// Create or update resources
-		obj, err := resource.Object()
+		obj, err := resource.DesiredDefaultObject()
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to get retrieve object for resource %s: %w", resource.Identity(), err,
+				"failed to retrieve object for resource %s: %w", resource.Identity(), err,
 			)
 		}
 
@@ -71,9 +78,12 @@ func createOrUpdateResources(
 // mutateResource is the controllerutil.MutateFn used by CreateOrUpdate.
 // It orchestrates the application of desired state to the Kubernetes object:
 //  1. Mutations: Calls Mutate() to apply all fields to the object.
+//     The `obj` passed here is the same object instance that `ctrl.CreateOrUpdate` works with.
+//     If the object exists, it is pre-populated with server state; if not, it is the original
+//     object from `resource.DesiredDefaultObject()`.
 //  2. Ownership: Ensures the object has a controller reference pointing to the owner CRD.
 func mutateResource(resource Resource, obj client.Object, owner client.Object, scheme *runtime.Scheme) error {
-	if err := resource.Mutate(); err != nil {
+	if err := resource.Mutate(obj); err != nil {
 		return err
 	}
 

@@ -92,7 +92,7 @@ func suspendResource(
 	}
 
 	// Get the object if possible
-	object, err := resource.Object()
+	object, err := resource.DesiredDefaultObject()
 	if err != nil {
 		return SuspensionStatusWithReason{}, fmt.Errorf("failed to get object on suspension: %w", err)
 	}

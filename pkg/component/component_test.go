@@ -10,6 +10,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
 	. "github.com/onsi/gomega"    //nolint:revive
+	"github.com/stretchr/testify/mock"
 )
 
 var _ = Describe("Component Reconciler", func() {
@@ -96,9 +97,9 @@ var _ = Describe("Component Reconciler", func() {
 				Data: map[string]string{"foo": "bar"},
 			}
 			res := &MockResource{}
-			res.On("Object").Return(cm, nil)
+			res.On("DesiredDefaultObject").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("Mutate").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil)
 
 			comp.createResources = []Resource{res}
 
@@ -129,9 +130,9 @@ var _ = Describe("Component Reconciler", func() {
 				},
 			}
 			res := &MockAliveResource{}
-			res.On("Object").Return(cm, nil)
+			res.On("DesiredDefaultObject").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-alive-cm")
-			res.On("Mutate").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
 				Status: ConvergingStatusCreating,
 				Reason: "Waiting for creation",
@@ -163,7 +164,7 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
 
 			res := &MockAliveResource{}
-			res.On("Object").Return(cm, nil)
+			res.On("DesiredDefaultObject").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-readonly-cm")
 			res.On("ConvergingStatus", ConvergingOperationNone).Return(ConvergingStatusWithReason{
 				Status: ConvergingStatusReady,
@@ -190,9 +191,9 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "create-cm", Namespace: namespace},
 			}
 			res1 := &MockAliveResource{}
-			res1.On("Object").Return(cm1, nil)
+			res1.On("DesiredDefaultObject").Return(cm1, nil)
 			res1.On("Identity").Return("ConfigMap/create-cm")
-			res1.On("Mutate").Return(nil)
+			res1.On("Mutate", mock.Anything).Return(nil)
 			res1.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
 				Status: ConvergingStatusReady,
 				Reason: "Creation ready",
@@ -204,7 +205,7 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(k8sClient.Create(ctx, cm2)).To(Succeed())
 
 			res2 := &MockAliveResource{}
-			res2.On("Object").Return(cm2, nil)
+			res2.On("DesiredDefaultObject").Return(cm2, nil)
 			res2.On("Identity").Return("ConfigMap/read-cm")
 			res2.On("ConvergingStatus", ConvergingOperationNone).Return(ConvergingStatusWithReason{
 				Status: ConvergingStatusCreating, // Dominant status (False/Creating)
@@ -258,18 +259,18 @@ var _ = Describe("Component Reconciler", func() {
 				Data: map[string]string{"foo": "bar"},
 			}
 			createRes := &MockResource{}
-			createRes.On("Object").Return(cm, nil)
+			createRes.On("DesiredDefaultObject").Return(cm, nil)
 			createRes.On("Identity").Return("ConfigMap/should-not-be-created")
-			createRes.On("Mutate").Return(nil)
+			createRes.On("Mutate", mock.Anything).Return(nil)
 
 			// Set up suspendable resource
 			suspendRes := &MockSuspendableResource{}
-			suspendRes.On("Object").Return(&corev1.ConfigMap{
+			suspendRes.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "suspend-me", Namespace: namespace},
 			}, nil)
 			suspendRes.On("Identity").Return("suspend-me")
 			suspendRes.On("Suspend").Return(nil)
-			suspendRes.On("Mutate").Return(nil)
+			suspendRes.On("Mutate", mock.Anything).Return(nil)
 			suspendRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{
 				Status: SuspensionStatusSuspended,
 				Reason: "Suspended",
@@ -308,10 +309,10 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
 
 			res := &MockSuspendableResource{}
-			res.On("Object").Return(cm, nil)
+			res.On("DesiredDefaultObject").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-suspended-cm")
 			res.On("Suspend").Return(nil)
-			res.On("Mutate").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("SuspensionStatus").Return(SuspensionStatusWithReason{
 				Status: SuspensionStatusSuspended,
 				Reason: "Suspended",
@@ -351,7 +352,7 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
 
 			res := &MockResource{}
-			res.On("Object").Return(cm, nil)
+			res.On("DesiredDefaultObject").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/to-be-deleted")
 
 			comp.deleteResources = []Resource{res}
@@ -374,7 +375,7 @@ var _ = Describe("Component Reconciler", func() {
 		It("should update status to Error when reconciliation fails", func() {
 			// Given
 			res := &MockResource{}
-			res.On("Object").Return(nil, fmt.Errorf("reconciliation error"))
+			res.On("DesiredDefaultObject").Return(nil, fmt.Errorf("reconciliation error"))
 			res.On("Identity").Return("failing-resource")
 
 			comp.createResources = []Resource{res}
@@ -396,7 +397,7 @@ var _ = Describe("Component Reconciler", func() {
 		It("should handle errors during read-only resource retrieval", func() {
 			// Given
 			res := &MockResource{}
-			res.On("Object").Return(nil, fmt.Errorf("read error"))
+			res.On("DesiredDefaultObject").Return(nil, fmt.Errorf("read error"))
 			res.On("Identity").Return("failing-read-resource")
 
 			comp.readResources = []Resource{res}
@@ -417,7 +418,7 @@ var _ = Describe("Component Reconciler", func() {
 		It("should handle errors during resource deletion in normal flow", func() {
 			// Given
 			res := &MockResource{}
-			res.On("Object").Return(nil, fmt.Errorf("delete object error"))
+			res.On("DesiredDefaultObject").Return(nil, fmt.Errorf("delete object error"))
 			res.On("Identity").Return("failing-delete-resource")
 
 			comp.deleteResources = []Resource{res}
@@ -462,18 +463,18 @@ var _ = Describe("Component Reconciler", func() {
 			comp.suspended = true
 			// A resource that suspends successfully
 			susRes := &MockSuspendableResource{}
-			susRes.On("Object").Return(&corev1.ConfigMap{
+			susRes.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "suspend-ok", Namespace: namespace},
 			}, nil)
 			susRes.On("Identity").Return("suspend-ok")
 			susRes.On("Suspend").Return(nil)
-			susRes.On("Mutate").Return(nil)
+			susRes.On("Mutate", mock.Anything).Return(nil)
 			susRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{Status: SuspensionStatusSuspended}, nil)
 			susRes.On("DeleteOnSuspend").Return(false)
 
 			// A resource that fails deletion
 			delRes := &MockResource{}
-			delRes.On("Object").Return(nil, fmt.Errorf("suspend-delete error"))
+			delRes.On("DesiredDefaultObject").Return(nil, fmt.Errorf("suspend-delete error"))
 			delRes.On("Identity").Return("failing-suspend-delete-resource")
 
 			comp.createResources = []Resource{susRes}
@@ -497,11 +498,11 @@ var _ = Describe("Component Reconciler", func() {
 		It("should execute extraction during normal reconcile flow", func() {
 			// Given
 			res := &MockExtractableResource{}
-			res.On("Object").Return(&corev1.ConfigMap{
+			res.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("Mutate").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(nil)
 
 			comp.createResources = []Resource{res}
@@ -524,11 +525,11 @@ var _ = Describe("Component Reconciler", func() {
 			// Let's create a combined mock or just use MockExtractableResource and see if it's called.
 			// Reconcile checks c.suspended FIRST.
 
-			res.On("Object").Return(&corev1.ConfigMap{
+			res.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("Mutate").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(nil)
 
 			// It also needs to be Suspendable to not fail in suspendResources if it's in createResources
@@ -548,11 +549,11 @@ var _ = Describe("Component Reconciler", func() {
 		It("should propagate extraction errors and set status to Error", func() {
 			// Given
 			res := &MockExtractableResource{}
-			res.On("Object").Return(&corev1.ConfigMap{
+			res.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("Mutate").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(fmt.Errorf("extraction failed"))
 
 			comp.createResources = []Resource{res}
@@ -572,19 +573,19 @@ var _ = Describe("Component Reconciler", func() {
 		It("should handle multiple resources with and without DataExtractable", func() {
 			// Given
 			res1 := &MockExtractableResource{}
-			res1.On("Object").Return(&corev1.ConfigMap{
+			res1.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "res1", Namespace: namespace},
 			}, nil)
 			res1.On("Identity").Return("ConfigMap/res1")
-			res1.On("Mutate").Return(nil)
+			res1.On("Mutate", mock.Anything).Return(nil)
 			res1.On("ExtractData").Return(nil)
 
 			res2 := &MockResource{}
-			res2.On("Object").Return(&corev1.ConfigMap{
+			res2.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "res2", Namespace: namespace},
 			}, nil)
 			res2.On("Identity").Return("ConfigMap/res2")
-			res2.On("Mutate").Return(nil)
+			res2.On("Mutate", mock.Anything).Return(nil)
 
 			comp.createResources = []Resource{res1, res2}
 
@@ -608,11 +609,11 @@ var _ = Describe("Component Reconciler", func() {
 					return nil
 				},
 			}
-			res.On("Object").Return(&corev1.ConfigMap{
+			res.On("DesiredDefaultObject").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "ext-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/ext-cm")
-			res.On("Mutate").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil)
 
 			comp := NewComponentBuilder(false).
 				WithName("ext-comp").

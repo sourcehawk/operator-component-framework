@@ -116,6 +116,7 @@ comp, err := component.NewComponentBuilder(owner.Spec.Suspended).
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
     WithResource(res, false, false).
+    WithGracePeriod(5 * time.Minute).
     Build()
 ```
 
@@ -125,9 +126,9 @@ A `Resource` wraps a Kubernetes object and defines how the framework should mana
 
 The key responsibilities are:
 
-* exposing the underlying object
-* applying all fields during reconciliation (`Mutate`)
-* providing a stable identity for logging and error reporting
+*   applying all fields from the core resource to the cluster object during reconciliation (`Mutate(current client.Object)`)
+*   providing a stable identity for logging and error reporting (`Identity() string`)
+*   exposing a fresh copy of the baseline resource object (`DesiredDefaultObject()`)
 
 This abstraction separates **how an object should look** from **how the framework reconciles it**.
 
@@ -141,14 +142,32 @@ Implementation of the `ConvergingStatus` method:
 
 ```go
 func (r *DeploymentResource) ConvergingStatus(op component.ConvergingOperation) (component.ConvergingStatusWithReason, error) {
-    if r.deployment.Status.ReadyReplicas < *r.deployment.Spec.Replicas {
+    desiredReplicas := int32(1)
+    if r.desired.Spec.Replicas != nil {
+        desiredReplicas = *r.desired.Spec.Replicas
+    }
+
+    if r.desired.Status.ReadyReplicas == desiredReplicas {
         return component.ConvergingStatusWithReason{
-            Status:  component.ConvergingStatusCreating,
-            Reason:  "Creating",
-            Message: fmt.Sprintf("Waiting for replicas: %d/%d ready", r.deployment.Status.ReadyReplicas, *r.deployment.Spec.Replicas),
+            Status: component.ConvergingStatusReady,
+            Reason: "All replicas are ready",
         }, nil
     }
-    return component.ConvergingStatusWithReason{Status: component.ConvergingStatusReady}, nil
+
+    var status component.ConvergingStatus
+    switch op {
+    case component.ConvergingOperationCreated:
+        status = component.ConvergingStatusCreating
+    case component.ConvergingOperationUpdated:
+        status = component.ConvergingStatusUpdating
+    default:
+        status = component.ConvergingStatusScaling
+    }
+
+    return component.ConvergingStatusWithReason{
+        Status: status,
+        Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", r.desired.Status.ReadyReplicas, desiredReplicas),
+    }, nil
 }
 ```
 
@@ -170,8 +189,9 @@ Defining a suspension strategy:
 
 ```go
 func (r *DeploymentResource) Suspend() error {
-    r.suspender = func() error {
-        r.deployment.Spec.Replicas = ptr.To(int32(0))
+    r.suspender = func(obj *appsv1.Deployment) error {
+        defer func() { r.suspender = nil }()
+        obj.Spec.Replicas = ptr.To(int32(0))
         return nil
     }
     return nil
@@ -191,6 +211,9 @@ Registering a data extractor in a builder:
 func (b *DeploymentBuilder) WithDataExtractor(
     extractor func(appsv1.Deployment) error,
 ) *DeploymentBuilder {
+    if extractor == nil {
+        return b
+    }
     b.res.dataExtractors = append(b.res.dataExtractors, extractor)
     return b
 }
@@ -371,9 +394,8 @@ The following snippet illustrates how to construct the core resource baseline an
 
 ```go
 func (r *ExampleController) Reconcile(ctx context.Context, owner *ExamplePlatform) error {
-	// 1. Build the resource with features based on owner version.
-	resourceName := owner.Name + "-web-ui"
-	deployment := resources.NewCoreDeployment(resourceName, owner.Namespace)
+	// Build the resource with features based on owner version.
+	deployment := resources.NewCoreDeployment(owner.Name + "-web-ui", owner.Namespace)
 	res, err := resources.NewDeploymentBuilder(deployment).
 		WithMutation(features.NewTracingFeature(owner.Spec.Version, owner.Spec.EnableTracing)).
 		Build()
@@ -383,20 +405,50 @@ func (r *ExampleController) Reconcile(ctx context.Context, owner *ExamplePlatfor
 
 ### Resource Implementation
 
-The following snippet illustrates how `Mutate` uses a restricted mutator to apply version-gated feature mutations:
+The following snippet illustrates how `Mutate` applies the core desired state and then uses a restricted mutator to 
+apply version-gated feature mutations:
 
 ```go
-func (r *DeploymentResource) Mutate() error {
-    // 1. Apply feature mutations via a restricted mutator interface
-    mutator := NewDeploymentResourceMutator(r)
-
+func (r *DeploymentResource) Mutate(current client.Object) error {
+    currentDeployment, ok := current.(*appsv1.Deployment)
+    if !ok {
+        return fmt.Errorf("expected *appsv1.Deployment, got %T", current)
+    }
+    
+    // 1. Apply core desired state to the current object.
+    // This ensures that the base fields are always correct before features apply their changes.
+    r.applyCoreDesiredState(current)
+    
+    // 2. Apply feature mutations via a restricted mutator interface
+    // We've applied all desired fields from the core object and can now continue working
+    // on mutations against the current object exclusively.
+    mutator := NewDeploymentResourceMutator(currentDeployment)
+    
     for _, m := range r.mutations {
+        // Apply the **intent** of each mutator
         if err := m.ApplyIntent(mutator); err != nil {
-            return fmt.Errorf("failed to apply mutation %s: %w", m.Name, err)
+            return fmt.Errorf("failed to apply mutation intent for %s: %w", m.Name, err)
+        }
+    }
+    
+    // Apply all gathered mutations using the mutator
+    if err := mutator.Apply(); err != nil {
+        return fmt.Errorf("failed to apply planned mutations: %w", err)
+    }
+    
+    // 3. Apply a deferred suspension mutation if one was requested.
+    if r.suspender != nil {
+        if err := r.suspender(currentDeployment); err != nil {
+            return err
         }
     }
 
-    return mutator.Apply()
+    // 4. Update internal desired state with the mutated current object.
+    // This ensures that subsequent calls to ConvergingStatus and ExtractData
+    // use the fully mutated state, including status.
+    r.desired = currentDeployment.DeepCopy()
+    
+    return nil
 }
 ```
 For the full implementation of this custom resource and its builder, see the [example resources directory](/examples/component-architecture-basics/resources/).
@@ -409,7 +461,7 @@ A minimal implementation of a component and its reconciliation:
 
 ```go
 deployment := resources.NewCoreDeployment("web", owner.Namespace)
-res, err := NewDeploymentBuilder(deployment).Build()
+res, err := resources.NewDeploymentBuilder(deployment).Build()
 if err != nil {
     return err
 }
@@ -417,7 +469,7 @@ if err != nil {
 component, err := component.NewComponentBuilder(owner.Spec.Suspended).
 	WithName("WebInterface").
 	WithConditionType("WebInterfaceReady").
-	WithResource(deployment, false, false).
+	WithResource(res, false, false).
 	WithGracePeriod(5 * time.Minute).
 	Build()
 if err != nil {
@@ -446,7 +498,7 @@ A full assembly example within a controller:
 // 1. Construct resources using builders
 deployment := resources.NewCoreDeployment("web", owner.Namespace)
 res, err := resources.NewDeploymentBuilder(deployment).
-    WithMutation(features.TracingFeature(version, owner.Spec.TracingEnabled)).
+    WithMutation(features.NewTracingFeature(version, owner.Spec.TracingEnabled)).
     Build()
 if err != nil {
     return err
@@ -459,12 +511,17 @@ comp, err := component.NewComponentBuilder(owner.Spec.Suspended).
     WithResource(res, false, false).
     Build()
 
+if err != nil {
+    return err
+}
+
 // 3. Reconcile
 recCtx := component.ReconcileContext{
     Client:   r.Client,
     Scheme:   r.Scheme,
+    Recorder: r.Recorder,
+    Metrics:  r.Metrics,
     Owner:    owner,
-    // ...
 }
 err = comp.Reconcile(ctx, recCtx)
 ```
@@ -745,19 +802,43 @@ a **mutation planner** (the mutator). The actual modification of the Kubernetes 
 A resource evaluates and applies enabled mutations during `Mutate()`:
 
 ```go
-func (r *DeploymentResource) Mutate() error {
-    mutator := NewDeploymentResourceMutator(r)
-
-for _, m := range r.mutations {
-    // Apply the **intent** of each mutation to the planner
-    if err := m.ApplyIntent(mutator); err != nil {
-        return fmt.Errorf("failed to apply mutation %s: %w", m.Name, err)
+func (r *DeploymentResource) Mutate(current client.Object) error {
+    currentDeployment, ok := current.(*appsv1.Deployment)
+    if !ok {
+        return fmt.Errorf("expected *appsv1.Deployment, got %T", current)
     }
+    
+    // 1. Apply core desired state to the current object.
+    // This ensures that the base fields are always correct before features apply their changes.
+    r.applyCoreDesiredState(current)
+    
+    // 2. Apply feature mutations via a restricted mutator interface
+    // We've applied all desired fields from the core object and can now continue working
+    // on mutations against the current object exclusively.
+    mutator := NewDeploymentResourceMutator(currentDeployment)
+    
+    for _, m := range r.mutations {
+    // Apply the **intent** of each mutator
+        if err := m.ApplyIntent(mutator); err != nil {
+            return fmt.Errorf("failed to apply mutation intent for %s: %w", m.Name, err)
+        }
+    }
+    
+    // Apply all gathered mutations using the mutator
+    if err := mutator.Apply(); err != nil {
+        return fmt.Errorf("failed to apply planned mutations: %w", err)
+    }
+    
+    // 3. Apply a deferred suspension mutation if one was requested.
+    if r.suspender != nil {
+        if err := r.suspender(); err != nil {
+            return err
+        }
+    }
+    
+    return nil
 }
-
-// Final phase where the planned mutations are applied to the Kubernetes object
-    return mutator.Apply()
-}
+```
 
 ### Example: Deployment with additive feature mutations
 

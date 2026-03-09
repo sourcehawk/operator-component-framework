@@ -67,7 +67,7 @@ func main() {
 	})
 	_ = controller.Client.Create(ctx, &exampleapp.ExamplePlatform{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "apps.example.io/v1", Kind: "ExamplePlatform"},
-		ObjectMeta: metav1.ObjectMeta{Name: "example-future", Namespace: "default", UID: "uid-900"},
+		ObjectMeta: metav1.ObjectMeta{Name: "example-latest", Namespace: "default", UID: "uid-900"},
 		Spec:       exampleapp.ExamplePlatformSpec{Version: "9.0.0"},
 	})
 
@@ -93,21 +93,21 @@ func main() {
 	}
 	printOwnerConditions(owner810)
 
-	// 3. Reconcile a future version (Legacy compatibility disabled, Tracing enabled)
-	fmt.Println("\n=== Scenario 3: Reconciling Future Version 9.0.0 ===")
+	// 3. Reconcile latest version (Legacy compatibility disabled, Tracing enabled)
+	fmt.Println("\n=== Scenario 3: Reconciling Latest Version 9.0.0 ===")
 	owner900 := &exampleapp.ExamplePlatform{}
-	if err := controller.Client.Get(ctx, client.ObjectKey{Name: "example-future", Namespace: "default"}, owner900); err != nil {
+	if err := controller.Client.Get(ctx, client.ObjectKey{Name: "example-latest", Namespace: "default"}, owner900); err != nil {
 		fmt.Printf("Error getting owner: %v\n", err)
 	}
 	if err := controller.Reconcile(ctx, owner900); err != nil {
-		fmt.Printf("Error reconciling Future version: %v\n", err)
+		fmt.Printf("Error reconciling Latest version: %v\n", err)
 	}
 	printOwnerConditions(owner900)
 
 	// 4. Test Suspension
 	fmt.Println("\n=== Scenario 4: Suspending the Component ===")
 	// Get the latest version from the client to have the correct ResourceVersion.
-	if err := controller.Client.Get(ctx, client.ObjectKey{Name: "example-future", Namespace: "default"}, owner900); err != nil {
+	if err := controller.Client.Get(ctx, client.ObjectKey{Name: "example-latest", Namespace: "default"}, owner900); err != nil {
 		fmt.Printf("Error getting owner: %v\n", err)
 	}
 	owner900.Spec.Suspended = true

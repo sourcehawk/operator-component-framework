@@ -49,11 +49,11 @@ func TestReadResources(t *testing.T) {
 
 		// Resource 1: not Alive
 		resource1 := &MockResource{}
-		resource1.On("DesiredDefaultObject").Return(cm, nil)
+		resource1.On("Object").Return(cm, nil)
 
 		// Resource 2: Alive
 		resource2 := &MockAliveResource{}
-		resource2.On("DesiredDefaultObject").Return(secret, nil)
+		resource2.On("Object").Return(secret, nil)
 		resource2.On("ConvergingStatus", ConvergingOperationNone).Return(ConvergingStatusWithReason{
 			Status: ConvergingStatusReady,
 			Reason: "Secret is ready",
@@ -72,10 +72,10 @@ func TestReadResources(t *testing.T) {
 		resource2.AssertExpectations(t)
 	})
 
-	t.Run("should return error if resource.DesiredDefaultObject() fails", func(t *testing.T) {
+	t.Run("should return error if resource.Object() fails", func(t *testing.T) {
 		// Given
 		resource := &MockResource{}
-		resource.On("DesiredDefaultObject").Return(nil, errors.New("failed to get object"))
+		resource.On("Object").Return(nil, errors.New("failed to get object"))
 		resource.On("Identity").Return("v1/ConfigMap/failed-resource")
 
 		// When
@@ -98,7 +98,7 @@ func TestReadResources(t *testing.T) {
 			},
 		}
 		resource := &MockResource{}
-		resource.On("DesiredDefaultObject").Return(cm, nil)
+		resource.On("Object").Return(cm, nil)
 		resource.On("Identity").Return("v1/ConfigMap/missing-cm")
 
 		// When
@@ -124,7 +124,7 @@ func TestReadResources(t *testing.T) {
 		require.NoError(t, err)
 
 		resource := &MockAliveResource{}
-		resource.On("DesiredDefaultObject").Return(cm, nil)
+		resource.On("Object").Return(cm, nil)
 		resource.On("Identity").Return("v1/ConfigMap/test-cm-alive-fail")
 		resource.On("ConvergingStatus", ConvergingOperationNone).Return(ConvergingStatusWithReason{}, errors.New("failed status"))
 

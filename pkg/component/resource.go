@@ -21,15 +21,18 @@ type Resource interface {
 	//
 	// The mutations are applied every time the component is reconciled.
 	Mutate(current client.Object) error
-	// DesiredDefaultObject returns a copy of the **desired** core resource object.
-	// This object represents the baseline state of the resource before any feature-driven
+	// Object returns a copy of the managed resource object.
+	//
+	// Before reconciliation this object represents the baseline state of the resource before any feature-driven
 	// mutations or side effects are applied.
 	//
-	// It is used as the starting point for reconciliation:
-	//   - When a resource is created, this object (plus mutations from Mutate) defines the initial state.
-	//   - When a resource is updated, this object provides the "core" desired fields that the
-	//     Resource implementation must apply to the current server state during Mutate.
-	DesiredDefaultObject() (client.Object, error)
+	// After reconciliation this object represents what is applied on the kubernetes api after mutations and side
+	// effects have been applied.
+	//
+	// Note that this method is mainly exposed for the Component reconciler and implementers should generally refrain
+	// from accessing this and gathering required data from applied kubernetes objects by implementing idioms provided
+	// by the module. E.g. data extractors provided by the DataExtractable interface.
+	Object() (client.Object, error)
 	// Identity returns a unique identifier for the resource in the format <apiVersion>/<kind>/<name>.
 	Identity() string
 }

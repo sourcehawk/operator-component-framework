@@ -16,7 +16,7 @@ func (m *MockResource) Mutate(current client.Object) error {
 	return args.Error(0)
 }
 
-func (m *MockResource) DesiredDefaultObject() (client.Object, error) {
+func (m *MockResource) Object() (client.Object, error) {
 	args := m.Called()
 	obj := args.Get(0)
 	if obj == nil {

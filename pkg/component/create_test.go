@@ -39,7 +39,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 			},
 		}
 		resource := &MockResource{}
-		resource.On("DesiredDefaultObject").Return(resourceObject, nil)
+		resource.On("Object").Return(resourceObject, nil)
 		resource.On("Mutate", mock.Anything).Return(nil)
 
 		// When
@@ -66,7 +66,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 			},
 		}
 		resource1 := &MockResource{}
-		resource1.On("DesiredDefaultObject").Return(resourceObject1, nil)
+		resource1.On("Object").Return(resourceObject1, nil)
 		resource1.On("Mutate", mock.Anything).Return(nil)
 
 		resourceObject2 := &corev1.ConfigMap{
@@ -76,7 +76,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 			},
 		}
 		resource2 := &MockResource{}
-		resource2.On("DesiredDefaultObject").Return(resourceObject2, nil)
+		resource2.On("Object").Return(resourceObject2, nil)
 		resource2.On("Mutate", mock.Anything).Return(nil)
 
 		// When
@@ -106,7 +106,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 			},
 		}
 		regularResource := &MockResource{}
-		regularResource.On("DesiredDefaultObject").Return(regularResourceObject, nil)
+		regularResource.On("Object").Return(regularResourceObject, nil)
 		regularResource.On("Mutate", mock.Anything).Return(nil)
 
 		aliveResourceObject := &corev1.ConfigMap{
@@ -116,7 +116,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 			},
 		}
 		aliveResource := &MockAliveResource{}
-		aliveResource.On("DesiredDefaultObject").Return(aliveResourceObject, nil)
+		aliveResource.On("Object").Return(aliveResourceObject, nil)
 		aliveResource.On("Mutate", mock.Anything).Return(nil)
 		aliveResource.On("ConvergingStatus", mock.Anything).Return(ConvergingStatusWithReason{
 			Status: ConvergingStatusReady,
@@ -145,12 +145,12 @@ func TestCreateOrUpdateResources(t *testing.T) {
 			},
 		}
 		resource1 := &MockResource{}
-		resource1.On("DesiredDefaultObject").Return(resourceObject1, nil)
+		resource1.On("Object").Return(resourceObject1, nil)
 		resource1.On("Mutate", mock.Anything).Return(nil)
 
 		resource2 := &MockResource{}
 		resource2.On("Identity").Return("v1/ConfigMap/failed-resource")
-		resource2.On("DesiredDefaultObject").Return(nil, fmt.Errorf("resource 2 error"))
+		resource2.On("Object").Return(nil, fmt.Errorf("resource 2 error"))
 
 		resource3 := &MockResource{} // Should not be processed
 
@@ -170,7 +170,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource1.AssertExpectations(t)
 		resource2.AssertExpectations(t)
 		// Explicitly verify subsequent resources are not touched
-		resource3.AssertNotCalled(t, "DesiredDefaultObject")
+		resource3.AssertNotCalled(t, "Object")
 	})
 
 	t.Run("should successfully update a resource", func(t *testing.T) {
@@ -189,7 +189,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		updatedResourceObject.Data["foo"] = "baz"
 
 		resource := &MockResource{}
-		resource.On("DesiredDefaultObject").Return(configMap, nil)
+		resource.On("Object").Return(configMap, nil)
 		resource.On("Mutate", mock.Anything).Run(func(args mock.Arguments) {
 			obj := args.Get(0).(*corev1.ConfigMap)
 			obj.Data["foo"] = "baz"
@@ -218,7 +218,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 			},
 		}
 		resource := &MockAliveResource{}
-		resource.On("DesiredDefaultObject").Return(resourceObject, nil)
+		resource.On("Object").Return(resourceObject, nil)
 		resource.On("Mutate", mock.Anything).Return(nil)
 		resource.On("ConvergingStatus", mock.Anything).Return(ConvergingStatusWithReason{
 			Status: ConvergingStatusReady,
@@ -236,11 +236,11 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource.AssertExpectations(t)
 	})
 
-	t.Run("should return error if resource.DesiredDefaultObject() fails", func(t *testing.T) {
+	t.Run("should return error if resource.Object() fails", func(t *testing.T) {
 		// Given
 		resource := &MockResource{}
 		resource.On("Identity").Return("v1/ConfigMap/failed-resource")
-		resource.On("DesiredDefaultObject").Return(nil, fmt.Errorf("object error"))
+		resource.On("Object").Return(nil, fmt.Errorf("object error"))
 
 		// When
 		_, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource})
@@ -260,7 +260,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		resource := &MockResource{}
 		resource.On("Identity").Return("v1/ConfigMap/error-cm")
-		resource.On("DesiredDefaultObject").Return(resourceObject, nil)
+		resource.On("Object").Return(resourceObject, nil)
 		resource.On("Mutate", mock.Anything).Return(fmt.Errorf("mutation failed"))
 
 		// When

@@ -417,7 +417,7 @@ func (r *DeploymentResource) Mutate(current client.Object) error {
     
     // 1. Apply core desired state to the current object.
     // This ensures that the base fields are always correct before features apply their changes.
-    r.applyCoreDesiredState(current)
+    r.applyCoreDesiredState(currentDeployment)
     
     // 2. Apply feature mutations via a restricted mutator interface
     // We've applied all desired fields from the core object and can now continue working
@@ -810,7 +810,7 @@ func (r *DeploymentResource) Mutate(current client.Object) error {
     
     // 1. Apply core desired state to the current object.
     // This ensures that the base fields are always correct before features apply their changes.
-    r.applyCoreDesiredState(current)
+    r.applyCoreDesiredState(currentDeployment)
     
     // 2. Apply feature mutations via a restricted mutator interface
     // We've applied all desired fields from the core object and can now continue working

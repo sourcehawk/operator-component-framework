@@ -128,7 +128,7 @@ The key responsibilities are:
 
 *   applying all fields from the core resource to the cluster object during reconciliation (`Mutate(current client.Object)`)
 *   providing a stable identity for logging and error reporting (`Identity() string`)
-*   exposing a fresh copy of the baseline resource object (`DesiredDefaultObject()`)
+*   exposing a fresh copy of the baseline resource object (`Object()`)
 
 This abstraction separates **how an object should look** from **how the framework reconciles it**.
 

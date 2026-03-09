@@ -97,5 +97,5 @@ Instead of using complex `if/else` logic inside resource configuration, we use *
 ### Resource Interface
 The `Resource` interface in `pkg/component` is the central contract for all objects managed by the framework:
 - `Identity() string`: Returns a unique identifier for the resource (e.g., `apps/v1/Deployment/web-ui`).
-- `DesiredDefaultObject() (client.Object, error)`: Returns a fresh copy of the baseline resource object. This object represents the starting point for both creation and updates.
+- `Object() (client.Object, error)`: Returns a fresh copy of the baseline resource object before reconciliation. Returns the applied k8s object after reconciling.
 - `Mutate(current client.Object) error`: Applies the core baseline, feature mutation intents, and any deferred mutations (like suspension) to the provided `current` server object. It also synchronizes the internal state to reflect these changes.

@@ -12,7 +12,7 @@ type Resource interface {
 	// Mutate applies all applicable mutations on the resource retrieved from the kubernetes api.
 	//
 	// If the object exists: `current` is the object fetched from the API server.
-	// If it does not exist: `current` is the same base object returned by DesiredDefaultObject() and passed into CreateOrUpdate,
+	// If it does not exist: `current` is the same base object returned by Object() and passed into CreateOrUpdate,
 	// not a fetched server object.
 	//
 	// The Resource implementation is responsible for applying all desired fields from its
@@ -21,17 +21,14 @@ type Resource interface {
 	//
 	// The mutations are applied every time the component is reconciled.
 	Mutate(current client.Object) error
-	// Object returns a copy of the managed resource object.
+	// Object returns a copy of the managed Kubernetes resource.
 	//
-	// Before reconciliation this object represents the baseline state of the resource before any feature-driven
-	// mutations or side effects are applied.
+	// The returned object's state depends on the reconciliation phase:
+	//   - Before reconciliation: Represents the baseline state before any mutations or side effects.
+	//   - After reconciliation: Represents the state as applied to the Kubernetes API, including all mutations.
 	//
-	// After reconciliation this object represents what is applied on the kubernetes api after mutations and side
-	// effects have been applied.
-	//
-	// Note that this method is mainly exposed for the Component reconciler and implementers should generally refrain
-	// from accessing this and gathering required data from applied kubernetes objects by implementing idioms provided
-	// by the module. E.g. data extractors provided by the DataExtractable interface.
+	// This method is primarily intended for use by the Component reconciler. Implementers should
+	// avoid calling this directly to retrieve data; instead, use provided patterns like DataExtractable.
 	Object() (client.Object, error)
 	// Identity returns a unique identifier for the resource in the format <apiVersion>/<kind>/<name>.
 	Identity() string

@@ -21,7 +21,7 @@ type DeploymentBuilder struct {
 func NewDeploymentBuilder(deployment *appsv1.Deployment) *DeploymentBuilder {
 	return &DeploymentBuilder{
 		res: &DeploymentResource{
-			desired: deployment,
+			deployment: deployment,
 		},
 	}
 }
@@ -105,14 +105,14 @@ func (b *DeploymentBuilder) WithDataExtractor(
 // Build finalizes and returns the configured DeploymentResource.
 // It returns an error if the desired is nil, or if it lacks a name or namespace.
 func (b *DeploymentBuilder) Build() (*DeploymentResource, error) {
-	if b.res.desired == nil {
-		return nil, errors.New("desired cannot be nil")
+	if b.res.deployment == nil {
+		return nil, errors.New("deployment cannot be nil")
 	}
-	if b.res.desired.Name == "" {
-		return nil, errors.New("desired name cannot be empty")
+	if b.res.deployment.Name == "" {
+		return nil, errors.New("deployment name cannot be empty")
 	}
-	if b.res.desired.Namespace == "" {
-		return nil, errors.New("desired namespace cannot be empty")
+	if b.res.deployment.Namespace == "" {
+		return nil, errors.New("deployment namespace cannot be empty")
 	}
 	return b.res, nil
 }

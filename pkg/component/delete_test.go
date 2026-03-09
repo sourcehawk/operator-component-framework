@@ -42,7 +42,7 @@ func TestDeleteResources(t *testing.T) {
 		require.NoError(t, err)
 
 		resource := &MockResource{}
-		resource.On("DesiredDefaultObject").Return(resourceObject, nil)
+		resource.On("Object").Return(resourceObject, nil)
 		resource.On("Identity").Return("v1/ConfigMap/test-cm")
 
 		// When
@@ -70,7 +70,7 @@ func TestDeleteResources(t *testing.T) {
 		// Resource is NOT created in fakeClient
 
 		resource := &MockResource{}
-		resource.On("DesiredDefaultObject").Return(resourceObject, nil)
+		resource.On("Object").Return(resourceObject, nil)
 
 		// When
 		err := deleteResources(ctx, reconcileContext, []Resource{resource})
@@ -80,10 +80,10 @@ func TestDeleteResources(t *testing.T) {
 		resource.AssertExpectations(t)
 	})
 
-	t.Run("should collect errors from Resource.DesiredDefaultObject() and continue", func(t *testing.T) {
+	t.Run("should collect errors from Resource.Object() and continue", func(t *testing.T) {
 		// Given
 		resource1 := &MockResource{}
-		resource1.On("DesiredDefaultObject").Return(nil, errors.New("failed to get object"))
+		resource1.On("Object").Return(nil, errors.New("failed to get object"))
 		resource1.On("Identity").Return("v1/ConfigMap/failed-resource")
 
 		resourceObject2 := &corev1.ConfigMap{
@@ -96,7 +96,7 @@ func TestDeleteResources(t *testing.T) {
 		require.NoError(t, err)
 
 		resource2 := &MockResource{}
-		resource2.On("DesiredDefaultObject").Return(resourceObject2, nil)
+		resource2.On("Object").Return(resourceObject2, nil)
 		resource2.On("Identity").Return("v1/ConfigMap/test-cm-2")
 
 		// When
@@ -132,7 +132,7 @@ func TestDeleteResources(t *testing.T) {
 		mockClient.On("Delete", ctx, resourceObject1, mock.Anything).Return(errors.New("forbidden"))
 
 		resource1 := &MockResource{}
-		resource1.On("DesiredDefaultObject").Return(resourceObject1, nil)
+		resource1.On("Object").Return(resourceObject1, nil)
 		resource1.On("Identity").Return("v1/ConfigMap/test-cm-1")
 
 		resourceObject2 := &corev1.ConfigMap{
@@ -144,7 +144,7 @@ func TestDeleteResources(t *testing.T) {
 		mockClient.On("Delete", ctx, resourceObject2, mock.Anything).Return(nil)
 
 		resource2 := &MockResource{}
-		resource2.On("DesiredDefaultObject").Return(resourceObject2, nil)
+		resource2.On("Object").Return(resourceObject2, nil)
 		resource2.On("Identity").Return("v1/ConfigMap/test-cm-2")
 
 		// When

@@ -51,7 +51,7 @@ func setupMockResource(name string, status SuspensionStatus, reason string, dele
 	obj := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
 
 	res.On("Suspend").Return(nil)
-	res.On("DesiredDefaultObject").Return(obj, nil)
+	res.On("Object").Return(obj, nil)
 	res.On("Identity").Return(name)
 	res.On("SuspensionStatus").Return(SuspensionStatusWithReason{Status: status, Reason: reason}, nil)
 	res.On("DeleteOnSuspend").Return(deleteOnSuspend)
@@ -292,12 +292,12 @@ func TestSuspendResource(t *testing.T) {
 		assert.Contains(t, err.Error(), "suspend fail")
 	})
 
-	t.Run("should return error if resource.DesiredDefaultObject() fails", func(t *testing.T) {
+	t.Run("should return error if resource.Object() fails", func(t *testing.T) {
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, nil, cli)
 		res := &MockSuspendableResource{}
 		res.On("Suspend").Return(nil)
-		res.On("DesiredDefaultObject").Return(nil, errors.New("object fail"))
+		res.On("Object").Return(nil, errors.New("object fail"))
 
 		_, err := suspendResource(ctx, rec, res, res)
 		require.Error(t, err)

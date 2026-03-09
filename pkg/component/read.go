@@ -20,7 +20,7 @@ func readResources(
 
 	for _, resource := range resources {
 		// Get readonly resources
-		object, err := resource.DesiredDefaultObject()
+		object, err := resource.Object()
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to retrieve read-only object from resource %s: %w",

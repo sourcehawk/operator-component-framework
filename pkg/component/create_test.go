@@ -40,8 +40,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		resource := &MockResource{}
 		resource.On("Object").Return(resourceObject, nil)
-		resource.On("SetImmutable").Return(nil)
-		resource.On("SetMutable").Return(nil)
+		resource.On("Mutate").Return(nil)
 
 		// When
 		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource})
@@ -68,8 +67,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		resource1 := &MockResource{}
 		resource1.On("Object").Return(resourceObject1, nil)
-		resource1.On("SetImmutable").Return(nil)
-		resource1.On("SetMutable").Return(nil)
+		resource1.On("Mutate").Return(nil)
 
 		resourceObject2 := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -79,8 +77,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		resource2 := &MockResource{}
 		resource2.On("Object").Return(resourceObject2, nil)
-		resource2.On("SetImmutable").Return(nil)
-		resource2.On("SetMutable").Return(nil)
+		resource2.On("Mutate").Return(nil)
 
 		// When
 		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource1, resource2})
@@ -110,8 +107,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		regularResource := &MockResource{}
 		regularResource.On("Object").Return(regularResourceObject, nil)
-		regularResource.On("SetImmutable").Return(nil)
-		regularResource.On("SetMutable").Return(nil)
+		regularResource.On("Mutate").Return(nil)
 
 		aliveResourceObject := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -121,8 +117,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		aliveResource := &MockAliveResource{}
 		aliveResource.On("Object").Return(aliveResourceObject, nil)
-		aliveResource.On("SetImmutable").Return(nil)
-		aliveResource.On("SetMutable").Return(nil)
+		aliveResource.On("Mutate").Return(nil)
 		aliveResource.On("ConvergingStatus", mock.Anything).Return(ConvergingStatusWithReason{
 			Status: ConvergingStatusReady,
 			Reason: "Ready",
@@ -151,8 +146,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		resource1 := &MockResource{}
 		resource1.On("Object").Return(resourceObject1, nil)
-		resource1.On("SetImmutable").Return(nil)
-		resource1.On("SetMutable").Return(nil)
+		resource1.On("Mutate").Return(nil)
 
 		resource2 := &MockResource{}
 		resource2.On("Identity").Return("v1/ConfigMap/failed-resource")
@@ -196,8 +190,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 
 		resource := &MockResource{}
 		resource.On("Object").Return(configMap, nil)
-		resource.On("SetImmutable").Return(nil).Maybe()
-		resource.On("SetMutable").Run(func(_ mock.Arguments) {
+		resource.On("Mutate").Run(func(_ mock.Arguments) {
 			configMap.Data["foo"] = "baz"
 		}).Return(nil)
 
@@ -225,8 +218,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}
 		resource := &MockAliveResource{}
 		resource.On("Object").Return(resourceObject, nil)
-		resource.On("SetImmutable").Return(nil)
-		resource.On("SetMutable").Return(nil)
+		resource.On("Mutate").Return(nil)
 		resource.On("ConvergingStatus", mock.Anything).Return(ConvergingStatusWithReason{
 			Status: ConvergingStatusReady,
 			Reason: "Ready",
@@ -268,8 +260,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource := &MockResource{}
 		resource.On("Identity").Return("v1/ConfigMap/error-cm")
 		resource.On("Object").Return(resourceObject, nil)
-		resource.On("SetImmutable").Return(nil)
-		resource.On("SetMutable").Return(fmt.Errorf("mutation failed"))
+		resource.On("Mutate").Return(fmt.Errorf("mutation failed"))
 
 		// When
 		_, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource})
@@ -294,7 +285,7 @@ func TestMutateResource(t *testing.T) {
 		}
 	)
 
-	t.Run("should call SetImmutable and SetMutable for new objects", func(t *testing.T) {
+	t.Run("should call Mutate for new objects", func(t *testing.T) {
 		// Given
 		resource := &MockResource{}
 		resourceObject := &corev1.ConfigMap{
@@ -303,8 +294,7 @@ func TestMutateResource(t *testing.T) {
 				Namespace: namespace,
 			},
 		}
-		resource.On("SetImmutable").Return(nil)
-		resource.On("SetMutable").Return(nil)
+		resource.On("Mutate").Return(nil)
 
 		// When
 		err := mutateResource(resource, resourceObject, owner, scheme)
@@ -316,7 +306,7 @@ func TestMutateResource(t *testing.T) {
 		resource.AssertExpectations(t)
 	})
 
-	t.Run("should call SetMutable only for existing objects", func(t *testing.T) {
+	t.Run("should call Mutate only for existing objects", func(t *testing.T) {
 		// Given
 		resource := &MockResource{}
 		now := metav1.Now()
@@ -327,7 +317,7 @@ func TestMutateResource(t *testing.T) {
 				CreationTimestamp: now,
 			},
 		}
-		resource.On("SetMutable").Return(nil)
+		resource.On("Mutate").Return(nil)
 
 		// When
 		err := mutateResource(resource, resourceObject, owner, scheme)

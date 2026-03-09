@@ -2,8 +2,9 @@
 package resources
 
 import (
+	"errors"
+
 	appsv1 "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -16,22 +17,17 @@ type DeploymentBuilder struct {
 	res *DeploymentResource
 }
 
-// NewDeploymentBuilder initializes a new builder with basic resource metadata.
-func NewDeploymentBuilder(name, namespace string) *DeploymentBuilder {
+// NewDeploymentBuilder initializes a new builder with a default Deployment object.
+func NewDeploymentBuilder(deployment *appsv1.Deployment) *DeploymentBuilder {
 	return &DeploymentBuilder{
 		res: &DeploymentResource{
-			deployment: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: namespace,
-				},
-			},
+			deployment: deployment,
 		},
 	}
 }
 
 // WithMutation registers a version-gated Feature Mutation to the resource.
-// These are applied sequentially in the resource's SetMutable() call.
+// These are applied sequentially in the resource's Mutate() call.
 func (b *DeploymentBuilder) WithMutation(m feature.Mutation[*DeploymentResourceMutator]) *DeploymentBuilder {
 	b.res.mutations = append(b.res.mutations, m)
 	return b
@@ -107,6 +103,16 @@ func (b *DeploymentBuilder) WithDataExtractor(
 }
 
 // Build finalizes and returns the configured DeploymentResource.
-func (b *DeploymentBuilder) Build() *DeploymentResource {
-	return b.res
+// It returns an error if the deployment is nil, or if it lacks a name or namespace.
+func (b *DeploymentBuilder) Build() (*DeploymentResource, error) {
+	if b.res.deployment == nil {
+		return nil, errors.New("deployment cannot be nil")
+	}
+	if b.res.deployment.Name == "" {
+		return nil, errors.New("deployment name cannot be empty")
+	}
+	if b.res.deployment.Namespace == "" {
+		return nil, errors.New("deployment namespace cannot be empty")
+	}
+	return b.res, nil
 }

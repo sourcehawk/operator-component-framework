@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -99,7 +98,6 @@ var _ = Describe("Component Reconciler", func() {
 			res := &MockResource{}
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetObject", mock.Anything).Return(nil)
 			res.On("SetImmutable").Return(nil)
 			res.On("SetMutable").Return(nil)
 
@@ -134,7 +132,6 @@ var _ = Describe("Component Reconciler", func() {
 			res := &MockAliveResource{}
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-alive-cm")
-			res.On("SetObject", mock.Anything).Return(nil)
 			res.On("SetImmutable").Return(nil)
 			res.On("SetMutable").Return(nil)
 			res.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
@@ -197,7 +194,6 @@ var _ = Describe("Component Reconciler", func() {
 			res1 := &MockAliveResource{}
 			res1.On("Object").Return(cm1, nil)
 			res1.On("Identity").Return("ConfigMap/create-cm")
-			res1.On("SetObject", mock.Anything).Return(nil)
 			res1.On("SetImmutable").Return(nil)
 			res1.On("SetMutable").Return(nil)
 			res1.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
@@ -267,7 +263,6 @@ var _ = Describe("Component Reconciler", func() {
 			createRes := &MockResource{}
 			createRes.On("Object").Return(cm, nil)
 			createRes.On("Identity").Return("ConfigMap/should-not-be-created")
-			createRes.On("SetObject", mock.Anything).Return(nil)
 			createRes.On("SetImmutable").Return(nil)
 			createRes.On("SetMutable").Return(nil)
 
@@ -278,7 +273,6 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			suspendRes.On("Identity").Return("suspend-me")
 			suspendRes.On("Suspend").Return(nil)
-			suspendRes.On("SetObject", mock.Anything).Return(nil)
 			suspendRes.On("SetImmutable").Return(nil)
 			suspendRes.On("SetMutable").Return(nil)
 			suspendRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{
@@ -322,7 +316,6 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-suspended-cm")
 			res.On("Suspend").Return(nil)
-			res.On("SetObject", mock.Anything).Return(nil)
 			res.On("SetMutable").Return(nil)
 			res.On("SuspensionStatus").Return(SuspensionStatusWithReason{
 				Status: SuspensionStatusSuspended,
@@ -479,7 +472,6 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			susRes.On("Identity").Return("suspend-ok")
 			susRes.On("Suspend").Return(nil)
-			susRes.On("SetObject", mock.Anything).Return(nil)
 			susRes.On("SetImmutable").Return(nil)
 			susRes.On("SetMutable").Return(nil)
 			susRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{Status: SuspensionStatusSuspended}, nil)
@@ -515,7 +507,6 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetObject", mock.Anything).Return(nil)
 			res.On("SetImmutable").Return(nil)
 			res.On("SetMutable").Return(nil)
 			res.On("ExtractData").Return(nil)
@@ -544,7 +535,6 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetObject", mock.Anything).Return(nil)
 			res.On("SetImmutable").Return(nil)
 			res.On("SetMutable").Return(nil)
 			res.On("ExtractData").Return(nil)
@@ -570,7 +560,6 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetObject", mock.Anything).Return(nil)
 			res.On("SetImmutable").Return(nil)
 			res.On("SetMutable").Return(nil)
 			res.On("ExtractData").Return(fmt.Errorf("extraction failed"))
@@ -596,7 +585,6 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "res1", Namespace: namespace},
 			}, nil)
 			res1.On("Identity").Return("ConfigMap/res1")
-			res1.On("SetObject", mock.Anything).Return(nil)
 			res1.On("SetImmutable").Return(nil)
 			res1.On("SetMutable").Return(nil)
 			res1.On("ExtractData").Return(nil)
@@ -606,7 +594,6 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "res2", Namespace: namespace},
 			}, nil)
 			res2.On("Identity").Return("ConfigMap/res2")
-			res2.On("SetObject", mock.Anything).Return(nil)
 			res2.On("SetImmutable").Return(nil)
 			res2.On("SetMutable").Return(nil)
 
@@ -636,7 +623,6 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "ext-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/ext-cm")
-			res.On("SetObject", mock.Anything).Return(nil)
 			res.On("SetImmutable").Return(nil)
 			res.On("SetMutable").Return(nil)
 

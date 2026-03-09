@@ -6,6 +6,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -51,26 +52,28 @@ func (r *DeploymentResource) Object() (client.Object, error) {
 	return r.deployment, nil
 }
 
-// SetObject sets the underlying Kubernetes object, typically called by the framework after fetching.
-func (r *DeploymentResource) SetObject(obj client.Object) error {
-	if d, ok := obj.(*appsv1.Deployment); ok {
-		r.deployment = d
-		return nil
-	}
-	return fmt.Errorf("expected *appsv1.Deployment, got %T", obj)
-}
-
 // SetImmutable applies configuration that should not change after creation (e.g., selectors).
 // It's part of the Resource interface's two-step configuration model.
 func (r *DeploymentResource) SetImmutable() error {
-	// Baseline configuration that never changes
-	if r.deployment.Labels == nil {
-		r.deployment.Labels = make(map[string]string)
+	// Label selectors are immutable for Deployments once created.
+	// We set them here to ensure they are consistently applied at creation.
+	selectorLabels := map[string]string{
+		"app.kubernetes.io/instance": r.deployment.Name,
 	}
-	r.deployment.Labels["app.kubernetes.io/name"] = r.deployment.Name
-	r.deployment.Labels["managed-by"] = "example-operator"
 
-	// Example: set selectors or other create-once fields here.
+	if r.deployment.Spec.Selector == nil {
+		r.deployment.Spec.Selector = &metav1.LabelSelector{}
+	}
+	r.deployment.Spec.Selector.MatchLabels = selectorLabels
+
+	// Pod template labels MUST match the selector labels.
+	if r.deployment.Spec.Template.Labels == nil {
+		r.deployment.Spec.Template.Labels = make(map[string]string)
+	}
+	for k, v := range selectorLabels {
+		r.deployment.Spec.Template.Labels[k] = v
+	}
+
 	return nil
 }
 

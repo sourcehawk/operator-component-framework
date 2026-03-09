@@ -55,7 +55,6 @@ func setupMockResource(name string, status SuspensionStatus, reason string, dele
 	res.On("Identity").Return(name)
 	res.On("SuspensionStatus").Return(SuspensionStatusWithReason{Status: status, Reason: reason}, nil)
 	res.On("DeleteOnSuspend").Return(deleteOnSuspend)
-	res.On("SetObject", mock.Anything).Return(nil)
 	res.On("SetImmutable").Return(nil)
 	res.On("SetMutable").Return(nil)
 

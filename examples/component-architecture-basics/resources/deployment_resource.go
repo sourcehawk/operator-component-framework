@@ -188,12 +188,6 @@ func (r *DeploymentResource) GraceStatus() (component.GraceStatusWithReason, err
 	}, nil
 }
 
-// IsSuspended checks if the resource is currently in a suspended state (e.g., scaled to 0).
-// It implements the Suspendable interface.
-func (r *DeploymentResource) IsSuspended() bool {
-	return r.deployment.Spec.Replicas != nil && *r.deployment.Spec.Replicas == 0
-}
-
 // DeleteOnSuspend determines if the resource should be deleted when the component is suspended.
 func (r *DeploymentResource) DeleteOnSuspend() bool {
 	if r.suspendDeletionDecisionHandler != nil {

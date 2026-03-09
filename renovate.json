@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "ignorePaths": [
+    "**/examples/**"
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "schedule": ["every 2 weeks on Monday"]
+    },
+    {
+      "matchFileNames": [".tool-versions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "tool-versions"
+    },
+    {
+      "matchPackageNames": [
+        "github.com/onsi/ginkgo/v2",
+        "github.com/onsi/gomega",
+        "github.com/stretchr/testify"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "test-dependencies"
+    }
+  ]
+}

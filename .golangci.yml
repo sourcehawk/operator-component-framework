@@ -1,0 +1,76 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - dupl
+    - errname
+    - errorlint
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - revive
+    - misspell
+    - nakedret
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - reassign
+    - unconvert
+    - unparam
+    - whitespace
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - dupl
+        - goconst
+        - revive
+    - text: "dot-imports"
+      linters:
+        - revive
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters-settings:
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-first-argument
+      - name: context-keys-type
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf

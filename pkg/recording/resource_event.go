@@ -24,7 +24,7 @@ func typeName(obj any) string {
 	}
 
 	t := reflect.TypeOf(obj)
-	if t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 

@@ -106,6 +106,67 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 			expectedReason:  "UpdatedXRole",
 			expectedMessage: "Updated XRole 'test-xrole' (foo=bar)",
 		},
+		{
+			name: "updated unstructured value (uses GetKind)",
+			object: func() client.Object {
+				u := unstructured.Unstructured{}
+				u.SetKind("XRoleValue")
+				u.SetAPIVersion("v1")
+				u.SetName("test-xrole-value")
+				return &u
+			}(),
+			owner:           &appsv1.Deployment{},
+			operation:       controllerutil.OperationResultUpdated,
+			keyValuePairs:   []string{"foo=bar"},
+			expectedReason:  "UpdatedXRoleValue",
+			expectedMessage: "Updated XRoleValue 'test-xrole-value' (foo=bar)",
+		},
+		{
+			name: "updated nested pointer to service account",
+			object: func() client.Object {
+				sa := &corev1.ServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-nested-sa",
+					},
+				}
+				p := &sa
+				return *p
+			}(),
+			owner:           &appsv1.Deployment{},
+			operation:       controllerutil.OperationResultUpdated,
+			keyValuePairs:   []string{},
+			expectedReason:  "UpdatedServiceAccount",
+			expectedMessage: "Updated ServiceAccount 'test-nested-sa'",
+		},
+		{
+			name: "updated nested pointer to unstructured",
+			object: func() client.Object {
+				u := &unstructured.Unstructured{}
+				u.SetKind("XRoleNested")
+				u.SetAPIVersion("v1")
+				u.SetName("test-xrole-nested")
+				p := &u
+				return *p
+			}(),
+			owner:           &appsv1.Deployment{},
+			operation:       controllerutil.OperationResultUpdated,
+			keyValuePairs:   []string{},
+			expectedReason:  "UpdatedXRoleNested",
+			expectedMessage: "Updated XRoleNested 'test-xrole-nested'",
+		},
+		{
+			name: "unchanged object through custom operation result",
+			object: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-service",
+				},
+			},
+			owner:           &appsv1.Deployment{},
+			operation:       controllerutil.OperationResult("Unknown"),
+			keyValuePairs:   []string{},
+			expectedReason:  "UnchangedService",
+			expectedMessage: "Service 'test-service' left unchanged",
+		},
 	}
 
 	recorder := record.NewFakeRecorder(1)

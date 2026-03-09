@@ -5,8 +5,6 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -35,7 +33,7 @@ type DeploymentResource struct {
 	// suspendDeletionDecisionHandler allows injecting custom logic for whether to delete on suspension.
 	suspendDeletionDecisionHandler func(*appsv1.Deployment) bool
 
-	// suspender is a deferred mutation applied during SetMutable() to handle suspension.
+	// suspender is a deferred mutation applied during Mutate() to handle suspension.
 	suspender func() error
 
 	// dataExtractors are functions that pull information from the reconciled resource.
@@ -52,40 +50,10 @@ func (r *DeploymentResource) Object() (client.Object, error) {
 	return r.deployment, nil
 }
 
-// SetImmutable applies configuration that should not change after creation (e.g., selectors).
-// It's part of the Resource interface's two-step configuration model.
-func (r *DeploymentResource) SetImmutable() error {
-	// Label selectors are immutable for Deployments once created.
-	// We set them here to ensure they are consistently applied at creation.
-	selectorLabels := map[string]string{
-		"app.kubernetes.io/instance": r.deployment.Name,
-	}
-
-	if r.deployment.Spec.Selector == nil {
-		r.deployment.Spec.Selector = &metav1.LabelSelector{}
-	}
-	r.deployment.Spec.Selector.MatchLabels = selectorLabels
-
-	// Pod template labels MUST match the selector labels.
-	if r.deployment.Spec.Template.Labels == nil {
-		r.deployment.Spec.Template.Labels = make(map[string]string)
-	}
-	for k, v := range selectorLabels {
-		r.deployment.Spec.Template.Labels[k] = v
-	}
-
-	return nil
-}
-
-// SetMutable applies the desired state to the resource, including core config and Feature Mutations.
+// Mutate applies the desired state to the resource, including Feature Mutations.
 // It demonstrates how the Mutator pattern is used to safely apply version-gated changes.
-func (r *DeploymentResource) SetMutable() error {
-	// 1. Core baseline mutable state using real k8s types
-	if err := r.applyCoreConfiguration(); err != nil {
-		return err
-	}
-
-	// 2. Apply feature mutations via a restricted mutator interface
+func (r *DeploymentResource) Mutate() error {
+	// 1. Apply feature mutations via a restricted mutator interface
 	mutator := NewDeploymentResourceMutator(r)
 
 	for _, m := range r.mutations {
@@ -104,26 +72,6 @@ func (r *DeploymentResource) SetMutable() error {
 	if r.suspender != nil {
 		if err := r.suspender(); err != nil {
 			return err
-		}
-	}
-
-	return nil
-}
-
-// applyCoreConfiguration sets the baseline state for the Deployment before any mutations.
-func (r *DeploymentResource) applyCoreConfiguration() error {
-	replicas := int32(1)
-	r.deployment.Spec.Replicas = &replicas
-
-	if len(r.deployment.Spec.Template.Spec.Containers) == 0 {
-		r.deployment.Spec.Template.Spec.Containers = []corev1.Container{
-			{
-				Name: "app",
-				Env: []corev1.EnvVar{
-					{Name: "LOG_LEVEL", Value: "info"},
-					{Name: "NEW_MANDATORY_SETTING", Value: "standard-value"},
-				},
-			},
 		}
 	}
 
@@ -205,7 +153,7 @@ func (r *DeploymentResource) DeleteOnSuspend() bool {
 
 // Suspend records the intent to suspend the resource, to be applied during the next reconcile.
 func (r *DeploymentResource) Suspend() error {
-	// Suspension intent is recorded here and applied later in SetMutable().
+	// Suspension intent is recorded here and applied later in Mutate().
 	// This keeps all desired-state mutation in one place.
 	if r.suspendMutationHandler != nil {
 		r.suspender = func() error {

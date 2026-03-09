@@ -9,12 +9,9 @@ import (
 // Implementations of this interface wrap a specific Kubernetes object and define
 // how its immutable and mutable fields are applied during reconciliation.
 type Resource interface {
-	// SetImmutable applies the immutable fields on the resource.
-	// These fields are typically set only once during resource creation.
-	SetImmutable() error
-	// SetMutable applies mutable fields on the resource.
+	// Mutate applies all fields on the resource.
 	// These fields are updated every time the component is reconciled.
-	SetMutable() error
+	Mutate() error
 	// Object returns the underlying k8s resource object.
 	Object() (client.Object, error)
 	// Identity returns a unique identifier for the resource in the format <apiVersion>/<kind>/<name>.
@@ -74,7 +71,7 @@ type Suspendable interface {
 	DeleteOnSuspend() bool
 	// Suspend applies suspension mutations to the resource's desired state.
 	// The suspension intent MUST be stored in the wrapper's internal state and applied
-	// during a subsequent SetMutable() or SetImmutable() call.
+	// during a subsequent Mutate() call.
 	// Suspend MUST NOT mutate the Kubernetes cluster state directly.
 	Suspend() error
 	// SuspensionStatus returns the current progress of the suspension.

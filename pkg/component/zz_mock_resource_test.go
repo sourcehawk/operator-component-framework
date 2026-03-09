@@ -11,12 +11,7 @@ type MockResource struct {
 	mock.Mock
 }
 
-func (m *MockResource) SetImmutable() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-func (m *MockResource) SetMutable() error {
+func (m *MockResource) Mutate() error {
 	args := m.Called()
 	return args.Error(0)
 }

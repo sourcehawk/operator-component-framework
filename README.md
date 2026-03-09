@@ -126,8 +126,7 @@ A `Resource` wraps a Kubernetes object and defines how the framework should mana
 The key responsibilities are:
 
 * exposing the underlying object
-* applying immutable fields during initial creation (`SetImmutable`)
-* applying mutable fields during ongoing reconciliation (`SetMutable`)
+* applying all fields during reconciliation (`Mutate`)
 * providing a stable identity for logging and error reporting
 
 This abstraction separates **how an object should look** from **how the framework reconciles it**.
@@ -366,18 +365,29 @@ It also uses a `DeploymentBuilder` to allow optional injection of custom behavio
 This demonstrates one of the framework’s biggest strengths: the wrapper can stay generic while the feature-specific 
 rules remain configurable.
 
-### Resource Implementation
+### Resource construction
 
-The following snippet illustrates how `SetMutable` uses a restricted mutator to apply version-gated feature mutations:
+The following snippet illustrates how to construct the core resource baseline and then apply version-gated feature mutations:
 
 ```go
-func (r *DeploymentResource) SetMutable() error {
-    // 1. Core baseline mutable state
-    if err := r.applyCoreConfiguration(); err != nil {
-        return err
-    }
+func (r *ExampleController) Reconcile(ctx context.Context, owner *ExamplePlatform) error {
+	// 1. Build the resource with features based on owner version.
+	resourceName := owner.Name + "-web-ui"
+	deployment := resources.NewCoreDeployment(resourceName, owner.Namespace)
+	res, err := resources.NewDeploymentBuilder(deployment).
+		WithMutation(features.NewTracingFeature(owner.Spec.Version, owner.Spec.EnableTracing)).
+		Build()
+    // ...
+}
+```
 
-    // 2. Apply feature mutations via a restricted mutator interface
+### Resource Implementation
+
+The following snippet illustrates how `Mutate` uses a restricted mutator to apply version-gated feature mutations:
+
+```go
+func (r *DeploymentResource) Mutate() error {
+    // 1. Apply feature mutations via a restricted mutator interface
     mutator := NewDeploymentResourceMutator(r)
 
     for _, m := range r.mutations {
@@ -398,7 +408,11 @@ If you do not need custom behavior injection, usage can stay very small.
 A minimal implementation of a component and its reconciliation:
 
 ```go
-deployment := NewDeploymentBuilder("web", owner.Namespace).Build()
+deployment := resources.NewCoreDeployment("web", owner.Namespace)
+res, err := NewDeploymentBuilder(deployment).Build()
+if err != nil {
+    return err
+}
 
 component, err := component.NewComponentBuilder(owner.Spec.Suspended).
 	WithName("WebInterface").
@@ -430,9 +444,13 @@ A full assembly example within a controller:
 
 ```go
 // 1. Construct resources using builders
-res := resources.NewDeploymentBuilder("web", owner.Namespace).
+deployment := resources.NewCoreDeployment("web", owner.Namespace)
+res, err := resources.NewDeploymentBuilder(deployment).
     WithMutation(features.TracingFeature(version, owner.Spec.TracingEnabled)).
     Build()
+if err != nil {
+    return err
+}
 
 // 2. Assemble the component
 comp, err := component.NewComponentBuilder(owner.Spec.Suspended).
@@ -546,7 +564,7 @@ The framework improves testing in two ways.
 
 You can test a wrapper in isolation:
 
-* does `SetMutable()` produce the desired object spec?
+* does `Mutate()` produce the desired object spec?
 * does `ConvergingStatus()` report the right rollout state?
 * does `Suspend()` apply the expected mutation?
 
@@ -724,10 +742,11 @@ Feature mutations express **intent**. When `ApplyIntent` is called, the mutation
 a **mutation planner** (the mutator). The actual modification of the Kubernetes resource happens later in a final 
 `Apply()` phase.
 
-A resource evaluates and applies enabled mutations during `SetMutable()`:
+A resource evaluates and applies enabled mutations during `Mutate()`:
 
 ```go
-mutator := NewDeploymentResourceMutator(r)
+func (r *DeploymentResource) Mutate() error {
+    mutator := NewDeploymentResourceMutator(r)
 
 for _, m := range r.mutations {
     // Apply the **intent** of each mutation to the planner
@@ -737,14 +756,13 @@ for _, m := range r.mutations {
 }
 
 // Final phase where the planned mutations are applied to the Kubernetes object
-mutator.Apply()
-```
+    return mutator.Apply()
+}
 
 ### Example: Deployment with additive feature mutations
 
 The [example implementation](/examples/component-architecture-basics/) demonstrates a resource that:
 
-* defines a clear baseline desired state
 * supports version-gated feature mutations
 * applies mutations through a **restricted mutator interface** that acts as a **mutation planner**
 * avoids repeated slice scanning using internal maps
@@ -760,29 +778,6 @@ type DeploymentResource struct {
 }
 ```
 
-### Core baseline configuration
-
-The core resource defines the baseline desired state before any features are applied.
-
-```go
-func (r *DeploymentResource) applyCoreConfiguration() error {
-    replicas := int32(1)
-    r.deployment.Spec.Replicas = &replicas
-
-    if len(r.deployment.Spec.Template.Spec.Containers) == 0 {
-        r.deployment.Spec.Template.Spec.Containers = append(r.deployment.Spec.Template.Spec.Containers, corev1.Container{
-            Name: "app",
-        })
-    }
-    
-    container := &r.deployment.Spec.Template.Spec.Containers[0]
-    container.Env = []corev1.EnvVar{
-        {Name: "LOG_LEVEL", Value: "info"},
-    }
-    return nil
-}
-```
-
 ### Feature Mutations
 
 Feature mutations express **intent**, which the mutator gathers as a plan. The final resource state is applied once
@@ -790,10 +785,6 @@ via a final `Apply()` call.
 
 ```go
 func (r *DeploymentResource) SetMutable() error {
-    if err := r.applyCoreConfiguration(); err != nil {
-        return err
-    }
-
     mutator := NewDeploymentResourceMutator(r)
 
     for _, m := range r.mutations {
@@ -1003,10 +994,19 @@ func TracingFeature(version string, enabled bool) feature.Mutation[*resources.De
 ### Using the builder
 
 ```go
-deployment := resources.NewDeploymentBuilder("my-app", namespace).
+deploymentObject := &appsv1.Deployment{
+    ObjectMeta: metav1.ObjectMeta{
+        Name:      "my-app",
+        Namespace: namespace,
+    },
+}
+deployment, err := resources.NewDeploymentBuilder(deploymentObject).
     WithMutation(features.TracingFeature(version, owner.Spec.TracingEnabled)).
     WithMutation(features.LegacyCompatibilityFeature(version)).
     Build()
+if err != nil {
+    return err
+}
 ```
 
 ### Why this model works

@@ -34,7 +34,8 @@ func (r *ExampleController) Reconcile(ctx context.Context, owner *ExamplePlatfor
 	// 1. Build the resource with features based on owner version.
 	// We use the owner's name as a prefix to ensure uniqueness in our multi-scenario example.
 	resourceName := owner.Name + "-web-ui"
-	res := resources.NewDeploymentBuilder(resourceName, owner.Namespace).
+	deployment := resources.NewCoreDeployment(resourceName, owner.Namespace)
+	res, err := resources.NewDeploymentBuilder(deployment).
 		WithMutation(features.NewTracingFeature(owner.Spec.Version, owner.Spec.EnableTracing)).
 		WithMutation(features.NewLegacyCompatibilityFeature(owner.Spec.Version)).
 		WithMutation(features.NewLegacyBehaviorFeature(owner.Spec.Version)).
@@ -42,6 +43,10 @@ func (r *ExampleController) Reconcile(ctx context.Context, owner *ExamplePlatfor
 			return debugPrinterAsDataExtractor(ctx, d)
 		}).
 		Build()
+
+	if err != nil {
+		return err
+	}
 
 	// 2. Assemble the component using the real framework builder
 	comp, err := component.NewComponentBuilder(owner.Spec.Suspended).
@@ -81,6 +86,7 @@ func debugPrinterAsDataExtractor(ctx context.Context, d appsv1.Deployment) error
 		logger.Info("  Replicas", "count", *d.Spec.Replicas)
 	}
 	logger.Info("  Labels", "labels", d.Labels)
+	logger.Info("  Pod Labels", "labels", d.Spec.Template.Labels)
 	for _, c := range d.Spec.Template.Spec.Containers {
 		logger.Info("  Container", "name", c.Name)
 		logger.Info("    Args", "args", c.Args)

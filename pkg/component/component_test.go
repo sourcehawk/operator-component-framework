@@ -98,8 +98,7 @@ var _ = Describe("Component Reconciler", func() {
 			res := &MockResource{}
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetImmutable").Return(nil)
-			res.On("SetMutable").Return(nil)
+			res.On("Mutate").Return(nil)
 
 			comp.createResources = []Resource{res}
 
@@ -132,8 +131,7 @@ var _ = Describe("Component Reconciler", func() {
 			res := &MockAliveResource{}
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-alive-cm")
-			res.On("SetImmutable").Return(nil)
-			res.On("SetMutable").Return(nil)
+			res.On("Mutate").Return(nil)
 			res.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
 				Status: ConvergingStatusCreating,
 				Reason: "Waiting for creation",
@@ -194,8 +192,7 @@ var _ = Describe("Component Reconciler", func() {
 			res1 := &MockAliveResource{}
 			res1.On("Object").Return(cm1, nil)
 			res1.On("Identity").Return("ConfigMap/create-cm")
-			res1.On("SetImmutable").Return(nil)
-			res1.On("SetMutable").Return(nil)
+			res1.On("Mutate").Return(nil)
 			res1.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
 				Status: ConvergingStatusReady,
 				Reason: "Creation ready",
@@ -263,8 +260,7 @@ var _ = Describe("Component Reconciler", func() {
 			createRes := &MockResource{}
 			createRes.On("Object").Return(cm, nil)
 			createRes.On("Identity").Return("ConfigMap/should-not-be-created")
-			createRes.On("SetImmutable").Return(nil)
-			createRes.On("SetMutable").Return(nil)
+			createRes.On("Mutate").Return(nil)
 
 			// Set up suspendable resource
 			suspendRes := &MockSuspendableResource{}
@@ -273,8 +269,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			suspendRes.On("Identity").Return("suspend-me")
 			suspendRes.On("Suspend").Return(nil)
-			suspendRes.On("SetImmutable").Return(nil)
-			suspendRes.On("SetMutable").Return(nil)
+			suspendRes.On("Mutate").Return(nil)
 			suspendRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{
 				Status: SuspensionStatusSuspended,
 				Reason: "Suspended",
@@ -316,7 +311,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-suspended-cm")
 			res.On("Suspend").Return(nil)
-			res.On("SetMutable").Return(nil)
+			res.On("Mutate").Return(nil)
 			res.On("SuspensionStatus").Return(SuspensionStatusWithReason{
 				Status: SuspensionStatusSuspended,
 				Reason: "Suspended",
@@ -472,8 +467,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			susRes.On("Identity").Return("suspend-ok")
 			susRes.On("Suspend").Return(nil)
-			susRes.On("SetImmutable").Return(nil)
-			susRes.On("SetMutable").Return(nil)
+			susRes.On("Mutate").Return(nil)
 			susRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{Status: SuspensionStatusSuspended}, nil)
 			susRes.On("DeleteOnSuspend").Return(false)
 
@@ -507,8 +501,7 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetImmutable").Return(nil)
-			res.On("SetMutable").Return(nil)
+			res.On("Mutate").Return(nil)
 			res.On("ExtractData").Return(nil)
 
 			comp.createResources = []Resource{res}
@@ -535,8 +528,7 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetImmutable").Return(nil)
-			res.On("SetMutable").Return(nil)
+			res.On("Mutate").Return(nil)
 			res.On("ExtractData").Return(nil)
 
 			// It also needs to be Suspendable to not fail in suspendResources if it's in createResources
@@ -560,8 +552,7 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/test-cm")
-			res.On("SetImmutable").Return(nil)
-			res.On("SetMutable").Return(nil)
+			res.On("Mutate").Return(nil)
 			res.On("ExtractData").Return(fmt.Errorf("extraction failed"))
 
 			comp.createResources = []Resource{res}
@@ -585,8 +576,7 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "res1", Namespace: namespace},
 			}, nil)
 			res1.On("Identity").Return("ConfigMap/res1")
-			res1.On("SetImmutable").Return(nil)
-			res1.On("SetMutable").Return(nil)
+			res1.On("Mutate").Return(nil)
 			res1.On("ExtractData").Return(nil)
 
 			res2 := &MockResource{}
@@ -594,8 +584,7 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "res2", Namespace: namespace},
 			}, nil)
 			res2.On("Identity").Return("ConfigMap/res2")
-			res2.On("SetImmutable").Return(nil)
-			res2.On("SetMutable").Return(nil)
+			res2.On("Mutate").Return(nil)
 
 			comp.createResources = []Resource{res1, res2}
 
@@ -623,8 +612,7 @@ var _ = Describe("Component Reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "ext-cm", Namespace: namespace},
 			}, nil)
 			res.On("Identity").Return("ConfigMap/ext-cm")
-			res.On("SetImmutable").Return(nil)
-			res.On("SetMutable").Return(nil)
+			res.On("Mutate").Return(nil)
 
 			comp := NewComponentBuilder(false).
 				WithName("ext-comp").

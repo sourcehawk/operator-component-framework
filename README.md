@@ -446,7 +446,7 @@ func (r *DeploymentResource) Mutate(current client.Object) error {
     // 4. Update internal desired state with the mutated current object.
     // This ensures that subsequent calls to ConvergingStatus and ExtractData
     // use the fully mutated state, including status.
-    r.desired = currentDeployment.DeepCopy()
+    r.desired = currentDeployment
     
     return nil
 }
@@ -835,6 +835,8 @@ func (r *DeploymentResource) Mutate(current client.Object) error {
             return err
         }
     }
+	
+	r.deployment = currentDeployment
     
     return nil
 }

@@ -82,12 +82,12 @@ The framework is divided into two main subsystems:
 ### Component Layer
 Responsible for high-level feature orchestration, lifecycle management, and condition aggregation. It ensures that features behave consistently across the operator.
 
-Detailed documentation: [Component Framework](pkg/component/README.md)
+Detailed documentation: [Component Framework](docs/component.md)
 
 ### Primitive Layer
 Responsible for Kubernetes resource abstractions, the mutation system, and safe field application. It handles the low-level details of how objects are constructed and modified.
 
-Detailed documentation: [Resource Primitives](pkg/primitives/README.md)
+Detailed documentation: [Resource Primitives](docs/primitives.md)
 
 ## Feature Mutations (high-level)
 

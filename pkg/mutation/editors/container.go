@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // ContainerEditor provides a typed API for mutating a Kubernetes Container.
@@ -84,4 +85,25 @@ func (e *ContainerEditor) RemoveArgs(args []string) {
 	for _, arg := range args {
 		e.RemoveArg(arg)
 	}
+}
+
+// SetResourceLimit sets the resource limit for the container.
+func (e *ContainerEditor) SetResourceLimit(name corev1.ResourceName, quantity resource.Quantity) {
+	if e.container.Resources.Limits == nil {
+		e.container.Resources.Limits = make(corev1.ResourceList)
+	}
+	e.container.Resources.Limits[name] = quantity
+}
+
+// SetResourceRequest sets the resource request for the container.
+func (e *ContainerEditor) SetResourceRequest(name corev1.ResourceName, quantity resource.Quantity) {
+	if e.container.Resources.Requests == nil {
+		e.container.Resources.Requests = make(corev1.ResourceList)
+	}
+	e.container.Resources.Requests[name] = quantity
+}
+
+// SetResources sets the resource requirements for the container.
+func (e *ContainerEditor) SetResources(res corev1.ResourceRequirements) {
+	e.container.Resources = res
 }

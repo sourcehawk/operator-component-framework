@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func TestContainerEditor_Raw(t *testing.T) {
@@ -150,4 +151,41 @@ func TestContainerEditor_RemoveArgs(t *testing.T) {
 	e.RemoveArgs([]string{"--arg1", "--arg3"})
 	assert.Len(t, c.Args, 1)
 	assert.Equal(t, "--arg2", c.Args[0])
+}
+
+func TestContainerEditor_SetResourceLimit(t *testing.T) {
+	c := &corev1.Container{}
+	e := NewContainerEditor(c)
+
+	q := resource.MustParse("100m")
+	e.SetResourceLimit(corev1.ResourceCPU, q)
+
+	assert.Equal(t, q, c.Resources.Limits[corev1.ResourceCPU])
+}
+
+func TestContainerEditor_SetResourceRequest(t *testing.T) {
+	c := &corev1.Container{}
+	e := NewContainerEditor(c)
+
+	q := resource.MustParse("128Mi")
+	e.SetResourceRequest(corev1.ResourceMemory, q)
+
+	assert.Equal(t, q, c.Resources.Requests[corev1.ResourceMemory])
+}
+
+func TestContainerEditor_SetResources(t *testing.T) {
+	c := &corev1.Container{}
+	e := NewContainerEditor(c)
+
+	res := corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("100m"),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceMemory: resource.MustParse("128Mi"),
+		},
+	}
+	e.SetResources(res)
+
+	assert.Equal(t, res, c.Resources)
 }

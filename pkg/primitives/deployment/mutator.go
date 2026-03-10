@@ -1,15 +1,25 @@
 package deployment
 
 import (
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
+// Mutation defines a mutation that is applied to a deployment Mutator
+// only if its associated feature.ResourceFeature is enabled.
+type Mutation feature.Mutation[*Mutator]
+
 type containerEdit struct {
 	selector selectors.ContainerSelector
 	edit     func(*editors.ContainerEditor) error
+}
+
+type containerPresenceOp struct {
+	name      string
+	container *corev1.Container // nil for remove
 }
 
 // Mutator is a high-level helper for modifying a Kubernetes Deployment.
@@ -23,6 +33,9 @@ type Mutator struct {
 	current *appsv1.Deployment
 
 	containerEdits           []containerEdit
+	initContainerEdits       []containerEdit
+	containerPresence        []containerPresenceOp
+	initContainerPresence    []containerPresenceOp
 	podSpecEdits             []func(*editors.PodSpecEditor) error
 	deploymentSpecEdits      []func(*editors.DeploymentSpecEditor) error
 	podTemplateMetadataEdits []func(*editors.ObjectMetaEditor) error
@@ -46,11 +59,14 @@ func NewMutator(current *appsv1.Deployment) *Mutator {
 //
 // Execution Order:
 //   - Within this category, edits are applied in registration order.
-//   - Overall, container edits are the LAST category to be executed by Apply().
+//   - Overall, container edits are executed AFTER container presence operations.
 //
 // Selection:
 //   - The selector determines which containers the edit function will be called for.
 //   - If either selector or edit function is nil, the registration is ignored.
+//   - Selectors are intended to target containers defined by the baseline resource structure.
+//   - Selector matching is evaluated against the original snapshot for the apply pass.
+//   - Mutations should not rely on earlier edits changing which selectors match later in the same pass.
 func (m *Mutator) EditContainers(selector selectors.ContainerSelector, edit func(*editors.ContainerEditor) error) {
 	if selector == nil || edit == nil {
 		return
@@ -59,6 +75,78 @@ func (m *Mutator) EditContainers(selector selectors.ContainerSelector, edit func
 		selector: selector,
 		edit:     edit,
 	})
+}
+
+// EditInitContainers records a mutation for init containers matching the given selector.
+//
+// Planning:
+// All init container edits are stored and executed during Apply().
+//
+// Execution Order:
+//   - Within this category, edits are applied in registration order.
+//   - Overall, init container edits apply only to spec.template.spec.initContainers.
+//   - They run in their own category during Apply(), after init container presence operations.
+//
+// Selection:
+//   - The selector determines which init containers the edit function will be called for.
+//   - If either selector or edit function is nil, the registration is ignored.
+//   - Selector matching is evaluated against the original init container snapshot for the apply pass.
+func (m *Mutator) EditInitContainers(selector selectors.ContainerSelector, edit func(*editors.ContainerEditor) error) {
+	if selector == nil || edit == nil {
+		return
+	}
+	m.initContainerEdits = append(m.initContainerEdits, containerEdit{
+		selector: selector,
+		edit:     edit,
+	})
+}
+
+// EnsureContainer records that a regular container must be present in the Deployment.
+// If a container with the same name exists, it is replaced; otherwise, it is appended.
+func (m *Mutator) EnsureContainer(container corev1.Container) {
+	m.containerPresence = append(m.containerPresence, containerPresenceOp{
+		name:      container.Name,
+		container: &container,
+	})
+}
+
+// RemoveContainer records that a regular container should be removed by name.
+func (m *Mutator) RemoveContainer(name string) {
+	m.containerPresence = append(m.containerPresence, containerPresenceOp{
+		name:      name,
+		container: nil,
+	})
+}
+
+// RemoveContainers records that multiple regular containers should be removed by name.
+func (m *Mutator) RemoveContainers(names []string) {
+	for _, name := range names {
+		m.RemoveContainer(name)
+	}
+}
+
+// EnsureInitContainer records that an init container must be present in the Deployment.
+// If an init container with the same name exists, it is replaced; otherwise, it is appended.
+func (m *Mutator) EnsureInitContainer(container corev1.Container) {
+	m.initContainerPresence = append(m.initContainerPresence, containerPresenceOp{
+		name:      container.Name,
+		container: &container,
+	})
+}
+
+// RemoveInitContainer records that an init container should be removed by name.
+func (m *Mutator) RemoveInitContainer(name string) {
+	m.initContainerPresence = append(m.initContainerPresence, containerPresenceOp{
+		name:      name,
+		container: nil,
+	})
+}
+
+// RemoveInitContainers records that multiple init containers should be removed by name.
+func (m *Mutator) RemoveInitContainers(names []string) {
+	for _, name := range names {
+		m.RemoveInitContainer(name)
+	}
 }
 
 // EditDeploymentSpec records a mutation for the Deployment's top-level spec.
@@ -212,9 +300,18 @@ func (m *Mutator) RemoveContainerArgs(args []string) {
 // 3. DeploymentSpec edits
 // 4. Pod template metadata edits
 // 5. Pod spec edits
-// 6. Container edits (applied per container in registration order)
+// 6. Regular container presence operations
+// 7. Regular container edits
+// 8. Init container presence operations
+// 9. Init container edits
 //
 // Within each category, edits are applied in their registration order.
+//
+// Selection & Identity:
+//   - Container selectors target containers defined by the baseline resource structure.
+//   - Selector matching for a given container in a given apply pass is evaluated against an
+//     original snapshot of that container, not the progressively mutated live container.
+//   - Mutations should not rely on earlier edits changing selector matches in the same apply pass.
 //
 // Timing:
 // No changes are made to the Deployment until Apply() is called.
@@ -260,13 +357,52 @@ func (m *Mutator) Apply() error {
 		}
 	}
 
-	// 6. Container edits
+	// 6. Regular container presence
+	for _, op := range m.containerPresence {
+		applyPresenceOp(&m.current.Spec.Template.Spec.Containers, op)
+	}
+
+	// 7. Regular container edits
 	if len(m.containerEdits) > 0 {
+		// Take snapshot of containers BEFORE applying any edits for stable selector matching
+		snapshots := make([]corev1.Container, len(m.current.Spec.Template.Spec.Containers))
+		for i := range m.current.Spec.Template.Spec.Containers {
+			m.current.Spec.Template.Spec.Containers[i].DeepCopyInto(&snapshots[i])
+		}
+
 		for i := range m.current.Spec.Template.Spec.Containers {
 			container := &m.current.Spec.Template.Spec.Containers[i]
+			snapshot := &snapshots[i]
 			editor := editors.NewContainerEditor(container)
 			for _, ce := range m.containerEdits {
-				if ce.selector(i, container) {
+				if ce.selector(i, snapshot) {
+					if err := ce.edit(editor); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	// 8. Init container presence
+	for _, op := range m.initContainerPresence {
+		applyPresenceOp(&m.current.Spec.Template.Spec.InitContainers, op)
+	}
+
+	// 9. Init container edits
+	if len(m.initContainerEdits) > 0 {
+		// Take snapshot of init containers BEFORE applying any edits
+		snapshots := make([]corev1.Container, len(m.current.Spec.Template.Spec.InitContainers))
+		for i := range m.current.Spec.Template.Spec.InitContainers {
+			m.current.Spec.Template.Spec.InitContainers[i].DeepCopyInto(&snapshots[i])
+		}
+
+		for i := range m.current.Spec.Template.Spec.InitContainers {
+			container := &m.current.Spec.Template.Spec.InitContainers[i]
+			snapshot := &snapshots[i]
+			editor := editors.NewContainerEditor(container)
+			for _, ce := range m.initContainerEdits {
+				if ce.selector(i, snapshot) {
 					if err := ce.edit(editor); err != nil {
 						return err
 					}
@@ -276,4 +412,29 @@ func (m *Mutator) Apply() error {
 	}
 
 	return nil
+}
+
+func applyPresenceOp(containers *[]corev1.Container, op containerPresenceOp) {
+	found := -1
+	for i, c := range *containers {
+		if c.Name == op.name {
+			found = i
+			break
+		}
+	}
+
+	if op.container == nil {
+		// Remove
+		if found != -1 {
+			*containers = append((*containers)[:found], (*containers)[found+1:]...)
+		}
+		return
+	}
+
+	// Ensure
+	if found != -1 {
+		(*containers)[found] = *op.container
+	} else {
+		*containers = append(*containers, *op.container)
+	}
 }

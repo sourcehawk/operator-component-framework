@@ -8,6 +8,10 @@ import (
 
 // ContainerSelector is a function that determines if a container matches
 // a specific criteria for mutation.
+//
+// In the context of a Mutator Apply() pass, the selector is evaluated against
+// the original container snapshot before any edits are applied. This ensures
+// stable matching even if an earlier edit renames the container.
 type ContainerSelector func(index int, c *corev1.Container) bool
 
 // AllContainers returns a ContainerSelector that matches all containers.

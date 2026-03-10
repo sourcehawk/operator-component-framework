@@ -6,7 +6,6 @@ import (
 	"github.com/sourcehawk/operator-component-framework/internal/generic"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
-	"github.com/sourcehawk/operator-component-framework/pkg/flavors"
 	appsv1 "k8s.io/api/apps/v1"
 )
 
@@ -97,7 +96,7 @@ func (b *Builder) WithCustomFieldApplicator(
 // overwritten by the desired state.
 //
 // If the provided flavor is nil, it is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor flavors.FieldApplicationFlavor[*appsv1.Deployment]) *Builder {
+func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
 	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*appsv1.Deployment](flavor))
 	return b
 }

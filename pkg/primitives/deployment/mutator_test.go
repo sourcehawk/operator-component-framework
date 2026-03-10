@@ -263,6 +263,185 @@ func TestMutator_Order(t *testing.T) {
 	assert.Equal(t, int32(3), *deploy.Spec.Replicas)
 }
 
+func TestMutator_InitContainers(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{Name: "init-1", Image: "old-image"},
+					},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "new-image"
+		return nil
+	})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	if deploy.Spec.Template.Spec.InitContainers[0].Image != "new-image" {
+		t.Errorf("expected image new-image, got %s", deploy.Spec.Template.Spec.InitContainers[0].Image)
+	}
+}
+
+func TestMutator_ContainerPresence(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "app", Image: "app-image"},
+						{Name: "sidecar", Image: "sidecar-image"},
+					},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+	// Replace
+	m.EnsureContainer(corev1.Container{Name: "app", Image: "app-new-image"})
+	// Remove
+	m.RemoveContainer("sidecar")
+	// Append
+	m.EnsureContainer(corev1.Container{Name: "new-container", Image: "new-image"})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	if len(deploy.Spec.Template.Spec.Containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(deploy.Spec.Template.Spec.Containers))
+	}
+
+	if deploy.Spec.Template.Spec.Containers[0].Name != "app" || deploy.Spec.Template.Spec.Containers[0].Image != "app-new-image" {
+		t.Errorf("unexpected container at index 0: %+v", deploy.Spec.Template.Spec.Containers[0])
+	}
+
+	if deploy.Spec.Template.Spec.Containers[1].Name != "new-container" || deploy.Spec.Template.Spec.Containers[1].Image != "new-image" {
+		t.Errorf("unexpected container at index 1: %+v", deploy.Spec.Template.Spec.Containers[1])
+	}
+}
+
+func TestMutator_InitContainerPresence(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{Name: "init-1", Image: "init-1-image"},
+					},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
+	m.RemoveInitContainers([]string{"init-1"})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	if len(deploy.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected 1 init container, got %d", len(deploy.Spec.Template.Spec.InitContainers))
+	}
+
+	if deploy.Spec.Template.Spec.InitContainers[0].Name != "init-2" {
+		t.Errorf("expected init-2, got %s", deploy.Spec.Template.Spec.InitContainers[0].Name)
+	}
+}
+
+func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "app", Image: "app-image"},
+					},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+
+	// First edit renames the container
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Name = "app-v2"
+		return nil
+	})
+
+	// Second edit should still match using "app" selector because of snapshot
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "app-image-updated"
+		return nil
+	})
+
+	// Third edit targeting "app-v2" should NOT match in this apply pass
+	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "should-not-be-set"
+		return nil
+	})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	if deploy.Spec.Template.Spec.Containers[0].Name != "app-v2" {
+		t.Errorf("expected name app-v2, got %s", deploy.Spec.Template.Spec.Containers[0].Name)
+	}
+
+	if deploy.Spec.Template.Spec.Containers[0].Image != "app-image-updated" {
+		t.Errorf("expected image app-image-updated, got %s", deploy.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
+func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+
+	// Register edit first
+	m.EditContainers(selectors.ContainerNamed("new-app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "edited-image"
+		return nil
+	})
+
+	// Register presence later
+	m.EnsureContainer(corev1.Container{Name: "new-app", Image: "original-image"})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	// It should work because presence happens before edits in Apply()
+	if len(deploy.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(deploy.Spec.Template.Spec.Containers))
+	}
+
+	if deploy.Spec.Template.Spec.Containers[0].Image != "edited-image" {
+		t.Errorf("expected edited-image, got %s", deploy.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
 func TestMutator_NilSafety(t *testing.T) {
 	deploy := &appsv1.Deployment{
 		Spec: appsv1.DeploymentSpec{

@@ -6,6 +6,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 )
 
+// FieldApplicationFlavor defines a function signature for applying "flavors" to a resource.
+// A flavor typically preserves certain fields from the current (live) object after the
+// baseline field application has occurred.
+type FieldApplicationFlavor flavors.FieldApplicationFlavor[*appsv1.Deployment]
+
 // PreserveCurrentLabels ensures that any labels present on the current live
 // Deployment but missing from the applied (desired) object are preserved.
 // If a label exists in both, the applied value wins.

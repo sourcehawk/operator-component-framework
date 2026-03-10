@@ -982,7 +982,7 @@ func TracingFeature(version string, enabled bool) feature.Mutation[*resources.De
         }).When(enabled),
         Mutate: func(m *resources.DeploymentResourceMutator) error {
             // Narrow intent: only ensure the environment variable is present
-            m.EnsureContainerEnvVar("ENABLE_TRACING", "true")
+            m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ENABLE_TRACING", Value: "true"})
             return nil
         },
     }
@@ -1067,7 +1067,7 @@ func TracingFeature(version string, enabled bool) feature.Mutation[*resources.De
             },
         ).When(enabled),
         Mutate: func(mutator *resources.DeploymentResourceMutator) error {
-            mutator.EnsureContainerEnvVar("ENABLE_TRACING", "true")
+            mutator.EnsureContainerEnvVar(corev1.EnvVar{Name: "ENABLE_TRACING", Value: "true"})
             return nil
         },
     }

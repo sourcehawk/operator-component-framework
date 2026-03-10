@@ -4,6 +4,7 @@ package features
 import (
 	"github.com/sourcehawk/operator-component-framework/examples/component-architecture-basics/resources"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var legacyBehaviorFeature = MustRegister("LegacyBehaviorExample", "< 8.0.0")
@@ -19,7 +20,7 @@ func NewLegacyBehaviorFeature(version string) feature.Mutation[*resources.Deploy
 		),
 		Mutate: func(m *resources.DeploymentResourceMutator) error {
 			// Set a deprecated env var
-			m.EnsureContainerEnvVar("DEPRECATED_SETTING", "legacy-value")
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "DEPRECATED_SETTING", Value: "legacy-value"})
 			// Remove the new one as it's not supported in legacy versions
 			m.RemoveContainerEnvVar("NEW_MANDATORY_SETTING")
 			return nil

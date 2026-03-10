@@ -24,7 +24,7 @@ type DeploymentResourceMutator struct {
 
 type envOp struct {
 	remove bool
-	value  string
+	ev     corev1.EnvVar
 }
 
 type argOp struct {
@@ -45,17 +45,17 @@ func NewDeploymentResourceMutator(current *appsv1.Deployment) *DeploymentResourc
 
 // EnsureContainerEnvVar records that an environment variable should exist in all containers.
 //
-// If the env var already exists when Apply() runs, its value will be updated.
+// If the env var already exists when Apply() runs, it will be replaced.
 // If it does not exist, it will be appended.
 // If the same env var was previously marked for removal, this overrides that removal.
-func (m *DeploymentResourceMutator) EnsureContainerEnvVar(name, value string) {
+func (m *DeploymentResourceMutator) EnsureContainerEnvVar(ev corev1.EnvVar) {
 	for i := range m.current.Spec.Template.Spec.Containers {
 		if _, ok := m.envOps[i]; !ok {
 			m.envOps[i] = map[string]envOp{}
 		}
-		m.envOps[i][name] = envOp{
+		m.envOps[i][ev.Name] = envOp{
 			remove: false,
-			value:  value,
+			ev:     ev,
 		}
 	}
 }
@@ -143,8 +143,7 @@ func (m *DeploymentResourceMutator) applyEnvOps(containerIndex int) {
 				continue
 			}
 
-			env.Value = op.value
-			newEnv = append(newEnv, env)
+			newEnv = append(newEnv, op.ev)
 			continue
 		}
 
@@ -152,15 +151,12 @@ func (m *DeploymentResourceMutator) applyEnvOps(containerIndex int) {
 	}
 
 	// Append ensured env vars that were not already present.
-	for name, op := range ops {
-		if op.remove || seen[name] {
+	for _, op := range ops {
+		if op.remove || seen[op.ev.Name] {
 			continue
 		}
 
-		newEnv = append(newEnv, corev1.EnvVar{
-			Name:  name,
-			Value: op.value,
-		})
+		newEnv = append(newEnv, op.ev)
 	}
 
 	container.Env = newEnv

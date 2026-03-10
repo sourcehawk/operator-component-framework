@@ -465,3 +465,172 @@ func TestMutator_NilSafety(t *testing.T) {
 	err := m.Apply()
 	assert.NoError(t, err)
 }
+
+func TestMutator_CrossFeatureOrdering(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To[int32](1),
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "app", Image: "v1"}},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+
+	// Feature A: sets replicas to 2, image to v2
+	m.BeginFeature()
+	m.EnsureReplicas(2)
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v2"
+		return nil
+	})
+
+	// Feature B: sets replicas to 3, image to v3
+	m.BeginFeature()
+	m.EnsureReplicas(3)
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v3"
+		return nil
+	})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	// Feature B should win
+	assert.Equal(t, int32(3), *deploy.Spec.Replicas)
+	assert.Equal(t, "v3", deploy.Spec.Template.Spec.Containers[0].Image)
+}
+
+func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "original-name"},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "app"}},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+
+	var executionOrder []string
+
+	// We register them in reverse order of expected execution
+	m.EditContainers(selectors.AllContainers(), func(e *editors.ContainerEditor) error {
+		executionOrder = append(executionOrder, "container")
+		return nil
+	})
+	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+		executionOrder = append(executionOrder, "podspec")
+		return nil
+	})
+	m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
+		executionOrder = append(executionOrder, "podmeta")
+		return nil
+	})
+	m.EditDeploymentSpec(func(e *editors.DeploymentSpecEditor) error {
+		executionOrder = append(executionOrder, "deploymentspec")
+		return nil
+	})
+	m.EditDeploymentMetadata(func(e *editors.ObjectMetaEditor) error {
+		executionOrder = append(executionOrder, "deploymentmeta")
+		return nil
+	})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	expectedOrder := []string{
+		"deploymentmeta",
+		"deploymentspec",
+		"podmeta",
+		"podspec",
+		"container",
+	}
+	assert.Equal(t, expectedOrder, executionOrder)
+}
+
+func TestMutator_CrossFeatureVisibility(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "app"}},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+
+	// Feature A renames container
+	m.BeginFeature()
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Name = "app-v2"
+		return nil
+	})
+
+	// Feature B selects by the new name - this should work!
+	m.BeginFeature()
+	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v2-image"
+		return nil
+	})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	assert.Equal(t, "app-v2", deploy.Spec.Template.Spec.Containers[0].Name)
+	assert.Equal(t, "v2-image", deploy.Spec.Template.Spec.Containers[0].Image)
+}
+
+func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{},
+				},
+			},
+		},
+	}
+
+	m := NewMutator(deploy)
+
+	// 1. Add init-1
+	m.EnsureInitContainer(corev1.Container{Name: "init-1", Image: "v1"})
+
+	// 2. Edit init-1 (it's present in the same feature's phase)
+	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v1-edited"
+		return nil
+	})
+
+	// 3. Rename it inside the edit phase
+	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
+		e.Raw().Name = "init-1-renamed"
+		return nil
+	})
+
+	// 4. Selector targeting "init-1" should still match because of snapshot in same phase
+	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v1-final"
+		return nil
+	})
+
+	if err := m.Apply(); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	require.Len(t, deploy.Spec.Template.Spec.InitContainers, 1)
+	assert.Equal(t, "init-1-renamed", deploy.Spec.Template.Spec.InitContainers[0].Name)
+	assert.Equal(t, "v1-final", deploy.Spec.Template.Spec.InitContainers[0].Image)
+}

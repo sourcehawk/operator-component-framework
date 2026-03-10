@@ -86,8 +86,20 @@ directly and repeatedly, the framework records "edit intent" through a series of
 ### Why this pattern exists:
 - **Prevents uncontrolled mutation**: Changes are staged and applied in a single, controlled pass.
 - **Improves composability**: Multiple independent features can contribute edits without knowing about each other.
+- **Predictable Ordering**: Features are applied in the order they are registered. Later features observe the resource state after earlier features have already applied their changes.
 - **Efficiency**: Avoids expensive and error-prone manual slice manipulations (like searching for a container by name 
   multiple times).
+
+### Internal Ordering within a Feature:
+While features apply in registration order, the internal operations within a single feature follow a fixed category-based sequence to ensure consistency:
+1. Deployment metadata edits
+2. DeploymentSpec edits
+3. Pod template metadata edits
+4. Pod spec edits
+5. Regular container presence operations
+6. Regular container edits (using a snapshot taken after presence operations)
+7. Init container presence operations
+8. Init container edits (using a snapshot taken after presence operations)
 
 ---
 

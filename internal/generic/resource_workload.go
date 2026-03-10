@@ -14,6 +14,12 @@ type MutatorApplier interface {
 	Apply() error
 }
 
+// FeatureMutator is implemented by workload mutators that support defining feature boundaries.
+type FeatureMutator interface {
+	MutatorApplier
+	BeginFeature()
+}
+
 // WorkloadResource is a generic internal resource implementation for long-running Kubernetes
 // workload objects such as Deployments, StatefulSets, and DaemonSets.
 //
@@ -67,20 +73,19 @@ func (r *WorkloadResource[T, M]) Mutate(current client.Object) error {
 		return fmt.Errorf("expected %T, got %T", r.Object, current)
 	}
 
-	applied, err := applyBaselineAndFlavors(
-		currentTyped,
-		r.Object,
-		r.DefaultFieldApplicator,
-		r.CustomFieldApplicator,
-		r.FieldFlavors,
-	)
+	applied, err := r.ApplyBaselineAndFlavors(currentTyped)
 	if err != nil {
 		return err
 	}
 
 	mutator := r.NewMutator(applied)
+	fm, isFeatureMutator := any(mutator).(FeatureMutator)
 
 	for _, mutation := range r.Mutations {
+		if isFeatureMutator {
+			fm.BeginFeature()
+		}
+
 		if err := mutation.ApplyIntent(mutator); err != nil {
 			return fmt.Errorf("failed to apply mutation intent for %s: %w", mutation.Name, err)
 		}
@@ -91,6 +96,10 @@ func (r *WorkloadResource[T, M]) Mutate(current client.Object) error {
 	}
 
 	if r.Suspender != nil {
+		if isFeatureMutator {
+			fm.BeginFeature()
+		}
+
 		if err := r.Suspender(mutator); err != nil {
 			return err
 		}
@@ -103,6 +112,17 @@ func (r *WorkloadResource[T, M]) Mutate(current client.Object) error {
 	r.Object = applied
 
 	return nil
+}
+
+// ApplyBaselineAndFlavors runs the standard field application pipeline on the provided current object.
+func (r *WorkloadResource[T, M]) ApplyBaselineAndFlavors(current T) (T, error) {
+	return applyBaselineAndFlavors(
+		current,
+		r.Object,
+		r.DefaultFieldApplicator,
+		r.CustomFieldApplicator,
+		r.FieldFlavors,
+	)
 }
 
 // ExtractData runs all registered data extractors against a deep copy of the reconciled object.

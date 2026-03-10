@@ -6,6 +6,8 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -92,6 +94,58 @@ func TestResource_Mutate(t *testing.T) {
 	assert.Equal(t, int32(3), *current.Spec.Replicas)
 	assert.Equal(t, "test", current.Labels["app"])
 	assert.Equal(t, "BAR", current.Spec.Template.Spec.Containers[0].Env[0].Value)
+}
+
+func TestResource_Mutate_FeatureOrdering(t *testing.T) {
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "app", Image: "v1"},
+					},
+				},
+			},
+		},
+	}
+
+	res, _ := NewBuilder(desired).
+		WithMutation(feature.Mutation[*Mutator]{
+			Name:    "feature-a",
+			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Mutate: func(m *Mutator) error {
+				m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+					e.Raw().Image = "v2"
+					return nil
+				})
+				return nil
+			},
+		}).
+		WithMutation(feature.Mutation[*Mutator]{
+			Name:    "feature-b",
+			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Mutate: func(m *Mutator) error {
+				// This should see image "v2" if BeginFeature() is working correctly between mutations
+				m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+					if e.Raw().Image == "v2" {
+						e.Raw().Image = "v3"
+					}
+					return nil
+				})
+				return nil
+			},
+		}).
+		Build()
+
+	current := &appsv1.Deployment{}
+	err := res.Mutate(current)
+	require.NoError(t, err)
+
+	assert.Equal(t, "v3", current.Spec.Template.Spec.Containers[0].Image)
 }
 
 type (

@@ -38,7 +38,6 @@ func applyBaselineAndFlavors[T client.Object](
 	customApplicator FieldApplicator[T],
 	flavors []FieldApplicationFlavor[T],
 ) (T, error) {
-
 	originalCurrent, ok := current.DeepCopyObject().(T)
 	if !ok {
 		var zero T

@@ -1,3 +1,4 @@
+// Package deployment provides a builder and resource for managing Kubernetes Deployments.
 package deployment
 
 import (

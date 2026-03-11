@@ -77,7 +77,7 @@ func TestApplyBaselineAndFlavors(t *testing.T) {
 			current:    &corev1.ConfigMap{},
 			desired:    &corev1.ConfigMap{Data: map[string]string{"foo": "bar"}},
 			defaultApp: defaultApp,
-			customApp: func(current, desired *corev1.ConfigMap) error {
+			customApp: func(current, _ *corev1.ConfigMap) error {
 				current.Data = map[string]string{"custom": "value"}
 				return nil
 			},
@@ -98,7 +98,7 @@ func TestApplyBaselineAndFlavors(t *testing.T) {
 			desired:    &corev1.ConfigMap{Data: map[string]string{"foo": "bar"}},
 			defaultApp: defaultApp,
 			flavors: []FieldApplicationFlavor[*corev1.ConfigMap]{
-				func(applied, current, desired *corev1.ConfigMap) error {
+				func(applied, current, _ *corev1.ConfigMap) error {
 					if val, ok := current.Data["preserved"]; ok {
 						if applied.Data == nil {
 							applied.Data = make(map[string]string)

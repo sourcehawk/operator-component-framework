@@ -15,7 +15,7 @@ func TestStaticBuilder(t *testing.T) {
 		},
 	}
 	identityFunc := func(cm *corev1.ConfigMap) string { return cm.Name }
-	defaultApp := func(current, desired *corev1.ConfigMap) error { return nil }
+	defaultApp := func(_, _ *corev1.ConfigMap) error { return nil }
 
 	t.Run("successful build", func(t *testing.T) {
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp)
@@ -29,7 +29,7 @@ func TestStaticBuilder(t *testing.T) {
 	})
 
 	t.Run("with custom applicator", func(t *testing.T) {
-		customApp := func(current, desired *corev1.ConfigMap) error { return nil }
+		customApp := func(_, _ *corev1.ConfigMap) error { return nil }
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp).WithCustomFieldApplicator(customApp)
 		res, _ := builder.Build()
 		if reflectValueOf(res.CustomFieldApplicator).Pointer() != reflectValueOf(customApp).Pointer() {
@@ -38,7 +38,7 @@ func TestStaticBuilder(t *testing.T) {
 	})
 
 	t.Run("with field application flavor", func(t *testing.T) {
-		flavor := func(applied, current, desired *corev1.ConfigMap) error { return nil }
+		flavor := func(_, _, _ *corev1.ConfigMap) error { return nil }
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp).WithFieldApplicationFlavor(flavor)
 		res, _ := builder.Build()
 		if len(res.FieldFlavors) != 1 {
@@ -47,7 +47,7 @@ func TestStaticBuilder(t *testing.T) {
 	})
 
 	t.Run("with data extractor", func(t *testing.T) {
-		extractor := func(cm *corev1.ConfigMap) error { return nil }
+		extractor := func(_ *corev1.ConfigMap) error { return nil }
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp).WithDataExtractor(extractor)
 		res, _ := builder.Build()
 		if len(res.DataExtractors) != 1 {

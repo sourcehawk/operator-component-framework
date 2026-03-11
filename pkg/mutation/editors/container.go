@@ -1,3 +1,4 @@
+// Package editors provides editors for mutating Kubernetes objects.
 package editors
 
 import (

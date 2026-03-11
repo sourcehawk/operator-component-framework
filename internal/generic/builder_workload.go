@@ -27,7 +27,6 @@ func NewWorkloadBuilder[T client.Object, M MutatorApplier](
 	defaultApplicator FieldApplicator[T],
 	newMutator func(T) M,
 ) *WorkloadBuilder[T, M] {
-
 	return &WorkloadBuilder[T, M]{
 		res: &WorkloadResource[T, M]{
 			Object:                 obj,
@@ -116,7 +115,6 @@ func (b *WorkloadBuilder[T, M]) WithCustomSuspendDeletionDecision(
 
 // Build validates the workload builder configuration and returns the initialized resource.
 func (b *WorkloadBuilder[T, M]) Build() (*WorkloadResource[T, M], error) {
-
 	if isNil(b.res.Object) {
 		return nil, errors.New("object cannot be nil")
 	}

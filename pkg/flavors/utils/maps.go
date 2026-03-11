@@ -1,3 +1,4 @@
+// Package utils provides common utility functions for working with Go collections.
 package utils
 
 // PreserveMap merges keys from current into applied only if they are missing in applied.

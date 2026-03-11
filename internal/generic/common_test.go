@@ -6,7 +6,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 )
 
-// reflectValueOf is a helper for testing function equality
+// reflectValueOf is a helper for testing function equality.
 func reflectValueOf(i any) reflect.Value {
 	return reflect.ValueOf(i)
 }

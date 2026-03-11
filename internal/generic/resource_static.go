@@ -33,7 +33,7 @@ func (r *StaticResource[T]) Identity() string {
 	return r.IdentityFunc(r.Object)
 }
 
-// Object returns a deep copy of the desired resource object.
+// GetObject returns a deep copy of the desired resource object.
 func (r *StaticResource[T]) GetObject() (client.Object, error) {
 	obj, ok := r.Object.DeepCopyObject().(client.Object)
 	if !ok {

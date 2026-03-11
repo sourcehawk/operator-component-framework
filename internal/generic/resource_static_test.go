@@ -9,12 +9,13 @@ import (
 )
 
 func TestStaticResource(t *testing.T) {
+	const testVal = "bar"
 	obj := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-cm",
 			Namespace: "default",
 		},
-		Data: map[string]string{"foo": "bar"},
+		Data: map[string]string{"foo": testVal},
 	}
 	identityFunc := func(cm *corev1.ConfigMap) string { return cm.Name }
 	defaultApp := func(current, desired *corev1.ConfigMap) error {
@@ -53,8 +54,8 @@ func TestStaticResource(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Mutate() error = %v", err)
 		}
-		if current.Data["foo"] != "bar" {
-			t.Errorf("expected foo=bar, got %v", current.Data["foo"])
+		if current.Data["foo"] != testVal {
+			t.Errorf("expected foo=%s, got %v", testVal, current.Data["foo"])
 		}
 	})
 
@@ -63,8 +64,8 @@ func TestStaticResource(t *testing.T) {
 		res.DataExtractors = []func(*corev1.ConfigMap) error{
 			func(cm *corev1.ConfigMap) error {
 				extracted = true
-				if cm.Data["foo"] != "bar" {
-					t.Errorf("expected foo=bar in extractor")
+				if cm.Data["foo"] != testVal {
+					t.Errorf("expected foo=%s in extractor", testVal)
 				}
 				return nil
 			},
@@ -80,7 +81,7 @@ func TestStaticResource(t *testing.T) {
 
 	t.Run("ExtractData error", func(t *testing.T) {
 		res.DataExtractors = []func(*corev1.ConfigMap) error{
-			func(cm *corev1.ConfigMap) error {
+			func(_ *corev1.ConfigMap) error {
 				return errors.New("extract error")
 			},
 		}

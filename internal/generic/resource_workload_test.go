@@ -53,7 +53,7 @@ func TestWorkloadResource(t *testing.T) {
 			{
 				Name:    "test-mut",
 				Feature: feature.NewResourceFeature("1.0.0", nil),
-				Mutate: func(m *mockMutator) error {
+				Mutate: func(_ *mockMutator) error {
 					mutCalled = true
 					return nil
 				},
@@ -71,7 +71,7 @@ func TestWorkloadResource(t *testing.T) {
 
 	t.Run("Suspend", func(t *testing.T) {
 		suspendMutCalled := false
-		res.SuspendMutationHandler = func(m *mockMutator) error {
+		res.SuspendMutationHandler = func(_ *mockMutator) error {
 			suspendMutCalled = true
 			return nil
 		}
@@ -96,16 +96,16 @@ func TestWorkloadResource(t *testing.T) {
 	})
 
 	t.Run("Status handlers", func(t *testing.T) {
-		res.ConvergingStatusHandler = func(op component.ConvergingOperation, d *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
+		res.ConvergingStatusHandler = func(_ component.ConvergingOperation, _ *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
 			return component.ConvergingStatusWithReason{Status: component.ConvergingStatusReady}, nil
 		}
-		res.GraceStatusHandler = func(d *appsv1.Deployment) (component.GraceStatusWithReason, error) {
+		res.GraceStatusHandler = func(_ *appsv1.Deployment) (component.GraceStatusWithReason, error) {
 			return component.GraceStatusWithReason{Status: component.GraceStatusReady}, nil
 		}
-		res.SuspendStatusHandler = func(d *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
+		res.SuspendStatusHandler = func(_ *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
 			return component.SuspensionStatusWithReason{Status: component.SuspensionStatusSuspended}, nil
 		}
-		res.DeleteOnSuspendHandler = func(d *appsv1.Deployment) bool {
+		res.DeleteOnSuspendHandler = func(_ *appsv1.Deployment) bool {
 			return true
 		}
 

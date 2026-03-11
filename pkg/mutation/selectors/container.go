@@ -1,3 +1,4 @@
+// Package selectors provides selectors for filtering Kubernetes objects.
 package selectors
 
 import (

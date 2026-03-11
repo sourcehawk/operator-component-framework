@@ -60,7 +60,7 @@ func (r *WorkloadResource[T, M]) Identity() string {
 	return r.IdentityFunc(r.Object)
 }
 
-// Object returns a deep copy of the desired workload object.
+// GetObject returns a deep copy of the desired workload object.
 func (r *WorkloadResource[T, M]) GetObject() (client.Object, error) {
 	return r.Object.DeepCopyObject().(client.Object), nil
 }

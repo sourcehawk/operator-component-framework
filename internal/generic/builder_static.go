@@ -1,3 +1,4 @@
+// Package generic provides generic builders and resources for operator components.
 package generic
 
 import (

@@ -17,7 +17,7 @@ func TestWorkloadBuilder(t *testing.T) {
 		},
 	}
 	identityFunc := func(d *appsv1.Deployment) string { return d.Name }
-	defaultApp := func(current, desired *appsv1.Deployment) error { return nil }
+	defaultApp := func(_, _ *appsv1.Deployment) error { return nil }
 	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
 
 	t.Run("successful build", func(t *testing.T) {
@@ -35,7 +35,7 @@ func TestWorkloadBuilder(t *testing.T) {
 		mut := feature.Mutation[*mockMutator]{
 			Name:    "test-mutation",
 			Feature: feature.NewResourceFeature("1.0.0", nil),
-			Mutate: func(m *mockMutator) error {
+			Mutate: func(_ *mockMutator) error {
 				return nil
 			},
 		}
@@ -48,19 +48,19 @@ func TestWorkloadBuilder(t *testing.T) {
 
 	t.Run("with handlers", func(t *testing.T) {
 		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator).
-			WithCustomConvergeStatus(func(op component.ConvergingOperation, d *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
+			WithCustomConvergeStatus(func(_ component.ConvergingOperation, _ *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
 				return component.ConvergingStatusWithReason{}, nil
 			}).
-			WithCustomGraceStatus(func(d *appsv1.Deployment) (component.GraceStatusWithReason, error) {
+			WithCustomGraceStatus(func(_ *appsv1.Deployment) (component.GraceStatusWithReason, error) {
 				return component.GraceStatusWithReason{}, nil
 			}).
-			WithCustomSuspendStatus(func(d *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
+			WithCustomSuspendStatus(func(_ *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
 				return component.SuspensionStatusWithReason{}, nil
 			}).
-			WithCustomSuspendMutation(func(m *mockMutator) error {
+			WithCustomSuspendMutation(func(_ *mockMutator) error {
 				return nil
 			}).
-			WithCustomSuspendDeletionDecision(func(d *appsv1.Deployment) bool {
+			WithCustomSuspendDeletionDecision(func(_ *appsv1.Deployment) bool {
 				return true
 			})
 

@@ -13,23 +13,6 @@ func DefaultFieldApplicator(current, desired *appsv1.Deployment) error {
 	return nil
 }
 
-type (
-	convergeStatusHandler          func(component.ConvergingOperation, *appsv1.Deployment) (component.ConvergingStatusWithReason, error)
-	graceStatusHandler             func(*appsv1.Deployment) (component.GraceStatusWithReason, error)
-	suspendStatusHandler           func(*appsv1.Deployment) (component.SuspensionStatusWithReason, error)
-	suspendMutationHandler         func(*Mutator) error
-	suspendDeletionDecisionHandler func(*appsv1.Deployment) bool
-)
-
-var (
-	// Default handlers as variables to allow for easy mocking in tests.
-	defaultConvergeStatusHandler          convergeStatusHandler          = DefaultConvergingStatusHandler
-	defaultGraceStatusHandler             graceStatusHandler             = DefaultGraceStatusHandler
-	defaultSuspendStatusHandler           suspendStatusHandler           = DefaultSuspensionStatusHandler
-	defaultSuspendMutationHandler         suspendMutationHandler         = DefaultSuspendMutationHandler
-	defaultSuspendDeletionDecisionHandler suspendDeletionDecisionHandler = DefaultDeleteOnSuspendHandler
-)
-
 // Resource is a high-level abstraction for managing a Kubernetes Deployment within a controller's
 // reconciliation loop.
 //

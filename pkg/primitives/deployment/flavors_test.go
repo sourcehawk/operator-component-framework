@@ -52,11 +52,11 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 		}
 
 		var order []string
-		flavor1 := func(applied, current, desired *appsv1.Deployment) error {
+		flavor1 := func(_, _, _ *appsv1.Deployment) error {
 			order = append(order, "flavor1")
 			return nil
 		}
-		flavor2 := func(applied, current, desired *appsv1.Deployment) error {
+		flavor2 := func(_, _, _ *appsv1.Deployment) error {
 			order = append(order, "flavor2")
 			return nil
 		}
@@ -74,7 +74,7 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 	t.Run("flavor error is returned with context", func(t *testing.T) {
 		current := &appsv1.Deployment{}
 		flavorErr := errors.New("boom")
-		flavor := func(applied, current, desired *appsv1.Deployment) error {
+		flavor := func(_, _, _ *appsv1.Deployment) error {
 			return flavorErr
 		}
 

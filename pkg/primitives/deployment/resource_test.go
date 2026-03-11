@@ -148,27 +148,9 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	assert.Equal(t, "v3", current.Spec.Template.Spec.Containers[0].Image)
 }
 
-type (
-	convergeStatusHandlerMock interface {
-		ConvergingStatus(component.ConvergingOperation, *appsv1.Deployment) (component.ConvergingStatusWithReason, error)
-	}
-	graceStatusHandlerMock interface {
-		GraceStatus(*appsv1.Deployment) (component.GraceStatusWithReason, error)
-	}
-	suspendStatusHandlerMock interface {
-		SuspensionStatus(*appsv1.Deployment) (component.SuspensionStatusWithReason, error)
-	}
-	suspendMutationHandlerMock interface {
-		Suspend(*Mutator) error
-	}
-	suspendDeletionDecisionHandlerMock interface {
-		DeleteOnSuspend(*appsv1.Deployment) bool
-	}
-
-	mockHandlers struct {
-		mock.Mock
-	}
-)
+type mockHandlers struct {
+	mock.Mock
+}
 
 func (m *mockHandlers) ConvergingStatus(op component.ConvergingOperation, d *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
 	args := m.Called(op, d)
@@ -422,7 +404,7 @@ func TestResource_CustomFieldApplicator(t *testing.T) {
 
 	t.Run("returns error", func(t *testing.T) {
 		res, _ := NewBuilder(desired).
-			WithCustomFieldApplicator(func(current *appsv1.Deployment, desired *appsv1.Deployment) error {
+			WithCustomFieldApplicator(func(_ *appsv1.Deployment, _ *appsv1.Deployment) error {
 				return errors.New("applicator error")
 			}).
 			Build()

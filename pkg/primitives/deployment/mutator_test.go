@@ -198,7 +198,7 @@ func TestMutator_EditMetadata(t *testing.T) {
 func TestMutator_Errors(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	m := NewMutator(deploy)
-	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		return errors.New("boom")
 	})
 
@@ -225,27 +225,27 @@ func TestMutator_Order(t *testing.T) {
 
 	m := NewMutator(deploy)
 	// 6. Container edits
-	m.EditContainers(selectors.AllContainers(), func(e *editors.ContainerEditor) error {
+	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		order = append(order, "container")
 		return nil
 	})
 	// 5. Pod spec edits
-	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		order = append(order, "podspec")
 		return nil
 	})
 	// 4. Pod template metadata edits
-	m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
+	m.EditPodTemplateMetadata(func(_ *editors.ObjectMetaEditor) error {
 		order = append(order, "podmeta")
 		return nil
 	})
 	// 3. Deployment spec edits
-	m.EditDeploymentSpec(func(e *editors.DeploymentSpecEditor) error {
+	m.EditDeploymentSpec(func(_ *editors.DeploymentSpecEditor) error {
 		order = append(order, "depspec")
 		return nil
 	})
 	// 2. Deployment metadata edits
-	m.EditDeploymentMetadata(func(e *editors.ObjectMetaEditor) error {
+	m.EditDeploymentMetadata(func(_ *editors.ObjectMetaEditor) error {
 		order = append(order, "depmeta")
 		return nil
 	})
@@ -264,6 +264,7 @@ func TestMutator_Order(t *testing.T) {
 }
 
 func TestMutator_InitContainers(t *testing.T) {
+	const newImage = "new-image"
 	deploy := &appsv1.Deployment{
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
@@ -278,7 +279,7 @@ func TestMutator_InitContainers(t *testing.T) {
 
 	m := NewMutator(deploy)
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
-		e.Raw().Image = "new-image"
+		e.Raw().Image = newImage
 		return nil
 	})
 
@@ -286,12 +287,13 @@ func TestMutator_InitContainers(t *testing.T) {
 		t.Fatalf("Apply failed: %v", err)
 	}
 
-	if deploy.Spec.Template.Spec.InitContainers[0].Image != "new-image" {
-		t.Errorf("expected image new-image, got %s", deploy.Spec.Template.Spec.InitContainers[0].Image)
+	if deploy.Spec.Template.Spec.InitContainers[0].Image != newImage {
+		t.Errorf("expected image %s, got %s", newImage, deploy.Spec.Template.Spec.InitContainers[0].Image)
 	}
 }
 
 func TestMutator_ContainerPresence(t *testing.T) {
+	const newImage = "new-image"
 	deploy := &appsv1.Deployment{
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
@@ -311,7 +313,7 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	// Remove
 	m.RemoveContainer("sidecar")
 	// Append
-	m.EnsureContainer(corev1.Container{Name: "new-container", Image: "new-image"})
+	m.EnsureContainer(corev1.Container{Name: "new-container", Image: newImage})
 
 	if err := m.Apply(); err != nil {
 		t.Fatalf("Apply failed: %v", err)
@@ -325,7 +327,7 @@ func TestMutator_ContainerPresence(t *testing.T) {
 		t.Errorf("unexpected container at index 0: %+v", deploy.Spec.Template.Spec.Containers[0])
 	}
 
-	if deploy.Spec.Template.Spec.Containers[1].Name != "new-container" || deploy.Spec.Template.Spec.Containers[1].Image != "new-image" {
+	if deploy.Spec.Template.Spec.Containers[1].Name != "new-container" || deploy.Spec.Template.Spec.Containers[1].Image != newImage {
 		t.Errorf("unexpected container at index 1: %+v", deploy.Spec.Template.Spec.Containers[1])
 	}
 }
@@ -361,6 +363,7 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 }
 
 func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
+	const appV2 = "app-v2"
 	deploy := &appsv1.Deployment{
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
@@ -377,7 +380,7 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 
 	// First edit renames the container
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
-		e.Raw().Name = "app-v2"
+		e.Raw().Name = appV2
 		return nil
 	})
 
@@ -388,7 +391,7 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 	})
 
 	// Third edit targeting "app-v2" should NOT match in this apply pass
-	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
+	m.EditContainers(selectors.ContainerNamed(appV2), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "should-not-be-set"
 		return nil
 	})
@@ -397,8 +400,8 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 		t.Fatalf("Apply failed: %v", err)
 	}
 
-	if deploy.Spec.Template.Spec.Containers[0].Name != "app-v2" {
-		t.Errorf("expected name app-v2, got %s", deploy.Spec.Template.Spec.Containers[0].Name)
+	if deploy.Spec.Template.Spec.Containers[0].Name != appV2 {
+		t.Errorf("expected name %s, got %s", appV2, deploy.Spec.Template.Spec.Containers[0].Name)
 	}
 
 	if deploy.Spec.Template.Spec.Containers[0].Image != "app-image-updated" {
@@ -455,7 +458,7 @@ func TestMutator_NilSafety(t *testing.T) {
 	m := NewMutator(deploy)
 
 	// These should all be no-ops and not panic
-	m.EditContainers(nil, func(e *editors.ContainerEditor) error { return nil })
+	m.EditContainers(nil, func(_ *editors.ContainerEditor) error { return nil })
 	m.EditContainers(selectors.AllContainers(), nil)
 	m.EditPodSpec(nil)
 	m.EditPodTemplateMetadata(nil)
@@ -522,23 +525,23 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	var executionOrder []string
 
 	// We register them in reverse order of expected execution
-	m.EditContainers(selectors.AllContainers(), func(e *editors.ContainerEditor) error {
+	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		executionOrder = append(executionOrder, "container")
 		return nil
 	})
-	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		executionOrder = append(executionOrder, "podspec")
 		return nil
 	})
-	m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
+	m.EditPodTemplateMetadata(func(_ *editors.ObjectMetaEditor) error {
 		executionOrder = append(executionOrder, "podmeta")
 		return nil
 	})
-	m.EditDeploymentSpec(func(e *editors.DeploymentSpecEditor) error {
+	m.EditDeploymentSpec(func(_ *editors.DeploymentSpecEditor) error {
 		executionOrder = append(executionOrder, "deploymentspec")
 		return nil
 	})
-	m.EditDeploymentMetadata(func(e *editors.ObjectMetaEditor) error {
+	m.EditDeploymentMetadata(func(_ *editors.ObjectMetaEditor) error {
 		executionOrder = append(executionOrder, "deploymentmeta")
 		return nil
 	})

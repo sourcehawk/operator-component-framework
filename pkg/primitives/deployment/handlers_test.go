@@ -99,42 +99,29 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 }
 
 func TestDefaultGraceStatusHandler(t *testing.T) {
-	tests := []struct {
-		name       string
-		deployment *appsv1.Deployment
-		wantStatus component.GraceStatus
-		wantReason string
-	}{
-		{
-			name: "degraded (some ready)",
-			deployment: &appsv1.Deployment{
-				Status: appsv1.DeploymentStatus{
-					ReadyReplicas: 1,
-				},
+	t.Run("degraded (some ready)", func(t *testing.T) {
+		deployment := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 1,
 			},
-			wantStatus: component.GraceStatusDegraded,
-			wantReason: "Deployment partially available",
-		},
-		{
-			name: "down (none ready)",
-			deployment: &appsv1.Deployment{
-				Status: appsv1.DeploymentStatus{
-					ReadyReplicas: 0,
-				},
-			},
-			wantStatus: component.GraceStatusDown,
-			wantReason: "No replicas are ready",
-		},
-	}
+		}
+		got, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, component.GraceStatusDegraded, got.Status)
+		assert.Equal(t, "Deployment partially available", got.Reason)
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := DefaultGraceStatusHandler(tt.deployment)
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantStatus, got.Status)
-			assert.Equal(t, tt.wantReason, got.Reason)
-		})
-	}
+	t.Run("down (none ready)", func(t *testing.T) {
+		deployment := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 0,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, component.GraceStatusDown, got.Status)
+		assert.Equal(t, "No replicas are ready", got.Reason)
+	})
 }
 
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {

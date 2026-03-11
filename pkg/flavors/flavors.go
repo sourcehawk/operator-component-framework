@@ -1,3 +1,4 @@
+// Package flavors provides utilities for managing flavors of component configurations.
 package flavors
 
 import (

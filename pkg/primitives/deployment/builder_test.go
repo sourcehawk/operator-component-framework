@@ -102,7 +102,7 @@ func TestBuilder(t *testing.T) {
 			},
 		}
 		applied := false
-		applicator := func(current *appsv1.Deployment, desired *appsv1.Deployment) error {
+		applicator := func(_ *appsv1.Deployment, _ *appsv1.Deployment) error {
 			applied = true
 			return nil
 		}
@@ -139,7 +139,7 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(op component.ConvergingOperation, d *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
+		handler := func(_ component.ConvergingOperation, _ *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
 			return component.ConvergingStatusWithReason{Status: component.ConvergingStatusUpdating}, nil
 		}
 		res, err := NewBuilder(deploy).
@@ -160,7 +160,7 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(d *appsv1.Deployment) (component.GraceStatusWithReason, error) {
+		handler := func(_ *appsv1.Deployment) (component.GraceStatusWithReason, error) {
 			return component.GraceStatusWithReason{Status: component.GraceStatusReady}, nil
 		}
 		res, err := NewBuilder(deploy).
@@ -181,7 +181,7 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(d *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
+		handler := func(_ *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
 			return component.SuspensionStatusWithReason{Status: component.SuspensionStatusSuspended}, nil
 		}
 		res, err := NewBuilder(deploy).
@@ -202,7 +202,7 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(m *Mutator) error {
+		handler := func(_ *Mutator) error {
 			return errors.New("suspend error")
 		}
 		res, err := NewBuilder(deploy).
@@ -222,7 +222,7 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(d *appsv1.Deployment) bool {
+		handler := func(_ *appsv1.Deployment) bool {
 			return true
 		}
 		res, err := NewBuilder(deploy).
@@ -242,7 +242,7 @@ func TestBuilder(t *testing.T) {
 			},
 		}
 		called := false
-		extractor := func(d appsv1.Deployment) error {
+		extractor := func(_ appsv1.Deployment) error {
 			called = true
 			return nil
 		}

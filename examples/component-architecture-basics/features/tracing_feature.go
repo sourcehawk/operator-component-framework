@@ -3,6 +3,7 @@ package features
 import (
 	"github.com/sourcehawk/operator-component-framework/examples/component-architecture-basics/resources"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var tracingFeature = MustRegister("TracingExample", ">= 8.1.0")
@@ -18,7 +19,7 @@ func NewTracingFeature(version string, enabled bool) feature.Mutation[*resources
 			version, []feature.VersionConstraint{tracingFeature},
 		).When(enabled),
 		Mutate: func(m *resources.DeploymentResourceMutator) error {
-			m.EnsureContainerEnvVar("ENABLE_TRACING", "true")
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ENABLE_TRACING", Value: "true"})
 			return nil
 		},
 	}

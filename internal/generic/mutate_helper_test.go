@@ -39,19 +39,19 @@ func TestApplyMutationsOrder(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
 	}
 
-	defaultApplicator := func(current, desired *corev1.ConfigMap) error {
+	defaultApplicator := func(_, _ *corev1.ConfigMap) error {
 		recorder.record("defaultApplicator")
 		return nil
 	}
 
 	flavors := []FieldApplicationFlavor[*corev1.ConfigMap]{
-		func(applied, current, desired *corev1.ConfigMap) error {
+		func(_, _, _ *corev1.ConfigMap) error {
 			recorder.record("flavor1")
 			return nil
 		},
 	}
 
-	newMutator := func(obj *corev1.ConfigMap) *recordingMutator {
+	newMutator := func(_ *corev1.ConfigMap) *recordingMutator {
 		recorder.record("newMutator")
 		return &recordingMutator{recorder: recorder}
 	}
@@ -60,14 +60,14 @@ func TestApplyMutationsOrder(t *testing.T) {
 		{
 			Name:    "feat1",
 			Feature: feature.NewResourceFeature("1.0.0", nil),
-			Mutate: func(m *recordingMutator) error {
+			Mutate: func(_ *recordingMutator) error {
 				recorder.record("mutation1")
 				return nil
 			},
 		},
 	}
 
-	suspender := func(m *recordingMutator) error {
+	suspender := func(_ *recordingMutator) error {
 		recorder.record("suspender")
 		return nil
 	}

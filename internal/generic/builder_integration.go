@@ -1,8 +1,7 @@
+//nolint:dupl
 package generic
 
 import (
-	"errors"
-
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -10,10 +9,8 @@ import (
 
 // IntegrationBuilder configures a generic internal integration resource for Kubernetes primitives
 // such as Services, Ingresses, and Gateways.
-//
-// It captures the common framework concepts while leaving kind-specific defaults and wrappers
-// to the concrete integration packages.
 type IntegrationBuilder[T client.Object, M MutatorApplier] struct {
+	BaseBuilder[T, M]
 	res *IntegrationResource[T, M]
 }
 
@@ -27,21 +24,20 @@ func NewIntegrationBuilder[T client.Object, M MutatorApplier](
 	defaultApplicator FieldApplicator[T],
 	newMutator func(T) M,
 ) *IntegrationBuilder[T, M] {
-	return &IntegrationBuilder[T, M]{
-		res: &IntegrationResource[T, M]{
-			DesiredObject:          obj,
-			IdentityFunc:           identityFunc,
-			DefaultFieldApplicator: defaultApplicator,
-			NewMutator:             newMutator,
-		},
+	res := &IntegrationResource[T, M]{}
+	b := &IntegrationBuilder[T, M]{
+		res: res,
 	}
+	b.InitBase(obj, identityFunc, defaultApplicator, newMutator)
+	b.res.BaseResource = *b.BaseRes
+	return b
 }
 
 // WithMutation registers a typed feature mutation for the integration.
 func (b *IntegrationBuilder[T, M]) WithMutation(
 	m feature.Mutation[M],
 ) *IntegrationBuilder[T, M] {
-	b.res.Mutations = append(b.res.Mutations, m)
+	b.BaseBuilder.WithMutation(m)
 	return b
 }
 
@@ -49,7 +45,7 @@ func (b *IntegrationBuilder[T, M]) WithMutation(
 func (b *IntegrationBuilder[T, M]) WithCustomFieldApplicator(
 	applicator FieldApplicator[T],
 ) *IntegrationBuilder[T, M] {
-	b.res.CustomFieldApplicator = applicator
+	b.BaseBuilder.WithCustomFieldApplicator(applicator)
 	return b
 }
 
@@ -57,9 +53,7 @@ func (b *IntegrationBuilder[T, M]) WithCustomFieldApplicator(
 func (b *IntegrationBuilder[T, M]) WithFieldApplicationFlavor(
 	flavor FieldApplicationFlavor[T],
 ) *IntegrationBuilder[T, M] {
-	if flavor != nil {
-		b.res.FieldFlavors = append(b.res.FieldFlavors, flavor)
-	}
+	b.BaseBuilder.WithFieldApplicationFlavor(flavor)
 	return b
 }
 
@@ -67,9 +61,7 @@ func (b *IntegrationBuilder[T, M]) WithFieldApplicationFlavor(
 func (b *IntegrationBuilder[T, M]) WithDataExtractor(
 	extractor func(T) error,
 ) *IntegrationBuilder[T, M] {
-	if extractor != nil {
-		b.res.DataExtractors = append(b.res.DataExtractors, extractor)
-	}
+	b.BaseBuilder.WithDataExtractor(extractor)
 	return b
 }
 
@@ -85,7 +77,7 @@ func (b *IntegrationBuilder[T, M]) WithCustomOperationalStatus(
 func (b *IntegrationBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),
 ) *IntegrationBuilder[T, M] {
-	b.res.SuspendStatusHandler = handler
+	b.BaseBuilder.WithCustomSuspendStatus(handler)
 	return b
 }
 
@@ -93,7 +85,7 @@ func (b *IntegrationBuilder[T, M]) WithCustomSuspendStatus(
 func (b *IntegrationBuilder[T, M]) WithCustomSuspendMutation(
 	handler func(M) error,
 ) *IntegrationBuilder[T, M] {
-	b.res.SuspendMutationHandler = handler
+	b.BaseBuilder.WithCustomSuspendMutation(handler)
 	return b
 }
 
@@ -101,35 +93,15 @@ func (b *IntegrationBuilder[T, M]) WithCustomSuspendMutation(
 func (b *IntegrationBuilder[T, M]) WithCustomSuspendDeletionDecision(
 	handler func(T) bool,
 ) *IntegrationBuilder[T, M] {
-	b.res.DeleteOnSuspendHandler = handler
+	b.BaseBuilder.WithCustomSuspendDeletionDecision(handler)
 	return b
 }
 
 // Build validates the integration builder configuration and returns the initialized resource.
 func (b *IntegrationBuilder[T, M]) Build() (*IntegrationResource[T, M], error) {
-	if isNil(b.res.DesiredObject) {
-		return nil, errors.New("object cannot be nil")
+	b.res.BaseResource = *b.BaseRes
+	if err := b.ValidateBase(); err != nil {
+		return nil, err
 	}
-
-	if b.res.DesiredObject.GetName() == "" {
-		return nil, errors.New("object name cannot be empty")
-	}
-
-	if b.res.DesiredObject.GetNamespace() == "" {
-		return nil, errors.New("object namespace cannot be empty")
-	}
-
-	if b.res.IdentityFunc == nil {
-		return nil, errors.New("identity function cannot be nil")
-	}
-
-	if b.res.DefaultFieldApplicator == nil {
-		return nil, errors.New("default field applicator cannot be nil")
-	}
-
-	if b.res.NewMutator == nil {
-		return nil, errors.New("mutator factory cannot be nil")
-	}
-
 	return b.res, nil
 }

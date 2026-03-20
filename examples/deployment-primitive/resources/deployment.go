@@ -1,3 +1,4 @@
+// Package resources provides resource implementations for the deployment primitive example.
 package resources
 
 import (

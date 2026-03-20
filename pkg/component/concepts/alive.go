@@ -1,3 +1,4 @@
+// Package concepts defines the core concepts for the operator component framework.
 package concepts
 
 // AliveConvergingStatus represents the transitional state of an alive resource as it moves towards "healthy".
@@ -16,6 +17,7 @@ const (
 	AliveConvergingStatusFailing AliveConvergingStatus = "Failing"
 )
 
+// AliveStatusWithReason is the explanation of why the resource is or is not healthy at health checking time.
 type AliveStatusWithReason struct {
 	// Status is the status of the resource while converging towards healthy (can also be healthy).
 	Status AliveConvergingStatus

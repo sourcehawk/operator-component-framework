@@ -71,29 +71,11 @@ func TestWorkloadBuilder(t *testing.T) {
 	})
 
 	t.Run("validation errors", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			obj     *appsv1.Deployment
-			idFunc  func(*appsv1.Deployment) string
-			defApp  FieldApplicator[*appsv1.Deployment]
-			newMut  func(*appsv1.Deployment) *mockMutator
-			wantErr string
-		}{
-			{"nil object", nil, identityFunc, defaultApp, newMutator, "object cannot be nil"},
-			{"empty name", &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}}, identityFunc, defaultApp, newMutator, "object name cannot be empty"},
-			{"empty namespace", &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, identityFunc, defaultApp, newMutator, "object namespace cannot be empty"},
-			{"nil identity", obj, nil, defaultApp, newMutator, "identity function cannot be nil"},
-			{"nil applicator", obj, identityFunc, nil, newMutator, "default field applicator cannot be nil"},
-			{"nil mutator factory", obj, identityFunc, defaultApp, nil, "mutator factory cannot be nil"},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := NewWorkloadBuilder(tt.obj, tt.idFunc, tt.defApp, tt.newMut).Build()
-				if err == nil || err.Error() != tt.wantErr {
-					t.Errorf("expected error %q, got %v", tt.wantErr, err)
-				}
-			})
-		}
+		runBuilderValidationTests[*WorkloadResource[*appsv1.Deployment, *mockMutator]](
+			t, obj, identityFunc, defaultApp, newMutator,
+			func(o *appsv1.Deployment, id func(*appsv1.Deployment) string, app FieldApplicator[*appsv1.Deployment], mut func(*appsv1.Deployment) *mockMutator) genericBuilder[*WorkloadResource[*appsv1.Deployment, *mockMutator]] {
+				return NewWorkloadBuilder(o, id, app, mut)
+			},
+		)
 	})
 }

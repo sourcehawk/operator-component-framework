@@ -1,3 +1,4 @@
+// Package main is the entry point for the deployment primitive example.
 package main
 
 import (

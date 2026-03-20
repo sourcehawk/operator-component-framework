@@ -1,8 +1,7 @@
+//nolint:dupl
 package generic
 
 import (
-	"errors"
-
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -14,6 +13,7 @@ import (
 // It captures the common framework concepts while leaving kind-specific defaults and wrappers
 // to the concrete task packages.
 type TaskBuilder[T client.Object, M MutatorApplier] struct {
+	BaseBuilder[T, M]
 	res *TaskResource[T, M]
 }
 
@@ -27,21 +27,20 @@ func NewTaskBuilder[T client.Object, M MutatorApplier](
 	defaultApplicator FieldApplicator[T],
 	newMutator func(T) M,
 ) *TaskBuilder[T, M] {
-	return &TaskBuilder[T, M]{
-		res: &TaskResource[T, M]{
-			DesiredObject:          obj,
-			IdentityFunc:           identityFunc,
-			DefaultFieldApplicator: defaultApplicator,
-			NewMutator:             newMutator,
-		},
+	res := &TaskResource[T, M]{}
+	b := &TaskBuilder[T, M]{
+		res: res,
 	}
+	b.InitBase(obj, identityFunc, defaultApplicator, newMutator)
+	b.res.BaseResource = *b.BaseRes
+	return b
 }
 
 // WithMutation registers a typed feature mutation for the task.
 func (b *TaskBuilder[T, M]) WithMutation(
 	m feature.Mutation[M],
 ) *TaskBuilder[T, M] {
-	b.res.Mutations = append(b.res.Mutations, m)
+	b.BaseBuilder.WithMutation(m)
 	return b
 }
 
@@ -49,7 +48,7 @@ func (b *TaskBuilder[T, M]) WithMutation(
 func (b *TaskBuilder[T, M]) WithCustomFieldApplicator(
 	applicator FieldApplicator[T],
 ) *TaskBuilder[T, M] {
-	b.res.CustomFieldApplicator = applicator
+	b.BaseBuilder.WithCustomFieldApplicator(applicator)
 	return b
 }
 
@@ -57,9 +56,7 @@ func (b *TaskBuilder[T, M]) WithCustomFieldApplicator(
 func (b *TaskBuilder[T, M]) WithFieldApplicationFlavor(
 	flavor FieldApplicationFlavor[T],
 ) *TaskBuilder[T, M] {
-	if flavor != nil {
-		b.res.FieldFlavors = append(b.res.FieldFlavors, flavor)
-	}
+	b.BaseBuilder.WithFieldApplicationFlavor(flavor)
 	return b
 }
 
@@ -67,9 +64,7 @@ func (b *TaskBuilder[T, M]) WithFieldApplicationFlavor(
 func (b *TaskBuilder[T, M]) WithDataExtractor(
 	extractor func(T) error,
 ) *TaskBuilder[T, M] {
-	if extractor != nil {
-		b.res.DataExtractors = append(b.res.DataExtractors, extractor)
-	}
+	b.BaseBuilder.WithDataExtractor(extractor)
 	return b
 }
 
@@ -85,7 +80,7 @@ func (b *TaskBuilder[T, M]) WithCustomConvergeStatus(
 func (b *TaskBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),
 ) *TaskBuilder[T, M] {
-	b.res.SuspendStatusHandler = handler
+	b.BaseBuilder.WithCustomSuspendStatus(handler)
 	return b
 }
 
@@ -93,7 +88,7 @@ func (b *TaskBuilder[T, M]) WithCustomSuspendStatus(
 func (b *TaskBuilder[T, M]) WithCustomSuspendMutation(
 	handler func(M) error,
 ) *TaskBuilder[T, M] {
-	b.res.SuspendMutationHandler = handler
+	b.BaseBuilder.WithCustomSuspendMutation(handler)
 	return b
 }
 
@@ -101,35 +96,15 @@ func (b *TaskBuilder[T, M]) WithCustomSuspendMutation(
 func (b *TaskBuilder[T, M]) WithCustomSuspendDeletionDecision(
 	handler func(T) bool,
 ) *TaskBuilder[T, M] {
-	b.res.DeleteOnSuspendHandler = handler
+	b.BaseBuilder.WithCustomSuspendDeletionDecision(handler)
 	return b
 }
 
 // Build validates the task builder configuration and returns the initialized resource.
 func (b *TaskBuilder[T, M]) Build() (*TaskResource[T, M], error) {
-	if isNil(b.res.DesiredObject) {
-		return nil, errors.New("object cannot be nil")
+	b.res.BaseResource = *b.BaseRes
+	if err := b.ValidateBase(); err != nil {
+		return nil, err
 	}
-
-	if b.res.DesiredObject.GetName() == "" {
-		return nil, errors.New("object name cannot be empty")
-	}
-
-	if b.res.DesiredObject.GetNamespace() == "" {
-		return nil, errors.New("object namespace cannot be empty")
-	}
-
-	if b.res.IdentityFunc == nil {
-		return nil, errors.New("identity function cannot be nil")
-	}
-
-	if b.res.DefaultFieldApplicator == nil {
-		return nil, errors.New("default field applicator cannot be nil")
-	}
-
-	if b.res.NewMutator == nil {
-		return nil, errors.New("mutator factory cannot be nil")
-	}
-
 	return b.res, nil
 }

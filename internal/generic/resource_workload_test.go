@@ -24,10 +24,12 @@ func TestWorkloadResource(t *testing.T) {
 	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
 
 	res := &WorkloadResource[*appsv1.Deployment, *mockMutator]{
-		DesiredObject:          obj,
-		IdentityFunc:           identityFunc,
-		DefaultFieldApplicator: defaultApp,
-		NewMutator:             newMutator,
+		BaseResource: BaseResource[*appsv1.Deployment, *mockMutator]{
+			DesiredObject:          obj,
+			IdentityFunc:           identityFunc,
+			DefaultFieldApplicator: defaultApp,
+			NewMutator:             newMutator,
+		},
 	}
 
 	t.Run("Identity", func(t *testing.T) {

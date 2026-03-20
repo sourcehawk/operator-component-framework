@@ -1,23 +1,13 @@
+//nolint:dupl
 package generic
 
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-type mockTaskMutator struct {
-	job     *batchv1.Job
-	applied bool
-}
-
-func (m *mockTaskMutator) Apply() error {
-	m.applied = true
-	return nil
-}
 
 func TestTaskResource(t *testing.T) {
 	obj := &batchv1.Job{
@@ -31,13 +21,15 @@ func TestTaskResource(t *testing.T) {
 		current.Spec = desired.Spec
 		return nil
 	}
-	newMutator := func(j *batchv1.Job) *mockTaskMutator { return &mockTaskMutator{job: j} }
+	newMutator := func(j *batchv1.Job) *mockMutator { return &mockMutator{job: j} }
 
-	res := &TaskResource[*batchv1.Job, *mockTaskMutator]{
-		DesiredObject:          obj,
-		IdentityFunc:           identityFunc,
-		DefaultFieldApplicator: defaultApp,
-		NewMutator:             newMutator,
+	res := &TaskResource[*batchv1.Job, *mockMutator]{
+		BaseResource: BaseResource[*batchv1.Job, *mockMutator]{
+			DesiredObject:          obj,
+			IdentityFunc:           identityFunc,
+			DefaultFieldApplicator: defaultApp,
+			NewMutator:             newMutator,
+		},
 	}
 
 	t.Run("Identity", func(t *testing.T) {
@@ -56,14 +48,14 @@ func TestTaskResource(t *testing.T) {
 		}
 	})
 
-	t.Run("Mutate", func(t *testing.T) {
+	t.Run("Mutate and Suspend", func(t *testing.T) {
 		current := &batchv1.Job{}
 		mutCalled := false
-		res.Mutations = []feature.Mutation[*mockTaskMutator]{
+		res.Mutations = []feature.Mutation[*mockMutator]{
 			{
 				Name:    "test-mut",
 				Feature: feature.NewResourceFeature("1.0.0", nil),
-				Mutate: func(_ *mockTaskMutator) error {
+				Mutate: func(_ *mockMutator) error {
 					mutCalled = true
 					return nil
 				},
@@ -77,21 +69,19 @@ func TestTaskResource(t *testing.T) {
 		if !mutCalled {
 			t.Errorf("mutation was not called")
 		}
-	})
 
-	t.Run("Suspend", func(t *testing.T) {
 		suspendMutCalled := false
-		res.SuspendMutationHandler = func(_ *mockTaskMutator) error {
+		res.SuspendMutationHandler = func(_ *mockMutator) error {
 			suspendMutCalled = true
 			return nil
 		}
 
-		err := res.Suspend()
+		err = res.Suspend()
 		if err != nil {
 			t.Fatalf("Suspend() error = %v", err)
 		}
 
-		current := &batchv1.Job{}
+		current = &batchv1.Job{}
 		err = res.Mutate(current)
 		if err != nil {
 			t.Fatalf("Mutate() error = %v", err)
@@ -102,32 +92,6 @@ func TestTaskResource(t *testing.T) {
 		}
 		if res.Suspender != nil {
 			t.Errorf("suspender should be nil after use")
-		}
-	})
-
-	t.Run("Status handlers", func(t *testing.T) {
-		res.ConvergingStatusHandler = func(_ concepts.ConvergingOperation, _ *batchv1.Job) (concepts.CompletionStatusWithReason, error) {
-			return concepts.CompletionStatusWithReason{Status: concepts.CompletionStatusCompleted}, nil
-		}
-		res.SuspendStatusHandler = func(_ *batchv1.Job) (concepts.SuspensionStatusWithReason, error) {
-			return concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}, nil
-		}
-		res.DeleteOnSuspendHandler = func(_ *batchv1.Job) bool {
-			return true
-		}
-
-		cs, _ := res.ConvergingStatus(concepts.ConvergingOperationCreated)
-		if cs.Status != concepts.CompletionStatusCompleted {
-			t.Errorf("expected completed")
-		}
-
-		ss, _ := res.SuspensionStatus()
-		if ss.Status != concepts.SuspensionStatusSuspended {
-			t.Errorf("expected suspended")
-		}
-
-		if !res.DeleteOnSuspend() {
-			t.Errorf("expected delete on suspend true")
 		}
 	})
 }

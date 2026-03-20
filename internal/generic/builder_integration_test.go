@@ -68,29 +68,11 @@ func TestIntegrationBuilder(t *testing.T) {
 	})
 
 	t.Run("validation errors", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			obj     *corev1.Service
-			idFunc  func(*corev1.Service) string
-			defApp  FieldApplicator[*corev1.Service]
-			newMut  func(*corev1.Service) *mockMutator
-			wantErr string
-		}{
-			{"nil object", nil, identityFunc, defaultApp, newMutator, "object cannot be nil"},
-			{"empty name", &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}}, identityFunc, defaultApp, newMutator, "object name cannot be empty"},
-			{"empty namespace", &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, identityFunc, defaultApp, newMutator, "object namespace cannot be empty"},
-			{"nil identity", obj, nil, defaultApp, newMutator, "identity function cannot be nil"},
-			{"nil applicator", obj, identityFunc, nil, newMutator, "default field applicator cannot be nil"},
-			{"nil mutator factory", obj, identityFunc, defaultApp, nil, "mutator factory cannot be nil"},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := NewIntegrationBuilder(tt.obj, tt.idFunc, tt.defApp, tt.newMut).Build()
-				if err == nil || err.Error() != tt.wantErr {
-					t.Errorf("expected error %q, got %v", tt.wantErr, err)
-				}
-			})
-		}
+		runBuilderValidationTests[*IntegrationResource[*corev1.Service, *mockMutator]](
+			t, obj, identityFunc, defaultApp, newMutator,
+			func(o *corev1.Service, id func(*corev1.Service) string, app FieldApplicator[*corev1.Service], mut func(*corev1.Service) *mockMutator) genericBuilder[*IntegrationResource[*corev1.Service, *mockMutator]] {
+				return NewIntegrationBuilder(o, id, app, mut)
+			},
+		)
 	})
 }

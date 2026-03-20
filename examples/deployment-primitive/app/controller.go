@@ -1,3 +1,4 @@
+// Package app provides a sample controller using the deployment primitive.
 package app
 
 import (

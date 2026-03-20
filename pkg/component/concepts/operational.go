@@ -12,13 +12,15 @@ const (
 	OperationalStatusFailing OperationalStatus = "OperationFailing"
 )
 
+// OperationalStatusWithReason is the explanation of why the resource is or is not operational at checking time.
 type OperationalStatusWithReason struct {
+	// Status is the status of the resource while converging towards operational (can also be operational).
 	Status OperationalStatus
-	// Reason explains why the resource is currently 'Operational', 'Pending' or 'failing'.
+	// Reason explains why the resource is currently 'Operational', 'Pending' or 'Failing'.
 	// Examples:
 	//  - With Status=Operational: Service load balancer IP address assigned.
 	//  - With Status=Pending: Awaiting load balancer IP assignment.
-	//  - With Status=failing: Missing cloud provider annotation for load balancer assignment.
+	//  - With Status=Failing: Missing cloud provider annotation for load balancer assignment.
 	Reason string
 }
 

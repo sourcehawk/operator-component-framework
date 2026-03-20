@@ -14,7 +14,7 @@ const (
 	CompletionStatusFailing CompletionStatus = "TaskFailing"
 )
 
-// CompletionStatusWithReason represents the current completion status and a descriptive reason.
+// CompletionStatusWithReason is the explanation of why the resource is in its current execution state.
 type CompletionStatusWithReason struct {
 	// Status is the current execution state of the resource.
 	Status CompletionStatus

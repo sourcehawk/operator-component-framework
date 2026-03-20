@@ -507,86 +507,52 @@ var _ = Describe("Component Reconciler", func() {
 	})
 
 	Describe("Reconciliation with Concepts", func() {
-		It("should handle Alive resources", func() {
-			res := &MockAliveResource{}
-			res.On("Object").Return(&corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: "alive-res", Namespace: namespace},
-			}, nil)
-			res.On("Identity").Return("ConfigMap/alive-res")
-			res.On("Mutate", mock.Anything).Return(nil)
-			res.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(concepts.AliveStatusWithReason{
+		DescribeTable("should handle resource concepts",
+			func(res Resource, name string, status any) {
+				var m *mock.Mock
+				switch r := res.(type) {
+				case *MockAliveResource:
+					m = &r.Mock
+				case *MockCompletableResource:
+					m = &r.Mock
+				case *MockOperationalResource:
+					m = &r.Mock
+				}
+
+				m.On("Object").Return(&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{Name: name + "-res", Namespace: namespace},
+				}, nil)
+				m.On("Identity").Return("ConfigMap/" + name + "-res")
+				m.On("Mutate", mock.Anything).Return(nil)
+				m.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(status, nil)
+
+				c, _ := NewComponentBuilder().
+					WithName(name+"-comp").
+					WithConditionType("Ready").
+					WithResource(res, ResourceOptions{
+						ParticipationMode: ParticipationModeRequired,
+					}).
+					Build()
+
+				err := c.Reconcile(ctx, recCtx)
+				Expect(err).NotTo(HaveOccurred())
+
+				condition := c.GetCondition(owner)
+				Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+			},
+			Entry("Alive resources", &MockAliveResource{}, "alive", concepts.AliveStatusWithReason{
 				Status: concepts.AliveConvergingStatusHealthy,
 				Reason: "All good",
-			}, nil)
-
-			c, _ := NewComponentBuilder().
-				WithName("alive-comp").
-				WithConditionType("Ready").
-				WithResource(res, ResourceOptions{
-					ParticipationMode: ParticipationModeRequired,
-				}).
-				Build()
-
-			err := c.Reconcile(ctx, recCtx)
-			Expect(err).NotTo(HaveOccurred())
-
-			condition := c.GetCondition(owner)
-			Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-		})
-
-		It("should handle Completable resources", func() {
-			res := &MockCompletableResource{}
-			res.On("Object").Return(&corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: "complete-res", Namespace: namespace},
-			}, nil)
-			res.On("Identity").Return("ConfigMap/complete-res")
-			res.On("Mutate", mock.Anything).Return(nil)
-			res.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(concepts.CompletionStatusWithReason{
+			}),
+			Entry("Completable resources", &MockCompletableResource{}, "complete", concepts.CompletionStatusWithReason{
 				Status: concepts.CompletionStatusCompleted,
 				Reason: "Job done",
-			}, nil)
-
-			c, _ := NewComponentBuilder().
-				WithName("complete-comp").
-				WithConditionType("Ready").
-				WithResource(res, ResourceOptions{
-					ParticipationMode: ParticipationModeRequired,
-				}).
-				Build()
-
-			err := c.Reconcile(ctx, recCtx)
-			Expect(err).NotTo(HaveOccurred())
-
-			condition := c.GetCondition(owner)
-			Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-		})
-
-		It("should handle Operational resources", func() {
-			res := &MockOperationalResource{}
-			res.On("Object").Return(&corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: "op-res", Namespace: namespace},
-			}, nil)
-			res.On("Identity").Return("ConfigMap/op-res")
-			res.On("Mutate", mock.Anything).Return(nil)
-			res.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(concepts.OperationalStatusWithReason{
+			}),
+			Entry("Operational resources", &MockOperationalResource{}, "op", concepts.OperationalStatusWithReason{
 				Status: concepts.OperationalStatusOperational,
 				Reason: "Operational",
-			}, nil)
-
-			c, _ := NewComponentBuilder().
-				WithName("op-comp").
-				WithConditionType("Ready").
-				WithResource(res, ResourceOptions{
-					ParticipationMode: ParticipationModeRequired,
-				}).
-				Build()
-
-			err := c.Reconcile(ctx, recCtx)
-			Expect(err).NotTo(HaveOccurred())
-
-			condition := c.GetCondition(owner)
-			Expect(condition.Status).To(Equal(metav1.ConditionTrue))
-		})
+			}),
+		)
 
 		It("should handle Graceful resources - Degraded after grace period", func() {
 			res := &MockAliveResource{} // MockAliveResource also implements Graceful in zz_mock

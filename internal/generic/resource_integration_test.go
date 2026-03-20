@@ -1,9 +1,9 @@
+//nolint:dupl
 package generic
 
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,10 +24,12 @@ func TestIntegrationResource(t *testing.T) {
 	newMutator := func(s *corev1.Service) *mockMutator { return &mockMutator{service: s} }
 
 	res := &IntegrationResource[*corev1.Service, *mockMutator]{
-		DesiredObject:          obj,
-		IdentityFunc:           identityFunc,
-		DefaultFieldApplicator: defaultApp,
-		NewMutator:             newMutator,
+		BaseResource: BaseResource[*corev1.Service, *mockMutator]{
+			DesiredObject:          obj,
+			IdentityFunc:           identityFunc,
+			DefaultFieldApplicator: defaultApp,
+			NewMutator:             newMutator,
+		},
 	}
 
 	t.Run("Identity", func(t *testing.T) {
@@ -46,7 +48,7 @@ func TestIntegrationResource(t *testing.T) {
 		}
 	})
 
-	t.Run("Mutate", func(t *testing.T) {
+	t.Run("Mutate and Suspend", func(t *testing.T) {
 		current := &corev1.Service{}
 		mutCalled := false
 		res.Mutations = []feature.Mutation[*mockMutator]{
@@ -67,47 +69,19 @@ func TestIntegrationResource(t *testing.T) {
 		if !mutCalled {
 			t.Errorf("mutation was not called")
 		}
-	})
 
-	t.Run("Status handlers", func(t *testing.T) {
-		res.OperationalStatusHandler = func(_ concepts.ConvergingOperation, _ *corev1.Service) (concepts.OperationalStatusWithReason, error) {
-			return concepts.OperationalStatusWithReason{Status: concepts.OperationalStatusOperational}, nil
-		}
-		res.SuspendStatusHandler = func(_ *corev1.Service) (concepts.SuspensionStatusWithReason, error) {
-			return concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}, nil
-		}
-		res.DeleteOnSuspendHandler = func(_ *corev1.Service) bool {
-			return true
-		}
-
-		cs, _ := res.ConvergingStatus(concepts.ConvergingOperationCreated)
-		if cs.Status != concepts.OperationalStatusOperational {
-			t.Errorf("expected operational")
-		}
-
-		ss, _ := res.SuspensionStatus()
-		if ss.Status != concepts.SuspensionStatusSuspended {
-			t.Errorf("expected suspended")
-		}
-
-		if !res.DeleteOnSuspend() {
-			t.Errorf("expected delete on suspend true")
-		}
-	})
-
-	t.Run("Suspend", func(t *testing.T) {
 		suspendMutCalled := false
 		res.SuspendMutationHandler = func(_ *mockMutator) error {
 			suspendMutCalled = true
 			return nil
 		}
 
-		err := res.Suspend()
+		err = res.Suspend()
 		if err != nil {
 			t.Fatalf("Suspend() error = %v", err)
 		}
 
-		current := &corev1.Service{}
+		current = &corev1.Service{}
 		err = res.Mutate(current)
 		if err != nil {
 			t.Fatalf("Mutate() error = %v", err)

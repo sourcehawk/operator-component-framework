@@ -2,7 +2,7 @@ package deployment
 
 import (
 	"github.com/sourcehawk/operator-component-framework/internal/generic"
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -47,7 +47,7 @@ func (r *Resource) Identity() string {
 // This method is called by the framework to obtain the current state
 // of the resource before applying mutations.
 func (r *Resource) Object() (client.Object, error) {
-	return r.base.GetObject()
+	return r.base.Object()
 }
 
 // Mutate transforms the current state of a Kubernetes Deployment into the desired state.
@@ -78,7 +78,7 @@ func (r *Resource) Mutate(current client.Object) error {
 // When to use:
 // This is used by the framework after an Apply operation to determine if the
 // reconciliation of this specific resource is complete or if further waiting is required.
-func (r *Resource) ConvergingStatus(op component.ConvergingOperation) (component.ConvergingStatusWithReason, error) {
+func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.AliveStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
 }
 
@@ -91,7 +91,7 @@ func (r *Resource) ConvergingStatus(op component.ConvergingOperation) (component
 //
 // This information is surfaced through the component's health reporting, allowing
 // operators to understand the severity of a rollout delay or failure.
-func (r *Resource) GraceStatus() (component.GraceStatusWithReason, error) {
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	return r.base.GraceStatus()
 }
 
@@ -127,7 +127,7 @@ func (r *Resource) Suspend() error {
 // Deployment has successfully scaled down to zero replicas or is still in the
 // process of doing so. The framework uses this to determine when the component
 // has reached a fully suspended state.
-func (r *Resource) SuspensionStatus() (component.SuspensionStatusWithReason, error) {
+func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
 	return r.base.SuspensionStatus()
 }
 

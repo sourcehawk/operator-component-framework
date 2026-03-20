@@ -1,14 +1,13 @@
-# Operator Architecture Example
+# Custom resource implementation
 
-This directory contains an example of the architecture used in an operator.
-It demonstrates the two primary patterns: the **Component Framework** and **Feature Mutations**.
+This directory contains an example of a custom implementation using the component framework concepts.
 
 ## Running the Example
 
 You can run this example directly using the Go toolchain:
 
 ```bash
-go run examples/component-architecture-basics/main.go
+go run examples/custom-resource-implementation/main.go
 ```
 
 The example will simulate four different reconciliation scenarios:

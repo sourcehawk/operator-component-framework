@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -25,20 +26,20 @@ func (c Condition) ComponentStatus() Status {
 	return Status(c.Reason)
 }
 
-// convergingCondition returns a component condition representing a progressing state.
+// convergingCondition returns a component condition representing a Progressing state.
 // If the aggregate status is Ready, the condition Status is set to True; otherwise, it is False.
 func convergingCondition(
-	component ConditionType, converging ConvergingStatusWithReason, observedGeneration int64,
+	component ConditionType, converging convergingStatusWithReason, observedGeneration int64,
 ) Condition {
 	status := metav1.ConditionFalse
-	if converging.Status == ConvergingStatusReady {
+	if converging.Status.healthy() {
 		status = metav1.ConditionTrue
 	}
 
 	return Condition{
 		Type:               string(component),
 		Status:             status,
-		Reason:             string(Status(converging.Status)),
+		Reason:             string(converging.Status),
 		Message:            converging.Reason,
 		ObservedGeneration: observedGeneration,
 	}
@@ -46,16 +47,16 @@ func convergingCondition(
 
 // suspendingCondition returns a component condition representing a suspension progress.
 // If the component is fully suspended (SuspensionStatusSuspended), the condition status is set to True.
-func suspendingCondition(component ConditionType, suspending SuspensionStatusWithReason, observedGeneration int64) Condition {
+func suspendingCondition(component ConditionType, suspending concepts.SuspensionStatusWithReason, observedGeneration int64) Condition {
 	status := metav1.ConditionFalse
-	if suspending.Status == SuspensionStatusSuspended {
+	if suspending.Status == concepts.SuspensionStatusSuspended {
 		status = metav1.ConditionTrue
 	}
 
 	return Condition{
 		Type:               string(component),
 		Status:             status,
-		Reason:             string(Status(suspending.Status)),
+		Reason:             string(suspending.Status),
 		Message:            suspending.Reason,
 		ObservedGeneration: observedGeneration,
 	}
@@ -64,16 +65,16 @@ func suspendingCondition(component ConditionType, suspending SuspensionStatusWit
 // graceCondition returns a component condition representing a degraded or down state
 // once the grace period has expired. The condition status is always False as the component
 // is not considered Ready in these states.
-func graceCondition(component ConditionType, gracing GraceStatusWithReason, observedGeneration int64) Condition {
+func graceCondition(component ConditionType, gracing concepts.GraceStatusWithReason, observedGeneration int64) Condition {
 	message := "Component is down: "
-	if gracing.Status == GraceStatusDegraded {
+	if gracing.Status == concepts.GraceStatusDegraded {
 		message = "Component is degraded: "
 	}
 
 	return Condition{
 		Type:               string(component),
 		Status:             metav1.ConditionFalse,
-		Reason:             string(Status(gracing.Status)),
+		Reason:             string(gracing.Status),
 		ObservedGeneration: observedGeneration,
 		Message:            message + gracing.Reason,
 	}
@@ -84,9 +85,9 @@ func conditionReady(component ConditionType, observedGeneration int64) Condition
 	return Condition{
 		Type:               string(component),
 		Status:             metav1.ConditionTrue,
-		Reason:             string(Ready),
+		Reason:             string(Healthy),
 		ObservedGeneration: observedGeneration,
-		Message:            "Component is ready.",
+		Message:            "Component is healthy.",
 	}
 }
 

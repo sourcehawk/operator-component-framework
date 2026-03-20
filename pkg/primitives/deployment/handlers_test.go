@@ -3,7 +3,7 @@ package deployment
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -13,26 +13,26 @@ import (
 func TestDefaultConvergingStatusHandler(t *testing.T) {
 	tests := []struct {
 		name       string
-		op         component.ConvergingOperation
+		op         concepts.ConvergingOperation
 		deployment *appsv1.Deployment
-		wantStatus component.ConvergingStatus
+		wantStatus concepts.AliveConvergingStatus
 		wantReason string
 	}{
 		{
 			name: "ready with 1 replica (default)",
-			op:   component.ConvergingOperationUpdated,
+			op:   concepts.ConvergingOperationUpdated,
 			deployment: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{},
 				Status: appsv1.DeploymentStatus{
 					ReadyReplicas: 1,
 				},
 			},
-			wantStatus: component.ConvergingStatusReady,
+			wantStatus: concepts.AliveConvergingStatusHealthy,
 			wantReason: "All replicas are ready",
 		},
 		{
 			name: "ready with custom replicas",
-			op:   component.ConvergingOperationUpdated,
+			op:   concepts.ConvergingOperationUpdated,
 			deployment: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To(int32(3)),
@@ -41,12 +41,12 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 					ReadyReplicas: 3,
 				},
 			},
-			wantStatus: component.ConvergingStatusReady,
+			wantStatus: concepts.AliveConvergingStatusHealthy,
 			wantReason: "All replicas are ready",
 		},
 		{
 			name: "creating",
-			op:   component.ConvergingOperationCreated,
+			op:   concepts.ConvergingOperationCreated,
 			deployment: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To(int32(3)),
@@ -55,12 +55,12 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 					ReadyReplicas: 1,
 				},
 			},
-			wantStatus: component.ConvergingStatusCreating,
+			wantStatus: concepts.AliveConvergingStatusCreating,
 			wantReason: "Waiting for replicas: 1/3 ready",
 		},
 		{
 			name: "updating",
-			op:   component.ConvergingOperationUpdated,
+			op:   concepts.ConvergingOperationUpdated,
 			deployment: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To(int32(3)),
@@ -69,12 +69,12 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 					ReadyReplicas: 1,
 				},
 			},
-			wantStatus: component.ConvergingStatusUpdating,
+			wantStatus: concepts.AliveConvergingStatusUpdating,
 			wantReason: "Waiting for replicas: 1/3 ready",
 		},
 		{
 			name: "scaling",
-			op:   component.ConvergingOperation("Scaling"),
+			op:   concepts.ConvergingOperation("Scaling"),
 			deployment: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To(int32(3)),
@@ -83,7 +83,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 					ReadyReplicas: 1,
 				},
 			},
-			wantStatus: component.ConvergingStatusScaling,
+			wantStatus: concepts.AliveConvergingStatusScaling,
 			wantReason: "Waiting for replicas: 1/3 ready",
 		},
 	}
@@ -107,7 +107,7 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		}
 		got, err := DefaultGraceStatusHandler(deployment)
 		require.NoError(t, err)
-		assert.Equal(t, component.GraceStatusDegraded, got.Status)
+		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
 		assert.Equal(t, "Deployment partially available", got.Reason)
 	})
 
@@ -119,7 +119,7 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		}
 		got, err := DefaultGraceStatusHandler(deployment)
 		require.NoError(t, err)
-		assert.Equal(t, component.GraceStatusDown, got.Status)
+		assert.Equal(t, concepts.GraceStatusDown, got.Status)
 		assert.Equal(t, "No replicas are ready", got.Reason)
 	})
 }
@@ -147,7 +147,7 @@ func TestDefaultSuspensionStatusHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		deployment *appsv1.Deployment
-		wantStatus component.SuspensionStatus
+		wantStatus concepts.SuspensionStatus
 		wantReason string
 	}{
 		{
@@ -157,7 +157,7 @@ func TestDefaultSuspensionStatusHandler(t *testing.T) {
 					Replicas: 0,
 				},
 			},
-			wantStatus: component.SuspensionStatusSuspended,
+			wantStatus: concepts.SuspensionStatusSuspended,
 			wantReason: "Deployment scaled to zero",
 		},
 		{
@@ -167,7 +167,7 @@ func TestDefaultSuspensionStatusHandler(t *testing.T) {
 					Replicas: 2,
 				},
 			},
-			wantStatus: component.SuspensionStatusSuspending,
+			wantStatus: concepts.SuspensionStatusSuspending,
 			wantReason: "Waiting for replicas to scale down, 2 replicas still running.",
 		},
 	}

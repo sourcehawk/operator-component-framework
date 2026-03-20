@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/sourcehawk/operator-component-framework/internal/generic"
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
 )
@@ -60,8 +60,8 @@ func NewBuilder(deployment *appsv1.Deployment) *Builder {
 // Since mutations are often version-gated, the provided feature.Mutation
 // should contain the logic to determine if and how the mutation is applied
 // based on the component's current version or configuration.
-func (b *Builder) WithMutation(m feature.Mutation[*Mutator]) *Builder {
-	b.base.WithMutation(m)
+func (b *Builder) WithMutation(m Mutation) *Builder {
+	b.base.WithMutation(feature.Mutation[*Mutator](m))
 	return b
 }
 
@@ -113,7 +113,7 @@ func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Bui
 // If you want to augment the default behavior, you can call DefaultConvergingStatusHandler
 // within your custom handler.
 func (b *Builder) WithCustomConvergeStatus(
-	handler func(component.ConvergingOperation, *appsv1.Deployment) (component.ConvergingStatusWithReason, error),
+	handler func(concepts.ConvergingOperation, *appsv1.Deployment) (concepts.AliveStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomConvergeStatus(handler)
 	return b
@@ -130,7 +130,7 @@ func (b *Builder) WithCustomConvergeStatus(
 // If you want to augment the default behavior, you can call DefaultGraceStatusHandler
 // within your custom handler.
 func (b *Builder) WithCustomGraceStatus(
-	handler func(*appsv1.Deployment) (component.GraceStatusWithReason, error),
+	handler func(*appsv1.Deployment) (concepts.GraceStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomGraceStatus(handler)
 	return b
@@ -145,7 +145,7 @@ func (b *Builder) WithCustomGraceStatus(
 // If you want to augment the default behavior, you can call DefaultSuspensionStatusHandler
 // within your custom handler.
 func (b *Builder) WithCustomSuspendStatus(
-	handler func(*appsv1.Deployment) (component.SuspensionStatusWithReason, error),
+	handler func(*appsv1.Deployment) (concepts.SuspensionStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomSuspendStatus(handler)
 	return b

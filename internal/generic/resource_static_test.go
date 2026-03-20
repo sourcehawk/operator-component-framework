@@ -24,7 +24,7 @@ func TestStaticResource(t *testing.T) {
 	}
 
 	res := &StaticResource[*corev1.ConfigMap]{
-		Object:                 obj,
+		DesiredObject:          obj,
 		IdentityFunc:           identityFunc,
 		DefaultFieldApplicator: defaultApp,
 	}
@@ -35,16 +35,16 @@ func TestStaticResource(t *testing.T) {
 		}
 	})
 
-	t.Run("GetObject", func(t *testing.T) {
-		got, err := res.GetObject()
+	t.Run("Object", func(t *testing.T) {
+		got, err := res.Object()
 		if err != nil {
-			t.Fatalf("GetObject() error = %v", err)
+			t.Fatalf("Object() error = %v", err)
 		}
 		if got.GetName() != "test-cm" {
 			t.Errorf("expected name test-cm, got %s", got.GetName())
 		}
-		if got == res.Object {
-			t.Errorf("GetObject should return a copy, not the same object")
+		if got == res.DesiredObject {
+			t.Errorf("Object() should return a deep copy, but got same pointer")
 		}
 	})
 

@@ -26,7 +26,7 @@ defining how their resources should behave.
 The framework distinguishes between three primary categories of primitives based on their operational characteristics.
 
 ### Static Primitives
-Examples: `ConfigMap`, `Secret`, `ServiceAccount`, RBAC objects (`Role`, `RoleBinding`).
+Examples: `ConfigMap`, `Secret`, `ServiceAccount`, RBAC objects (`Role`, `RoleBinding`), `PodDisruptionBudget`.
 
 - **Characteristics**: These resources have a mostly static desired state. They are typically created once or updated 
   based on configuration changes but do not have complex runtime convergence or scaling behaviors.
@@ -40,9 +40,20 @@ Examples: `Deployment`, `StatefulSet`, `DaemonSet`.
 - **Behavior**: They support advanced features like suspension (scaling to zero), grace handling for slow rollouts, and 
   complex feature-based mutations.
 
-### Batch Primitives
+### Task Primitives
+Examples: `Job`.
 
-TBD 
+- **Characteristics**: These resources represent short-lived operations that run to completion (e.g., a database 
+  migration or a backup). Unlike workloads, they are not expected to run indefinitely.
+- **Behavior**: They support completion tracking and data extraction. When suspended, tasks can be configured to 
+  either pause (if supported by the underlying resource) or be deleted and recreated when resumed.
+
+### Integration Primitives
+Examples: `Service`, `Ingress`, `Gateway`, `CronJob`.
+
+- **Characteristics**: These resources define integration points between workloads and external or cluster-level systems (e.g., networking, load balancers, DNS, schedules). Their readiness depends on external controllers or infrastructure outside the direct control of the resource itself.
+- **Behavior**: They rely on asynchronous reconciliation and may exhibit delayed or partial readiness depending on external system state. They also support suspension (e.g., suspending a `CronJob` schedule).
+- **Lifecycle**: Considered ready only once the underlying integration (e.g., load balancer provisioning, routing configuration, schedule establishment) is fully established.
 
 ---
 
@@ -56,7 +67,7 @@ When a primitive is reconciled, it follows a strict order of operations:
 
 1.  **Baseline field application**: The `FieldApplicator` merges the "baseline" desired state onto the current object.
 2.  **Flavor adjustments**: Post-baseline merge policies (Flavors) are applied to preserve specific fields.
-3.  **Mutation edits**: Feature-specific or version-specific edits are applied (Workload primitives only).
+3.  **Mutation edits**: Feature-specific or version-specific edits are applied (Workload and Task primitives).
 
 This ensures that mutations always operate on a predictable, fully-formed baseline.
 
@@ -80,7 +91,7 @@ resources.
 
 ## 5. Mutation system
 
-Workload primitives employ a **plan-and-apply pattern** for modifications. Instead of mutating the Kubernetes object
+Workload and Task primitives employ a **plan-and-apply pattern** for modifications. Instead of mutating the Kubernetes object
 directly and repeatedly, the framework records "edit intent" through a series of planned mutations.
 
 ### Why this pattern exists:
@@ -145,11 +156,15 @@ framework doesn't explicitly support. For these cases, every editor provides a `
 
 ## 9. Default lifecycle behavior
 
-Workload primitives come with "sane defaults" for lifecycle management, integrated directly into the Component status model:
+Workload and Task primitives come with "sane defaults" for lifecycle management, integrated directly into the Component status model:
 
-- **Convergence detection**: Automatically determines if a Deployment is "Ready", "Scaling", or "Updating" based on its status fields.
+- **Convergence detection**: Automatically determines a resource's state based on its status extraction method.
+  - "Healthy", "Creating", "Updating", "Scaling" or "Failing" (Workload resources)
+  - "Completed", "TaskRunning", "TaskPending", or "TaskFailing" (Task resources)
+  - "Operational", "OperationPending", "OperationFailing" (Integration resources)
 - **Grace handling**: Monitors how long a resource has been non-ready and reports "Degraded" or "Down" if it exceeds a grace period.
-- **Suspension behavior**: Provides the logic for scaling resources down to zero and reporting the "Suspended" state.
+- **Suspension behavior**: Provides the logic for scaling resources down to zero (Workloads) or pausing/deleting (Tasks) and reporting the "Suspended" state.
+- **Data extraction**: Automatically extracts internal resource data (e.g., generated credentials, endpoint URLs, or status fields) after synchronization, making it available for use by other components.
 
 These defaults can be overridden via the primitive's `Builder` if specialized behavior is required.
 

@@ -5,24 +5,37 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type convergingResult struct {
 	Resource Resource
-	Status   ConvergingStatusWithReason
+	Status   convergingStatusWithReason
 }
 
 type convergeResults []convergingResult
 
-// ready returns true if all component resources are Ready.
-func (c convergeResults) ready() bool {
+// healthy returns true if all component resources are healthy.
+func (c convergeResults) healthy() bool {
 	for _, result := range c {
-		if result.Status.Status != ConvergingStatusReady {
+		if !result.Status.Status.healthy() {
 			return false
 		}
 	}
 	return true
+}
+
+func (c convergeResults) filterParticipators(resourceModeLookup map[string]ParticipationMode) convergeResults {
+	var results []convergingResult
+
+	for _, result := range c {
+		if mode, ok := resourceModeLookup[result.Resource.Identity()]; ok && mode == ParticipationModeRequired {
+			results = append(results, result)
+		}
+	}
+
+	return results
 }
 
 // convergeSummary determines the aggregate converging status of all component resources.
@@ -30,83 +43,89 @@ func (c convergeResults) ready() bool {
 // (e.g., Scaling > Updating > Creating > Ready).
 // If multiple resources share the same highest priority level, their reasons are concatenated
 // to provide a comprehensive summary.
-func (c convergeResults) convergeSummary() ConvergingStatusWithReason {
-	var maxStatus ConvergingStatus
+func (c convergeResults) convergeSummary() convergingStatusWithReason {
+	var maxStatus convergingStatus
 	var reasons []string
 
 	for _, result := range c {
-		if result.Status.Status.level() > maxStatus.level() {
+		if result.Status.Status.priority() > maxStatus.priority() {
 			maxStatus = result.Status.Status
-			reasons = []string{result.Status.Reason}
-		} else if result.Status.Status.level() == maxStatus.level() && result.Status.Reason != "" {
+		}
+	}
+
+	if maxStatus == "" {
+		maxStatus = convergingStatusAliveHealthy
+	}
+
+	for _, result := range c {
+		if result.Status.Status.severity() == maxStatus.severity() && result.Status.Reason != "" {
 			reasons = append(reasons, result.Status.Reason)
 		}
 	}
 
-	if maxStatus == "" || maxStatus == ConvergingStatusReady {
-		return ConvergingStatusWithReason{
-			Status: ConvergingStatusReady,
-			Reason: "All resources ready.",
+	if maxStatus.healthy() {
+		return convergingStatusWithReason{
+			Status: maxStatus,
+			Reason: "All resources healthy.",
 		}
 	}
 
-	return ConvergingStatusWithReason{
+	return convergingStatusWithReason{
 		Status: maxStatus,
 		Reason: strings.Join(reasons, "; "),
 	}
 }
 
-// graceSummary returns an aggregate grace status of all component resources that implement the Alive interface.
+// graceSummary returns an aggregate grace status of all component resources that implement the Graceful interface.
 // If multiple alive resources are present, the one with the most severe status takes precedence
-// (Down > Degraded > Ready).
-// If no resources implement the Alive interface, it returns a Down status with an explanation,
+// (Down > Degraded > healthy).
+// If no resources implement the Graceful interface, it returns a Down status with an explanation,
 // as the component cannot provide health information.
-func (c convergeResults) graceSummary() (GraceStatusWithReason, error) {
-	var maxStatus GraceStatus
+func (c convergeResults) graceSummary() (concepts.GraceStatusWithReason, error) {
+	var maxStatus concepts.GraceStatus
 	var reasons []string
-	anyAlive := false
+	anyGraceful := false
 
 	for _, result := range c {
-		if alive, ok := result.Resource.(Alive); ok {
-			anyAlive = true
+		if graceful, ok := result.Resource.(concepts.Graceful); ok {
+			anyGraceful = true
 
-			current, err := alive.GraceStatus()
+			current, err := graceful.GraceStatus()
 			if err != nil {
-				return GraceStatusWithReason{}, err
+				return concepts.GraceStatusWithReason{}, err
 			}
 
-			if current.Status.level() > maxStatus.level() {
+			if current.Status.Priority() > maxStatus.Priority() {
 				maxStatus = current.Status
 				reasons = []string{current.Reason}
-			} else if current.Status.level() == maxStatus.level() && current.Reason != "" {
+			} else if current.Status.Priority() == maxStatus.Priority() && current.Reason != "" {
 				reasons = append(reasons, current.Reason)
 			}
 		}
 	}
 
-	if !anyAlive {
-		return GraceStatusWithReason{
-			Status: GraceStatusDown,
-			Reason: "Component failed to converge without alive resources.",
+	if !anyGraceful {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDown,
+			Reason: "Component failed to converge within grace period",
 		}, nil
 	}
 
-	if maxStatus == "" || maxStatus == GraceStatusReady {
-		return GraceStatusWithReason{
-			Status: GraceStatusReady,
-			Reason: "All resources ready.",
+	if maxStatus == "" || maxStatus == concepts.GraceStatusHealthy {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusHealthy,
+			Reason: "All resources healthy.",
 		}, nil
 	}
 
-	return GraceStatusWithReason{
+	return concepts.GraceStatusWithReason{
 		Status: maxStatus,
 		Reason: strings.Join(reasons, "; "),
 	}, nil
 }
 
 // graceExpired returns true if the grace duration of the component has been exceeded
-// since the last condition transition.
-// If gracePeriod is 0, grace never expires (infinite grace).
+// since the last condition transition. If gracePeriod is 0, grace never expires (infinite grace).
 func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 	if gracePeriod == 0 {
 		return false
@@ -133,9 +152,10 @@ func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 //  4. Progressing State (The Grace Period):
 //     - While the status is Creating, Updating, or Scaling, the condition Reason remains
 //     stable (e.g., "Creating") even if the underlying aggregate status fluctuates
-//     between different progressing states.
+//     between different Progressing states.
 //     - The Message field is updated in every loop to provide current details.
 //     - This state is held until the component becomes Ready or the gracePeriod expires.
+//     - Other states indicating non-healthiness do not remain stable.
 //
 //  5. Grace Expiry (Transition to Failure):
 //     - Once graceExpired() is true, the status transitions to Down or Degraded
@@ -157,7 +177,7 @@ func newConvergingStatusCondition(
 	generation := owner.GetGeneration()
 	conditionType := ConditionType(previousCondition.Type)
 
-	if results.ready() {
+	if results.healthy() {
 		return conditionReady(conditionType, generation)
 	}
 
@@ -167,52 +187,49 @@ func newConvergingStatusCondition(
 		return convergingCondition(conditionType, summary, generation)
 	}
 
-	reason := Status(previousCondition.Reason)
+	// Convert the previous condition reason to a component status
+	status := Status(previousCondition.Reason)
 
-	// If we're no longer ready (results.ready() = false) but have a Ready reason on the previous condition,
+	// Get the summary for an updated description of why we're here
+	convergeSummary := results.convergeSummary()
+
+	// If we're no longer healthy (results.healthy() = false) but have a Healthy reason on the previous condition,
 	// calculate a new condition from the converge summary
-	if reason == Ready {
-		summary := results.convergeSummary()
-		return convergingCondition(conditionType, summary, generation)
+	if status.Healthy() {
+		return convergingCondition(conditionType, convergeSummary, generation)
+	}
+
+	// Update the status if the previous one should not be retained across reconciles
+	if !status.sticky() {
+		status = Status(convergeSummary.Status)
 	}
 
 	logger := log.FromContext(ctx)
 
-	// Get the aggregate grace status of all relevant component resources
-	graceSummary, err := results.graceSummary()
-	if err != nil {
-		logger.Error(err, "failed to get grace summary for component")
-		return conditionError(conditionType, err, generation)
-	}
+	// If the grace period expired, and we're still not healthy, set a down/degraded status
+	if graceExpired(gracePeriod, previousCondition.LastTransitionTime.Time) {
+		summary, err := results.graceSummary()
+		if err != nil {
+			logger.Error(err, "failed to get grace summary for component")
+			return conditionError(conditionType, err, generation)
+		}
 
-	// If the grace period expired, and we're still progressing, set a down/degraded status
-	if reason.progressing() && graceExpired(gracePeriod, previousCondition.LastTransitionTime.Time) {
-		if graceSummary.Status == GraceStatusDown || graceSummary.Status == GraceStatusDegraded {
-			return graceCondition(conditionType, graceSummary, generation)
+		if summary.Status == concepts.GraceStatusDown || summary.Status == concepts.GraceStatusDegraded {
+			return graceCondition(conditionType, summary, generation)
 		}
 
 		// Something is misconfigured in the grace logic in the Resources
 		// We continue onto other code paths but log a warning
 		logger.V(0).Info(
-			"component progressor encountered GraceStatus=Ready on unready component after detecting grace expiry",
+			"component progressor encountered GraceStatus=Healthy on unready component after detecting grace expiry",
 		)
 	}
 
-	// If we have already transitioned to Down or Degraded due to grace expiry, we stay there unless the resource status changes.
-	if (reason == Down || reason == Degraded) && (graceSummary.Status == GraceStatusDown || graceSummary.Status == GraceStatusDegraded) {
-		// Only update the condition if the specific grace status (Down vs Degraded) has changed
-		if string(graceSummary.Status) != string(reason) {
-			return graceCondition(conditionType, graceSummary, generation)
-		}
-	}
-
-	// No changes, get the summary for an updated description of why we're still here
-	summary := results.convergeSummary()
-
-	// Copy old condition and update observed generation and message
+	// Copy old condition and update
 	out := previousCondition
+	out.Reason = string(status)
+	out.Message = convergeSummary.Reason
 	out.ObservedGeneration = generation
-	out.Message = summary.Reason
 
 	return out
 }

@@ -6,36 +6,37 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-type suspensionResults []SuspensionStatusWithReason
+type suspensionResults []concepts.SuspensionStatusWithReason
 
 // summary returns the aggregate suspension status for all suspendable component resources.
 // It uses a priority-based aggregation (PendingSuspension > Suspending > Suspended).
 // The most "pending" status across all resources is selected as the component-level status.
-func (s suspensionResults) summary() SuspensionStatusWithReason {
-	var maxStatus SuspensionStatus
+func (s suspensionResults) summary() concepts.SuspensionStatusWithReason {
+	var maxStatus concepts.SuspensionStatus
 	var reasons []string
 
 	for _, result := range s {
-		if result.Status.level() > maxStatus.level() {
+		if result.Status.Priority() > maxStatus.Priority() {
 			maxStatus = result.Status
 			reasons = []string{result.Reason}
-		} else if result.Status.level() == maxStatus.level() && result.Reason != "" {
+		} else if result.Status.Priority() == maxStatus.Priority() && result.Reason != "" {
 			reasons = append(reasons, result.Reason)
 		}
 	}
 
-	if maxStatus == "" || maxStatus == SuspensionStatusSuspended {
-		return SuspensionStatusWithReason{
-			Status: SuspensionStatusSuspended,
+	if maxStatus == "" || maxStatus == concepts.SuspensionStatusSuspended {
+		return concepts.SuspensionStatusWithReason{
+			Status: concepts.SuspensionStatusSuspended,
 			Reason: "All resources are suspended.",
 		}
 	}
 
-	return SuspensionStatusWithReason{
+	return concepts.SuspensionStatusWithReason{
 		Status: maxStatus,
 		Reason: strings.Join(reasons, "; "),
 	}
@@ -46,12 +47,12 @@ func (s suspensionResults) summary() SuspensionStatusWithReason {
 // If any resource fails to suspend, all encountered errors are joined and returned.
 func suspendResources(
 	ctx context.Context, rec ReconcileContext, resources []Resource,
-) ([]SuspensionStatusWithReason, error) {
-	var results []SuspensionStatusWithReason
+) ([]concepts.SuspensionStatusWithReason, error) {
+	var results []concepts.SuspensionStatusWithReason
 	var errs []error
 
 	for _, resource := range resources {
-		if suspendable, ok := resource.(Suspendable); ok {
+		if suspendable, ok := resource.(concepts.Suspendable); ok {
 			status, err := suspendResource(ctx, rec, resource, suspendable)
 			if err != nil {
 				// gather the errors to suspend as many resources as possible
@@ -84,23 +85,23 @@ func suspendResources(
 //   - Deletion is deferred until the Suspended state is reached to allow for graceful
 //     shutdown or final state persistence (e.g., via finalizers or pre-stop hooks).
 func suspendResource(
-	ctx context.Context, rec ReconcileContext, resource Resource, suspendable Suspendable,
-) (SuspensionStatusWithReason, error) {
+	ctx context.Context, rec ReconcileContext, resource Resource, suspendable concepts.Suspendable,
+) (concepts.SuspensionStatusWithReason, error) {
 	// Create suspension mutation on resource (if any)
 	if err := suspendable.Suspend(); err != nil {
-		return SuspensionStatusWithReason{}, fmt.Errorf("failed to suspend resource: %w", err)
+		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to suspend resource: %w", err)
 	}
 
 	// Get the object if possible
 	object, err := resource.Object()
 	if err != nil {
-		return SuspensionStatusWithReason{}, fmt.Errorf("failed to get object on suspension: %w", err)
+		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to get object on suspension: %w", err)
 	}
 
 	// Apply suspension mutation (if any)
 	_, err = createOrUpdateResources(ctx, rec, []Resource{resource})
 	if err != nil {
-		return SuspensionStatusWithReason{}, fmt.Errorf(
+		return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 			"failed to create or update resource %s on suspension: %w", resource.Identity(), err,
 		)
 	}
@@ -108,13 +109,13 @@ func suspendResource(
 	// Get the suspension status of the resource
 	suspension, err := suspendable.SuspensionStatus()
 	if err != nil {
-		return SuspensionStatusWithReason{}, fmt.Errorf(
+		return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 			"failed to retrieve suspension status for resource %s: %w", resource.Identity(), err,
 		)
 	}
 
 	// Do not proceed with potential deletion unless suspension state is in "completed" state
-	if suspension.Status != SuspensionStatusSuspended {
+	if suspension.Status != concepts.SuspensionStatusSuspended {
 		return suspension, nil
 	}
 

@@ -23,8 +23,8 @@ func TestStaticBuilder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build() error = %v", err)
 		}
-		if res.Object != obj {
-			t.Errorf("expected object %v, got %v", obj, res.Object)
+		if res.DesiredObject != obj {
+			t.Errorf("expected object %v, got %v", obj, res.DesiredObject)
 		}
 	})
 

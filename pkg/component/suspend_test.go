@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -16,25 +17,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-type MockSuspendableResource struct {
-	MockResource
-}
-
-func (m *MockSuspendableResource) DeleteOnSuspend() bool {
-	args := m.Called()
-	return args.Bool(0)
-}
-
-func (m *MockSuspendableResource) Suspend() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-func (m *MockSuspendableResource) SuspensionStatus() (SuspensionStatusWithReason, error) {
-	args := m.Called()
-	return args.Get(0).(SuspensionStatusWithReason), args.Error(1)
-}
-
 func setupTestOwner() *MockOperatorCRD {
 	owner := &MockOperatorCRD{
 		ObjectMeta: metav1.ObjectMeta{
@@ -46,14 +28,14 @@ func setupTestOwner() *MockOperatorCRD {
 	return owner
 }
 
-func setupMockResource(name string, status SuspensionStatus, reason string, deleteOnSuspend bool) (*MockSuspendableResource, *v1.ConfigMap) {
+func setupMockResource(name string, status concepts.SuspensionStatus, reason string, deleteOnSuspend bool) (*MockSuspendableResource, *v1.ConfigMap) {
 	res := &MockSuspendableResource{}
 	obj := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
 
 	res.On("Suspend").Return(nil)
 	res.On("Object").Return(obj, nil)
 	res.On("Identity").Return(name)
-	res.On("SuspensionStatus").Return(SuspensionStatusWithReason{Status: status, Reason: reason}, nil)
+	res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{Status: status, Reason: reason}, nil)
 	res.On("DeleteOnSuspend").Return(deleteOnSuspend)
 	res.On("Mutate", mock.Anything).Return(nil)
 
@@ -64,71 +46,71 @@ func TestSuspensionResultsSummary(t *testing.T) {
 	tests := []struct {
 		name     string
 		results  suspensionResults
-		expected SuspensionStatusWithReason
+		expected concepts.SuspensionStatusWithReason
 	}{
 		{
 			name:    "empty results",
 			results: suspensionResults{},
-			expected: SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspended,
+			expected: concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
 				Reason: "All resources are suspended.",
 			},
 		},
 		{
 			name: "all suspended",
 			results: suspensionResults{
-				{Status: SuspensionStatusSuspended, Reason: "Suspended 1"},
-				{Status: SuspensionStatusSuspended, Reason: "Suspended 2"},
+				{Status: concepts.SuspensionStatusSuspended, Reason: "Suspended 1"},
+				{Status: concepts.SuspensionStatusSuspended, Reason: "Suspended 2"},
 			},
-			expected: SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspended,
+			expected: concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
 				Reason: "All resources are suspended.",
 			},
 		},
 		{
 			name: "mixed statuses, highest priority wins (Pending > Suspending > Suspended)",
 			results: suspensionResults{
-				{Status: SuspensionStatusSuspended, Reason: "Suspended"},
-				{Status: SuspensionStatusSuspending, Reason: "Scaling down"},
-				{Status: SuspensionStatusPending, Reason: "Waiting for DB"},
+				{Status: concepts.SuspensionStatusSuspended, Reason: "Suspended"},
+				{Status: concepts.SuspensionStatusSuspending, Reason: "Scaling down"},
+				{Status: concepts.SuspensionStatusPending, Reason: "Waiting for DB"},
 			},
-			expected: SuspensionStatusWithReason{
-				Status: SuspensionStatusPending,
+			expected: concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusPending,
 				Reason: "Waiting for DB",
 			},
 		},
 		{
 			name: "same statuses aggregate reasons",
 			results: suspensionResults{
-				{Status: SuspensionStatusSuspending, Reason: "Scaling down"},
-				{Status: SuspensionStatusSuspending, Reason: "Finishing tasks"},
+				{Status: concepts.SuspensionStatusSuspending, Reason: "Scaling down"},
+				{Status: concepts.SuspensionStatusSuspending, Reason: "Finishing tasks"},
 			},
-			expected: SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspending,
+			expected: concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspending,
 				Reason: "Scaling down; Finishing tasks",
 			},
 		},
 		{
 			name: "highest priority has empty reasons",
 			results: suspensionResults{
-				{Status: SuspensionStatusSuspending, Reason: ""},
-				{Status: SuspensionStatusSuspending, Reason: ""},
-				{Status: SuspensionStatusSuspended, Reason: "Done"},
+				{Status: concepts.SuspensionStatusSuspending, Reason: ""},
+				{Status: concepts.SuspensionStatusSuspending, Reason: ""},
+				{Status: concepts.SuspensionStatusSuspended, Reason: "Done"},
 			},
-			expected: SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspending,
+			expected: concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspending,
 				Reason: "",
 			},
 		},
 		{
 			name: "mixed empty and non-empty reasons for highest priority",
 			results: suspensionResults{
-				{Status: SuspensionStatusSuspending, Reason: "Scaling"},
-				{Status: SuspensionStatusSuspending, Reason: ""},
-				{Status: SuspensionStatusSuspending, Reason: "Waiting"},
+				{Status: concepts.SuspensionStatusSuspending, Reason: "Scaling"},
+				{Status: concepts.SuspensionStatusSuspending, Reason: ""},
+				{Status: concepts.SuspensionStatusSuspending, Reason: "Waiting"},
 			},
-			expected: SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspending,
+			expected: concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspending,
 				Reason: "Scaling; Waiting",
 			},
 		},
@@ -137,8 +119,8 @@ func TestSuspensionResultsSummary(t *testing.T) {
 			results: suspensionResults{
 				{Status: "Unknown", Reason: "Something"},
 			},
-			expected: SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspended,
+			expected: concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
 				Reason: "All resources are suspended.",
 			},
 		},
@@ -157,8 +139,8 @@ func TestSuspendResources(t *testing.T) {
 
 	t.Run("should suspend all suspendable resources", func(t *testing.T) {
 		owner := setupTestOwner()
-		r1, obj1 := setupMockResource("r1", SuspensionStatusSuspended, "OK", false)
-		r2, obj2 := setupMockResource("r2", SuspensionStatusSuspending, "Wait", false)
+		r1, obj1 := setupMockResource("r1", concepts.SuspensionStatusSuspended, "OK", false)
+		r2, obj2 := setupMockResource("r2", concepts.SuspensionStatusSuspending, "Wait", false)
 		nonSuspendable := &MockResource{}
 
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj1, obj2).Build()
@@ -169,8 +151,8 @@ func TestSuspendResources(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Len(t, results, 2)
-		assert.Equal(t, SuspensionStatusSuspended, results[0].Status)
-		assert.Equal(t, SuspensionStatusSuspending, results[1].Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, results[0].Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspending, results[1].Status)
 	})
 
 	t.Run("should return joined errors if any suspension fails", func(t *testing.T) {
@@ -207,13 +189,13 @@ func TestSuspendResource(t *testing.T) {
 
 	t.Run("successful suspension without deletion", func(t *testing.T) {
 		owner := setupTestOwner()
-		res, obj := setupMockResource("cm", SuspensionStatusSuspended, "Done", false)
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", false)
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
 		status, err := suspendResource(ctx, rec, res, res)
 		require.NoError(t, err)
-		assert.Equal(t, SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 
 		// Verify object still exists
 		err = cli.Get(ctx, client.ObjectKeyFromObject(obj), &v1.ConfigMap{})
@@ -222,13 +204,13 @@ func TestSuspendResource(t *testing.T) {
 
 	t.Run("successful suspension with deletion", func(t *testing.T) {
 		owner := setupTestOwner()
-		res, obj := setupMockResource("cm", SuspensionStatusSuspended, "Done", true)
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
 		status, err := suspendResource(ctx, rec, res, res)
 		require.NoError(t, err)
-		assert.Equal(t, SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 
 		// Verify object is deleted
 		err = cli.Get(ctx, client.ObjectKeyFromObject(obj), &v1.ConfigMap{})
@@ -252,13 +234,13 @@ func TestSuspendResource(t *testing.T) {
 
 	t.Run("should not delete if suspension is not completed", func(t *testing.T) {
 		owner := setupTestOwner()
-		res, obj := setupMockResource("cm", SuspensionStatusSuspending, "Wait", true)
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspending, "Wait", true)
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
 		status, err := suspendResource(ctx, rec, res, res)
 		require.NoError(t, err)
-		assert.Equal(t, SuspensionStatusSuspending, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspending, status.Status)
 
 		// Verify object still exists
 		err = cli.Get(ctx, client.ObjectKeyFromObject(obj), &v1.ConfigMap{})
@@ -267,7 +249,7 @@ func TestSuspendResource(t *testing.T) {
 
 	t.Run("should handle not found on deletion", func(t *testing.T) {
 		owner := setupTestOwner()
-		res, obj := setupMockResource("cm", SuspensionStatusSuspended, "Done", true)
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
 
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, owner, cli)
@@ -278,7 +260,7 @@ func TestSuspendResource(t *testing.T) {
 
 		status, err := suspendResource(ctx, rec, res, res)
 		require.NoError(t, err)
-		assert.Equal(t, SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
 
 	t.Run("should return error if Suspend fails", func(t *testing.T) {
@@ -307,7 +289,7 @@ func TestSuspendResource(t *testing.T) {
 	t.Run("should return error if createOrUpdateResources fails", func(t *testing.T) {
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
-		res, _ := setupMockResource("cm", SuspensionStatusSuspended, "Done", false)
+		res, _ := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", false)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get fail"))
 
@@ -319,13 +301,13 @@ func TestSuspendResource(t *testing.T) {
 	t.Run("should return error if SuspensionStatus fails", func(t *testing.T) {
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
-		res, _ := setupMockResource("cm", SuspensionStatusSuspended, "Done", false)
+		res, _ := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", false)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		res.On("SuspensionStatus").Unset()
-		res.On("SuspensionStatus").Return(SuspensionStatusWithReason{}, errors.New("status fail"))
+		res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{}, errors.New("status fail"))
 
 		_, err := suspendResource(ctx, rec, res, res)
 		require.Error(t, err)
@@ -335,7 +317,7 @@ func TestSuspendResource(t *testing.T) {
 	t.Run("should return error if Delete fails", func(t *testing.T) {
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
-		res, obj := setupMockResource("cm", SuspensionStatusSuspended, "Done", true)
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -349,7 +331,7 @@ func TestSuspendResource(t *testing.T) {
 	t.Run("should not return error if Delete returns NotFound", func(t *testing.T) {
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
-		res, obj := setupMockResource("cm", SuspensionStatusSuspended, "Done", true)
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -357,7 +339,7 @@ func TestSuspendResource(t *testing.T) {
 
 		status, err := suspendResource(ctx, rec, res, res)
 		require.NoError(t, err)
-		assert.Equal(t, SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 		cli.AssertCalled(t, "Delete", ctx, obj, mock.Anything)
 	})
 }

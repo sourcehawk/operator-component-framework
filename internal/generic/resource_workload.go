@@ -3,7 +3,7 @@ package generic
 import (
 	"fmt"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -33,7 +33,7 @@ type FeatureMutator interface {
 // Concrete workload packages are expected to wrap this type and provide kind-specific
 // identity and status logic.
 type WorkloadResource[T client.Object, M MutatorApplier] struct {
-	Object T
+	DesiredObject T
 
 	IdentityFunc func(T) string
 
@@ -48,68 +48,41 @@ type WorkloadResource[T client.Object, M MutatorApplier] struct {
 
 	Suspender func(M) error
 
-	ConvergingStatusHandler func(component.ConvergingOperation, T) (component.ConvergingStatusWithReason, error)
-	GraceStatusHandler      func(T) (component.GraceStatusWithReason, error)
-	SuspendStatusHandler    func(T) (component.SuspensionStatusWithReason, error)
+	ConvergingStatusHandler func(concepts.ConvergingOperation, T) (concepts.AliveStatusWithReason, error)
+	GraceStatusHandler      func(T) (concepts.GraceStatusWithReason, error)
+	SuspendStatusHandler    func(T) (concepts.SuspensionStatusWithReason, error)
 	SuspendMutationHandler  func(M) error
 	DeleteOnSuspendHandler  func(T) bool
 }
 
 // Identity returns the stable framework identity for the workload.
 func (r *WorkloadResource[T, M]) Identity() string {
-	return r.IdentityFunc(r.Object)
+	return r.IdentityFunc(r.DesiredObject)
 }
 
-// GetObject returns a deep copy of the desired workload object.
-func (r *WorkloadResource[T, M]) GetObject() (client.Object, error) {
-	return r.Object.DeepCopyObject().(client.Object), nil
+// Object returns a deep copy of the desired workload object.
+func (r *WorkloadResource[T, M]) Object() (client.Object, error) {
+	return r.DesiredObject.DeepCopyObject().(client.Object), nil
 }
 
 // Mutate applies the baseline field applicator, field application flavors, feature mutations,
 // and any active suspension mutation to the provided current object.
 func (r *WorkloadResource[T, M]) Mutate(current client.Object) error {
-	currentTyped, ok := current.(T)
-	if !ok {
-		return fmt.Errorf("expected %T, got %T", r.Object, current)
-	}
-
-	applied, err := r.ApplyBaselineAndFlavors(currentTyped)
+	applied, err := ApplyMutations(
+		current,
+		r.DesiredObject,
+		r.DefaultFieldApplicator,
+		r.CustomFieldApplicator,
+		r.FieldFlavors,
+		r.NewMutator,
+		r.Mutations,
+		r.Suspender,
+	)
 	if err != nil {
 		return err
 	}
 
-	mutator := r.NewMutator(applied)
-	fm, isFeatureMutator := any(mutator).(FeatureMutator)
-
-	for _, mutation := range r.Mutations {
-		if isFeatureMutator {
-			fm.BeginFeature()
-		}
-
-		if err := mutation.ApplyIntent(mutator); err != nil {
-			return fmt.Errorf("failed to apply mutation intent for %s: %w", mutation.Name, err)
-		}
-	}
-
-	if err := mutator.Apply(); err != nil {
-		return fmt.Errorf("failed to apply planned mutations: %w", err)
-	}
-
-	if r.Suspender != nil {
-		if isFeatureMutator {
-			fm.BeginFeature()
-		}
-
-		if err := r.Suspender(mutator); err != nil {
-			return err
-		}
-
-		if err := mutator.Apply(); err != nil {
-			return fmt.Errorf("failed to apply suspension mutations: %w", err)
-		}
-	}
-
-	r.Object = applied
+	r.DesiredObject = applied
 
 	return nil
 }
@@ -118,7 +91,7 @@ func (r *WorkloadResource[T, M]) Mutate(current client.Object) error {
 func (r *WorkloadResource[T, M]) ApplyBaselineAndFlavors(current T) (T, error) {
 	return applyBaselineAndFlavors(
 		current,
-		r.Object,
+		r.DesiredObject,
 		r.DefaultFieldApplicator,
 		r.CustomFieldApplicator,
 		r.FieldFlavors,
@@ -127,9 +100,9 @@ func (r *WorkloadResource[T, M]) ApplyBaselineAndFlavors(current T) (T, error) {
 
 // ExtractData runs all registered data extractors against a deep copy of the reconciled object.
 func (r *WorkloadResource[T, M]) ExtractData() error {
-	copyObj, ok := r.Object.DeepCopyObject().(T)
+	copyObj, ok := r.DesiredObject.DeepCopyObject().(T)
 	if !ok {
-		return fmt.Errorf("failed to deep copy object of type %T", r.Object)
+		return fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
 	}
 
 	for _, extractor := range r.DataExtractors {
@@ -146,20 +119,20 @@ func (r *WorkloadResource[T, M]) ExtractData() error {
 
 // ConvergingStatus reports the workload's convergence status using the configured handler.
 func (r *WorkloadResource[T, M]) ConvergingStatus(
-	op component.ConvergingOperation,
-) (component.ConvergingStatusWithReason, error) {
+	op concepts.ConvergingOperation,
+) (concepts.AliveStatusWithReason, error) {
 	if r.ConvergingStatusHandler == nil {
-		return component.ConvergingStatusWithReason{}, fmt.Errorf("converging status handler is not configured")
+		return concepts.AliveStatusWithReason{}, fmt.Errorf("converging status handler is not configured")
 	}
-	return r.ConvergingStatusHandler(op, r.Object)
+	return r.ConvergingStatusHandler(op, r.DesiredObject)
 }
 
 // GraceStatus reports the workload's grace status using the configured handler.
-func (r *WorkloadResource[T, M]) GraceStatus() (component.GraceStatusWithReason, error) {
+func (r *WorkloadResource[T, M]) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	if r.GraceStatusHandler == nil {
-		return component.GraceStatusWithReason{}, fmt.Errorf("grace status handler is not configured")
+		return concepts.GraceStatusWithReason{}, fmt.Errorf("grace status handler is not configured")
 	}
-	return r.GraceStatusHandler(r.Object)
+	return r.GraceStatusHandler(r.DesiredObject)
 }
 
 // DeleteOnSuspend reports whether the workload should be deleted when suspended.
@@ -167,7 +140,7 @@ func (r *WorkloadResource[T, M]) DeleteOnSuspend() bool {
 	if r.DeleteOnSuspendHandler == nil {
 		return false
 	}
-	return r.DeleteOnSuspendHandler(r.Object)
+	return r.DeleteOnSuspendHandler(r.DesiredObject)
 }
 
 // Suspend registers the configured suspension mutation for the next mutate cycle.
@@ -185,9 +158,9 @@ func (r *WorkloadResource[T, M]) Suspend() error {
 }
 
 // SuspensionStatus reports the workload's suspension status using the configured handler.
-func (r *WorkloadResource[T, M]) SuspensionStatus() (component.SuspensionStatusWithReason, error) {
+func (r *WorkloadResource[T, M]) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
 	if r.SuspendStatusHandler == nil {
-		return component.SuspensionStatusWithReason{}, fmt.Errorf("suspend status handler is not configured")
+		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("suspend status handler is not configured")
 	}
-	return r.SuspendStatusHandler(r.Object)
+	return r.SuspendStatusHandler(r.DesiredObject)
 }

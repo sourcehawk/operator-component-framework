@@ -3,7 +3,7 @@ package generic
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,8 +26,8 @@ func TestWorkloadBuilder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build() error = %v", err)
 		}
-		if res.Object != obj {
-			t.Errorf("expected object %v, got %v", obj, res.Object)
+		if res.DesiredObject != obj {
+			t.Errorf("expected object %v, got %v", obj, res.DesiredObject)
 		}
 	})
 
@@ -48,14 +48,14 @@ func TestWorkloadBuilder(t *testing.T) {
 
 	t.Run("with handlers", func(t *testing.T) {
 		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator).
-			WithCustomConvergeStatus(func(_ component.ConvergingOperation, _ *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
-				return component.ConvergingStatusWithReason{}, nil
+			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
+				return concepts.AliveStatusWithReason{}, nil
 			}).
-			WithCustomGraceStatus(func(_ *appsv1.Deployment) (component.GraceStatusWithReason, error) {
-				return component.GraceStatusWithReason{}, nil
+			WithCustomGraceStatus(func(_ *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
+				return concepts.GraceStatusWithReason{}, nil
 			}).
-			WithCustomSuspendStatus(func(_ *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
-				return component.SuspensionStatusWithReason{}, nil
+			WithCustomSuspendStatus(func(_ *appsv1.Deployment) (concepts.SuspensionStatusWithReason, error) {
+				return concepts.SuspensionStatusWithReason{}, nil
 			}).
 			WithCustomSuspendMutation(func(_ *mockMutator) error {
 				return nil

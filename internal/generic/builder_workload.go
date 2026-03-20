@@ -3,7 +3,7 @@ package generic
 import (
 	"errors"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -29,7 +29,7 @@ func NewWorkloadBuilder[T client.Object, M MutatorApplier](
 ) *WorkloadBuilder[T, M] {
 	return &WorkloadBuilder[T, M]{
 		res: &WorkloadResource[T, M]{
-			Object:                 obj,
+			DesiredObject:          obj,
 			IdentityFunc:           identityFunc,
 			DefaultFieldApplicator: defaultApplicator,
 			NewMutator:             newMutator,
@@ -75,7 +75,7 @@ func (b *WorkloadBuilder[T, M]) WithDataExtractor(
 
 // WithCustomConvergeStatus overrides the workload convergence status handler.
 func (b *WorkloadBuilder[T, M]) WithCustomConvergeStatus(
-	handler func(component.ConvergingOperation, T) (component.ConvergingStatusWithReason, error),
+	handler func(concepts.ConvergingOperation, T) (concepts.AliveStatusWithReason, error),
 ) *WorkloadBuilder[T, M] {
 	b.res.ConvergingStatusHandler = handler
 	return b
@@ -83,7 +83,7 @@ func (b *WorkloadBuilder[T, M]) WithCustomConvergeStatus(
 
 // WithCustomGraceStatus overrides the workload grace status handler.
 func (b *WorkloadBuilder[T, M]) WithCustomGraceStatus(
-	handler func(T) (component.GraceStatusWithReason, error),
+	handler func(T) (concepts.GraceStatusWithReason, error),
 ) *WorkloadBuilder[T, M] {
 	b.res.GraceStatusHandler = handler
 	return b
@@ -91,7 +91,7 @@ func (b *WorkloadBuilder[T, M]) WithCustomGraceStatus(
 
 // WithCustomSuspendStatus overrides the workload suspension status handler.
 func (b *WorkloadBuilder[T, M]) WithCustomSuspendStatus(
-	handler func(T) (component.SuspensionStatusWithReason, error),
+	handler func(T) (concepts.SuspensionStatusWithReason, error),
 ) *WorkloadBuilder[T, M] {
 	b.res.SuspendStatusHandler = handler
 	return b
@@ -115,15 +115,15 @@ func (b *WorkloadBuilder[T, M]) WithCustomSuspendDeletionDecision(
 
 // Build validates the workload builder configuration and returns the initialized resource.
 func (b *WorkloadBuilder[T, M]) Build() (*WorkloadResource[T, M], error) {
-	if isNil(b.res.Object) {
+	if isNil(b.res.DesiredObject) {
 		return nil, errors.New("object cannot be nil")
 	}
 
-	if b.res.Object.GetName() == "" {
+	if b.res.DesiredObject.GetName() == "" {
 		return nil, errors.New("object name cannot be empty")
 	}
 
-	if b.res.Object.GetNamespace() == "" {
+	if b.res.DesiredObject.GetNamespace() == "" {
 		return nil, errors.New("object namespace cannot be empty")
 	}
 

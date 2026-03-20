@@ -3,7 +3,7 @@ package generic
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,7 +24,7 @@ func TestWorkloadResource(t *testing.T) {
 	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
 
 	res := &WorkloadResource[*appsv1.Deployment, *mockMutator]{
-		Object:                 obj,
+		DesiredObject:          obj,
 		IdentityFunc:           identityFunc,
 		DefaultFieldApplicator: defaultApp,
 		NewMutator:             newMutator,
@@ -36,10 +36,10 @@ func TestWorkloadResource(t *testing.T) {
 		}
 	})
 
-	t.Run("GetObject", func(t *testing.T) {
-		got, err := res.GetObject()
+	t.Run("Object", func(t *testing.T) {
+		got, err := res.Object()
 		if err != nil {
-			t.Fatalf("GetObject() error = %v", err)
+			t.Fatalf("Object() error = %v", err)
 		}
 		if got.GetName() != "test-deploy" {
 			t.Errorf("expected name test-deploy, got %s", got.GetName())
@@ -96,31 +96,31 @@ func TestWorkloadResource(t *testing.T) {
 	})
 
 	t.Run("Status handlers", func(t *testing.T) {
-		res.ConvergingStatusHandler = func(_ component.ConvergingOperation, _ *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
-			return component.ConvergingStatusWithReason{Status: component.ConvergingStatusReady}, nil
+		res.ConvergingStatusHandler = func(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
+			return concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusHealthy}, nil
 		}
-		res.GraceStatusHandler = func(_ *appsv1.Deployment) (component.GraceStatusWithReason, error) {
-			return component.GraceStatusWithReason{Status: component.GraceStatusReady}, nil
+		res.GraceStatusHandler = func(_ *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
+			return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
 		}
-		res.SuspendStatusHandler = func(_ *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
-			return component.SuspensionStatusWithReason{Status: component.SuspensionStatusSuspended}, nil
+		res.SuspendStatusHandler = func(_ *appsv1.Deployment) (concepts.SuspensionStatusWithReason, error) {
+			return concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}, nil
 		}
 		res.DeleteOnSuspendHandler = func(_ *appsv1.Deployment) bool {
 			return true
 		}
 
-		cs, _ := res.ConvergingStatus(component.ConvergingOperationCreated)
-		if cs.Status != component.ConvergingStatusReady {
-			t.Errorf("expected ready")
+		cs, _ := res.ConvergingStatus(concepts.ConvergingOperationCreated)
+		if cs.Status != concepts.AliveConvergingStatusHealthy {
+			t.Errorf("expected healthy")
 		}
 
 		gs, _ := res.GraceStatus()
-		if gs.Status != component.GraceStatusReady {
-			t.Errorf("expected ready")
+		if gs.Status != concepts.GraceStatusHealthy {
+			t.Errorf("expected healthy")
 		}
 
 		ss, _ := res.SuspensionStatus()
-		if ss.Status != component.SuspensionStatusSuspended {
+		if ss.Status != concepts.SuspensionStatusSuspended {
 			t.Errorf("expected suspended")
 		}
 

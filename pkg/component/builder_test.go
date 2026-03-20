@@ -16,7 +16,6 @@ func TestNewComponentBuilder(t *testing.T) {
 		name          string
 		componentName string
 		conditionType ConditionType
-		suspended     bool
 		wantErr       bool
 		expectedErr   string
 	}{
@@ -24,14 +23,12 @@ func TestNewComponentBuilder(t *testing.T) {
 			name:          "Valid builder",
 			componentName: "test-component",
 			conditionType: "TestReady",
-			suspended:     false,
 			wantErr:       false,
 		},
 		{
 			name:          "Empty component name",
 			componentName: "",
 			conditionType: "TestReady",
-			suspended:     false,
 			wantErr:       true,
 			expectedErr:   "component name cannot be empty",
 		},
@@ -39,7 +36,6 @@ func TestNewComponentBuilder(t *testing.T) {
 			name:          "Empty condition type",
 			componentName: "test-component",
 			conditionType: "",
-			suspended:     false,
 			wantErr:       true,
 			expectedErr:   "condition type cannot be empty",
 		},
@@ -47,7 +43,6 @@ func TestNewComponentBuilder(t *testing.T) {
 			name:          "Missing component name",
 			componentName: "skip",
 			conditionType: "TestReady",
-			suspended:     false,
 			wantErr:       true,
 			expectedErr:   "component name must be supplied",
 		},
@@ -55,7 +50,6 @@ func TestNewComponentBuilder(t *testing.T) {
 			name:          "Missing condition type",
 			componentName: "test-component",
 			conditionType: "skip",
-			suspended:     false,
 			wantErr:       true,
 			expectedErr:   "condition type must be supplied",
 		},
@@ -64,7 +58,7 @@ func TestNewComponentBuilder(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			b := NewComponentBuilder(tt.suspended)
+			b := NewComponentBuilder()
 			if tt.componentName != "skip" {
 				b.WithName(tt.componentName)
 			}
@@ -82,7 +76,7 @@ func TestNewComponentBuilder(t *testing.T) {
 				require.NotNil(t, comp)
 				assert.Equal(t, tt.componentName, comp.name)
 				assert.Equal(t, tt.conditionType, comp.conditionType)
-				assert.Equal(t, tt.suspended, comp.suspended)
+				assert.Equal(t, false, comp.suspended)
 			}
 		})
 	}
@@ -98,12 +92,12 @@ func TestBuilder_WithResource(t *testing.T) {
 	res3 := &MockResource{}
 	res3.On("Identity").Return("v1/ConfigMap/res3")
 
-	b := NewComponentBuilder(false)
+	b := NewComponentBuilder()
 	b.WithName("test").WithConditionType("Ready")
 
-	b.WithResource(res1, false, false) // create
-	b.WithResource(res2, false, true)  // read-only
-	b.WithResource(res3, true, false)  // delete
+	b.WithResource(res1, ResourceOptions{Delete: false, ReadOnly: false}) // create
+	b.WithResource(res2, ResourceOptions{Delete: false, ReadOnly: true})  // read-only
+	b.WithResource(res3, ResourceOptions{Delete: true, ReadOnly: false})  // delete
 
 	comp, err := b.Build()
 	require.NoError(t, err)
@@ -126,11 +120,11 @@ func TestBuilder_DuplicateResource(t *testing.T) {
 	res1 := &MockResource{}
 	res1.On("Identity").Return("v1/Pod/res1")
 
-	b := NewComponentBuilder(false)
+	b := NewComponentBuilder()
 	b.WithName("test").WithConditionType("Ready")
 
-	b.WithResource(res1, false, false)
-	b.WithResource(res1, false, false)
+	b.WithResource(res1, ResourceOptions{})
+	b.WithResource(res1, ResourceOptions{})
 
 	comp, err := b.Build()
 	require.Error(t, err)
@@ -143,7 +137,7 @@ func TestBuilder_WithGracePeriod(t *testing.T) {
 
 	t.Run("Valid grace period", func(t *testing.T) {
 		t.Parallel()
-		b := NewComponentBuilder(false).WithName("test").WithConditionType("Ready")
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
 
 		b.WithGracePeriod(5 * time.Minute)
 		comp, err := b.Build()
@@ -153,7 +147,7 @@ func TestBuilder_WithGracePeriod(t *testing.T) {
 
 	t.Run("Negative grace period", func(t *testing.T) {
 		t.Parallel()
-		b := NewComponentBuilder(false).WithName("test").WithConditionType("Ready")
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
 
 		b.WithGracePeriod(-1 * time.Second)
 		comp, err := b.Build()
@@ -169,12 +163,12 @@ func TestBuilder_BuildErrorAggregation(t *testing.T) {
 	res1 := &MockResource{}
 	res1.On("Identity").Return("v1/Pod/res1")
 
-	b := NewComponentBuilder(false)
+	b := NewComponentBuilder()
 	b.WithName("test").WithConditionType("Ready")
 
-	b.WithResource(res1, false, false)
-	b.WithResource(res1, false, false)  // Duplicate error
-	b.WithGracePeriod(-1 * time.Second) // Grace period error
+	b.WithResource(res1, ResourceOptions{})
+	b.WithResource(res1, ResourceOptions{}) // Duplicate error
+	b.WithGracePeriod(-1 * time.Second)     // Grace period error
 
 	comp, err := b.Build()
 	require.Error(t, err)

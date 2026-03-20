@@ -3,7 +3,7 @@ package deployment
 import (
 	"fmt"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	appsv1 "k8s.io/api/apps/v1"
 )
 
@@ -14,31 +14,31 @@ import (
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultConvergingStatusHandler(
-	op component.ConvergingOperation, deployment *appsv1.Deployment,
-) (component.ConvergingStatusWithReason, error) {
+	op concepts.ConvergingOperation, deployment *appsv1.Deployment,
+) (concepts.AliveStatusWithReason, error) {
 	desiredReplicas := int32(1)
 	if deployment.Spec.Replicas != nil {
 		desiredReplicas = *deployment.Spec.Replicas
 	}
 
 	if deployment.Status.ReadyReplicas == desiredReplicas {
-		return component.ConvergingStatusWithReason{
-			Status: component.ConvergingStatusReady,
+		return concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusHealthy,
 			Reason: "All replicas are ready",
 		}, nil
 	}
 
-	var status component.ConvergingStatus
+	var status concepts.AliveConvergingStatus
 	switch op {
-	case component.ConvergingOperationCreated:
-		status = component.ConvergingStatusCreating
-	case component.ConvergingOperationUpdated:
-		status = component.ConvergingStatusUpdating
+	case concepts.ConvergingOperationCreated:
+		status = concepts.AliveConvergingStatusCreating
+	case concepts.ConvergingOperationUpdated:
+		status = concepts.AliveConvergingStatusUpdating
 	default:
-		status = component.ConvergingStatusScaling
+		status = concepts.AliveConvergingStatusScaling
 	}
 
-	return component.ConvergingStatusWithReason{
+	return concepts.AliveStatusWithReason{
 		Status: status,
 		Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", deployment.Status.ReadyReplicas, desiredReplicas),
 	}, nil
@@ -53,16 +53,16 @@ func DefaultConvergingStatusHandler(
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment the default behavior.
-func DefaultGraceStatusHandler(deployment *appsv1.Deployment) (component.GraceStatusWithReason, error) {
+func DefaultGraceStatusHandler(deployment *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
 	if deployment.Status.ReadyReplicas > 0 {
-		return component.GraceStatusWithReason{
-			Status: component.GraceStatusDegraded,
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
 			Reason: "Deployment partially available",
 		}, nil
 	}
 
-	return component.GraceStatusWithReason{
-		Status: component.GraceStatusDown,
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusDown,
 		Reason: "No replicas are ready",
 	}, nil
 }
@@ -96,16 +96,16 @@ func DefaultSuspendMutationHandler(mutator *Mutator) error {
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomSuspendStatus. It can be reused within custom handlers.
-func DefaultSuspensionStatusHandler(deployment *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
+func DefaultSuspensionStatusHandler(deployment *appsv1.Deployment) (concepts.SuspensionStatusWithReason, error) {
 	if deployment.Status.Replicas == 0 {
-		return component.SuspensionStatusWithReason{
-			Status: component.SuspensionStatusSuspended,
+		return concepts.SuspensionStatusWithReason{
+			Status: concepts.SuspensionStatusSuspended,
 			Reason: "Deployment scaled to zero",
 		}, nil
 	}
 
-	return component.SuspensionStatusWithReason{
-		Status: component.SuspensionStatusSuspending,
+	return concepts.SuspensionStatusWithReason{
+		Status: concepts.SuspensionStatusSuspending,
 		Reason: fmt.Sprintf("Waiting for replicas to scale down, %d replicas still running.", deployment.Status.Replicas),
 	}, nil
 }

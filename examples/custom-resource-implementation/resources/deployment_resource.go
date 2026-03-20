@@ -10,7 +10,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 )
 
 // DeploymentResource is a wrapper around a Kubernetes Deployment object.
@@ -26,11 +26,11 @@ type DeploymentResource struct {
 	mutations []feature.Mutation[*DeploymentResourceMutator]
 
 	// convergeStatusHandler allows injecting custom logic for determining if the resource is ready.
-	convergeStatusHandler func(component.ConvergingOperation, *appsv1.Deployment) (component.ConvergingStatusWithReason, error)
+	convergeStatusHandler func(concepts.ConvergingOperation, *appsv1.Deployment) (concepts.AliveStatusWithReason, error)
 	// graceStatusHandler allows injecting custom logic for determining health when not fully ready.
-	graceStatusHandler func(*appsv1.Deployment) (component.GraceStatusWithReason, error)
+	graceStatusHandler func(*appsv1.Deployment) (concepts.GraceStatusWithReason, error)
 	// suspendStatusHandler allows injecting custom logic for determining if the resource is suspended.
-	suspendStatusHandler func(*appsv1.Deployment) (component.SuspensionStatusWithReason, error)
+	suspendStatusHandler func(*appsv1.Deployment) (concepts.SuspensionStatusWithReason, error)
 	// suspendMutationHandler allows injecting custom logic for how to suspend the resource.
 	suspendMutationHandler func(*appsv1.Deployment) error
 	// suspendDeletionDecisionHandler allows injecting custom logic for whether to delete on suspension.
@@ -131,7 +131,7 @@ func (r *DeploymentResource) applyCoreDesiredState(current *appsv1.Deployment) {
 
 // ConvergingStatus reports the progress of the resource toward its desired state.
 // It implements the Alive interface, allowing the Component to aggregate status.
-func (r *DeploymentResource) ConvergingStatus(op component.ConvergingOperation) (component.ConvergingStatusWithReason, error) {
+func (r *DeploymentResource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.AliveStatusWithReason, error) {
 	if r.convergeStatusHandler != nil {
 		return r.convergeStatusHandler(op, r.deployment)
 	}
@@ -142,23 +142,23 @@ func (r *DeploymentResource) ConvergingStatus(op component.ConvergingOperation) 
 	}
 
 	if r.deployment.Status.ReadyReplicas == desiredReplicas {
-		return component.ConvergingStatusWithReason{
-			Status: component.ConvergingStatusReady,
+		return concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusHealthy,
 			Reason: "All replicas are ready",
 		}, nil
 	}
 
-	var status component.ConvergingStatus
+	var status concepts.AliveConvergingStatus
 	switch op {
-	case component.ConvergingOperationCreated:
-		status = component.ConvergingStatusCreating
-	case component.ConvergingOperationUpdated:
-		status = component.ConvergingStatusUpdating
+	case concepts.ConvergingOperationCreated:
+		status = concepts.AliveConvergingStatusCreating
+	case concepts.ConvergingOperationUpdated:
+		status = concepts.AliveConvergingStatusUpdating
 	default:
-		status = component.ConvergingStatusScaling
+		status = concepts.AliveConvergingStatusScaling
 	}
 
-	return component.ConvergingStatusWithReason{
+	return concepts.AliveStatusWithReason{
 		Status: status,
 		Reason: fmt.Sprintf(
 			"Waiting for replicas: %d/%d ready",
@@ -170,20 +170,20 @@ func (r *DeploymentResource) ConvergingStatus(op component.ConvergingOperation) 
 
 // GraceStatus reports the health of the resource when it's not fully ready (e.g., degraded).
 // It's part of the Alive interface used for sophisticated status reporting.
-func (r *DeploymentResource) GraceStatus() (component.GraceStatusWithReason, error) {
+func (r *DeploymentResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	if r.graceStatusHandler != nil {
 		return r.graceStatusHandler(r.deployment)
 	}
 
 	if r.deployment.Status.ReadyReplicas > 0 {
-		return component.GraceStatusWithReason{
-			Status: component.GraceStatusDegraded,
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
 			Reason: "Deployment partially available",
 		}, nil
 	}
 
-	return component.GraceStatusWithReason{
-		Status: component.GraceStatusDown,
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusDown,
 		Reason: "No replicas are ready",
 	}, nil
 }
@@ -218,20 +218,20 @@ func (r *DeploymentResource) Suspend() error {
 }
 
 // SuspensionStatus reports the progress of the resource toward a suspended state.
-func (r *DeploymentResource) SuspensionStatus() (component.SuspensionStatusWithReason, error) {
+func (r *DeploymentResource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
 	if r.suspendStatusHandler != nil {
 		return r.suspendStatusHandler(r.deployment)
 	}
 
 	if r.deployment.Status.Replicas == 0 {
-		return component.SuspensionStatusWithReason{
-			Status: component.SuspensionStatusSuspended,
+		return concepts.SuspensionStatusWithReason{
+			Status: concepts.SuspensionStatusSuspended,
 			Reason: "Deployment scaled to zero",
 		}, nil
 	}
 
-	return component.SuspensionStatusWithReason{
-		Status: component.SuspensionStatusSuspending,
+	return concepts.SuspensionStatusWithReason{
+		Status: concepts.SuspensionStatusSuspending,
 		Reason: fmt.Sprintf(
 			"Waiting for replicas to scale down, %d replicas still running.",
 			r.deployment.Status.Replicas,

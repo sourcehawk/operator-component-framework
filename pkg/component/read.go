@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,17 +36,15 @@ func readResources(
 			)
 		}
 
-		// Gather converging status of alive readonly resources
-		if alive, ok := resource.(Alive); ok {
-			status, err := alive.ConvergingStatus(ConvergingOperationNone)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to get converging status of read-only resource %s: %w",
-					resource.Identity(), err,
-				)
-			}
-
-			results = append(results, convergingResult{Resource: resource, Status: status})
+		// Gather converging status of resources
+		status, err := getConvergingStatus(resource, concepts.ConvergingOperationNone)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to determine converging status of resource %s: %w", resource.Identity(), err,
+			)
+		}
+		if status != nil {
+			results = append(results, convergingResult{Resource: resource, Status: *status})
 		}
 	}
 

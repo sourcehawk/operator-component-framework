@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
@@ -77,7 +77,7 @@ func TestResource_Mutate(t *testing.T) {
 	}
 
 	res, _ := NewBuilder(desired).
-		WithMutation(feature.Mutation[*Mutator]{
+		WithMutation(Mutation{
 			Name:    "test-mutation",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
@@ -114,7 +114,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	}
 
 	res, _ := NewBuilder(desired).
-		WithMutation(feature.Mutation[*Mutator]{
+		WithMutation(Mutation{
 			Name:    "feature-a",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
@@ -125,7 +125,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 				return nil
 			},
 		}).
-		WithMutation(feature.Mutation[*Mutator]{
+		WithMutation(Mutation{
 			Name:    "feature-b",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
@@ -152,19 +152,19 @@ type mockHandlers struct {
 	mock.Mock
 }
 
-func (m *mockHandlers) ConvergingStatus(op component.ConvergingOperation, d *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
+func (m *mockHandlers) ConvergingStatus(op concepts.ConvergingOperation, d *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
 	args := m.Called(op, d)
-	return args.Get(0).(component.ConvergingStatusWithReason), args.Error(1)
+	return args.Get(0).(concepts.AliveStatusWithReason), args.Error(1)
 }
 
-func (m *mockHandlers) GraceStatus(d *appsv1.Deployment) (component.GraceStatusWithReason, error) {
+func (m *mockHandlers) GraceStatus(d *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
 	args := m.Called(d)
-	return args.Get(0).(component.GraceStatusWithReason), args.Error(1)
+	return args.Get(0).(concepts.GraceStatusWithReason), args.Error(1)
 }
 
-func (m *mockHandlers) SuspensionStatus(d *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
+func (m *mockHandlers) SuspensionStatus(d *appsv1.Deployment) (concepts.SuspensionStatusWithReason, error) {
 	args := m.Called(d)
-	return args.Get(0).(component.SuspensionStatusWithReason), args.Error(1)
+	return args.Get(0).(concepts.SuspensionStatusWithReason), args.Error(1)
 }
 
 func (m *mockHandlers) Suspend(mut *Mutator) error {
@@ -194,30 +194,30 @@ func TestResource_Status(t *testing.T) {
 
 	t.Run("ConvergingStatus calls handler", func(t *testing.T) {
 		m := &mockHandlers{}
-		statusReady := component.ConvergingStatusWithReason{Status: component.ConvergingStatusReady}
-		m.On("ConvergingStatus", component.ConvergingOperationUpdated, deploy).Return(statusReady, nil)
+		statusReady := concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusHealthy}
+		m.On("ConvergingStatus", concepts.ConvergingOperationUpdated, deploy).Return(statusReady, nil)
 
 		res, _ := NewBuilder(deploy).
 			WithCustomConvergeStatus(m.ConvergingStatus).
 			Build()
 
-		status, err := res.ConvergingStatus(component.ConvergingOperationUpdated)
+		status, err := res.ConvergingStatus(concepts.ConvergingOperationUpdated)
 		require.NoError(t, err)
 		m.AssertExpectations(t)
-		assert.Equal(t, component.ConvergingStatusReady, status.Status)
+		assert.Equal(t, concepts.AliveConvergingStatusHealthy, status.Status)
 	})
 
 	t.Run("ConvergingStatus uses default", func(t *testing.T) {
 		res, err := NewBuilder(deploy).Build()
 		require.NoError(t, err)
-		status, err := res.ConvergingStatus(component.ConvergingOperationUpdated)
+		status, err := res.ConvergingStatus(concepts.ConvergingOperationUpdated)
 		require.NoError(t, err)
-		assert.Equal(t, component.ConvergingStatusUpdating, status.Status)
+		assert.Equal(t, concepts.AliveConvergingStatusUpdating, status.Status)
 	})
 
 	t.Run("GraceStatus calls handler", func(t *testing.T) {
 		m := &mockHandlers{}
-		statusReady := component.GraceStatusWithReason{Status: component.GraceStatusReady}
+		statusReady := concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}
 		m.On("GraceStatus", deploy).Return(statusReady, nil)
 
 		res, _ := NewBuilder(deploy).
@@ -227,7 +227,7 @@ func TestResource_Status(t *testing.T) {
 		status, err := res.GraceStatus()
 		require.NoError(t, err)
 		m.AssertExpectations(t)
-		assert.Equal(t, component.GraceStatusReady, status.Status)
+		assert.Equal(t, concepts.GraceStatusHealthy, status.Status)
 	})
 
 	t.Run("GraceStatus uses default", func(t *testing.T) {
@@ -235,7 +235,7 @@ func TestResource_Status(t *testing.T) {
 		require.NoError(t, err)
 		status, err := res.GraceStatus()
 		require.NoError(t, err)
-		assert.Equal(t, component.GraceStatusDegraded, status.Status)
+		assert.Equal(t, concepts.GraceStatusDegraded, status.Status)
 	})
 }
 
@@ -317,7 +317,7 @@ func TestResource_SuspensionStatus(t *testing.T) {
 
 	t.Run("calls handler", func(t *testing.T) {
 		m := &mockHandlers{}
-		statusSuspended := component.SuspensionStatusWithReason{Status: component.SuspensionStatusSuspended}
+		statusSuspended := concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}
 		m.On("SuspensionStatus", deploy).Return(statusSuspended, nil)
 
 		res, err := NewBuilder(deploy).
@@ -327,7 +327,7 @@ func TestResource_SuspensionStatus(t *testing.T) {
 		status, err := res.SuspensionStatus()
 		require.NoError(t, err)
 		m.AssertExpectations(t)
-		assert.Equal(t, component.SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
 
 	t.Run("uses default", func(t *testing.T) {
@@ -335,7 +335,7 @@ func TestResource_SuspensionStatus(t *testing.T) {
 		require.NoError(t, err)
 		status, err := res.SuspensionStatus()
 		require.NoError(t, err)
-		assert.Equal(t, component.SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
 }
 

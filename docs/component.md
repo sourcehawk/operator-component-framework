@@ -29,12 +29,12 @@ A Component is responsible for:
 Resources are registered to a component using the `Builder`. The registration defines how the component interacts with each resource during reconciliation.
 
 ```go
-builder := component.NewComponentBuilder(false).
+builder := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
-    WithResource(deployment, false, false). // Managed (Create/Update)
-    WithResource(configMap, false, true).  // Read-only
-    WithResource(oldService, true, false)   // Delete-only
+    WithResource(deployment, component.ResourceOptions{}). // Managed (Create/Update)
+    WithResource(configMap, component.ResourceOptions{ReadOnly: true}).  // Read-only
+    WithResource(oldService, component.ResourceOptions{Delete: true})   // Delete-only
 ```
 
 ### Resource Flags
@@ -117,7 +117,39 @@ The `ReconcileContext` is passed to the `Reconcile` method and provides all depe
 
 Dependencies are passed explicitly to ensure the component remains testable and decoupled from global state or specific controller-runtime implementation details.
 
-## Best Practices
+## Migration Note
+
+The `Component` builder API was recently updated to improve type safety and extensibility.
+
+### NewComponentBuilder
+`NewComponentBuilder()` no longer accepts a `suspended` boolean flag. Suspension state is now managed using the `.Suspend(bool)` method on the builder.
+
+**Old:**
+```go
+builder := component.NewComponentBuilder(owner.Spec.Suspended)
+```
+
+**New:**
+```go
+builder := component.NewComponentBuilder().Suspend(owner.Spec.Suspended)
+```
+
+### WithResource
+`WithResource(resource, delete, readOnly)` has been replaced by `WithResource(resource, options)`. The new signature uses a `ResourceOptions` struct, which allows for more granular control, including health aggregation participation modes.
+
+**Old:**
+```go
+builder.WithResource(res, false, false) // Managed
+builder.WithResource(res, false, true)  // Read-only
+builder.WithResource(res, true, false)  // Delete-only
+```
+
+**New:**
+```go
+builder.WithResource(res, component.ResourceOptions{})                    // Managed
+builder.WithResource(res, component.ResourceOptions{ReadOnly: true})       // Read-only
+builder.WithResource(res, component.ResourceOptions{Delete: true})         // Delete-only
+```
 
 *   **Keep Controllers Thin**: The controller should only be responsible for fetching the owner CRD and invoking component reconciliation.
 *   **Model Logical Features**: Create one component per user-visible feature (e.g., "API", "UI", "Database").

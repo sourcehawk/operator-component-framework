@@ -3,7 +3,7 @@ package generic
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,8 +26,8 @@ func TestWorkloadBuilder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build() error = %v", err)
 		}
-		if res.Object != obj {
-			t.Errorf("expected object %v, got %v", obj, res.Object)
+		if res.DesiredObject != obj {
+			t.Errorf("expected object %v, got %v", obj, res.DesiredObject)
 		}
 	})
 
@@ -48,14 +48,14 @@ func TestWorkloadBuilder(t *testing.T) {
 
 	t.Run("with handlers", func(t *testing.T) {
 		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator).
-			WithCustomConvergeStatus(func(_ component.ConvergingOperation, _ *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
-				return component.ConvergingStatusWithReason{}, nil
+			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
+				return concepts.AliveStatusWithReason{}, nil
 			}).
-			WithCustomGraceStatus(func(_ *appsv1.Deployment) (component.GraceStatusWithReason, error) {
-				return component.GraceStatusWithReason{}, nil
+			WithCustomGraceStatus(func(_ *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
+				return concepts.GraceStatusWithReason{}, nil
 			}).
-			WithCustomSuspendStatus(func(_ *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
-				return component.SuspensionStatusWithReason{}, nil
+			WithCustomSuspendStatus(func(_ *appsv1.Deployment) (concepts.SuspensionStatusWithReason, error) {
+				return concepts.SuspensionStatusWithReason{}, nil
 			}).
 			WithCustomSuspendMutation(func(_ *mockMutator) error {
 				return nil
@@ -71,29 +71,11 @@ func TestWorkloadBuilder(t *testing.T) {
 	})
 
 	t.Run("validation errors", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			obj     *appsv1.Deployment
-			idFunc  func(*appsv1.Deployment) string
-			defApp  FieldApplicator[*appsv1.Deployment]
-			newMut  func(*appsv1.Deployment) *mockMutator
-			wantErr string
-		}{
-			{"nil object", nil, identityFunc, defaultApp, newMutator, "object cannot be nil"},
-			{"empty name", &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}}, identityFunc, defaultApp, newMutator, "object name cannot be empty"},
-			{"empty namespace", &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "test"}}, identityFunc, defaultApp, newMutator, "object namespace cannot be empty"},
-			{"nil identity", obj, nil, defaultApp, newMutator, "identity function cannot be nil"},
-			{"nil applicator", obj, identityFunc, nil, newMutator, "default field applicator cannot be nil"},
-			{"nil mutator factory", obj, identityFunc, defaultApp, nil, "mutator factory cannot be nil"},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := NewWorkloadBuilder(tt.obj, tt.idFunc, tt.defApp, tt.newMut).Build()
-				if err == nil || err.Error() != tt.wantErr {
-					t.Errorf("expected error %q, got %v", tt.wantErr, err)
-				}
-			})
-		}
+		runBuilderValidationTests[*WorkloadResource[*appsv1.Deployment, *mockMutator]](
+			t, obj, identityFunc, defaultApp, newMutator,
+			func(o *appsv1.Deployment, id func(*appsv1.Deployment) string, app FieldApplicator[*appsv1.Deployment], mut func(*appsv1.Deployment) *mockMutator) genericBuilder[*WorkloadResource[*appsv1.Deployment, *mockMutator]] {
+				return NewWorkloadBuilder(o, id, app, mut)
+			},
+		)
 	})
 }

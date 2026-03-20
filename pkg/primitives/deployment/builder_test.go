@@ -4,8 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -82,7 +81,7 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		m := feature.Mutation[*Mutator]{
+		m := Mutation{
 			Name: "test-mutation",
 		}
 		res, err := NewBuilder(deploy).
@@ -139,17 +138,17 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(_ component.ConvergingOperation, _ *appsv1.Deployment) (component.ConvergingStatusWithReason, error) {
-			return component.ConvergingStatusWithReason{Status: component.ConvergingStatusUpdating}, nil
+		handler := func(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
+			return concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusUpdating}, nil
 		}
 		res, err := NewBuilder(deploy).
 			WithCustomConvergeStatus(handler).
 			Build()
 		require.NoError(t, err)
 		require.NotNil(t, res.base.ConvergingStatusHandler)
-		status, err := res.base.ConvergingStatusHandler(component.ConvergingOperationUpdated, nil)
+		status, err := res.base.ConvergingStatusHandler(concepts.ConvergingOperationUpdated, nil)
 		require.NoError(t, err)
-		assert.Equal(t, component.ConvergingStatusUpdating, status.Status)
+		assert.Equal(t, concepts.AliveConvergingStatusUpdating, status.Status)
 	})
 
 	t.Run("WithCustomGraceStatus", func(t *testing.T) {
@@ -160,8 +159,8 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(_ *appsv1.Deployment) (component.GraceStatusWithReason, error) {
-			return component.GraceStatusWithReason{Status: component.GraceStatusReady}, nil
+		handler := func(_ *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
+			return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
 		}
 		res, err := NewBuilder(deploy).
 			WithCustomGraceStatus(handler).
@@ -170,7 +169,7 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.GraceStatusHandler)
 		status, err := res.base.GraceStatusHandler(nil)
 		require.NoError(t, err)
-		assert.Equal(t, component.GraceStatusReady, status.Status)
+		assert.Equal(t, concepts.GraceStatusHealthy, status.Status)
 	})
 
 	t.Run("WithCustomSuspendStatus", func(t *testing.T) {
@@ -181,8 +180,8 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		handler := func(_ *appsv1.Deployment) (component.SuspensionStatusWithReason, error) {
-			return component.SuspensionStatusWithReason{Status: component.SuspensionStatusSuspended}, nil
+		handler := func(_ *appsv1.Deployment) (concepts.SuspensionStatusWithReason, error) {
+			return concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}, nil
 		}
 		res, err := NewBuilder(deploy).
 			WithCustomSuspendStatus(handler).
@@ -191,7 +190,7 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.SuspendStatusHandler)
 		status, err := res.base.SuspendStatusHandler(nil)
 		require.NoError(t, err)
-		assert.Equal(t, component.SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
 
 	t.Run("WithCustomSuspendMutation", func(t *testing.T) {

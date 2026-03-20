@@ -3,7 +3,9 @@ package component
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -118,7 +120,7 @@ var _ = Describe("Component Reconciler", func() {
 			// Verify status condition
 			cond := getOwnerCondition()
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal(string(Ready)))
+			Expect(cond.Reason).To(Equal(string(Healthy)))
 		})
 
 		It("should aggregate status from Alive resources", func() {
@@ -133,12 +135,15 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-alive-cm")
 			res.On("Mutate", mock.Anything).Return(nil)
-			res.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
-				Status: ConvergingStatusCreating,
+			res.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusCreating,
 				Reason: "Waiting for creation",
 			}, nil)
 
 			comp.createResources = []Resource{res}
+			comp.participationLookup = map[string]ParticipationMode{
+				res.Identity(): ParticipationModeRequired,
+			}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -149,7 +154,7 @@ var _ = Describe("Component Reconciler", func() {
 			// Verify status condition is False but Reason is Creating
 			cond := getOwnerCondition()
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(string(Creating)))
+			Expect(cond.Reason).To(Equal(string(AliveCreating)))
 		})
 
 		It("should handle read-only resources", func() {
@@ -166,12 +171,15 @@ var _ = Describe("Component Reconciler", func() {
 			res := &MockAliveResource{}
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/test-readonly-cm")
-			res.On("ConvergingStatus", ConvergingOperationNone).Return(ConvergingStatusWithReason{
-				Status: ConvergingStatusReady,
-				Reason: "Read-only ready",
+			res.On("ConvergingStatus", concepts.ConvergingOperationNone).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusHealthy,
+				Reason: "Read-only healthy",
 			}, nil)
 
 			comp.readResources = []Resource{res}
+			comp.participationLookup = map[string]ParticipationMode{
+				res.Identity(): ParticipationModeRequired,
+			}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -182,7 +190,7 @@ var _ = Describe("Component Reconciler", func() {
 			// Verify status condition
 			cond := getOwnerCondition()
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal(string(Ready)))
+			Expect(cond.Reason).To(Equal(string(Healthy)))
 		})
 
 		It("should aggregate status across both create and read-only resources", func() {
@@ -194,9 +202,9 @@ var _ = Describe("Component Reconciler", func() {
 			res1.On("Object").Return(cm1, nil)
 			res1.On("Identity").Return("ConfigMap/create-cm")
 			res1.On("Mutate", mock.Anything).Return(nil)
-			res1.On("ConvergingStatus", ConvergingOperationCreated).Return(ConvergingStatusWithReason{
-				Status: ConvergingStatusReady,
-				Reason: "Creation ready",
+			res1.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusHealthy,
+				Reason: "Creation healthy",
 			}, nil)
 
 			cm2 := &corev1.ConfigMap{
@@ -207,13 +215,17 @@ var _ = Describe("Component Reconciler", func() {
 			res2 := &MockAliveResource{}
 			res2.On("Object").Return(cm2, nil)
 			res2.On("Identity").Return("ConfigMap/read-cm")
-			res2.On("ConvergingStatus", ConvergingOperationNone).Return(ConvergingStatusWithReason{
-				Status: ConvergingStatusCreating, // Dominant status (False/Creating)
+			res2.On("ConvergingStatus", concepts.ConvergingOperationNone).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusCreating, // Dominant status (False/Creating)
 				Reason: "Read resource still preparing",
 			}, nil)
 
 			comp.createResources = []Resource{res1}
 			comp.readResources = []Resource{res2}
+			comp.participationLookup = map[string]ParticipationMode{
+				res1.Identity(): ParticipationModeRequired,
+				res2.Identity(): ParticipationModeRequired,
+			}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -224,7 +236,7 @@ var _ = Describe("Component Reconciler", func() {
 			// Verify status condition reflects the dominant "Creating" status from the read resource
 			cond := getOwnerCondition()
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(string(Creating)))
+			Expect(cond.Reason).To(Equal(string(AliveCreating)))
 			Expect(cond.Message).To(ContainSubstring("Read resource still preparing"))
 		})
 
@@ -241,7 +253,7 @@ var _ = Describe("Component Reconciler", func() {
 
 			cond := getOwnerCondition()
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal(string(Ready)))
+			Expect(cond.Reason).To(Equal(string(Healthy)))
 		})
 	})
 
@@ -271,8 +283,8 @@ var _ = Describe("Component Reconciler", func() {
 			suspendRes.On("Identity").Return("suspend-me")
 			suspendRes.On("Suspend").Return(nil)
 			suspendRes.On("Mutate", mock.Anything).Return(nil)
-			suspendRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspended,
+			suspendRes.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
 				Reason: "Suspended",
 			}, nil)
 			suspendRes.On("DeleteOnSuspend").Return(false)
@@ -313,8 +325,8 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Identity").Return("ConfigMap/test-suspended-cm")
 			res.On("Suspend").Return(nil)
 			res.On("Mutate", mock.Anything).Return(nil)
-			res.On("SuspensionStatus").Return(SuspensionStatusWithReason{
-				Status: SuspensionStatusSuspended,
+			res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
 				Reason: "Suspended",
 			}, nil)
 			res.On("DeleteOnSuspend").Return(true)
@@ -469,7 +481,7 @@ var _ = Describe("Component Reconciler", func() {
 			susRes.On("Identity").Return("suspend-ok")
 			susRes.On("Suspend").Return(nil)
 			susRes.On("Mutate", mock.Anything).Return(nil)
-			susRes.On("SuspensionStatus").Return(SuspensionStatusWithReason{Status: SuspensionStatusSuspended}, nil)
+			susRes.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}, nil)
 			susRes.On("DeleteOnSuspend").Return(false)
 
 			// A resource that fails deletion
@@ -491,6 +503,265 @@ var _ = Describe("Component Reconciler", func() {
 			cond := getOwnerCondition()
 			Expect(cond.Reason).To(Equal(string(Error)))
 			Expect(cond.Message).To(ContainSubstring("suspend-delete error"))
+		})
+	})
+
+	Describe("Participation Modes", func() {
+		var resReq, resAux *MockAliveResource
+
+		BeforeEach(func() {
+			resReq = &MockAliveResource{}
+			resReq.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "req-res", Namespace: namespace},
+			}, nil)
+			resReq.On("Identity").Return("ConfigMap/req-res")
+			resReq.On("Mutate", mock.Anything).Return(nil)
+
+			resAux = &MockAliveResource{}
+			resAux.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "aux-res", Namespace: namespace},
+			}, nil)
+			resAux.On("Identity").Return("ConfigMap/aux-res")
+			resAux.On("Mutate", mock.Anything).Return(nil)
+		})
+
+		reconcileAndCheck := func(rReq, rAux *MockAliveResource, rReqStatus, rAuxStatus concepts.AliveConvergingStatus, expectedStatus metav1.ConditionStatus, expectedReason string) {
+			// Given
+			rReq.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: rReqStatus,
+				Reason: string(rReqStatus),
+			}, nil)
+
+			rAux.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: rAuxStatus,
+				Reason: string(rAuxStatus),
+			}, nil)
+
+			c, err := NewComponentBuilder().
+				WithName("test-comp").
+				WithConditionType("Ready").
+				WithResource(rReq, ResourceOptions{ParticipationMode: ParticipationModeRequired}).
+				WithResource(rAux, ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			// When
+			err = c.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			cond := c.GetCondition(owner)
+			Expect(cond.Status).To(Equal(expectedStatus))
+			Expect(cond.Reason).To(Equal(expectedReason))
+		}
+
+		It("should ignore health of auxiliary resources for aggregation", func() {
+			reconcileAndCheck(resReq, resAux, concepts.AliveConvergingStatusHealthy, concepts.AliveConvergingStatusFailing, metav1.ConditionTrue, string(Healthy))
+		})
+
+		It("should consider health of required resources for aggregation", func() {
+			reconcileAndCheck(resReq, resAux, concepts.AliveConvergingStatusFailing, concepts.AliveConvergingStatusHealthy, metav1.ConditionFalse, string(AliveFailing))
+		})
+
+		It("should use default participation modes based on resource concepts", func() {
+			// Given
+			resAlive := &MockAliveResource{}
+			resAlive.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "alive-res", Namespace: namespace},
+			}, nil)
+			resAlive.On("Identity").Return("ConfigMap/alive-res")
+			resAlive.On("Mutate", mock.Anything).Return(nil)
+			// Alive should be Required by default, so its failure should affect the component
+			resAlive.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusFailing,
+				Reason: "Failing",
+			}, nil)
+
+			resComp := &MockCompletableResource{}
+			resComp.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "comp-res", Namespace: namespace},
+			}, nil)
+			resComp.On("Identity").Return("ConfigMap/comp-res")
+			resComp.On("Mutate", mock.Anything).Return(nil)
+			// Completable should be Auxiliary by default, so its state shouldn't affect the component if not required
+			resComp.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
+				Status: concepts.CompletionStatusCompleted,
+				Reason: "Completed",
+			}, nil)
+
+			c, err := NewComponentBuilder().
+				WithName("test-comp").
+				WithConditionType("Ready").
+				WithResource(resAlive, ResourceOptions{}). // Default mode (Required)
+				WithResource(resComp, ResourceOptions{}).  // Default mode (Auxiliary)
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			// When
+			err = c.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			cond := c.GetCondition(owner)
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(string(AliveFailing)))
+
+			// Now check if it works when everything is healthy/completed
+			// We need a NEW component because the resource list is fixed at build time,
+			// and we want to ensure we're not hitting any sticky behavior from previous reconcile in the same test if not careful,
+			// though Reconcile should handle it.
+			// Actually, let's just use the same component but clear mocks.
+			resAlive.ExpectedCalls = nil
+			resComp.ExpectedCalls = nil
+
+			resAlive.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "alive-res", Namespace: namespace},
+			}, nil)
+			resAlive.On("Identity").Return("ConfigMap/alive-res")
+			resAlive.On("Mutate", mock.Anything).Return(nil)
+			resAlive.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusHealthy,
+				Reason: "Healthy",
+			}, nil)
+
+			resComp.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "comp-res", Namespace: namespace},
+			}, nil)
+			resComp.On("Identity").Return("ConfigMap/comp-res")
+			resComp.On("Mutate", mock.Anything).Return(nil)
+			resComp.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
+				Status: concepts.CompletionStatusCompleted,
+				Reason: "Completed",
+			}, nil)
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+			cond = c.GetCondition(owner)
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		})
+	})
+
+	Describe("Reconciliation with Concepts", func() {
+		DescribeTable("should handle resource concepts",
+			func(res Resource, name string, status any) {
+				var m *mock.Mock
+				switch r := res.(type) {
+				case *MockAliveResource:
+					m = &r.Mock
+				case *MockCompletableResource:
+					m = &r.Mock
+				case *MockOperationalResource:
+					m = &r.Mock
+				}
+
+				m.On("Object").Return(&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{Name: name + "-res", Namespace: namespace},
+				}, nil)
+				m.On("Identity").Return("ConfigMap/" + name + "-res")
+				m.On("Mutate", mock.Anything).Return(nil)
+				m.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(status, nil)
+
+				c, _ := NewComponentBuilder().
+					WithName(name+"-comp").
+					WithConditionType("Ready").
+					WithResource(res, ResourceOptions{
+						ParticipationMode: ParticipationModeRequired,
+					}).
+					Build()
+
+				err := c.Reconcile(ctx, recCtx)
+				Expect(err).NotTo(HaveOccurred())
+
+				condition := c.GetCondition(owner)
+				Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+			},
+			Entry("Alive resources", &MockAliveResource{}, "alive", concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusHealthy,
+				Reason: "All good",
+			}),
+			Entry("Completable resources", &MockCompletableResource{}, "complete", concepts.CompletionStatusWithReason{
+				Status: concepts.CompletionStatusCompleted,
+				Reason: "Job done",
+			}),
+			Entry("Operational resources", &MockOperationalResource{}, "op", concepts.OperationalStatusWithReason{
+				Status: concepts.OperationalStatusOperational,
+				Reason: "Operational",
+			}),
+		)
+
+		It("should handle Graceful resources - Degraded after grace period", func() {
+			res := &MockAliveResource{} // MockAliveResource also implements Graceful in zz_mock
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "grace-res", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("ConfigMap/grace-res")
+			res.On("Mutate", mock.Anything).Return(nil)
+			res.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusFailing,
+				Reason: "Still failing",
+			}, nil)
+			res.On("GraceStatus").Return(concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDegraded,
+				Reason: "Degraded but partially functional",
+			}, nil)
+
+			// Set a VERY short grace period
+			gracePeriod := 1 * time.Nanosecond
+			c, _ := NewComponentBuilder().
+				WithName("grace-comp").
+				WithConditionType("Ready").
+				WithGracePeriod(gracePeriod).
+				WithResource(res, ResourceOptions{
+					ParticipationMode: ParticipationModeRequired,
+				}).
+				Build()
+
+			// 1. Initial reconcile to set the condition and its transition time
+			err := c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			// 2. Wait for grace period to expire
+			time.Sleep(10 * time.Millisecond)
+
+			// 3. Reconcile again, now graceExpired should be true
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			condition := c.GetCondition(owner)
+			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(condition.Reason).To(Equal(string(concepts.GraceStatusDegraded)))
+			Expect(condition.Message).To(ContainSubstring("Degraded but partially functional"))
+		})
+
+		It("should handle Suspendable resources", func() {
+			res := &MockSuspendableResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "sus-res", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("ConfigMap/sus-res")
+			res.On("Suspend").Return(nil)
+			res.On("Mutate", mock.Anything).Return(nil) // Added to fix panic
+			res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: "Stopped",
+			}, nil)
+			res.On("DeleteOnSuspend").Return(false)
+
+			c, _ := NewComponentBuilder().
+				WithName("sus-comp").
+				WithConditionType("Ready").
+				WithResource(res, ResourceOptions{
+					ParticipationMode: ParticipationModeRequired,
+				}).
+				Suspend(true).
+				Build()
+
+			err := c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			condition := c.GetCondition(owner)
+			Expect(condition.Status).To(Equal(metav1.ConditionTrue)) // Suspend status is true when suspended
+			Expect(condition.Reason).To(Equal("Suspended"))
 		})
 	})
 
@@ -615,11 +886,12 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Identity").Return("ConfigMap/ext-cm")
 			res.On("Mutate", mock.Anything).Return(nil)
 
-			comp := NewComponentBuilder(false).
+			c, err := NewComponentBuilder().
 				WithName("ext-comp").
-				WithConditionType(ConditionType("ExtReady"))
-			c, err := comp.WithResource(res, false, false).
+				WithConditionType("ExtReady").
+				WithResource(res, ResourceOptions{}).
 				Build()
+
 			Expect(err).NotTo(HaveOccurred())
 
 			// When

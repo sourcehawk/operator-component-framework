@@ -55,10 +55,11 @@ if err != nil {
 }
 
 // 2. Build a component
-comp, err := component.NewComponentBuilder(owner.Spec.Suspended).
+comp, err := component.NewComponentBuilder().
+    Suspend(owner.Spec.Suspended).
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
-    WithResource(res, false, false).
+    WithResource(res, component.ResourceOptions{}).
     WithGracePeriod(5 * time.Minute).
     Build()
 if err != nil {

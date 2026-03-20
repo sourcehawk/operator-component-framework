@@ -17,7 +17,7 @@ import (
 // Unlike workload resources, it does not support feature mutations, convergence status,
 // or suspension behavior.
 type StaticResource[T client.Object] struct {
-	Object T
+	DesiredObject T
 
 	IdentityFunc func(T) string
 
@@ -30,14 +30,14 @@ type StaticResource[T client.Object] struct {
 
 // Identity returns the stable framework identity for the resource.
 func (r *StaticResource[T]) Identity() string {
-	return r.IdentityFunc(r.Object)
+	return r.IdentityFunc(r.DesiredObject)
 }
 
-// GetObject returns a deep copy of the desired resource object.
-func (r *StaticResource[T]) GetObject() (client.Object, error) {
-	obj, ok := r.Object.DeepCopyObject().(client.Object)
+// Object returns a deep copy of the desired resource object.
+func (r *StaticResource[T]) Object() (client.Object, error) {
+	obj, ok := r.DesiredObject.DeepCopyObject().(client.Object)
 	if !ok {
-		return nil, fmt.Errorf("failed to deep copy object of type %T", r.Object)
+		return nil, fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
 	}
 
 	return obj, nil
@@ -48,12 +48,12 @@ func (r *StaticResource[T]) GetObject() (client.Object, error) {
 func (r *StaticResource[T]) Mutate(current client.Object) error {
 	currentTyped, ok := current.(T)
 	if !ok {
-		return fmt.Errorf("expected %T, got %T", r.Object, current)
+		return fmt.Errorf("expected %T, got %T", r.DesiredObject, current)
 	}
 
 	applied, err := applyBaselineAndFlavors(
 		currentTyped,
-		r.Object,
+		r.DesiredObject,
 		r.DefaultFieldApplicator,
 		r.CustomFieldApplicator,
 		r.FieldFlavors,
@@ -62,16 +62,16 @@ func (r *StaticResource[T]) Mutate(current client.Object) error {
 		return err
 	}
 
-	r.Object = applied
+	r.DesiredObject = applied
 	return nil
 }
 
 // ExtractData executes all registered data extractors against a deep copy of the
 // reconciled object.
 func (r *StaticResource[T]) ExtractData() error {
-	copyObj, ok := r.Object.DeepCopyObject().(T)
+	copyObj, ok := r.DesiredObject.DeepCopyObject().(T)
 	if !ok {
-		return fmt.Errorf("failed to deep copy object of type %T", r.Object)
+		return fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
 	}
 
 	for _, extractor := range r.DataExtractors {

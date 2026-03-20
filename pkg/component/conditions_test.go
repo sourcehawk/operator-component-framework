@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -33,31 +34,41 @@ func TestConvergingCondition(t *testing.T) {
 	componentType := ConditionType("TestComponent")
 	observedGen := int64(1)
 
-	t.Run("Ready status", func(t *testing.T) {
-		converging := ConvergingStatusWithReason{
-			Status: ConvergingStatusReady,
-			Reason: "All resources ready.",
-		}
-		cond := convergingCondition(componentType, converging, observedGen)
+	tests := []struct {
+		name     string
+		status   convergingStatus
+		expected metav1.ConditionStatus
+		reason   string
+	}{
+		{"AliveHealthy", convergingStatusAliveHealthy, metav1.ConditionTrue, "Healthy"},
+		{"OperationalOperational", convergingStatusOperationalOperational, metav1.ConditionTrue, "Operational"},
+		{"CompletableCompleted", convergingStatusCompletableCompleted, metav1.ConditionTrue, "Completed"},
+		{"AliveCreating", convergingStatusAliveCreating, metav1.ConditionFalse, "Creating"},
+		{"AliveUpdating", convergingStatusAliveUpdating, metav1.ConditionFalse, "Updating"},
+		{"AliveScaling", convergingStatusAliveScaling, metav1.ConditionFalse, "Scaling"},
+		{"AliveFailing", convergingStatusAliveFailing, metav1.ConditionFalse, "Failing"},
+		{"OperationalPending", convergingStatusOperationalPending, metav1.ConditionFalse, "OperationPending"},
+		{"OperationalFailing", convergingStatusOperationalFailing, metav1.ConditionFalse, "OperationFailing"},
+		{"CompletablePending", convergingStatusCompletablePending, metav1.ConditionFalse, "TaskPending"},
+		{"CompletableRunning", convergingStatusCompletableRunning, metav1.ConditionFalse, "TaskRunning"},
+		{"CompletableFailed", convergingStatusCompletableFailed, metav1.ConditionFalse, "TaskFailing"},
+	}
 
-		assert.Equal(t, string(componentType), cond.Type)
-		assert.Equal(t, metav1.ConditionTrue, cond.Status)
-		assert.Equal(t, string(Ready), cond.Reason)
-		assert.Equal(t, converging.Reason, cond.Message)
-		assert.Equal(t, observedGen, cond.ObservedGeneration)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			converging := convergingStatusWithReason{
+				Status: tt.status,
+				Reason: "status explanation",
+			}
+			cond := convergingCondition(componentType, converging, observedGen)
 
-	t.Run("Creating status", func(t *testing.T) {
-		converging := ConvergingStatusWithReason{
-			Status: ConvergingStatusCreating,
-			Reason: "Resource is creating",
-		}
-		cond := convergingCondition(componentType, converging, observedGen)
-
-		assert.Equal(t, metav1.ConditionFalse, cond.Status)
-		assert.Equal(t, string(Creating), cond.Reason)
-		assert.Equal(t, converging.Reason, cond.Message)
-	})
+			assert.Equal(t, string(componentType), cond.Type)
+			assert.Equal(t, tt.expected, cond.Status)
+			assert.Equal(t, tt.reason, cond.Reason)
+			assert.Equal(t, converging.Reason, cond.Message)
+			assert.Equal(t, observedGen, cond.ObservedGeneration)
+		})
+	}
 }
 
 func TestSuspendingCondition(t *testing.T) {
@@ -65,8 +76,8 @@ func TestSuspendingCondition(t *testing.T) {
 	observedGen := int64(1)
 
 	t.Run("Suspended status", func(t *testing.T) {
-		suspending := SuspensionStatusWithReason{
-			Status: SuspensionStatusSuspended,
+		suspending := concepts.SuspensionStatusWithReason{
+			Status: concepts.SuspensionStatusSuspended,
 			Reason: "Component suspended",
 		}
 		cond := suspendingCondition(componentType, suspending, observedGen)
@@ -79,8 +90,8 @@ func TestSuspendingCondition(t *testing.T) {
 	})
 
 	t.Run("Suspending status", func(t *testing.T) {
-		suspending := SuspensionStatusWithReason{
-			Status: SuspensionStatusSuspending,
+		suspending := concepts.SuspensionStatusWithReason{
+			Status: concepts.SuspensionStatusSuspending,
 			Reason: "Component is suspending",
 		}
 		cond := suspendingCondition(componentType, suspending, observedGen)
@@ -95,8 +106,8 @@ func TestGraceCondition(t *testing.T) {
 	observedGen := int64(1)
 
 	t.Run("Degraded status", func(t *testing.T) {
-		gracing := GraceStatusWithReason{
-			Status: GraceStatusDegraded,
+		gracing := concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
 			Reason: "Something is wrong",
 		}
 		cond := graceCondition(componentType, gracing, observedGen)
@@ -110,8 +121,8 @@ func TestGraceCondition(t *testing.T) {
 	})
 
 	t.Run("Down status", func(t *testing.T) {
-		gracing := GraceStatusWithReason{
-			Status: GraceStatusDown,
+		gracing := concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDown,
 			Reason: "Everything is wrong",
 		}
 		cond := graceCondition(componentType, gracing, observedGen)
@@ -129,7 +140,7 @@ func TestStaticConditions(t *testing.T) {
 	t.Run("conditionReady", func(t *testing.T) {
 		cond := conditionReady(componentType, observedGen)
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
-		assert.Equal(t, string(Ready), cond.Reason)
+		assert.Equal(t, string(Healthy), cond.Reason)
 	})
 
 	t.Run("conditionError", func(t *testing.T) {
@@ -150,7 +161,7 @@ func TestStaticConditions(t *testing.T) {
 func TestConditionMethods(t *testing.T) {
 	cond := Condition{
 		Type:   "TestComponent",
-		Reason: string(Ready),
+		Reason: string(Healthy),
 		Status: metav1.ConditionTrue,
 	}
 
@@ -159,7 +170,7 @@ func TestConditionMethods(t *testing.T) {
 	})
 
 	t.Run("ComponentStatus", func(t *testing.T) {
-		assert.Equal(t, Ready, cond.ComponentStatus())
+		assert.Equal(t, Healthy, cond.ComponentStatus())
 	})
 }
 

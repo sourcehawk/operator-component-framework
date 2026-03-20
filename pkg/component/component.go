@@ -50,6 +50,23 @@ type ReconcileContext struct {
 	Owner OperatorCRD
 }
 
+// ParticipationMode describes in what way the resource participates in the component health aggregation.
+type ParticipationMode string
+
+const (
+	// ParticipationModeRequired The resource must be in a 'Healthy', 'Completed' or 'Operational' state for the
+	// component to be considered healthy.
+	//
+	//  - concepts.Alive: It must be 'Healthy'
+	//  - concepts.Operational: It must be 'Operational'
+	//  - concepts.Completable: It must be 'Completed'
+	//  - If the resource is static, e.g. not implementing any of the concepts mentioned, the mode has no effect,
+	//    since the resource's health is determined by whether it can be created or not.
+	ParticipationModeRequired ParticipationMode = "Required"
+	// ParticipationModeAuxiliary The resource is auxiliary and not part of component health evaluation.
+	ParticipationModeAuxiliary ParticipationMode = "Auxiliary"
+)
+
 // Component represents a logical grouping of Kubernetes resources that are
 // reconciled together and reported as a single condition on an owning object.
 //
@@ -68,10 +85,11 @@ type Component struct {
 
 	conditionType ConditionType
 
-	createResources []Resource
-	readResources   []Resource
-	deleteResources []Resource
-	resourceLookup  map[string]Resource
+	createResources     []Resource
+	readResources       []Resource
+	deleteResources     []Resource
+	resourceLookup      map[string]Resource
+	participationLookup map[string]ParticipationMode
 
 	gracePeriod time.Duration
 }
@@ -114,8 +132,7 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 //  3. Read-only Resources: Fetches the current state of all registered
 //     read-only resources from the cluster.
 //
-//  4. Status Aggregation: Collects converging status from all creation and
-//     read-only resources that implement the Alive interface.
+//  4. Status Aggregation: Collects converging status from all resources that implement the resource concepts.
 //
 //  5. Condition Update: Derives a new component condition using a stateful
 //     progression model that considers the aggregate resource status, the
@@ -174,7 +191,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	cond := newConvergingStatusCondition(
 		ctx,
 		rec.Owner,
-		append(createResults, readonlyResults...),
+		convergeResults(append(createResults, readonlyResults...)).filterParticipators(c.participationLookup),
 		c.gracePeriod,
 		c.GetCondition(rec.Owner),
 	)

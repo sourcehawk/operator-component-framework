@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -118,8 +119,8 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		aliveResource := &MockAliveResource{}
 		aliveResource.On("Object").Return(aliveResourceObject, nil)
 		aliveResource.On("Mutate", mock.Anything).Return(nil)
-		aliveResource.On("ConvergingStatus", mock.Anything).Return(ConvergingStatusWithReason{
-			Status: ConvergingStatusReady,
+		aliveResource.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusHealthy,
 			Reason: "Ready",
 		}, nil)
 
@@ -130,7 +131,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, results, 1)
 		assert.Equal(t, aliveResource, results[0].Resource)
-		assert.Equal(t, ConvergingStatusReady, results[0].Status.Status)
+		assert.Equal(t, convergingStatusAliveHealthy, results[0].Status.Status)
 
 		regularResource.AssertExpectations(t)
 		aliveResource.AssertExpectations(t)
@@ -220,8 +221,8 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource := &MockAliveResource{}
 		resource.On("Object").Return(resourceObject, nil)
 		resource.On("Mutate", mock.Anything).Return(nil)
-		resource.On("ConvergingStatus", mock.Anything).Return(ConvergingStatusWithReason{
-			Status: ConvergingStatusReady,
+		resource.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusHealthy,
 			Reason: "Ready",
 		}, nil)
 
@@ -232,7 +233,61 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, results, 1)
 		assert.Equal(t, resource, results[0].Resource)
-		assert.Equal(t, ConvergingStatusReady, results[0].Status.Status)
+		assert.Equal(t, convergingStatusAliveHealthy, results[0].Status.Status)
+		resource.AssertExpectations(t)
+	})
+
+	t.Run("should handle Operational resources", func(t *testing.T) {
+		// Given
+		resourceObject := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-operational",
+				Namespace: namespace,
+			},
+		}
+		resource := &MockOperationalResource{}
+		resource.On("Object").Return(resourceObject, nil)
+		resource.On("Mutate", mock.Anything).Return(nil)
+		resource.On("ConvergingStatus", mock.Anything).Return(concepts.OperationalStatusWithReason{
+			Status: concepts.OperationalStatusOperational,
+			Reason: "Operational",
+		}, nil)
+
+		// When
+		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource})
+
+		// Then
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		assert.Equal(t, resource, results[0].Resource)
+		assert.Equal(t, convergingStatusOperationalOperational, results[0].Status.Status)
+		resource.AssertExpectations(t)
+	})
+
+	t.Run("should handle Completable resources", func(t *testing.T) {
+		// Given
+		resourceObject := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-completable",
+				Namespace: namespace,
+			},
+		}
+		resource := &MockCompletableResource{}
+		resource.On("Object").Return(resourceObject, nil)
+		resource.On("Mutate", mock.Anything).Return(nil)
+		resource.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
+			Status: concepts.CompletionStatusCompleted,
+			Reason: "Completed",
+		}, nil)
+
+		// When
+		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource})
+
+		// Then
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		assert.Equal(t, resource, results[0].Resource)
+		assert.Equal(t, convergingStatusCompletableCompleted, results[0].Status.Status)
 		resource.AssertExpectations(t)
 	})
 

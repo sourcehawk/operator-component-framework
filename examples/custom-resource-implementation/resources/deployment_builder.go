@@ -4,9 +4,9 @@ package resources
 import (
 	"errors"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	appsv1 "k8s.io/api/apps/v1"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/component"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 )
 
@@ -36,7 +36,7 @@ func (b *DeploymentBuilder) WithMutation(m feature.Mutation[*DeploymentResourceM
 // WithCustomConvergeStatus overrides the default readiness logic for the resource.
 // This is part of implementing the Alive interface for the Component Framework.
 func (b *DeploymentBuilder) WithCustomConvergeStatus(
-	handler func(component.ConvergingOperation, *appsv1.Deployment) (component.ConvergingStatusWithReason, error),
+	handler func(concepts.ConvergingOperation, *appsv1.Deployment) (concepts.AliveStatusWithReason, error),
 ) *DeploymentBuilder {
 	if handler == nil {
 		return b
@@ -47,7 +47,7 @@ func (b *DeploymentBuilder) WithCustomConvergeStatus(
 
 // WithCustomGraceStatus overrides the default health reporting for degraded resources.
 func (b *DeploymentBuilder) WithCustomGraceStatus(
-	handler func(*appsv1.Deployment) (component.GraceStatusWithReason, error),
+	handler func(*appsv1.Deployment) (concepts.GraceStatusWithReason, error),
 ) *DeploymentBuilder {
 	if handler == nil {
 		return b
@@ -58,7 +58,7 @@ func (b *DeploymentBuilder) WithCustomGraceStatus(
 
 // WithCustomSuspendStatus overrides the default suspension status reporting.
 func (b *DeploymentBuilder) WithCustomSuspendStatus(
-	handler func(*appsv1.Deployment) (component.SuspensionStatusWithReason, error),
+	handler func(*appsv1.Deployment) (concepts.SuspensionStatusWithReason, error),
 ) *DeploymentBuilder {
 	if handler == nil {
 		return b

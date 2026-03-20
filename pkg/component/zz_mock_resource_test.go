@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/mock"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -34,14 +35,42 @@ type MockAliveResource struct {
 	MockResource
 }
 
-func (m *MockAliveResource) ConvergingStatus(op ConvergingOperation) (ConvergingStatusWithReason, error) {
+func (m *MockAliveResource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.AliveStatusWithReason, error) {
 	args := m.Called(op)
-	return args.Get(0).(ConvergingStatusWithReason), args.Error(1)
+	return args.Get(0).(concepts.AliveStatusWithReason), args.Error(1)
 }
 
-func (m *MockAliveResource) GraceStatus() (GraceStatusWithReason, error) {
+func (m *MockAliveResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	args := m.Called()
-	return args.Get(0).(GraceStatusWithReason), args.Error(1)
+	return args.Get(0).(concepts.GraceStatusWithReason), args.Error(1)
+}
+
+type MockCompletableResource struct {
+	MockResource
+}
+
+func (m *MockCompletableResource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.CompletionStatusWithReason, error) {
+	args := m.Called(op)
+	return args.Get(0).(concepts.CompletionStatusWithReason), args.Error(1)
+}
+
+func (m *MockCompletableResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	args := m.Called()
+	return args.Get(0).(concepts.GraceStatusWithReason), args.Error(1)
+}
+
+type MockOperationalResource struct {
+	MockResource
+}
+
+func (m *MockOperationalResource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
+	args := m.Called(op)
+	return args.Get(0).(concepts.OperationalStatusWithReason), args.Error(1)
+}
+
+func (m *MockOperationalResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	args := m.Called()
+	return args.Get(0).(concepts.GraceStatusWithReason), args.Error(1)
 }
 
 // MockClient is a mock of the controller-runtime client.
@@ -68,6 +97,25 @@ func (m *MockClient) Update(ctx context.Context, obj client.Object, opts ...clie
 func (m *MockClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
 	args := m.Called(ctx, obj, opts)
 	return args.Error(0)
+}
+
+type MockSuspendableResource struct {
+	MockResource
+}
+
+func (m *MockSuspendableResource) DeleteOnSuspend() bool {
+	args := m.Called()
+	return args.Bool(0)
+}
+
+func (m *MockSuspendableResource) Suspend() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+func (m *MockSuspendableResource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
+	args := m.Called()
+	return args.Get(0).(concepts.SuspensionStatusWithReason), args.Error(1)
 }
 
 type MockExtractableResource struct {

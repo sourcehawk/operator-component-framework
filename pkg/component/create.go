@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,18 +56,17 @@ func createOrUpdateResources(
 			)
 		}
 
-		convergingOperation := convergingOperationFromOperationResult(op)
+		convergingOperation := concepts.ConvergingOperationFromOperationResult(op)
 
-		// Gather converging status of alive resources
-		if alive, ok := resource.(Alive); ok {
-			status, err := alive.ConvergingStatus(convergingOperation)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to determine converging status of resource %s: %w", resource.Identity(), err,
-				)
-			}
-
-			results = append(results, convergingResult{Resource: resource, Status: status})
+		// Gather converging status of resources
+		status, err := getConvergingStatus(resource, convergingOperation)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to determine converging status of resource %s: %w", resource.Identity(), err,
+			)
+		}
+		if status != nil {
+			results = append(results, convergingResult{Resource: resource, Status: *status})
 		}
 
 		recording.RecordCreateOrUpdateOperationEvent(rec.Recorder, op, obj, rec.Owner)

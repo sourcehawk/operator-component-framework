@@ -5,7 +5,26 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 )
+
+// ResourceOptions defines configuration for how a Kubernetes resource is managed
+// within a component. It controls the resource's lifecycle (creation, deletion, or read-only)
+// and its participation in the component's health aggregation.
+type ResourceOptions struct {
+	// Delete If true, the resource is marked for deletion during reconciliation.
+	Delete bool
+	// ReadOnly If true, the resource is read-only
+	ReadOnly bool
+	// ParticipationMode describes in what way the resource participates in the component health aggregation.
+	// By default, Alive and Operational resources use ParticipationModeRequired, while Completable resources
+	// are ParticipationModeAuxiliary when not otherwise specified.
+	//
+	// If the resource is static, e.g. not implementing any of the interfaces mentioned, the mode has no effect,
+	// since the resource's status is determined by whether it can be applied or not.
+	ParticipationMode ParticipationMode
+}
 
 // Builder implements the fluent API for constructing and validating a Component.
 // It ensures that a component is configured with consistent rules before it is
@@ -22,21 +41,15 @@ type Builder struct {
 //
 // A Component manages a single condition on an owning object (the OperatorCRD) and aggregates
 // the lifecycle, readiness, and suspension state of all registered resources.
-//
-// Parameters:
-//   - suspended: If true, the component starts in suspended mode, performing suspension
-//     logic instead of create/update operations during reconciliation until resumed.
-//
-// The returned Builder allows for a fluent configuration of resources and grace periods.
-// Validation of the name and condition type is performed immediately.
-func NewComponentBuilder(suspended bool) *Builder {
+func NewComponentBuilder() *Builder {
 	return &Builder{
 		component: &Component{
-			name:           "",
-			suspended:      suspended,
-			conditionType:  "",
-			gracePeriod:    time.Duration(0),
-			resourceLookup: make(map[string]Resource),
+			name:                "",
+			suspended:           false,
+			conditionType:       "",
+			gracePeriod:         time.Duration(0),
+			resourceLookup:      make(map[string]Resource),
+			participationLookup: make(map[string]ParticipationMode),
 		},
 	}
 }
@@ -111,28 +124,16 @@ func (b *Builder) WithConditionType(conditionType ConditionType) *Builder {
 
 // WithResource registers a Kubernetes resource to be managed by this component.
 //
-// A resource can be in one of three categories:
-//  1. Creation/Update (default): The component ensures the resource exists and matches
-//     the desired state. Its health contributes to the component's Ready condition.
-//  2. Read-only: The component only reads the resource's state and uses it for
-//     status aggregation. It never modifies the resource in the cluster.
-//  3. Deletion: The component ensures the resource is deleted from the cluster.
-//
-// Parameters:
-//   - resource: The resource implementation to manage.
-//   - shouldDelete: If true, the resource is marked for deletion.
-//   - readOnly: If true, the resource is read-only (ignored if 'shouldDelete' is true).
-//
 // If a resource with the same Identity() is already registered, a validation error
 // is recorded and will be returned by Build().
-func (b *Builder) WithResource(resource Resource, shouldDelete bool, readOnly bool) *Builder {
+func (b *Builder) WithResource(resource Resource, options ResourceOptions) *Builder {
 	if _, ok := b.component.resourceLookup[resource.Identity()]; ok {
 		b.buildErrors = append(
 			b.buildErrors,
 			fmt.Errorf(
-				"duplicate resource %q in component %q (delete=%t, readOnly=%t)",
+				"duplicate resource %q in component %q (delete=%t, readOnly=%t, mode=%s)",
 				resource.Identity(),
-				b.component.name, shouldDelete, readOnly,
+				b.component.name, options.Delete, options.ReadOnly, options.ParticipationMode,
 			),
 		)
 		return b
@@ -140,10 +141,20 @@ func (b *Builder) WithResource(resource Resource, shouldDelete bool, readOnly bo
 
 	b.component.resourceLookup[resource.Identity()] = resource
 
+	if options.ParticipationMode == "" {
+		if _, ok := resource.(concepts.Completable); ok {
+			options.ParticipationMode = ParticipationModeAuxiliary
+		} else {
+			options.ParticipationMode = ParticipationModeRequired
+		}
+	}
+
+	b.component.participationLookup[resource.Identity()] = options.ParticipationMode
+
 	switch {
-	case shouldDelete:
+	case options.Delete:
 		b.component.deleteResources = append(b.component.deleteResources, resource)
-	case readOnly:
+	case options.ReadOnly:
 		b.component.readResources = append(b.component.readResources, resource)
 	default:
 		b.component.createResources = append(b.component.createResources, resource)
@@ -154,9 +165,9 @@ func (b *Builder) WithResource(resource Resource, shouldDelete bool, readOnly bo
 
 // WithGracePeriod configures a grace duration for the component's convergence to a Ready state.
 //
-// When a component is not Ready, it is considered to be in a progressing state (e.g., Creating,
+// When a component is not Ready, it is considered to be in a Progressing state (e.g., Creating,
 // Updating, Scaling). The grace period defines how long the component is allowed to remain
-// in these progressing states before it is considered Degraded or Down.
+// in these Progressing states before it is considered Degraded or Down.
 //
 // Once the grace period expires:
 //   - If the aggregate resource state is Down or Degraded, the component condition
@@ -172,5 +183,16 @@ func (b *Builder) WithGracePeriod(gracePeriod time.Duration) *Builder {
 		return b
 	}
 	b.component.gracePeriod = gracePeriod
+	return b
+}
+
+// Suspend allows marking the component as suspended.
+//
+// By default, the component is not suspended, which equates to passing false to this method.
+// When true is passed, all resource within the component that implement the concepts.Suspendable interface are
+// suspended.
+func (b *Builder) Suspend(suspend bool) *Builder {
+	b.component.suspended = suspend
+
 	return b
 }

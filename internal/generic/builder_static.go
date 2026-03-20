@@ -28,7 +28,7 @@ func NewStaticBuilder[T client.Object](
 ) *StaticBuilder[T] {
 	return &StaticBuilder[T]{
 		res: &StaticResource[T]{
-			Object:                 obj,
+			DesiredObject:          obj,
 			IdentityFunc:           identityFunc,
 			DefaultFieldApplicator: defaultApplicator,
 		},
@@ -71,15 +71,15 @@ func (b *StaticBuilder[T]) WithDataExtractor(
 
 // Build validates the static builder configuration and returns the initialized resource.
 func (b *StaticBuilder[T]) Build() (*StaticResource[T], error) {
-	if isNil(b.res.Object) {
+	if isNil(b.res.DesiredObject) {
 		return nil, errors.New("object cannot be nil")
 	}
 
-	if b.res.Object.GetName() == "" {
+	if b.res.DesiredObject.GetName() == "" {
 		return nil, errors.New("object name cannot be empty")
 	}
 
-	if b.res.Object.GetNamespace() == "" {
+	if b.res.DesiredObject.GetNamespace() == "" {
 		return nil, errors.New("object namespace cannot be empty")
 	}
 

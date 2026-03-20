@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
-	"github.com/sourcehawk/operator-component-framework/examples/component-architecture-basics/exampleapp"
+	"github.com/sourcehawk/operator-component-framework/examples/custom-resource-implementation/exampleapp"
 )
 
 // mockMetricsRecorder is a simple no-op implementation of component.Recorder for our example.

@@ -10,8 +10,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/sourcehawk/operator-component-framework/examples/component-architecture-basics/features"
-	"github.com/sourcehawk/operator-component-framework/examples/component-architecture-basics/resources"
+	"github.com/sourcehawk/operator-component-framework/examples/custom-resource-implementation/features"
+	"github.com/sourcehawk/operator-component-framework/examples/custom-resource-implementation/resources"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 )
 
@@ -49,10 +49,11 @@ func (r *ExampleController) Reconcile(ctx context.Context, owner *ExamplePlatfor
 	}
 
 	// 2. Assemble the component using the real framework builder
-	comp, err := component.NewComponentBuilder(owner.Spec.Suspended).
+	comp, err := component.NewComponentBuilder().
 		WithName("web-interface").
 		WithConditionType("WebInterfaceReady").
-		WithResource(res, false, false).
+		WithResource(res, component.ResourceOptions{}).
+		Suspend(owner.Spec.Suspended).
 		Build()
 
 	if err != nil {

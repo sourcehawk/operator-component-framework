@@ -67,7 +67,7 @@ When a primitive is reconciled, it follows a strict order of operations:
 
 1.  **Baseline field application**: The `FieldApplicator` merges the "baseline" desired state onto the current object.
 2.  **Flavor adjustments**: Post-baseline merge policies (Flavors) are applied to preserve specific fields.
-3.  **Mutation edits**: Feature-specific or version-specific edits are applied (Workload and Task primitives).
+3.  **Mutation edits**: Feature-specific or version-specific edits are applied.
 
 This ensures that mutations always operate on a predictable, fully-formed baseline.
 

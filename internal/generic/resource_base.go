@@ -37,7 +37,12 @@ func (r *BaseResource[T, M]) Identity() string {
 
 // Object returns a deep copy of the desired object.
 func (r *BaseResource[T, M]) Object() (client.Object, error) {
-	return r.DesiredObject.DeepCopyObject().(client.Object), nil
+	obj, ok := r.DesiredObject.DeepCopyObject().(client.Object)
+	if !ok {
+		return nil, fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
+	}
+
+	return obj, nil
 }
 
 // Mutate applies the baseline field applicator, field application flavors, feature mutations,

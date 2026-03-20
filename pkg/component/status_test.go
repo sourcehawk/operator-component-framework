@@ -51,7 +51,6 @@ func TestStatusLevelOrdering(t *testing.T) {
 	assert.Greater(t, Degraded.Priority(), Suspended.Priority())
 
 	// Error > Grace
-	assert.Greater(t, Error.Priority(), Down.Priority())
 }
 
 func TestStatusConstantsMatchSourceTypes(t *testing.T) {

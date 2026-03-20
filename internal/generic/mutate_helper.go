@@ -7,11 +7,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// MutationResult holds the final mutated object after applying baseline and mutations.
-type MutationResult[T client.Object] struct {
-	Object T
-}
-
 // ApplyMutations provides a shared implementation for the Mutate method in generic resources.
 // It handles:
 //  1. Baseline field application and flavors

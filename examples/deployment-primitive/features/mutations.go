@@ -16,8 +16,6 @@ func TracingFeature(enabled bool) deployment.Mutation {
 		Name:    "Tracing",
 		Feature: feature.NewResourceFeature("any", nil).When(enabled),
 		Mutate: func(m *deployment.Mutator) error {
-			m.BeginFeature()
-
 			m.EnsureContainer(corev1.Container{
 				Name:  "jaeger-agent",
 				Image: "jaegertracing/jaeger-agent:1.28",
@@ -39,8 +37,6 @@ func MetricsFeature(enabled bool, port int) deployment.Mutation {
 		Name:    "Metrics",
 		Feature: feature.NewResourceFeature("any", nil).When(enabled),
 		Mutate: func(m *deployment.Mutator) error {
-			m.BeginFeature()
-
 			m.EnsureContainer(corev1.Container{
 				Name:  "prometheus-exporter",
 				Image: "prom/node-exporter:v1.3.1",
@@ -63,8 +59,6 @@ func VersionFeature(version string) deployment.Mutation {
 		Name:    "Version",
 		Feature: feature.NewResourceFeature(version, nil),
 		Mutate: func(m *deployment.Mutator) error {
-			m.BeginFeature()
-
 			m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
 				ce.Raw().Image = fmt.Sprintf("my-app:%s", version)
 				return nil

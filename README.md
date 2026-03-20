@@ -88,7 +88,7 @@ Detailed documentation: [Component Framework](docs/component.md)
 ### Primitive Layer
 Responsible for Kubernetes resource abstractions, the mutation system, and safe field application. It handles the low-level details of how objects are constructed and modified.
 
-Detailed documentation: [Resource Primitives](docs/primitives.md)
+- [Resource Primitives Overview](docs/primitives.md)
 
 ## Feature Mutations (high-level)
 

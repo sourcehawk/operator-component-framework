@@ -45,7 +45,7 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 
 	for _, mutation := range mutations {
 		if isFeatureMutator {
-			fm.BeginFeature()
+			fm.beginFeature()
 		}
 
 		if err := mutation.ApplyIntent(mutator); err != nil {
@@ -61,7 +61,7 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 
 	if suspender != nil {
 		if isFeatureMutator {
-			fm.BeginFeature()
+			fm.beginFeature()
 		}
 
 		if err := suspender(mutator); err != nil {

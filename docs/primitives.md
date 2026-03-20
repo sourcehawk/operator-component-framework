@@ -23,14 +23,14 @@ defining how their resources should behave.
 
 ## 2. Primitive categories
 
-The framework distinguishes between three primary categories of primitives based on their operational characteristics.
+The framework distinguishes between four primary categories of primitives based on their operational characteristics.
 
 ### Static Primitives
 Examples: `ConfigMap`, `Secret`, `ServiceAccount`, RBAC objects (`Role`, `RoleBinding`), `PodDisruptionBudget`.
 
 - **Characteristics**: These resources have a mostly static desired state. They are typically created once or updated 
   based on configuration changes but do not have complex runtime convergence or scaling behaviors.
-- **Lifecycle**: Usually considered "Ready" as soon as they are successfully applied to the API server.
+- **Lifecycle**: Considered "Ready" by default as long as they exist in the cluster. They may optionally implement the `Alive` or `Operational` interfaces for more granular readiness tracking.
 
 ### Workload Primitives
 Examples: `Deployment`, `StatefulSet`, `DaemonSet`.
@@ -38,7 +38,7 @@ Examples: `Deployment`, `StatefulSet`, `DaemonSet`.
 - **Characteristics**: These resources represent long-running processes that require runtime convergence (e.g., 
   pods being scheduled and becoming ready).
 - **Behavior**: They support advanced features like suspension (scaling to zero), grace handling for slow rollouts, and 
-  complex feature-based mutations.
+  complex feature-based mutations. They implement the `Alive`, `Graceful`, and `Suspendable` interfaces.
 
 ### Task Primitives
 Examples: `Job`.
@@ -46,13 +46,13 @@ Examples: `Job`.
 - **Characteristics**: These resources represent short-lived operations that run to completion (e.g., a database 
   migration or a backup). Unlike workloads, they are not expected to run indefinitely.
 - **Behavior**: They support completion tracking and data extraction. When suspended, tasks can be configured to 
-  either pause (if supported by the underlying resource) or be deleted and recreated when resumed.
+  either pause (if supported by the underlying resource) or be deleted and recreated when resumed. They implement the `Completable` and `Suspendable` interfaces.
 
 ### Integration Primitives
 Examples: `Service`, `Ingress`, `Gateway`, `CronJob`.
 
 - **Characteristics**: These resources define integration points between workloads and external or cluster-level systems (e.g., networking, load balancers, DNS, schedules). Their readiness depends on external controllers or infrastructure outside the direct control of the resource itself.
-- **Behavior**: They rely on asynchronous reconciliation and may exhibit delayed or partial readiness depending on external system state. They also support suspension (e.g., suspending a `CronJob` schedule).
+- **Behavior**: They rely on asynchronous reconciliation and may exhibit delayed or partial readiness depending on external system state. They also support suspension (e.g., suspending a `CronJob` schedule). They typically implement the `Operational` and/or `Suspendable` interfaces.
 - **Lifecycle**: Considered ready only once the underlying integration (e.g., load balancer provisioning, routing configuration, schedule establishment) is fully established.
 
 ---
@@ -98,19 +98,13 @@ directly and repeatedly, the framework records "edit intent" through a series of
 - **Prevents uncontrolled mutation**: Changes are staged and applied in a single, controlled pass.
 - **Improves composability**: Multiple independent features can contribute edits without knowing about each other.
 - **Predictable Ordering**: Features are applied in the order they are registered. Later features observe the resource state after earlier features have already applied their changes.
-- **Efficiency**: Avoids expensive and error-prone manual slice manipulations (like searching for a container by name 
-  multiple times).
+- **Efficiency**: Avoids expensive and error-prone manual slice manipulations.
 
-### Internal Ordering within a Feature:
-While features apply in registration order, the internal operations within a single feature follow a fixed category-based sequence to ensure consistency:
-1. Deployment metadata edits
-2. DeploymentSpec edits
-3. Pod template metadata edits
-4. Pod spec edits
-5. Regular container presence operations
-6. Regular container edits (using a snapshot taken after presence operations)
-7. Init container presence operations
-8. Init container edits (using a snapshot taken after presence operations)
+### Implementation Specifics
+While the general mutation model is consistent across primitives, specific primitives (like `Deployment`) may have a more detailed internal sequence for applying modifications to ensure structural consistency.
+
+Refer to the primitive-specific documentation for details:
+- [Deployment Primitives](/docs/primitives/deployment.md)
 
 ---
 
@@ -159,11 +153,11 @@ framework doesn't explicitly support. For these cases, every editor provides a `
 Workload and Task primitives come with "sane defaults" for lifecycle management, integrated directly into the Component status model:
 
 - **Convergence detection**: Automatically determines a resource's state based on its status extraction method.
-  - "Healthy", "Creating", "Updating", "Scaling" or "Failing" (Workload resources)
-  - "Completed", "TaskRunning", "TaskPending", or "TaskFailing" (Task resources)
-  - "Operational", "OperationPending", "OperationFailing" (Integration resources)
-- **Grace handling**: Monitors how long a resource has been non-ready and reports "Degraded" or "Down" if it exceeds a grace period.
-- **Suspension behavior**: Provides the logic for scaling resources down to zero (Workloads) or pausing/deleting (Tasks) and reporting the "Suspended" state.
+  - `Healthy`, `Creating`, `Updating`, `Scaling` or `Failing` (Workload resources via `Alive` interface)
+  - `Completed`, `TaskRunning`, `TaskPending`, or `TaskFailing` (Task resources via `Completable` interface)
+  - `Operational`, `OperationPending`, `OperationFailing` (Integration resources via `Operational` interface)
+- **Grace handling**: Monitors how long a resource has been non-ready and reports `Degraded` or `Down` if it exceeds a grace period (via `Graceful` interface).
+- **Suspension behavior**: Provides the logic for scaling resources down to zero (Workloads) or pausing/deleting (Tasks) and reporting the `Suspended`, `Suspending`, or `PendingSuspension` state (via `Suspendable` interface).
 - **Data extraction**: Automatically extracts internal resource data (e.g., generated credentials, endpoint URLs, or status fields) after synchronization, making it available for use by other components.
 
 These defaults can be overridden via the primitive's `Builder` if specialized behavior is required.
@@ -188,17 +182,25 @@ Custom resource wrappers can still leverage the framework's core interfaces (`co
 
 ### Creating a primitive resource
 ```go
-// Define a baseline Deployment
-deployment := &appsv1.Deployment{ ... }
+import "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
 
-// Use the builder to create a primitive
-resource, err := deployment.NewBuilder(deployment).
+// Define a baseline Deployment
+base := &appsv1.Deployment{ ... }
+
+// Use the NewBuilder function to create a primitive
+resource, err := deployment.NewBuilder(base).
     WithFieldApplicationFlavor(deployment.PreserveCurrentLabels).
     Build()
 ```
 
 ### Adding mutation edits
 ```go
+import (
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+)
+
 // Mutations are typically defined within Feature objects
 mutation := deployment.Mutation{
     Name: "add-proxy-sidecar",

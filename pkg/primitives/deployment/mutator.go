@@ -58,18 +58,18 @@ func NewMutator(current *appsv1.Deployment) *Mutator {
 	m := &Mutator{
 		current: current,
 	}
-	m.BeginFeature()
+	m.beginFeature()
 	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
+// beginFeature starts a new feature planning scope. All subsequent mutation
 // registrations will be grouped into this feature's plan until EndFeature
-// or another BeginFeature is called.
+// or another beginFeature is called.
 //
 // This is used to ensure that mutations from different features are applied
 // in registration order while maintaining internal category ordering within
 // each feature.
-func (m *Mutator) BeginFeature() {
+func (m *Mutator) beginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

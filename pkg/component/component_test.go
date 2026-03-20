@@ -506,6 +506,141 @@ var _ = Describe("Component Reconciler", func() {
 		})
 	})
 
+	Describe("Participation Modes", func() {
+		var resReq, resAux *MockAliveResource
+
+		BeforeEach(func() {
+			resReq = &MockAliveResource{}
+			resReq.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "req-res", Namespace: namespace},
+			}, nil)
+			resReq.On("Identity").Return("ConfigMap/req-res")
+			resReq.On("Mutate", mock.Anything).Return(nil)
+
+			resAux = &MockAliveResource{}
+			resAux.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "aux-res", Namespace: namespace},
+			}, nil)
+			resAux.On("Identity").Return("ConfigMap/aux-res")
+			resAux.On("Mutate", mock.Anything).Return(nil)
+		})
+
+		reconcileAndCheck := func(rReq, rAux *MockAliveResource, rReqStatus, rAuxStatus concepts.AliveConvergingStatus, expectedStatus metav1.ConditionStatus, expectedReason string) {
+			// Given
+			rReq.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: rReqStatus,
+				Reason: string(rReqStatus),
+			}, nil)
+
+			rAux.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: rAuxStatus,
+				Reason: string(rAuxStatus),
+			}, nil)
+
+			c, err := NewComponentBuilder().
+				WithName("test-comp").
+				WithConditionType("Ready").
+				WithResource(rReq, ResourceOptions{ParticipationMode: ParticipationModeRequired}).
+				WithResource(rAux, ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			// When
+			err = c.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			cond := c.GetCondition(owner)
+			Expect(cond.Status).To(Equal(expectedStatus))
+			Expect(cond.Reason).To(Equal(expectedReason))
+		}
+
+		It("should ignore health of auxiliary resources for aggregation", func() {
+			reconcileAndCheck(resReq, resAux, concepts.AliveConvergingStatusHealthy, concepts.AliveConvergingStatusFailing, metav1.ConditionTrue, string(Healthy))
+		})
+
+		It("should consider health of required resources for aggregation", func() {
+			reconcileAndCheck(resReq, resAux, concepts.AliveConvergingStatusFailing, concepts.AliveConvergingStatusHealthy, metav1.ConditionFalse, string(AliveFailing))
+		})
+
+		It("should use default participation modes based on resource concepts", func() {
+			// Given
+			resAlive := &MockAliveResource{}
+			resAlive.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "alive-res", Namespace: namespace},
+			}, nil)
+			resAlive.On("Identity").Return("ConfigMap/alive-res")
+			resAlive.On("Mutate", mock.Anything).Return(nil)
+			// Alive should be Required by default, so its failure should affect the component
+			resAlive.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusFailing,
+				Reason: "Failing",
+			}, nil)
+
+			resComp := &MockCompletableResource{}
+			resComp.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "comp-res", Namespace: namespace},
+			}, nil)
+			resComp.On("Identity").Return("ConfigMap/comp-res")
+			resComp.On("Mutate", mock.Anything).Return(nil)
+			// Completable should be Auxiliary by default, so its state shouldn't affect the component if not required
+			resComp.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
+				Status: concepts.CompletionStatusCompleted,
+				Reason: "Completed",
+			}, nil)
+
+			c, err := NewComponentBuilder().
+				WithName("test-comp").
+				WithConditionType("Ready").
+				WithResource(resAlive, ResourceOptions{}). // Default mode (Required)
+				WithResource(resComp, ResourceOptions{}).  // Default mode (Auxiliary)
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			// When
+			err = c.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			cond := c.GetCondition(owner)
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(string(AliveFailing)))
+
+			// Now check if it works when everything is healthy/completed
+			// We need a NEW component because the resource list is fixed at build time,
+			// and we want to ensure we're not hitting any sticky behavior from previous reconcile in the same test if not careful,
+			// though Reconcile should handle it.
+			// Actually, let's just use the same component but clear mocks.
+			resAlive.ExpectedCalls = nil
+			resComp.ExpectedCalls = nil
+
+			resAlive.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "alive-res", Namespace: namespace},
+			}, nil)
+			resAlive.On("Identity").Return("ConfigMap/alive-res")
+			resAlive.On("Mutate", mock.Anything).Return(nil)
+			resAlive.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusHealthy,
+				Reason: "Healthy",
+			}, nil)
+
+			resComp.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "comp-res", Namespace: namespace},
+			}, nil)
+			resComp.On("Identity").Return("ConfigMap/comp-res")
+			resComp.On("Mutate", mock.Anything).Return(nil)
+			resComp.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
+				Status: concepts.CompletionStatusCompleted,
+				Reason: "Completed",
+			}, nil)
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+			cond = c.GetCondition(owner)
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		})
+	})
+
 	Describe("Reconciliation with Concepts", func() {
 		DescribeTable("should handle resource concepts",
 			func(res Resource, name string, status any) {

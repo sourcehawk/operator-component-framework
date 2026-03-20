@@ -77,7 +77,7 @@ func TestResource_Mutate(t *testing.T) {
 	}
 
 	res, _ := NewBuilder(desired).
-		WithMutation(feature.Mutation[*Mutator]{
+		WithMutation(Mutation{
 			Name:    "test-mutation",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
@@ -114,7 +114,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	}
 
 	res, _ := NewBuilder(desired).
-		WithMutation(feature.Mutation[*Mutator]{
+		WithMutation(Mutation{
 			Name:    "feature-a",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
@@ -125,7 +125,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 				return nil
 			},
 		}).
-		WithMutation(feature.Mutation[*Mutator]{
+		WithMutation(Mutation{
 			Name:    "feature-b",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {

@@ -2,7 +2,7 @@
 package features
 
 import (
-	"github.com/sourcehawk/operator-component-framework/examples/component-architecture-basics/resources"
+	"github.com/sourcehawk/operator-component-framework/examples/custom-resource-implementation/resources"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	corev1 "k8s.io/api/core/v1"
 )

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -82,7 +81,7 @@ func TestBuilder(t *testing.T) {
 				Namespace: "test-ns",
 			},
 		}
-		m := feature.Mutation[*Mutator]{
+		m := Mutation{
 			Name: "test-mutation",
 		}
 		res, err := NewBuilder(deploy).

@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -21,7 +20,7 @@ type BaseResource[T client.Object, M MutatorApplier] struct {
 	DataExtractors []func(T) error
 
 	NewMutator func(T) M
-	Mutations  []feature.Mutation[M]
+	Mutations  []Mutation[M]
 
 	Suspender func(M) error
 

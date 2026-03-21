@@ -4,7 +4,6 @@ package generic
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -51,10 +50,10 @@ func TestIntegrationResource(t *testing.T) {
 	t.Run("Mutate and Suspend", func(t *testing.T) {
 		current := &corev1.Service{}
 		mutCalled := false
-		res.Mutations = []feature.Mutation[*mockMutator]{
+		res.Mutations = []Mutation[*mockMutator]{
 			{
 				Name:    "test-mut",
-				Feature: feature.NewResourceFeature("1.0.0", nil),
+				Feature: alwaysEnabled{},
 				Mutate: func(_ *mockMutator) error {
 					mutCalled = true
 					return nil

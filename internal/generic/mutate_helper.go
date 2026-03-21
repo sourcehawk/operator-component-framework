@@ -3,7 +3,6 @@ package generic
 import (
 	"fmt"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -19,7 +18,7 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	customApplicator FieldApplicator[T],
 	flavors []FieldApplicationFlavor[T],
 	newMutator func(T) M,
-	mutations []feature.Mutation[M],
+	mutations []Mutation[M],
 	suspender func(M) error,
 ) (T, error) {
 	currentTyped, ok := current.(T)

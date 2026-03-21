@@ -3,7 +3,6 @@ package generic
 
 import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,7 +34,7 @@ func NewIntegrationBuilder[T client.Object, M MutatorApplier](
 
 // WithMutation registers a typed feature mutation for the integration.
 func (b *IntegrationBuilder[T, M]) WithMutation(
-	m feature.Mutation[M],
+	m Mutation[M],
 ) *IntegrationBuilder[T, M] {
 	b.BaseBuilder.WithMutation(m)
 	return b

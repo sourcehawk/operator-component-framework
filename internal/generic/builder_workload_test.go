@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,9 +31,9 @@ func TestWorkloadBuilder(t *testing.T) {
 	})
 
 	t.Run("with mutation", func(t *testing.T) {
-		mut := feature.Mutation[*mockMutator]{
+		mut := Mutation[*mockMutator]{
 			Name:    "test-mutation",
-			Feature: feature.NewResourceFeature("1.0.0", nil),
+			Feature: alwaysEnabled{},
 			Mutate: func(_ *mockMutator) error {
 				return nil
 			},

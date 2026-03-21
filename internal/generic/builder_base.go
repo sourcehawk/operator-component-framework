@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,7 +28,7 @@ func (b *BaseBuilder[T, M]) InitBase(
 }
 
 // WithMutation registers a typed feature mutation for the resource.
-func (b *BaseBuilder[T, M]) WithMutation(m feature.Mutation[M]) {
+func (b *BaseBuilder[T, M]) WithMutation(m Mutation[M]) {
 	b.BaseRes.Mutations = append(b.BaseRes.Mutations, m)
 }
 

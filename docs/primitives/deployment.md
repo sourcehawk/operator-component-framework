@@ -230,13 +230,13 @@ m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEdito
 
 The `Mutator` also exposes convenience wrappers that target all containers at once:
 
-| Method | Equivalent to |
-|---|---|
-| `EnsureReplicas(n)` | `EditDeploymentSpec` → `SetReplicas(n)`  |
-| `EnsureContainerEnvVar(ev)` | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)` |
+| Method                        | Equivalent to                                                 |
+|-------------------------------|---------------------------------------------------------------|
+| `EnsureReplicas(n)`           | `EditDeploymentSpec` → `SetReplicas(n)`                       |
+| `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
 | `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
-| `EnsureContainerArg(arg)` | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)` |
-| `RemoveContainerArg(arg)` | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)` |
+| `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
+| `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
 ## Full Example: Adding a Sidecar
 

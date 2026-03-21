@@ -46,6 +46,32 @@ envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
 
+##@ AI Instructions
+
+AI_BASE  := .ai/base.md
+AI_REVIEW := .ai/review.md
+
+.PHONY: ai-instructions
+ai-instructions: CLAUDE.md .junie/guidelines.md .github/copilot-instructions.md .github/copilot-review-guidelines.md ## Generate all AI instruction files from source templates in .ai/
+
+CLAUDE.md: $(AI_BASE)
+	cp $< $@
+
+.junie/guidelines.md: $(AI_BASE)
+	@mkdir -p .junie
+	cp $< $@
+
+.github/copilot-review-guidelines.md: $(AI_REVIEW)
+	@mkdir -p .github
+	cp $< $@
+
+.github/copilot-instructions.md: $(AI_BASE) $(AI_REVIEW)
+	@mkdir -p .github
+	@{ \
+		cat $(AI_BASE); \
+		printf '\n\n---\n\n## Code Review\n\nWhen reviewing pull requests, apply the standards in [`.github/copilot-review-guidelines.md`](copilot-review-guidelines.md).\n'; \
+	} > $@
+
 ##@ Development
 
 .PHONY: fmt

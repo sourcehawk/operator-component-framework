@@ -2,156 +2,188 @@
 
 The `component` package provides a structured way to manage logical features in a Kubernetes operator by grouping related resources into **Components**.
 
-A Component acts as a behavioral unit responsible for reconciling multiple resources, managing their shared lifecycle, and reporting their aggregate health through a single condition on the owner CRD.
+A Component acts as a single behavioral unit: it reconciles multiple resources, manages their shared lifecycle, and reports their aggregate health through one condition on the owner CRD.
 
-## Purpose
+## Why Components Exist
 
-In complex operators, reconciliation logic often becomes fragmented across large controller loops. This leads to:
-*   **Controller Logic Fragmentation**: Reconcilers coordinating dozens of unrelated resources in a single function.
-*   **Inconsistent Lifecycle Handling**: Manual implementation of rollouts, suspension, and degradation for every feature.
-*   **Scattered Status Reporting**: Inconsistent ways of determining if a feature is truly "Ready" or "Degraded".
+In complex operators, reconciliation logic tends to become fragmented:
 
-Components solve these problems by providing:
-*   **Structured Reconciliation**: A clear, repeatable pattern for resource synchronization.
-*   **Lifecycle Orchestration**: Built-in support for progression, grace periods, and suspension.
-*   **Consistent Status Aggregation**: Automated calculation of a single, meaningful status condition from multiple underlying resources.
+- Controllers coordinate dozens of unrelated resources in a single function
+- Lifecycle logic (rollouts, suspension, degradation) is reimplemented for every feature
+- Status reporting varies across features, making it hard to reason about overall health
 
-## Component Responsibilities
+Components address this by providing a consistent pattern: one component per logical feature, one condition per component.
 
-A Component is responsible for:
-*   **Resource Reconciliation**: Ensuring all registered resources (Deployments, Services, ConfigMaps, etc.) match their desired state.
-*   **Health Aggregation**: Monitoring the status of each resource and determining the overall health of the logical feature.
-*   **Lifecycle Semantics**: Applying high-level behaviors like "waiting for readiness" (grace periods) or "scaling down" (suspension).
-*   **Status Exposure**: Maintaining exactly one `Condition` on the owner object's status that represents the component's state.
+## Building a Component
 
-## Resource Registration
-
-Resources are registered to a component using the `Builder`. The registration defines how the component interacts with each resource during reconciliation.
+Components are constructed through a builder. The builder collects resource registrations, configuration, and lifecycle flags, then produces an immutable `Component` ready for reconciliation.
 
 ```go
-builder := component.NewComponentBuilder().
+comp, err := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
-    WithResource(deployment, component.ResourceOptions{}). // Managed (Create/Update)
-    WithResource(configMap, component.ResourceOptions{ReadOnly: true}).  // Read-only
-    WithResource(oldService, component.ResourceOptions{Delete: true})   // Delete-only
+    WithResource(deployment, component.ResourceOptions{}).
+    WithResource(configMap, component.ResourceOptions{ReadOnly: true}).
+    WithResource(oldService, component.ResourceOptions{Delete: true}).
+    WithGracePeriod(5 * time.Minute).
+    Suspend(owner.Spec.Suspended).
+    Build()
+if err != nil {
+    return err
+}
 ```
 
-### Resource Flags
+### Resource Registration Options
 
-*   **Managed (Default)**: The component ensures the resource exists and matches the desired state. Its health contributes to the aggregate status.
-*   **Read-only**: The component only reads the resource's state (e.g., to extract data or check health) but never modifies it in the cluster.
-*   **Delete-only**: The component ensures the resource is removed from the cluster.
+Each resource is registered with a `ResourceOptions` struct that controls how the component interacts with it:
 
-These flags dictate the reconciliation phase: managed resources are updated, read-only resources are only fetched, and delete-only resources are removed.
+| Option                                                           | Behavior                                                                  |
+|------------------------------------------------------------------|---------------------------------------------------------------------------|
+| `ResourceOptions{}` (default)                                    | **Managed** — created or updated; health contributes to condition         |
+| `ResourceOptions{ReadOnly: true}`                                | **Read-only** — fetched but never modified; health still contributes      |
+| `ResourceOptions{Delete: true}`                                  | **Delete-only** — removed from the cluster; does not contribute to health |
+| `ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}` | Health is reported but does not block the component from becoming Ready   |
 
 ## Reconciliation Lifecycle
 
-The `Reconcile` method follows a conceptual four-phase process:
+`comp.Reconcile(ctx, recCtx)` runs a six-phase process on every call:
 
-1.  **Resource Synchronization**: All registered resources are processed. Managed resources are created or updated, delete-only resources are removed, and read-only resources are fetched.
-2.  **Lifecycle Evaluation**: The component determines the current lifecycle mode (Normal or Suspended) and evaluates the progress of resources (e.g., checking if a Deployment is still rolling out).
-3.  **Status Aggregation**: The individual states of all resources are collected and compared.
-4.  **Condition Update**: A single aggregate `Condition` is calculated and applied to the owner CRD's status.
+**Phase 1 — Suspension check**
+If the component is marked suspended, it calls `Suspend()` on all managed resources that support suspension (create/update resources, not read-only ones), updates the condition, then processes any pending deletions and returns. The remaining phases are skipped.
+
+**Phase 2 — Resource synchronization**
+All managed resources are created or updated to match their desired state.
+
+**Phase 3 — Read-only resource fetching**
+Read-only resources are fetched from the cluster so their current state is available for health evaluation.
+
+**Phase 4 — Data extraction**
+Any resource implementing `DataExtractable` has `ExtractData()` called to harvest data from the synchronized cluster state before condition evaluation.
+
+**Phase 5 — Status aggregation and condition update**
+The health of each resource is collected, the grace period is consulted, and a single aggregate condition is written to the owner object's status.
+
+**Phase 6 — Resource deletion**
+Resources registered for deletion are removed from the cluster.
 
 ## Status Model
 
-The framework categorizes component states into three functional groups:
+The status values a component reports depend on which lifecycle interfaces its resources implement. The component aggregates across all registered resources and surfaces the most critical state.
 
-### Converging States
-These states occur during normal operation as the component moves toward a steady state.
-*   **Creating**: Resources are being provisioned for the first time.
-*   **Updating**: Existing resources are being modified.
-*   **Scaling**: Resources (like Deployments) are changing their replica counts.
-*   **Ready**: All resources are healthy and match the desired state.
+### Alive Resources (`Alive` interface)
+
+Reported by long-running workloads (Deployments, StatefulSets, DaemonSets):
+
+| State      | Meaning                                                  |
+|------------|----------------------------------------------------------|
+| `Healthy`  | The resource has reached its desired state               |
+| `Creating` | The resource is being provisioned for the first time     |
+| `Updating` | The resource is being modified with new configuration    |
+| `Scaling`  | The resource is changing its replica count               |
+| `Failing`  | The resource is failing to converge to its desired state |
+
+### Completable Resources (`Completable` interface)
+
+Reported by run-to-completion resources (Jobs, tasks). These default to `ParticipationModeAuxiliary`:
+
+| State         | Meaning                             |
+|---------------|-------------------------------------|
+| `Completed`   | The resource finished successfully  |
+| `TaskRunning` | The resource is currently executing |
+| `TaskPending` | The resource is waiting to start    |
+| `TaskFailing` | The resource finished with an error |
+
+### Operational Resources (`Operational` interface)
+
+Reported by integration resources whose readiness depends on external systems (Services, Ingresses, Gateways, CronJobs):
+
+| State              | Meaning                                           |
+|--------------------|---------------------------------------------------|
+| `Operational`      | The resource is fully operational                 |
+| `OperationPending` | The resource is waiting on an external dependency |
+| `OperationFailing` | The resource failed to reach an operational state |
+
+### Static Resources (no interface)
+
+Resources that implement none of the above interfaces are considered ready as long as they exist in the cluster.
 
 ### Grace States
-These states are triggered when a component fails to reach "Ready" within its configured grace period.
-*   **Ready**: All resources are healthy.
-*   **Degraded**: The component is functional but some non-critical resources are unhealthy or it's taking longer than expected to converge.
-*   **Down**: Critical resources are failing or the component is completely non-functional.
+
+When a component has a grace period configured and a `Graceful` resource has not reached its target state within that period, the `Graceful` interface determines the post-expiry severity:
+
+| State      | Meaning                                                                            |
+|------------|------------------------------------------------------------------------------------|
+| `Healthy`  | The resource is healthy (grace period expired without issue)                       |
+| `Degraded` | The resource is partially functional or convergence is taking longer than expected |
+| `Down`     | The resource is completely non-functional                                          |
 
 ### Suspension States
-These states manage the intentional deactivation of a component.
-*   **PendingSuspension**: The suspension request is acknowledged, but work hasn't started.
-*   **Suspending**: Resources are actively being scaled down or cleaned up.
-*   **Suspended**: All resources have reached their suspended state (e.g., scaled to 0).
+
+Reported during intentional deactivation:
+
+| State               | Meaning                                                |
+|---------------------|--------------------------------------------------------|
+| `PendingSuspension` | Suspension is acknowledged but has not started         |
+| `Suspending`        | Resources are actively being scaled down or cleaned up |
+| `Suspended`         | All resources have reached their suspended state       |
+
+### Condition Priority
+
+When aggregating across multiple resources, the most critical state wins:
+
+1. `Error` / `Down` / `Degraded` — something is wrong
+2. Suspension states — the component is intentionally inactive
+3. Converging states (`Creating`, `Updating`, `Scaling`, `TaskRunning`, `TaskPending`, `OperationPending`) — the component is progressing
+4. `Healthy` / `Completed` / `Operational` — all resources are in their target state
 
 ## Grace Period
 
-A **Grace Period** defines how long a component is allowed to remain in "progressing" states (Creating, Updating, Scaling) before it is considered unhealthy.
+The grace period defines how long a component may remain in a converging state (`Creating`, `Updating`, `Scaling`) before transitioning to `Degraded` or `Down`.
 
-*   During the grace period, the component reports its actual converging state (e.g., `Updating`).
-*   After the grace period expires, if the component is still not `Ready`, the framework transitions the condition to **Degraded** or **Down** based on the resource health.
+```go
+component.NewComponentBuilder().
+    WithGracePeriod(5 * time.Minute).
+    // ...
+```
 
-This prevents premature "False" readiness reports during normal operations like rolling updates.
+During the grace period the component reports its real converging state, not a failure. After the period expires, if the component is still not `Ready`, the framework escalates to `Degraded` or `Down` based on resource health.
+
+This prevents spurious failure alerts during normal operations like rolling updates.
 
 ## Suspension Lifecycle
 
-Suspension allows an operator to intentionally "turn off" a component without deleting its configuration.
+Suspension allows a component to be intentionally deactivated without deleting its configuration. When `Suspend(true)` is set on the builder:
 
-When a component is marked as suspended:
-1.  It calls `Suspend()` on all `Suspendable` resources.
-2.  Resources may scale down (e.g., Deployments to 0 replicas) or perform cleanup.
-3.  The component tracks the `SuspensionStatus` of each resource.
-4.  Once all resources report `Suspended`, the component condition transitions to `Suspended`.
+1. The component calls `Suspend()` on all `Suspendable` resources.
+2. Each resource performs its suspension behavior — typically scaling to zero replicas.
+3. The component polls `SuspensionStatus()` on each resource.
+4. Once all resources report `Suspended`, the condition transitions to `Suspended`.
 
-## Condition Priority
-
-When aggregating multiple resources, the framework uses a priority system to ensure the most critical information is reported. Failure states take precedence over progressing states, which take precedence over "Ready".
-
-Conceptual priority (highest to lowest):
-1.  **Error / Down / Degraded**: Something is wrong.
-2.  **Suspension States**: The component is intentionally inactive.
-3.  **Converging States**: The component is working toward readiness.
-4.  **Ready**: Everything is healthy.
+Resources that are not `Suspendable` are left in place.
 
 ## ReconcileContext
 
-The `ReconcileContext` is passed to the `Reconcile` method and provides all dependencies required for reconciliation:
-*   **Kubernetes Client**: For interacting with the API server.
-*   **Scheme**: For resource GVK lookups.
-*   **Event Recorder**: For emitting Kubernetes Events.
-*   **Metrics**: For recording component-level health metrics.
-*   **Owner Object**: The CRD that owns the component.
+`ReconcileContext` carries all dependencies for a reconciliation pass. Pass it from your controller on each call:
 
-Dependencies are passed explicitly to ensure the component remains testable and decoupled from global state or specific controller-runtime implementation details.
-
-## Migration Note
-
-The `Component` builder API was recently updated to improve type safety and extensibility.
-
-### NewComponentBuilder
-`NewComponentBuilder()` no longer accepts a `suspended` boolean flag. Suspension state is now managed using the `.Suspend(bool)` method on the builder.
-
-**Old:**
 ```go
-builder := component.NewComponentBuilder(owner.Spec.Suspended)
+recCtx := component.ReconcileContext{
+    Client:   r.Client,    // sigs.k8s.io/controller-runtime/pkg/client
+    Scheme:   r.Scheme,    // *runtime.Scheme
+    Recorder: r.Recorder,  // record.EventRecorder
+    Owner:    owner,       // the CRD that owns this component
+}
+
+err = comp.Reconcile(ctx, recCtx)
 ```
 
-**New:**
-```go
-builder := component.NewComponentBuilder().Suspend(owner.Spec.Suspended)
-```
+Dependencies are passed explicitly so components remain testable and decoupled from global state.
 
-### WithResource
-`WithResource(resource, delete, readOnly)` has been replaced by `WithResource(resource, options)`. The new signature uses a `ResourceOptions` struct, which allows for more granular control, including health aggregation participation modes.
+## Best Practices
 
-**Old:**
-```go
-builder.WithResource(res, false, false) // Managed
-builder.WithResource(res, false, true)  // Read-only
-builder.WithResource(res, true, false)  // Delete-only
-```
+**Keep controllers thin.** The controller's job is to fetch the owner CRD, decide which components should exist, and call `Reconcile` on each. Resource-level logic belongs in the component and its primitives.
 
-**New:**
-```go
-builder.WithResource(res, component.ResourceOptions{})                    // Managed
-builder.WithResource(res, component.ResourceOptions{ReadOnly: true})       // Read-only
-builder.WithResource(res, component.ResourceOptions{Delete: true})         // Delete-only
-```
+**One component per user-visible feature.** If you want a `WebInterfaceReady` and a `DatabaseReady` condition on your CRD, those are two separate components.
 
-*   **Keep Controllers Thin**: The controller should only be responsible for fetching the owner CRD and invoking component reconciliation.
-*   **Model Logical Features**: Create one component per user-visible feature (e.g., "API", "UI", "Database").
-*   **Group by Lifecycle**: Put resources that must live and die together into the same component.
-*   **Split for Granularity**: If two features should report separate "Ready" conditions in the CRD status, they should be separate components.
+**Group by lifecycle.** Resources that must live and die together belong in the same component. If they have independent lifecycles, split them.
+
+**Use `ParticipationModeAuxiliary` for non-critical resources.** A metrics exporter sidecar should not block your primary component from becoming `Ready`. Note that `Completable` resources (e.g. Jobs) default to `ParticipationModeAuxiliary` automatically — all other resource types default to `ParticipationModeRequired`.

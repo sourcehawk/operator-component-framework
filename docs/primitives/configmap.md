@@ -259,6 +259,81 @@ resource, err := configmap.NewBuilder(base).
 
 Multiple flavors can be registered and run in registration order.
 
+## Data Hash
+
+Two utilities are provided for computing a stable SHA-256 hash of a ConfigMap's `.data` and `.binaryData` fields. A common use is to annotate a Deployment's pod template with this hash so that a configuration change triggers a rolling restart.
+
+### DataHash
+
+`DataHash` hashes a ConfigMap value you already have — for example, one read from the cluster:
+
+```go
+hash, err := configmap.DataHash(cm)
+```
+
+The hash is derived from the canonical JSON encoding of `.data` and `.binaryData` with map keys sorted alphabetically, so it is deterministic regardless of insertion order. Metadata fields (labels, annotations, etc.) are excluded.
+
+### Resource.DesiredHash
+
+`DesiredHash` computes the hash of what the operator *will write* — that is, the base object with all registered mutations applied — without performing a cluster read and without a second reconcile cycle:
+
+```go
+cmResource, err := configmap.NewBuilder(base).
+    WithMutation(BaseConfigMutation(owner.Spec.Version)).
+    WithMutation(TracingMutation(owner.Spec.EnableTracing)).
+    Build()
+
+hash, err := cmResource.DesiredHash()
+```
+
+The hash covers only operator-controlled fields. Entries preserved by flavors from the live cluster (e.g. `PreserveExternalEntries`) are excluded — only changes to operator-owned content will change the hash.
+
+### Annotating a Deployment pod template (single-pass pattern)
+
+Build the configmap resource first, compute the hash, then pass it into the deployment resource factory. Both resources are registered with the same component, so the configmap is reconciled first and the deployment sees the correct hash on every cycle:
+
+```go
+// In the controller:
+cmResource, err := resources.NewConfigMapResource(owner)
+if err != nil {
+    return err
+}
+
+hash, err := cmResource.DesiredHash()
+if err != nil {
+    return err
+}
+
+deployResource, err := resources.NewDeploymentResource(owner, hash)
+if err != nil {
+    return err
+}
+
+comp, err := component.NewComponentBuilder().
+    WithResource(cmResource, component.ResourceOptions{}).  // reconciled first
+    WithResource(deployResource, component.ResourceOptions{}).
+    Build()
+```
+
+```go
+// In NewDeploymentResource, use the hash in a mutation:
+func ChecksumAnnotationMutation(version, configHash string) deployment.Mutation {
+    return deployment.Mutation{
+        Name:    "config-checksum",
+        Feature: feature.NewResourceFeature(version, nil),
+        Mutate: func(m *deployment.Mutator) error {
+            m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
+                e.EnsureAnnotation("checksum/config", configHash)
+                return nil
+            })
+            return nil
+        },
+    }
+}
+```
+
+When the configmap mutations change (version upgrade, feature toggle), `DesiredHash` returns a different value on the same reconcile cycle, the pod template annotation changes, and Kubernetes triggers a rolling restart.
+
 ## Full Example: Feature-Composed Configuration
 
 ```go

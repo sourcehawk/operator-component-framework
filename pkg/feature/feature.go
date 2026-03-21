@@ -1,7 +1,50 @@
 // Package feature provides mechanisms for version-gated feature mutations.
 package feature
 
-import "github.com/sourcehawk/operator-component-framework/internal/generic"
+import "fmt"
+
+// MutationFeature is an optional feature gate for a Mutation.
+// If Enabled returns false, the mutation is not applied.
+type MutationFeature interface {
+	Enabled() (bool, error)
+}
+
+// Mutation defines a conditional mutation applied to an object of type T
+// only if its associated feature gate is enabled.
+//
+// If Feature is nil, the mutation is skipped entirely.
+type Mutation[T any] struct {
+	// Name is a human-readable identifier used for error reporting.
+	Name string
+	// Feature determines whether the mutation should be applied.
+	// A nil Feature causes the mutation to be skipped.
+	Feature MutationFeature
+	// Mutate is the function that applies the changes to the object.
+	Mutate func(T) error
+}
+
+// ApplyIntent applies the mutation to obj if the feature is enabled.
+// If Feature is nil or disabled, it returns nil without performing any action.
+// If the mutation is enabled but the Mutate function is nil, it returns an error.
+func (m *Mutation[T]) ApplyIntent(obj T) error {
+	if m.Feature == nil {
+		return nil
+	}
+
+	enabled, err := m.Feature.Enabled()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+
+	if m.Mutate == nil {
+		return fmt.Errorf("mutation handler of %s is nil", m.Name)
+	}
+
+	return m.Mutate(obj)
+}
 
 // VersionConstraint defines a condition based on a semantic version.
 // Implementations should report whether a feature is enabled for the given version string.
@@ -42,8 +85,7 @@ func NewResourceFeature(currentVersion string, versionConstraints []VersionConst
 	}
 }
 
-// When adds a boolean condition that must be true for the feature
-// to be enabled.
+// When adds a boolean condition that must be true for the feature to be enabled.
 //
 // Calls are additive: all values passed through When must be true for Enabled()
 // to return true.
@@ -76,11 +118,3 @@ func (f *ResourceFeature) Enabled() (bool, error) {
 
 	return true, nil
 }
-
-// Mutation defines a mutation that is applied to an object of type T
-// only if its associated feature gate is enabled.
-//
-// Mutation is an alias for [generic.Mutation]. The Feature field accepts any
-// value implementing [generic.MutationFeature], including *ResourceFeature.
-// A nil Feature causes the mutation to be skipped.
-type Mutation[T any] = generic.Mutation[T]

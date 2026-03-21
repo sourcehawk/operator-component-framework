@@ -77,6 +77,33 @@ func (r *BaseResource[T, M]) ApplyBaselineAndFlavors(current T) (T, error) {
 	)
 }
 
+// PreviewObject returns the object as it would appear after the field applicator, flavors,
+// and feature mutations have been applied, without modifying the resource's internal DesiredObject.
+//
+// The desired object is used as a stand-in for the current cluster state. Flavors that
+// depend on live cluster content (e.g. PreserveExternalEntries) will see only the
+// operator-owned baseline — externally-managed fields are excluded from the result.
+//
+// Suspension mutations are not applied; the preview reflects content state only.
+func (r *BaseResource[T, M]) PreviewObject() (T, error) {
+	currentCopy, ok := r.DesiredObject.DeepCopyObject().(T)
+	if !ok {
+		var zero T
+		return zero, fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
+	}
+
+	return ApplyMutations(
+		currentCopy,
+		r.DesiredObject,
+		r.DefaultFieldApplicator,
+		r.CustomFieldApplicator,
+		r.FieldFlavors,
+		r.NewMutator,
+		r.Mutations,
+		nil,
+	)
+}
+
 // ExtractData runs all registered data extractors against a deep copy of the reconciled object.
 func (r *BaseResource[T, M]) ExtractData() error {
 	copyObj, ok := r.DesiredObject.DeepCopyObject().(T)

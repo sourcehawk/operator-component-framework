@@ -222,17 +222,17 @@ func (m *Mutator) EditPodTemplateMetadata(edit func(*editors.ObjectMetaEditor) e
 	m.active.podTemplateMetadataEdits = append(m.active.podTemplateMetadataEdits, edit)
 }
 
-// EditDeploymentMetadata records a mutation for the Deployment's own metadata.
+// EditObjectMetadata records a mutation for the Deployment's own metadata.
 //
 // Planning:
-// All deployment metadata edits are stored and executed during Apply().
+// All object metadata edits are stored and executed during Apply().
 //
 // Execution Order:
 //   - Within a feature, edits are applied in registration order.
-//   - Overall, deployment metadata edits are executed AFTER replica edits but BEFORE pod template/spec/container edits within the same feature.
+//   - Overall, object metadata edits are executed BEFORE all other categories within the same feature.
 //
 // If the edit function is nil, the registration is ignored.
-func (m *Mutator) EditDeploymentMetadata(edit func(*editors.ObjectMetaEditor) error) {
+func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
 	}
@@ -318,7 +318,7 @@ func (m *Mutator) RemoveContainerArgs(args []string) {
 // Execution Order:
 // Features are applied in the order they were registered.
 // Within each feature, mutations are applied in this fixed category order:
-// 1. Deployment metadata edits
+// 1. Object metadata edits
 // 2. DeploymentSpec edits
 // 3. Pod template metadata edits
 // 4. Pod spec edits
@@ -341,7 +341,7 @@ func (m *Mutator) RemoveContainerArgs(args []string) {
 // Selectors and edit functions are executed during this pass.
 func (m *Mutator) Apply() error {
 	for _, plan := range m.plans {
-		// 1. Deployment metadata
+		// 1. Object metadata
 		if len(plan.deploymentMetadataEdits) > 0 {
 			editor := editors.NewObjectMetaEditor(&m.current.ObjectMeta)
 			for _, edit := range plan.deploymentMetadataEdits {

@@ -195,13 +195,13 @@ m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEdito
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditDeploymentMetadata` to target the `Deployment` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `Deployment` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
 ```go
 // On the Deployment itself
-m.EditDeploymentMetadata(func(e *editors.ObjectMetaEditor) error {
+m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
     e.EnsureLabel("app.kubernetes.io/version", version)
     return nil
 })
@@ -232,7 +232,7 @@ The `Mutator` also exposes convenience wrappers that target all containers at on
 
 | Method | Equivalent to |
 |---|---|
-| `EnsureReplicas(n)` | `EditDeploymentSpec` → `SetReplicas(n)` |
+| `EnsureReplicas(n)` | `EditDeploymentSpec` → `SetReplicas(n)`  |
 | `EnsureContainerEnvVar(ev)` | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)` |
 | `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
 | `EnsureContainerArg(arg)` | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)` |

@@ -53,7 +53,7 @@ func CustomSuspendMutation() func(*deployment.Mutator) error {
 		}
 
 		// Additionally, add an annotation indicating when it was suspended.
-		m.EditDeploymentMetadata(func(meta *editors.ObjectMetaEditor) error {
+		m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
 			meta.EnsureAnnotation("example.io/suspended-at", "2026-03-20")
 			return nil
 		})

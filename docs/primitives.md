@@ -81,7 +81,7 @@ Flavors allow primitives to coexist in clusters where multiple controllers touch
 
 ## Mutation System
 
-Workload and Task primitives use a **plan-and-apply pattern**: instead of mutating the Kubernetes object directly, mutations record their intent through typed editors, which are applied in a single controlled pass.
+Primitives use a **plan-and-apply pattern**: instead of mutating the Kubernetes object directly, mutations record their intent through typed editors, which are applied in a single controlled pass.
 
 This design:
 - **Prevents uncontrolled mutation** — changes are staged before any object is touched
@@ -98,7 +98,8 @@ Editors provide scoped, typed APIs for modifying specific parts of a resource:
 | `ContainerEditor`      | Environment variables, arguments, resource limits, ports                |
 | `PodSpecEditor`        | Volumes, tolerations, node selectors, service account, security context |
 | `DeploymentSpecEditor` | Replicas, update strategy, label selectors                              |
-| `ObjectMetaEditor`     | Labels and annotations on the object or pod template                    |
+| `ConfigMapDataEditor`  | `.data` entries — set, remove, deep-merge YAML patches, raw access      |
+| `ObjectMetaEditor`     | Labels and annotations on any Kubernetes object                         |
 
 Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the underlying Kubernetes struct while keeping the mutation scoped to that editor's target.
 
@@ -114,6 +115,13 @@ selectors.ContainerAtIndex(0)                // container at a specific index
 ```
 
 Selectors are evaluated against the container list *after* any presence operations (add/remove) within the same mutation have been applied. This means a single mutation can safely add a container and then configure it.
+
+## Built-in Primitives
+
+| Primitive                            | Category   | Documentation                           |
+|--------------------------------------|------------|-----------------------------------------|
+| `pkg/primitives/deployment`          | Workload   | [deployment.md](primitives/deployment.md) |
+| `pkg/primitives/configmap`           | Static     | [configmap.md](primitives/configmap.md)   |
 
 ## Usage Examples
 

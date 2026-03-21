@@ -563,18 +563,18 @@ var _ = Describe("Component Reconciler", func() {
 			reconcileAndCheck(resReq, resAux, concepts.AliveConvergingStatusFailing, concepts.AliveConvergingStatusHealthy, metav1.ConditionFalse, string(AliveFailing))
 		})
 
-		It("should use default participation modes based on resource concepts", func() {
-			// Given
+		It("should use ParticipationModeRequired as default for all resource types", func() {
+			// Given: an Alive resource that is healthy and a Completable resource that is still running.
+			// Both default to Required, so the still-running Completable should block the component.
 			resAlive := &MockAliveResource{}
 			resAlive.On("Object").Return(&corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Name: "alive-res", Namespace: namespace},
 			}, nil)
 			resAlive.On("Identity").Return("ConfigMap/alive-res")
 			resAlive.On("Mutate", mock.Anything).Return(nil)
-			// Alive should be Required by default, so its failure should affect the component
 			resAlive.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
-				Status: concepts.AliveConvergingStatusFailing,
-				Reason: "Failing",
+				Status: concepts.AliveConvergingStatusHealthy,
+				Reason: "Healthy",
 			}, nil)
 
 			resComp := &MockCompletableResource{}
@@ -583,34 +583,30 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			resComp.On("Identity").Return("ConfigMap/comp-res")
 			resComp.On("Mutate", mock.Anything).Return(nil)
-			// Completable should be Auxiliary by default, so its state shouldn't affect the component if not required
+			// Completable is Required by default, so a running task should block the component
 			resComp.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
-				Status: concepts.CompletionStatusCompleted,
-				Reason: "Completed",
+				Status: concepts.CompletionStatusRunning,
+				Reason: "Running",
 			}, nil)
 
 			c, err := NewComponentBuilder().
 				WithName("test-comp").
 				WithConditionType("Ready").
 				WithResource(resAlive, ResourceOptions{}). // Default mode (Required)
-				WithResource(resComp, ResourceOptions{}).  // Default mode (Auxiliary)
+				WithResource(resComp, ResourceOptions{}).  // Default mode (Required)
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
 			// When
 			err = c.Reconcile(ctx, recCtx)
 
-			// Then
+			// Then: component is not ready because the Completable resource is still running
 			Expect(err).NotTo(HaveOccurred())
 			cond := c.GetCondition(owner)
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(string(AliveFailing)))
+			Expect(cond.Reason).To(Equal(string(CompletionRunning)))
 
-			// Now check if it works when everything is healthy/completed
-			// We need a NEW component because the resource list is fixed at build time,
-			// and we want to ensure we're not hitting any sticky behavior from previous reconcile in the same test if not careful,
-			// though Reconcile should handle it.
-			// Actually, let's just use the same component but clear mocks.
+			// When both resources are healthy/completed, the component becomes Ready
 			resAlive.ExpectedCalls = nil
 			resComp.ExpectedCalls = nil
 

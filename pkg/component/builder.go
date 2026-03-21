@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 )
 
 // ResourceOptions defines configuration for how a Kubernetes resource is managed
@@ -18,8 +16,7 @@ type ResourceOptions struct {
 	// ReadOnly If true, the resource is read-only
 	ReadOnly bool
 	// ParticipationMode describes in what way the resource participates in the component health aggregation.
-	// By default, Alive and Operational resources use ParticipationModeRequired, while Completable resources
-	// are ParticipationModeAuxiliary when not otherwise specified.
+	// All resources default to ParticipationModeRequired when not otherwise specified.
 	//
 	// If the resource is static, e.g. not implementing any of the interfaces mentioned, the mode has no effect,
 	// since the resource's status is determined by whether it can be applied or not.
@@ -142,11 +139,7 @@ func (b *Builder) WithResource(resource Resource, options ResourceOptions) *Buil
 	b.component.resourceLookup[resource.Identity()] = resource
 
 	if options.ParticipationMode == "" {
-		if _, ok := resource.(concepts.Completable); ok {
-			options.ParticipationMode = ParticipationModeAuxiliary
-		} else {
-			options.ParticipationMode = ParticipationModeRequired
-		}
+		options.ParticipationMode = ParticipationModeRequired
 	}
 
 	b.component.participationLookup[resource.Identity()] = options.ParticipationMode

@@ -9,34 +9,35 @@ type MutationFeature interface {
 	Enabled() (bool, error)
 }
 
-// Mutation defines a conditional mutation applied to an object of type T
-// only if its associated feature gate is enabled.
+// Mutation defines a conditional mutation applied to an object of type T.
 //
-// If Feature is nil, the mutation is skipped entirely.
+// If Feature is nil the mutation is applied unconditionally on every
+// reconciliation. If Feature is non-nil the mutation is applied only when
+// Feature.Enabled() returns true.
 type Mutation[T any] struct {
 	// Name is a human-readable identifier used for error reporting.
 	Name string
-	// Feature determines whether the mutation should be applied.
-	// A nil Feature causes the mutation to be skipped.
+	// Feature gates this mutation. If nil, the mutation is applied unconditionally.
 	Feature MutationFeature
 	// Mutate is the function that applies the changes to the object.
 	Mutate func(T) error
 }
 
-// ApplyIntent applies the mutation to obj if the feature is enabled.
-// If Feature is nil or disabled, it returns nil without performing any action.
-// If the mutation is enabled but the Mutate function is nil, it returns an error.
+// ApplyIntent applies the mutation to obj.
+//
+// If Feature is nil the mutation is applied unconditionally.
+// If Feature is non-nil and disabled, ApplyIntent returns nil without
+// performing any action.
+// If the mutation would be applied but Mutate is nil, it returns an error.
 func (m *Mutation[T]) ApplyIntent(obj T) error {
-	if m.Feature == nil {
-		return nil
-	}
-
-	enabled, err := m.Feature.Enabled()
-	if err != nil {
-		return err
-	}
-	if !enabled {
-		return nil
+	if m.Feature != nil {
+		enabled, err := m.Feature.Enabled()
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			return nil
+		}
 	}
 
 	if m.Mutate == nil {

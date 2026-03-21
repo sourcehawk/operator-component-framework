@@ -53,7 +53,7 @@ resource, err := configmap.NewBuilder(base).
 
 Mutations are the primary mechanism for modifying a `ConfigMap` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
 
-A mutation requires a `Feature` to control when it applies. A feature with no version constraints and no `When()` conditions is always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) configmap.Mutation {
@@ -384,7 +384,7 @@ When `MetricsEnabled` is true, the final `app.yaml` entry will contain the merge
 
 ## Guidance
 
-**Every mutation requires a `Feature`.** A `Mutation` with `Feature: nil` is never applied. Use `feature.NewResourceFeature(version, nil)` for an unconditional mutation, and chain `.When(bool)` for boolean gating.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
 
 **Use `MergeYAML` for composable config files.** When multiple features need to contribute to the same YAML entry, `MergeYAML` lets each feature contribute its section independently. Using `SetEntry` in multiple features for the same key means the last registration wins — only use that when replacement is the intended semantics.
 

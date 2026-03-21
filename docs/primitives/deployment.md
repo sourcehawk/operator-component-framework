@@ -37,7 +37,7 @@ resource, err := deployment.NewBuilder(base).
 
 Mutations are the primary mechanism for modifying a `Deployment` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
 
-A mutation requires a `Feature` to control when it applies. A feature with no version constraints and no `When()` conditions is always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) deployment.Mutation {
@@ -282,7 +282,7 @@ Note: although `EditPodSpec` is called after `EnsureContainer` in the source, it
 
 ## Guidance
 
-**Every mutation requires a `Feature`.** A `Mutation` with `Feature: nil` is never applied. Use `feature.NewResourceFeature(version, nil)` for an unconditional mutation, and chain `.When(bool)` for boolean gating.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first. The internal ordering within each mutation handles intra-mutation dependencies automatically.
 

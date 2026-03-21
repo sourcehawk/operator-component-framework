@@ -43,7 +43,7 @@ Controller
 - **Version-gated mutations** to apply backward-compatibility patches only when needed
 - **Composable mutation layers** that stack without interfering with each other
 - **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`, `DataExtractable`) covering the full range of Kubernetes workload types
-- **Typed mutation editors** for `Deployment` specs, pod specs, containers, and object metadata
+- **Typed mutation editors** for kubernetes resource primitives
 - **Metrics and event recording** integrations out of the box
 
 ## Installation

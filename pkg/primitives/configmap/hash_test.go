@@ -94,6 +94,20 @@ func TestDataHash_DataAndBinaryDataContributeSeparately(t *testing.T) {
 	assert.NotEqual(t, h1, h2)
 }
 
+func TestDataHash_NilAndEmptyMapHashIdentically(t *testing.T) {
+	// A ConfigMap with nil .data/.binaryData must hash the same as one with
+	// explicitly empty maps — both represent "no entries".
+	cmNil := newHashTestCM(nil, nil)
+	cmEmpty := newHashTestCM(map[string]string{}, map[string][]byte{})
+
+	hNil, err := DataHash(cmNil)
+	require.NoError(t, err)
+	hEmpty, err := DataHash(cmEmpty)
+	require.NoError(t, err)
+
+	assert.Equal(t, hNil, hEmpty, "nil and empty maps must produce the same hash")
+}
+
 // --- Edge cases ---
 
 func TestDataHash_EmptyConfigMap(t *testing.T) {

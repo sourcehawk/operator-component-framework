@@ -290,11 +290,15 @@ The hash covers only operator-controlled fields. Entries preserved by flavors fr
 
 ### Annotating a Deployment pod template (single-pass pattern)
 
-Build the configmap resource first, compute the hash, then pass it into the deployment resource factory. Both resources are registered with the same component, so the configmap is reconciled first and the deployment sees the correct hash on every cycle:
+Build the configmap resource first, compute the hash, then pass it into the deployment resource factory. Both resources are registered with the same component, so the configmap is reconciled first and the deployment sees the correct hash on every cycle.
+
+`DesiredHash` is defined on `*configmap.Resource`, not on the `component.Resource` interface, so keep the concrete type when you need to call it:
 
 ```go
-// In the controller:
-cmResource, err := resources.NewConfigMapResource(owner)
+cmResource, err := configmap.NewBuilder(base).
+    WithMutation(features.BaseConfigMutation(owner.Spec.Version)).
+    WithMutation(features.TracingMutation(owner.Spec.Version, owner.Spec.EnableTracing)).
+    Build()
 if err != nil {
     return err
 }

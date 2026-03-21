@@ -28,12 +28,23 @@ import (
 //	    return nil
 //	})
 func DataHash(cm corev1.ConfigMap) (string, error) {
-	type payload struct {
-		Data       map[string]string `json:"data,omitempty"`
-		BinaryData map[string][]byte `json:"binaryData,omitempty"`
+	// Normalize nil to empty so that a ConfigMap with no .data/.binaryData hashes
+	// identically to one with an empty map — both represent "no entries".
+	data := cm.Data
+	if data == nil {
+		data = map[string]string{}
+	}
+	binaryData := cm.BinaryData
+	if binaryData == nil {
+		binaryData = map[string][]byte{}
 	}
 
-	p := payload{Data: cm.Data, BinaryData: cm.BinaryData}
+	type payload struct {
+		Data       map[string]string `json:"data"`
+		BinaryData map[string][]byte `json:"binaryData"`
+	}
+
+	p := payload{Data: data, BinaryData: binaryData}
 
 	encoded, err := json.Marshal(p)
 	if err != nil {

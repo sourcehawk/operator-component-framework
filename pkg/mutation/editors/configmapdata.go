@@ -19,25 +19,43 @@ type ConfigMapDataEditor struct {
 
 // NewConfigMapDataEditor creates a new ConfigMapDataEditor wrapping the given
 // .data and .binaryData map pointers.
+//
+// Either pointer may be nil, in which case the editor allocates a local
+// zero-value map for that field. Operations on that field will succeed but
+// writes will not propagate back to any external map. Pass non-nil pointers
+// (e.g. &cm.Data, &cm.BinaryData) when the changes must be reflected on the
+// object. The maps the pointers refer to may themselves be nil; methods that
+// write to a map initialise it automatically.
 func NewConfigMapDataEditor(data *map[string]string, binaryData *map[string][]byte) *ConfigMapDataEditor {
+	if data == nil {
+		var d map[string]string
+		data = &d
+	}
+	if binaryData == nil {
+		var bd map[string][]byte
+		binaryData = &bd
+	}
 	return &ConfigMapDataEditor{data: data, binaryData: binaryData}
 }
 
-// Raw returns the underlying .data map directly.
+// Raw returns the underlying .data map directly, initialising it if necessary.
 //
 // This is an escape hatch for free-form editing when none of the structured
-// methods are sufficient. The caller is responsible for nil-initialising the
-// map before writing if the ConfigMap was created without .data.
+// methods are sufficient.
 func (e *ConfigMapDataEditor) Raw() map[string]string {
+	if *e.data == nil {
+		*e.data = make(map[string]string)
+	}
 	return *e.data
 }
 
-// RawBinary returns the underlying .binaryData map directly.
+// RawBinary returns the underlying .binaryData map directly, initialising it if necessary.
 //
-// This is an escape hatch for free-form editing. The caller is responsible for
-// nil-initialising the map before writing if the ConfigMap was created without
-// .binaryData.
+// This is an escape hatch for free-form editing.
 func (e *ConfigMapDataEditor) RawBinary() map[string][]byte {
+	if *e.binaryData == nil {
+		*e.binaryData = make(map[string][]byte)
+	}
 	return *e.binaryData
 }
 

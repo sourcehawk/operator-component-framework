@@ -58,6 +58,14 @@ func TestConfigMapDataEditor_Raw(t *testing.T) {
 	assert.Equal(t, "added", data["new"])
 }
 
+func TestConfigMapDataEditor_Raw_InitialisesNilMap(t *testing.T) {
+	var data map[string]string
+	e := NewConfigMapDataEditor(&data, nil)
+	raw := e.Raw()
+	raw["key"] = "value"
+	assert.Equal(t, "value", data["key"])
+}
+
 // --- MergeYAML ---
 
 func TestConfigMapDataEditor_MergeYAML_NewKey(t *testing.T) {
@@ -167,6 +175,14 @@ func TestConfigMapDataEditor_RawBinary(t *testing.T) {
 	raw := e.RawBinary()
 	raw["new"] = []byte("added")
 	assert.Equal(t, []byte("added"), binaryData["new"])
+}
+
+func TestConfigMapDataEditor_RawBinary_InitialisesNilMap(t *testing.T) {
+	var binaryData map[string][]byte
+	e := NewConfigMapDataEditor(nil, &binaryData)
+	raw := e.RawBinary()
+	raw["cert"] = []byte("data")
+	assert.Equal(t, []byte("data"), binaryData["cert"])
 }
 
 // --- helpers ---

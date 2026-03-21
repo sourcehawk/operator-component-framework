@@ -61,13 +61,36 @@ The following example builds a component that manages a single `Deployment`, wit
 ```go
 import (
     "time"
+    appsv1 "k8s.io/api/apps/v1"
+    corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "github.com/sourcehawk/operator-component-framework/pkg/component"
     "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
 )
 
 func buildWebInterfaceComponent(owner *MyOperatorCR) (*component.Component, error) {
     // 1. Define the baseline resource
-    dep := resources.NewCoreDeployment("web-server", owner.Namespace)
+    dep := &appsv1.Deployment{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      "web-server",
+            Namespace: owner.Namespace,
+        },
+        Spec: appsv1.DeploymentSpec{
+            Selector: &metav1.LabelSelector{
+                MatchLabels: map[string]string{"app": "web-server"},
+            },
+            Template: corev1.PodTemplateSpec{
+                ObjectMeta: metav1.ObjectMeta{
+                    Labels: map[string]string{"app": "web-server"},
+                },
+                Spec: corev1.PodSpec{
+                    Containers: []corev1.Container{
+                        {Name: "app", Image: "my-app:latest"},
+                    },
+                },
+            },
+        },
+    }
 
     // 2. Build a resource primitive, applying optional feature mutations
     res, err := deployment.NewBuilder(dep).
@@ -116,6 +139,7 @@ Mutations decouple version-specific or feature-gated logic from the baseline res
 
 ```go
 import (
+    corev1 "k8s.io/api/core/v1"
     "github.com/sourcehawk/operator-component-framework/pkg/feature"
     "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
     "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
@@ -127,7 +151,7 @@ func TracingFeature(version string, enabled bool) deployment.Mutation {
         Name:    "enable-tracing",
         Feature: feature.NewResourceFeature(version, nil).When(enabled),
         Mutate: func(m *deployment.Mutator) error {
-            m.EditContainers(selectors.ContainerNamed("web"), func(e *editors.ContainerEditor) error {
+            m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
                 e.EnsureEnvVar(corev1.EnvVar{Name: "TRACING_ENABLED", Value: "true"})
                 return nil
             })

@@ -48,7 +48,7 @@ Primitives implement behavioral interfaces that the component layer uses for sta
 | Interface         | Status values reported                                   | Typical use                               |
 |-------------------|----------------------------------------------------------|-------------------------------------------|
 | `Alive`           | `Healthy`, `Creating`, `Updating`, `Scaling`, `Failing`  | Deployments, StatefulSets, DaemonSets     |
-| `Graceful`        | `Ready`, `Degraded`, `Down`                              | Workloads with slow or stalled rollouts   |
+| `Graceful`        | `Healthy`, `Degraded`, `Down`                            | Workloads with slow or stalled rollouts   |
 | `Suspendable`     | `PendingSuspension`, `Suspending`, `Suspended`           | Any resource with a deactivation behavior |
 | `Completable`     | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` | Jobs and task primitives                  |
 | `Operational`     | `Operational`, `OperationPending`, `OperationFailing`    | Services, Ingresses, CronJobs             |
@@ -139,13 +139,17 @@ resource, err := deployment.NewBuilder(base).
 
 ```go
 import (
+    corev1 "k8s.io/api/core/v1"
+    "github.com/sourcehawk/operator-component-framework/pkg/feature"
     "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
     "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
 )
 
 resource, err := deployment.NewBuilder(base).
     WithMutation(deployment.Mutation{
-        Name: "add-proxy-sidecar",
+        Name:    "add-proxy-sidecar",
+        Feature: feature.NewResourceFeature(version, nil),
         Mutate: func(m *deployment.Mutator) error {
             m.EnsureContainer(corev1.Container{
                 Name:  "proxy",

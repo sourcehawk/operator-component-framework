@@ -52,7 +52,7 @@ AI_BASE  := .ai/base.md
 AI_REVIEW := .ai/review.md
 
 .PHONY: ai-instructions
-ai-instructions: CLAUDE.md .junie/guidelines.md .github/copilot-instructions.md .github/copilot-review-guidelines.md ## Generate all AI instruction files from source templates in ai/
+ai-instructions: CLAUDE.md .junie/guidelines.md .github/copilot-instructions.md .github/copilot-review-guidelines.md ## Generate all AI instruction files from source templates in .ai/
 
 CLAUDE.md: $(AI_BASE)
 	cp $< $@

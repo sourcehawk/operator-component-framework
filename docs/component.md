@@ -46,10 +46,10 @@ Each resource is registered with a `ResourceOptions` struct that controls how th
 
 ## Reconciliation Lifecycle
 
-`comp.Reconcile(ctx, recCtx)` runs a five-phase process on every call:
+`comp.Reconcile(ctx, recCtx)` runs a six-phase process on every call:
 
 **Phase 1 — Suspension check**
-If the component is marked suspended, it calls `Suspend()` on all `Suspendable` resources, updates the condition, then processes any pending deletions and returns. The remaining phases are skipped.
+If the component is marked suspended, it calls `Suspend()` on all managed resources that support suspension (create/update resources, not read-only ones), updates the condition, then processes any pending deletions and returns. The remaining phases are skipped.
 
 **Phase 2 — Resource synchronization**
 All managed resources are created or updated to match their desired state.
@@ -57,10 +57,13 @@ All managed resources are created or updated to match their desired state.
 **Phase 3 — Read-only resource fetching**
 Read-only resources are fetched from the cluster so their current state is available for health evaluation.
 
-**Phase 4 — Status aggregation and condition update**
+**Phase 4 — Data extraction**
+Any resource implementing `DataExtractable` has `ExtractData()` called to harvest data from the synchronized cluster state before condition evaluation.
+
+**Phase 5 — Status aggregation and condition update**
 The health of each resource is collected, the grace period is consulted, and a single aggregate condition is written to the owner object's status.
 
-**Phase 5 — Resource deletion**
+**Phase 6 — Resource deletion**
 Resources registered for deletion are removed from the cluster.
 
 ## Status Model

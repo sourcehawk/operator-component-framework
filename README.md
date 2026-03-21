@@ -1,117 +1,241 @@
 # Operator Component Framework
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/sourcehawk/operator-component-framework.svg)](https://pkg.go.dev/github.com/sourcehawk/operator-component-framework)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sourcehawk/operator-component-framework)](https://goreportcard.com/report/github.com/sourcehawk/operator-component-framework)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 A Go framework for building highly maintainable Kubernetes operators using a behavioral component model and version-gated feature mutations.
 
-## Introduction
+---
 
-The Operator Component Framework is a structured approach to operator development that simplifies the management of complex resource lifecycles and evolving feature sets. It provides:
+## Overview
 
-*   **Behavioral Component Model**: Group related resources into logical features with aggregated health and shared lifecycle behavior.
-*   **Structured Reconciliation**: Predictable resource management with built-in support for progression, degradation, and suspension.
-*   **Version-Gated Feature Mutations**: Define a clean baseline for resources and apply optional behavior or version-specific compatibility as explicit, composable mutations.
-*   **Reusable Kubernetes Resource Primitives**: Powerful abstractions for managing Kubernetes objects with built-in mutation safety.
+Kubernetes operators tend to accumulate complexity over time: reconciliation functions grow large, lifecycle logic is duplicated across resources, status reporting becomes inconsistent, and version-compatibility code gets tangled into orchestration. The Operator Component Framework addresses these problems through a clear layered architecture.
 
-## Why this framework exists
+The framework organizes operator logic into three composable layers:
 
-Kubernetes operators often grow into bloated controllers with:
-
-- **Large reconciliation functions** coordinating many resources.
-- **Inconsistent lifecycle logic** (rollouts, suspension, degradation) implemented repeatedly.
-- **Scattered status reporting** that varies across different features.
-- **Complex version compatibility** logic mixed with orchestration.
-
-The framework addresses these problems through:
-
-- **Components**: Manage logical features as a single unit.
-- **Reusable Primitives**: Encapsulate the desired state and behavior of individual Kubernetes objects.
-- **Mutation-based Customization**: Decouple version and feature logic from the baseline resource definition.
+- **Components** — logical feature units that reconcile multiple resources together and report a single user-facing condition.
+- **Resource Primitives** — reusable, type-safe wrappers for individual Kubernetes objects with built-in lifecycle semantics.
+- **Feature Mutations** — composable, version-gated modifications that keep baseline resource definitions clean while managing optional and historical behavior explicitly.
 
 ## Mental Model
 
-The framework uses a hierarchy of responsibility to maintain thin controllers and consistent behavior:
-
-```text
+```
 Controller
   └─ Component
       └─ Resource Primitive
            └─ Kubernetes Object
 ```
 
-*   **Controller**: Decides which components should exist and orchestrates reconciliation at a high level.
-*   **Component**: Represents one logical feature (e.g., "Web Interface"), reconciles its resources, and reports a single user-facing condition.
-*   **Resource Primitive**: Encapsulates the desired state and lifecycle behavior of a single Kubernetes object.
-*   **Kubernetes Object**: The raw `client.Object` (e.g., a `Deployment`) persisted to the cluster.
+| Layer                  | Responsibility                                                                          |
+|------------------------|-----------------------------------------------------------------------------------------|
+| **Controller**         | Determines which components should exist; orchestrates reconciliation at a high level   |
+| **Component**          | Represents one logical feature; reconciles its resources and reports a single condition |
+| **Resource Primitive** | Encapsulates desired state and lifecycle behavior for a single Kubernetes object        |
+| **Kubernetes Object**  | The raw `client.Object` (e.g. `Deployment`) persisted to the cluster                    |
 
-## Quick Start Example
+## Features
 
-A minimal example showing how to build and reconcile a component with a single resource primitive:
+- **Structured reconciliation** with predictable, phased lifecycle management
+- **Condition aggregation** across multiple resources into a single component condition
+- **Grace period support** to avoid premature degraded status during normal operations like rolling updates
+- **Suspension handling** with configurable behavior — scale to zero, delete, or custom logic
+- **Version-gated mutations** to apply backward-compatibility patches only when needed
+- **Composable mutation layers** that stack without interfering with each other
+- **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`, `DataExtractable`) covering the full range of Kubernetes workload types
+- **Typed mutation editors** for `Deployment` specs, pod specs, containers, and object metadata
+- **Metrics and event recording** integrations out of the box
 
-```go
-// 1. Create a resource primitive (using a builder)
-deployment := resources.NewCoreDeployment("web-server", owner.Namespace)
-res, err := resources.NewDeploymentBuilder(deployment).Build()
-if err != nil {
-    return err
-}
+## Installation
 
-// 2. Build a component
-comp, err := component.NewComponentBuilder().
-    Suspend(owner.Spec.Suspended).
-    WithName("web-interface").
-    WithConditionType("WebInterfaceReady").
-    WithResource(res, component.ResourceOptions{}).
-    WithGracePeriod(5 * time.Minute).
-    Build()
-if err != nil {
-    return err
-}
-
-// 3. Reconcile the component
-recCtx := component.ReconcileContext{
-    Client:   r.Client,
-    Scheme:   r.Scheme,
-    Recorder: r.Recorder,
-    Owner:    owner,
-}
-err = comp.Reconcile(ctx, recCtx)
+```bash
+go get github.com/sourcehawk/operator-component-framework
 ```
 
-## Architecture Overview
+Requires Go 1.21+ and a project using [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime).
 
-The framework is divided into two main subsystems:
+## Quick Start
 
-### Component Layer
-Responsible for high-level feature orchestration, lifecycle management, and condition aggregation. It ensures that features behave consistently across the operator.
+The following example builds a component that manages a single `Deployment`, with an optional tracing feature applied as a mutation.
 
-Detailed documentation: [Component Framework](docs/component.md)
+```go
+import (
+    "time"
+    "github.com/sourcehawk/operator-component-framework/pkg/component"
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+)
 
-### Primitive Layer
-Responsible for Kubernetes resource abstractions, the mutation system, and safe field application. It handles the low-level details of how objects are constructed and modified.
+func buildWebInterfaceComponent(owner *MyOperatorCR) (*component.Component, error) {
+    // 1. Define the baseline resource
+    dep := resources.NewCoreDeployment("web-server", owner.Namespace)
 
-- [Resource Primitives Overview](docs/primitives.md)
+    // 2. Build a resource primitive, applying optional feature mutations
+    res, err := deployment.NewBuilder(dep).
+        WithMutation(TracingFeature(owner.Spec.Version, owner.Spec.TracingEnabled)).
+        Build()
+    if err != nil {
+        return nil, err
+    }
 
-## Feature Mutations (high-level)
+    // 3. Assemble the component
+    return component.NewComponentBuilder().
+        WithName("web-interface").
+        WithConditionType("WebInterfaceReady").
+        WithResource(res, component.ResourceOptions{}).
+        WithGracePeriod(5 * time.Minute).
+        Suspend(owner.Spec.Suspended).
+        Build()
+}
 
-Feature mutations allow you to evolve resources safely as features and versions accumulate:
+// 4. Reconcile from your controller
+func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+    owner := &MyOperatorCR{}
+    if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
+        return reconcile.Result{}, client.IgnoreNotFound(err)
+    }
 
-1.  **Baseline Desired State**: The core resource defines the current, modern desired state.
-2.  **Optional Version-Gated Mutations**: Explicit modifications are applied only when specific version constraints or conditions are met.
-3.  **Composable Customization**: Multiple mutations can be layered onto a single resource without conflicting or producing inconsistent results.
+    comp, err := buildWebInterfaceComponent(owner)
+    if err != nil {
+        return reconcile.Result{}, err
+    }
 
-This approach keeps your code focused on the present state while explicitly managing its history and optional behaviors.
+    recCtx := component.ReconcileContext{
+        Client:   r.Client,
+        Scheme:   r.Scheme,
+        Recorder: r.Recorder,
+        Owner:    owner,
+    }
 
-## Custom Resources
+    return reconcile.Result{}, comp.Reconcile(ctx, recCtx)
+}
+```
 
-Users can implement their own resource wrappers by fulfilling the `Resource` interface. This is appropriate when:
-- An object has unusual lifecycle behavior.
-- You are managing custom CRDs with specialized status or readiness logic.
-- You need specialized mutation semantics not covered by the built-in primitives.
+## Feature Mutations
 
-For examples of how to implement custom resource wrappers, see the [examples directory](examples/).
+Mutations decouple version-specific or feature-gated logic from the baseline resource definition. A mutation declares a condition under which it applies and a function that modifies the resource.
+
+```go
+import (
+    "github.com/sourcehawk/operator-component-framework/pkg/feature"
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+)
+
+func TracingFeature(version string, enabled bool) deployment.Mutation {
+    return deployment.Mutation{
+        Name:    "enable-tracing",
+        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Mutate: func(m *deployment.Mutator) error {
+            m.EditContainers(selectors.ContainerNamed("web"), func(e *editors.ContainerEditor) error {
+                e.EnsureEnvVar(corev1.EnvVar{Name: "TRACING_ENABLED", Value: "true"})
+                return nil
+            })
+            return nil
+        },
+    }
+}
+```
+
+Mutations are applied in registration order. Each mutation is independent — multiple mutations can target the same resource without interfering with each other, and the framework guarantees a consistent application sequence.
+
+## Resource Lifecycle Interfaces
+
+Resource primitives implement behavioral interfaces that the component layer uses for status aggregation:
+
+| Interface         | Behavior                                          | Example resources                       |
+|-------------------|---------------------------------------------------|-----------------------------------------|
+| `Alive`           | Observable health with rolling-update awareness   | Deployments, StatefulSets, DaemonSets   |
+| `Graceful`        | Time-bounded convergence with degradation         | Workloads with slow rollouts            |
+| `Suspendable`     | Controlled deactivation (scale to zero or delete) | Workloads, task primitives              |
+| `Completable`     | Run-to-completion tracking                        | Jobs                                    |
+| `Operational`     | External dependency readiness                     | Services, Ingresses, Gateways, CronJobs |
+| `DataExtractable` | Post-reconciliation data harvest                  | Any resource exposing status fields     |
+
+## Implementing a Custom Resource
+
+You can wrap any Kubernetes object — including custom CRDs — by implementing the `Resource` interface:
+
+```go
+type Resource interface {
+    // Object returns the desired-state Kubernetes object.
+    Object() (client.Object, error)
+
+    // Mutate receives the current cluster state and applies the desired state to it.
+    Mutate(current client.Object) error
+
+    // Identity returns a stable string that uniquely identifies this resource.
+    Identity() string
+}
+```
+
+Optionally implement any of the lifecycle interfaces (`Alive`, `Suspendable`, etc.) to participate in condition aggregation.
+
+See the [examples directory](examples/) for complete implementations.
+
+## Documentation
+
+| Document                                              | Description                                                          |
+|-------------------------------------------------------|----------------------------------------------------------------------|
+| [Component Framework](docs/component.md)              | Reconciliation lifecycle, condition model, grace periods, suspension |
+| [Resource Primitives](docs/primitives.md)             | Primitive categories, field application pipeline, mutation system    |
+| [Deployment Primitive](docs/primitives/deployment.md) | Deployment-specific mutation ordering and editors                    |
 
 ## Examples
 
-The [examples directory](examples/component-architecture-basics/) provides complete implementations demonstrating:
-- **Custom resource implementation**: How to wrap standard or custom Kubernetes objects.
-- **Component assembly**: How to group resources into functional units.
-- **Feature mutation usage**: How to apply version-gated logic to resources.
+The [examples directory](examples/) contains runnable, end-to-end implementations:
+
+| Example                                                                      | Description                                                                                |
+|------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| [`deployment-primitive`](examples/deployment-primitive/)                     | Core Deployment primitive: mutations, flavors, suspension, data extraction                 |
+| [`custom-resource-implementation`](examples/custom-resource-implementation/) | Full custom resource wrapper implementing lifecycle interfaces and version-gated mutations |
+
+Run any example with:
+
+```bash
+go run examples/<example-name>/main.go
+```
+
+## Project Structure
+
+```
+pkg/
+├── component/          # Component framework: builder, reconciliation, conditions
+│   └── concepts/       # Lifecycle interface definitions (Alive, Suspendable, …)
+├── primitives/
+│   └── deployment/     # Deployment primitive: builder, mutator, editors, flavors
+├── feature/            # Feature and version-constraint types
+├── mutation/
+│   ├── editors/        # Typed mutation APIs (DeploymentSpec, PodSpec, Container, …)
+│   └── selectors/      # Container selectors (ByName, ByIndex, All)
+├── flavors/            # Field application flavor utilities
+└── recording/          # Event recording helpers
+
+examples/
+├── deployment-primitive/
+└── custom-resource-implementation/
+
+docs/
+├── component.md
+├── primitives.md
+└── primitives/deployment.md
+```
+
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss significant changes before submitting a pull request.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes
+4. Open a pull request against `main`
+
+All new code should include tests. The project uses [Ginkgo](https://github.com/onsi/ginkgo) and [Gomega](https://github.com/onsi/gomega) for testing.
+
+```bash
+go test ./...
+```
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) for details.

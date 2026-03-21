@@ -33,3 +33,7 @@ go.work.sum
 bin/
 dist/
 tmp/
+
+# Ai slob
+.junie
+CLAUDE.md

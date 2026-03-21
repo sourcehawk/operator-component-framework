@@ -1,222 +1,190 @@
 # Resource Primitives
 
-The `primitives` system provides a resource-centric abstraction layer for Kubernetes objects. It acts as the bridge 
-between high-level **Components** and raw Kubernetes resources, handling the complexities of state synchronization, 
-mutation, and lifecycle management.
+The `primitives` package provides reusable, type-safe wrappers for individual Kubernetes objects. Primitives sit between the [Component layer](component.md) and raw Kubernetes resources — they handle the complexities of state synchronization, mutation, and lifecycle management so operator authors don't have to.
 
-## 1. What primitives are
+## What a Primitive Is
 
-Primitives are reusable, type-safe resource wrappers for Kubernetes objects. They encapsulate the logic required to 
-reconcile a specific kind of resource (like a `Deployment` or `ConfigMap`) within the framework's behavioral model.
+A primitive wraps a specific Kubernetes kind (e.g., `Deployment`, `ConfigMap`) and encapsulates:
 
-Each primitive encapsulates:
+- **Desired state baseline** — the ideal configuration of the resource.
+- **Lifecycle integration** — built-in readiness detection, grace handling, and suspension.
+- **Mutation surfaces** — typed APIs for modifying the resource based on active features or version constraints.
+- **Field application rules** — precise control over which fields are merged or preserved during reconciliation.
 
-- **Desired state baseline**: A template or builder for the resource's "ideal" configuration.
-- **Lifecycle integration**: Built-in support for readiness detection, grace periods, and suspension.
-- **Mutation surfaces**: Controlled APIs for modifying resources based on active features or versions.
-- **Field application behavior**: Precise rules for how fields are merged or preserved during reconciliation.
+Each primitive implements the `component.Resource` interface, and may additionally implement one or more [lifecycle interfaces](#lifecycle-interfaces) to participate in component status aggregation.
 
-By using primitives, operator authors can avoid writing repetitive "create-or-update" boilerplate and instead focus on 
-defining how their resources should behave.
+## Primitive Categories
 
----
+The framework categorizes primitives based on their runtime behavior.
 
-## 2. Primitive categories
+### Static
 
-The framework distinguishes between four primary categories of primitives based on their operational characteristics.
+Examples: `ConfigMap`, `Secret`, `ServiceAccount`, RBAC objects, `PodDisruptionBudget`
 
-### Static Primitives
-Examples: `ConfigMap`, `Secret`, `ServiceAccount`, RBAC objects (`Role`, `RoleBinding`), `PodDisruptionBudget`.
+These resources have a mostly static desired state. They are created or updated based on configuration but have no complex runtime convergence. They are considered `Ready` as long as they exist. They may optionally implement `Alive` or `Operational` for more granular tracking.
 
-- **Characteristics**: These resources have a mostly static desired state. They are typically created once or updated 
-  based on configuration changes but do not have complex runtime convergence or scaling behaviors.
-- **Lifecycle**: Considered "Ready" by default as long as they exist in the cluster. They may optionally implement the `Alive` or `Operational` interfaces for more granular readiness tracking.
+### Workload
 
-### Workload Primitives
-Examples: `Deployment`, `StatefulSet`, `DaemonSet`.
+Examples: `Deployment`, `StatefulSet`, `DaemonSet`
 
-- **Characteristics**: These resources represent long-running processes that require runtime convergence (e.g., 
-  pods being scheduled and becoming ready).
-- **Behavior**: They support advanced features like suspension (scaling to zero), grace handling for slow rollouts, and 
-  complex feature-based mutations. They implement the `Alive`, `Graceful`, and `Suspendable` interfaces.
+These resources represent long-running processes that require runtime convergence (pods being scheduled and becoming ready). They implement `Alive`, `Graceful`, and `Suspendable` — supporting health tracking, grace periods, and scaling to zero.
 
-### Task Primitives
-Examples: `Job`.
+### Task
 
-- **Characteristics**: These resources represent short-lived operations that run to completion (e.g., a database 
-  migration or a backup). Unlike workloads, they are not expected to run indefinitely.
-- **Behavior**: They support completion tracking and data extraction. When suspended, tasks can be configured to 
-  either pause (if supported by the underlying resource) or be deleted and recreated when resumed. They implement the `Completable` and `Suspendable` interfaces.
+Examples: `Job`
 
-### Integration Primitives
-Examples: `Service`, `Ingress`, `Gateway`, `CronJob`.
+These resources represent short-lived operations that run to completion — database migrations, backups, initialization steps. They implement `Completable` and `Suspendable`. When suspended, tasks can be paused (if the underlying resource supports it) or deleted and recreated when resumed.
 
-- **Characteristics**: These resources define integration points between workloads and external or cluster-level systems (e.g., networking, load balancers, DNS, schedules). Their readiness depends on external controllers or infrastructure outside the direct control of the resource itself.
-- **Behavior**: They rely on asynchronous reconciliation and may exhibit delayed or partial readiness depending on external system state. They also support suspension (e.g., suspending a `CronJob` schedule). They typically implement the `Operational` and/or `Suspendable` interfaces.
-- **Lifecycle**: Considered ready only once the underlying integration (e.g., load balancer provisioning, routing configuration, schedule establishment) is fully established.
+### Integration
 
----
+Examples: `Service`, `Ingress`, `Gateway`, `CronJob`
 
-## 3. Field application model
+These resources define integration points with external or cluster-level systems (networking, load balancers, DNS, schedules). Their readiness depends on external controllers and may be delayed or partial. They implement `Operational` and/or `Suspendable`.
 
-Primitives use a structured pipeline to synchronize the desired state with the current state in the cluster. This 
-process is managed by a **Field Applicator**.
+## Lifecycle Interfaces
 
-### The Pipeline Order
-When a primitive is reconciled, it follows a strict order of operations:
+Primitives implement behavioral interfaces that the component layer uses for status aggregation:
 
-1.  **Baseline field application**: The `FieldApplicator` merges the "baseline" desired state onto the current object.
-2.  **Flavor adjustments**: Post-baseline merge policies (Flavors) are applied to preserve specific fields.
-3.  **Mutation edits**: Feature-specific or version-specific edits are applied.
+| Interface         | Status values reported                                   | Typical use                               |
+|-------------------|----------------------------------------------------------|-------------------------------------------|
+| `Alive`           | `Healthy`, `Creating`, `Updating`, `Scaling`, `Failing`  | Deployments, StatefulSets, DaemonSets     |
+| `Graceful`        | `Ready`, `Degraded`, `Down`                              | Workloads with slow or stalled rollouts   |
+| `Suspendable`     | `PendingSuspension`, `Suspending`, `Suspended`           | Any resource with a deactivation behavior |
+| `Completable`     | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` | Jobs and task primitives                  |
+| `Operational`     | `Operational`, `OperationPending`, `OperationFailing`    | Services, Ingresses, CronJobs             |
+| `DataExtractable` | _(no status, side-effecting)_                            | Resources that expose post-sync data      |
 
-This ensures that mutations always operate on a predictable, fully-formed baseline.
+Custom resource wrappers can implement any subset of these interfaces to opt into the corresponding component behaviors.
 
----
+## Field Application Model
 
-## 4. Field application flavors
+When a primitive is reconciled, it applies changes in a fixed three-stage pipeline:
 
-**Flavors** are reusable merge policies that run after the baseline application but before mutations. Their primary 
-purpose is to preserve fields that may be managed by other controllers or external systems (like sidecar injectors 
-or autoscalers).
+```
+1. Baseline application   →   merge desired state onto current object
+2. Flavor adjustments     →   preserve fields managed by external controllers
+3. Mutation edits         →   apply feature-specific or version-specific changes
+```
 
-### Examples of Flavors:
-- **Preserving Labels/Annotations**: Ensuring that metadata added by external tools is not wiped out during 
-  reconciliation.
-- **Preserving Pod Template Metadata**: Keeping sidecar-related annotations on a Deployment's pod template.
+This ordering guarantees that mutations always operate on a predictable, fully-formed baseline.
 
-Flavors allow the framework to be "good citizens" in a cluster where multiple controllers might be touching the same 
-resources.
+### Flavors
 
----
+Flavors are reusable merge policies that run after baseline application but before mutations. Their purpose is to preserve fields that may be managed by external controllers or tools — sidecar injectors, autoscalers, annotation-based tooling — that the primitive should not overwrite.
 
-## 5. Mutation system
+Examples of what flavors can preserve:
+- Labels and annotations added by external tools
+- Pod template metadata managed by injection webhooks
+- Fields managed by the Kubernetes HPA
 
-Workload and Task primitives employ a **plan-and-apply pattern** for modifications. Instead of mutating the Kubernetes object
-directly and repeatedly, the framework records "edit intent" through a series of planned mutations.
+Flavors allow primitives to coexist in clusters where multiple controllers touch the same resources.
 
-### Why this pattern exists:
-- **Prevents uncontrolled mutation**: Changes are staged and applied in a single, controlled pass.
-- **Improves composability**: Multiple independent features can contribute edits without knowing about each other.
-- **Predictable Ordering**: Features are applied in the order they are registered. Later features observe the resource state after earlier features have already applied their changes.
-- **Efficiency**: Avoids expensive and error-prone manual slice manipulations.
+## Mutation System
 
-### Implementation Specifics
-While the general mutation model is consistent across primitives, specific primitives (like `Deployment`) may have a more detailed internal sequence for applying modifications to ensure structural consistency.
+Workload and Task primitives use a **plan-and-apply pattern**: instead of mutating the Kubernetes object directly, mutations record their intent through typed editors, which are applied in a single controlled pass.
 
-Refer to the primitive-specific documentation for details:
-- [Deployment Primitives](/docs/primitives/deployment.md)
+This design:
+- **Prevents uncontrolled mutation** — changes are staged before any object is touched
+- **Enables composability** — independent features contribute edits without knowing about each other
+- **Guarantees ordering** — features apply in registration order; within a feature, categories apply in a fixed sequence
+- **Avoids error-prone slice manipulation** — editors handle presence operations and stable selection internally
 
----
+## Mutation Editors
 
-## 6. Mutation editors
+Editors provide scoped, typed APIs for modifying specific parts of a resource:
 
-**Editors** provide a scoped, typed API for making changes to specific parts of a resource. They ensure that mutations 
-are safe and follow Kubernetes best practices.
+| Editor                 | Scope                                                                   |
+|------------------------|-------------------------------------------------------------------------|
+| `ContainerEditor`      | Environment variables, arguments, resource limits, ports                |
+| `PodSpecEditor`        | Volumes, tolerations, node selectors, service account, security context |
+| `DeploymentSpecEditor` | Replicas, update strategy, label selectors                              |
+| `ObjectMetaEditor`     | Labels and annotations on the object or pod template                    |
 
-Common editors include:
-- `ContainerEditor`: For modifying environment variables, arguments, and resource limits.
-- `PodSpecEditor`: For managing volumes, affinity, or service account names.
-- `DeploymentSpecEditor`: For controlling replicas, strategy, and selectors.
-- `ObjectMetaEditor`: For manipulating labels and annotations.
+Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the underlying Kubernetes struct while keeping the mutation scoped to that editor's target.
 
-Editors act as a protective layer, offering helper methods like `EnsureEnvVar` or `RemoveArg`.
+## Container Selectors
 
----
+Selectors determine which containers an editor targets — important for multi-container pods:
 
-## 7. Selectors
+```go
+selectors.AllContainers()                    // every container in the pod
+selectors.ContainerNamed("app")              // a single container by name
+selectors.ContainersNamed("web", "api")      // multiple containers by name
+selectors.ContainerAtIndex(0)                // container at a specific index
+```
 
-**Selectors** determine which parts of a resource an editor should target. This is particularly important for 
-multi-container pods.
+Selectors are evaluated against the container list *after* any presence operations (add/remove) within the same mutation have been applied. This means a single mutation can safely add a container and then configure it.
 
-For example, a `ContainerSelector` can be used to:
-- Target all containers (`AllContainers()`).
-- Target a specific container by name (`ContainerNamed("sidecar")`).
-- Target containers at specific indices (`ContainerAtIndex(0)`).
+## Usage Examples
 
-Selectors allow mutations to be precise and reusable across different resource configurations.
+### Creating a primitive
 
----
-
-## 8. Raw mutation escape hatch
-
-While editors provide safe wrappers, there are times when you need to perform advanced customizations that the 
-framework doesn't explicitly support. For these cases, every editor provides a `Raw()` method.
-
-- **Purpose**: Gives direct access to the underlying Kubernetes struct (e.g., `*corev1.Container`).
-- **Safety**: The mutation remains scoped to the editor's target (e.g., you can't accidentally delete the entire PodSpec from a ContainerEditor).
-- **Flexibility**: Ensures that the framework never blocks you from using new Kubernetes features or edge-case configurations.
-
----
-
-## 9. Default lifecycle behavior
-
-Workload and Task primitives come with "sane defaults" for lifecycle management, integrated directly into the Component status model:
-
-- **Convergence detection**: Automatically determines a resource's state based on its status extraction method.
-  - `Healthy`, `Creating`, `Updating`, `Scaling` or `Failing` (Workload resources via `Alive` interface)
-  - `Completed`, `TaskRunning`, `TaskPending`, or `TaskFailing` (Task resources via `Completable` interface)
-  - `Operational`, `OperationPending`, `OperationFailing` (Integration resources via `Operational` interface)
-- **Grace handling**: Monitors how long a resource has been non-ready and reports `Degraded` or `Down` if it exceeds a grace period (via `Graceful` interface).
-- **Suspension behavior**: Provides the logic for scaling resources down to zero (Workloads) or pausing/deleting (Tasks) and reporting the `Suspended`, `Suspending`, or `PendingSuspension` state (via `Suspendable` interface).
-- **Data extraction**: Automatically extracts internal resource data (e.g., generated credentials, endpoint URLs, or status fields) after synchronization, making it available for use by other components.
-
-These defaults can be overridden via the primitive's `Builder` if specialized behavior is required.
-
----
-
-## 10. When to implement a custom resource
-
-While the provided primitives cover the most common Kubernetes objects, you may need to implement a custom resource 
-wrapper when:
-
-- You are managing **custom CRDs** that require specific health checks.
-- You have **unusual lifecycle semantics** (e.g., a resource that must be deleted and recreated instead of updated).
-- You need **highly specialized mutation behavior** not covered by standard editors.
-
-Custom resource wrappers can still leverage the framework's core interfaces (`component.Resource`, `component.Alive`, 
-`component.Suspendable`). See the `examples/` directory for patterns on implementing custom resource wrappers.
-
----
-
-## Examples
-
-### Creating a primitive resource
 ```go
 import "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
 
-// Define a baseline Deployment
-base := &appsv1.Deployment{ ... }
+base := &appsv1.Deployment{
+    ObjectMeta: metav1.ObjectMeta{
+        Name:      "web-server",
+        Namespace: owner.Namespace,
+    },
+    // ... spec
+}
 
-// Use the NewBuilder function to create a primitive
 resource, err := deployment.NewBuilder(base).
     WithFieldApplicationFlavor(deployment.PreserveCurrentLabels).
     Build()
 ```
 
-### Adding mutation edits
+### Adding a mutation
+
 ```go
 import (
     "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
     "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
-    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 )
 
-// Mutations are typically defined within Feature objects
-mutation := deployment.Mutation{
-    Name: "add-proxy-sidecar",
-    ApplyIntent: func(m *deployment.Mutator) error {
-        m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) {
-            e.EnsureEnvVar(corev1.EnvVar{Name: "PROXY_ENABLED", Value: "true"})
-        })
-        return nil
-    },
+resource, err := deployment.NewBuilder(base).
+    WithMutation(deployment.Mutation{
+        Name: "add-proxy-sidecar",
+        Mutate: func(m *deployment.Mutator) error {
+            m.EnsureContainer(corev1.Container{
+                Name:  "proxy",
+                Image: "envoyproxy/envoy:v1.29",
+            })
+            m.EditContainers(selectors.ContainerNamed("proxy"), func(e *editors.ContainerEditor) error {
+                e.EnsureEnvVar(corev1.EnvVar{Name: "PROXY_ADMIN_PORT", Value: "9901"})
+                return nil
+            })
+            return nil
+        },
+    }).
+    Build()
+```
+
+### Targeting multiple containers
+
+```go
+m.EditContainers(selectors.ContainersNamed("web", "api"), func(e *editors.ContainerEditor) error {
+    e.EnsureArg("--log-format=json")
+    return nil
+})
+```
+
+## Implementing a Custom Resource
+
+When the built-in primitives do not cover your use case, implement the `component.Resource` interface directly:
+
+```go
+type Resource interface {
+    Object() (client.Object, error)
+    Mutate(current client.Object) error
+    Identity() string
 }
 ```
 
-### Selecting containers for mutation
-```go
-// Targeting multiple specific containers
-m.EditContainers(selectors.ContainersNamed("web", "api"), func(e *editors.ContainerEditor) {
-    e.EnsureArg("--verbose")
-})
-```
+Then implement whichever lifecycle interfaces your resource needs (`Alive`, `Suspendable`, etc.). See the [examples directory](../examples/) for complete implementations.
+
+Custom resources are appropriate when:
+- You are managing a custom CRD with specialized health or readiness logic
+- The resource has unusual lifecycle semantics (e.g., must be deleted and recreated rather than updated in place)
+- You need mutation behavior not covered by the standard editors

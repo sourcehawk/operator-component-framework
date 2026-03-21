@@ -37,12 +37,12 @@ if err != nil {
 
 Each resource is registered with a `ResourceOptions` struct that controls how the component interacts with it:
 
-| Option                                                           | Behavior                                                                  |
-|------------------------------------------------------------------|---------------------------------------------------------------------------|
-| `ResourceOptions{}` (default)                                    | **Managed** — created or updated; health contributes to condition         |
-| `ResourceOptions{ReadOnly: true}`                                | **Read-only** — fetched but never modified; health still contributes      |
-| `ResourceOptions{Delete: true}`                                  | **Delete-only** — removed from the cluster; does not contribute to health |
-| `ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}` | Health is reported but does not block the component from becoming Ready   |
+| Option                                                           | Behavior                                                                                                                                  |
+|------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `ResourceOptions{}` (default)                                    | **Managed** — created or updated; health contributes to condition                                                                         |
+| `ResourceOptions{ReadOnly: true}`                                | **Read-only** — fetched but never modified; health still contributes                                                                      |
+| `ResourceOptions{Delete: true}`                                  | **Delete-only** — removed from the cluster if present; does not contribute to health                                                      |
+| `ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}` | The resource's health does not contribute to the component condition — the component can become Ready regardless of this resource's state |
 
 ## Reconciliation Lifecycle
 
@@ -84,7 +84,7 @@ Reported by long-running workloads (Deployments, StatefulSets, DaemonSets):
 
 ### Completable Resources (`Completable` interface)
 
-Reported by run-to-completion resources (Jobs, tasks). These default to `ParticipationModeAuxiliary`:
+Reported by run-to-completion resources (Jobs, tasks):
 
 | State         | Meaning                             |
 |---------------|-------------------------------------|
@@ -186,4 +186,4 @@ Dependencies are passed explicitly so components remain testable and decoupled f
 
 **Group by lifecycle.** Resources that must live and die together belong in the same component. If they have independent lifecycles, split them.
 
-**Use `ParticipationModeAuxiliary` for non-critical resources.** A metrics exporter sidecar should not block your primary component from becoming `Ready`. Note that `Completable` resources (e.g. Jobs) default to `ParticipationModeAuxiliary` automatically — all other resource types default to `ParticipationModeRequired`.
+**Use `ParticipationModeAuxiliary` for non-critical resources.** A metrics exporter sidecar should not block your primary component from becoming `Ready`. All resource types default to `ParticipationModeRequired` — set `ParticipationModeAuxiliary` explicitly when a resource's health should not gate the component condition.

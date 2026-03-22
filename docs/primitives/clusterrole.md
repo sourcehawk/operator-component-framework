@@ -61,10 +61,9 @@ Mutations are the primary mechanism for modifying a `ClusterRole` beyond its bas
 The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally:
 
 ```go
-func PodReadMutation(version string) clusterrole.Mutation {
+func PodReadMutation() clusterrole.Mutation {
     return clusterrole.Mutation{
-        Name:    "pod-read",
-        Feature: feature.NewResourceFeature(version, nil),
+        Name: "pod-read",
         Mutate: func(m *clusterrole.Mutator) error {
             m.AddRule(rbacv1.PolicyRule{
                 APIGroups: []string{""},

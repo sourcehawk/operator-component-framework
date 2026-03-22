@@ -40,6 +40,13 @@ func TestBuilder_Build_Validation(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cr"},
 			},
 		},
+		{
+			name: "rejects namespace on cluster-scoped resource",
+			cr: &rbacv1.ClusterRole{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "oops"},
+			},
+			expectedErr: "cluster-scoped object must not have a namespace",
+		},
 	}
 
 	for _, tt := range tests {

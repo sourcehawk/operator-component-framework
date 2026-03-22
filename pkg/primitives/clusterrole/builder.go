@@ -109,15 +109,13 @@ func (b *Builder) Build() (*Resource, error) {
 		return fmt.Sprintf("rbac.authorization.k8s.io/v1/ClusterRole/%s", cr.Name)
 	}
 
-	// ClusterRole is cluster-scoped and has no namespace. The generic
-	// StaticBuilder.Build calls ValidateBase which rejects an empty namespace,
-	// so we construct the StaticResource directly with our own validation.
 	sb := generic.NewStaticBuilder[*rbacv1.ClusterRole, *Mutator](
 		b.obj,
 		identityFunc,
 		DefaultFieldApplicator,
 		NewMutator,
 	)
+	sb.MarkClusterScoped()
 
 	for _, m := range b.mutations {
 		sb.WithMutation(m)
@@ -135,11 +133,7 @@ func (b *Builder) Build() (*Resource, error) {
 		sb.WithDataExtractor(e)
 	}
 
-	// Temporarily set namespace to pass ValidateBase, then clear it.
-	// ClusterRole is cluster-scoped and must not have a namespace set.
-	b.obj.Namespace = "cluster-scoped"
 	res, err := sb.Build()
-	b.obj.Namespace = ""
 	if err != nil {
 		return nil, err
 	}

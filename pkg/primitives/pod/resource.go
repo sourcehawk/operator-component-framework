@@ -17,10 +17,22 @@ func DefaultFieldApplicator(current, desired *corev1.Pod) error {
 		*current = *desired.DeepCopy()
 		return nil
 	}
-	// Pod spec is largely immutable; only propagate metadata changes
-	current.Labels = desired.Labels
-	current.Annotations = desired.Annotations
+	// Pod spec is largely immutable; only propagate metadata changes.
+	// Clone maps to avoid sharing mutable references between desired and current.
+	current.Labels = cloneStringMap(desired.Labels)
+	current.Annotations = cloneStringMap(desired.Annotations)
 	return nil
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 // Resource is a high-level abstraction for managing a Kubernetes Pod within a controller's
@@ -64,7 +76,7 @@ func (r *Resource) Object() (client.Object, error) {
 //
 // The mutation process follows a specific order:
 //  1. Core State: The current object is reset to the desired base state, or
-//     modified via a custom customFieldApplicator if one is configured.
+//     modified via a customFieldApplicator if one is configured.
 //  2. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the Pod.
 //  3. Suspension: If the resource is in a suspending state, the suspension
@@ -92,7 +104,8 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.A
 // reached full readiness.
 //
 // By default, it uses DefaultGraceStatusHandler, which categorizes the current state into:
-//   - GraceStatusDegraded: Pod is Running but not all containers are Ready.
+//   - GraceStatusHealthy: Pod is Running and all containers are Ready.
+//   - GraceStatusDegraded: Pod is Running but not all containers are Ready, or readiness is unknown.
 //   - GraceStatusDown: Pod phase is not Running.
 func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	return r.base.GraceStatus()

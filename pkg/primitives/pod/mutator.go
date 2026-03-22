@@ -7,8 +7,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// Mutation defines a mutation that is applied to a pod Mutator
-// only if its associated feature.ResourceFeature is enabled.
+// Mutation defines a feature-aware mutation applied by a Pod Mutator.
+// If constructed with a non-nil feature.ResourceFeature, it is applied only
+// when that feature is enabled; if the feature is nil, the mutation is
+// always applied.
 type Mutation feature.Mutation[*Mutator]
 
 type containerEdit struct {

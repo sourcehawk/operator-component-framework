@@ -51,7 +51,22 @@ func DefaultConvergingStatusHandler(
 		}
 	}
 
-	// Determine status based on converging operation
+	// Handle terminal phases explicitly.
+	switch pod.Status.Phase {
+	case corev1.PodFailed:
+		return concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusFailing,
+			Reason: "Pod has failed",
+		}, nil
+	case corev1.PodSucceeded:
+		return concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusHealthy,
+			Reason: "Pod has completed successfully",
+		}, nil
+	}
+
+	// Pod is Running with not-all-ready containers, or Pending.
+	// Determine status based on converging operation.
 	switch op {
 	case concepts.ConvergingOperationUpdated:
 		return concepts.AliveStatusWithReason{
@@ -64,6 +79,12 @@ func DefaultConvergingStatusHandler(
 			Reason: "Pod is starting",
 		}, nil
 	default:
+		if pod.Status.Phase == corev1.PodRunning {
+			return concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusCreating,
+				Reason: "Pod running but not all containers ready",
+			}, nil
+		}
 		return concepts.AliveStatusWithReason{
 			Status: concepts.AliveConvergingStatusCreating,
 			Reason: "Pod is pending",
@@ -75,22 +96,39 @@ func DefaultConvergingStatusHandler(
 // reached full readiness.
 //
 // It categorizes the current state into:
-//   - GraceStatusDegraded: Pod is Running but not all containers are Ready.
+//   - GraceStatusHealthy: Pod is Running and all containers are Ready.
+//   - GraceStatusDegraded: Pod is Running but not all containers are Ready, or container readiness is unknown.
 //   - GraceStatusDown: Pod phase is not Running.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultGraceStatusHandler(pod *corev1.Pod) (concepts.GraceStatusWithReason, error) {
-	if pod.Status.Phase == corev1.PodRunning {
+	if pod.Status.Phase != corev1.PodRunning {
 		return concepts.GraceStatusWithReason{
-			Status: concepts.GraceStatusDegraded,
-			Reason: "Pod running but not all containers ready",
+			Status: concepts.GraceStatusDown,
+			Reason: "Pod is not running",
 		}, nil
 	}
 
+	if len(pod.Status.ContainerStatuses) == 0 {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: "Pod running but container readiness unknown",
+		}, nil
+	}
+
+	for _, cs := range pod.Status.ContainerStatuses {
+		if !cs.Ready {
+			return concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDegraded,
+				Reason: "Pod running but not all containers ready",
+			}, nil
+		}
+	}
+
 	return concepts.GraceStatusWithReason{
-		Status: concepts.GraceStatusDown,
-		Reason: "Pod is not running",
+		Status: concepts.GraceStatusHealthy,
+		Reason: "Pod running and all containers ready",
 	}, nil
 }
 

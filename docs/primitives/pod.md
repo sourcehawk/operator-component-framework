@@ -110,6 +110,8 @@ Within a single mutation, edit operations are grouped into categories and applie
 
 Container edits (steps 4 and 6) are evaluated against a snapshot taken *after* presence operations in the same mutation. This means a single mutation can add a container and then configure it without selector resolution issues.
 
+**Kubernetes immutability note:** most fields in `Pod.spec` are immutable after creation, including the overall structure of `spec.containers` and `spec.initContainers`. Presence operations such as `EnsureContainer` / `RemoveContainer` (and the corresponding init container operations) are intended for use when constructing a new Pod or when recreating the Pod, not for in-place updates to an existing Pod. If a mutation attempts to add or remove containers on an existing Pod, the Kubernetes API server will reject the update. Only per-container mutable fields (such as environment variables, args, and resources) should be edited on existing Pods.
+
 ## Editors
 
 ### PodSpecEditor

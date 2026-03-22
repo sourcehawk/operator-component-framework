@@ -130,7 +130,29 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusCreating,
-			wantReason: "Pod is pending",
+			wantReason: "Pod running but not all containers ready",
+		},
+		{
+			name: "failed pod phase",
+			op:   concepts.ConvergingOperationNone,
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodFailed,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusFailing,
+			wantReason: "Pod has failed",
+		},
+		{
+			name: "succeeded pod phase",
+			op:   concepts.ConvergingOperationNone,
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodSucceeded,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusHealthy,
+			wantReason: "Pod has completed successfully",
 		},
 	}
 
@@ -145,7 +167,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 }
 
 func TestDefaultGraceStatusHandler(t *testing.T) {
-	t.Run("degraded (running but not ready)", func(t *testing.T) {
+	t.Run("degraded (running, no container statuses)", func(t *testing.T) {
 		pod := &corev1.Pod{
 			Status: corev1.PodStatus{
 				Phase: corev1.PodRunning,
@@ -154,7 +176,38 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		got, err := DefaultGraceStatusHandler(pod)
 		require.NoError(t, err)
 		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
+		assert.Equal(t, "Pod running but container readiness unknown", got.Reason)
+	})
+
+	t.Run("degraded (running, not all containers ready)", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				ContainerStatuses: []corev1.ContainerStatus{
+					{Name: "app", Ready: true},
+					{Name: "sidecar", Ready: false},
+				},
+			},
+		}
+		got, err := DefaultGraceStatusHandler(pod)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
 		assert.Equal(t, "Pod running but not all containers ready", got.Reason)
+	})
+
+	t.Run("healthy (running, all containers ready)", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				ContainerStatuses: []corev1.ContainerStatus{
+					{Name: "app", Ready: true},
+				},
+			},
+		}
+		got, err := DefaultGraceStatusHandler(pod)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "Pod running and all containers ready", got.Reason)
 	})
 
 	t.Run("down (not running)", func(t *testing.T) {

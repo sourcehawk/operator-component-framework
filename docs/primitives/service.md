@@ -235,7 +235,7 @@ The Service primitive implements the `Operational` concept to track whether the 
 
 | Service Type   | Behaviour                                                                 |
 |----------------|---------------------------------------------------------------------------|
-| `LoadBalancer`  | Reports `OperationPending` until `Status.LoadBalancer.Ingress` has entries; then `Operational` |
+| `LoadBalancer`  | Reports `Pending` until `Status.LoadBalancer.Ingress` has entries with an IP or hostname; then `Operational` |
 | `ClusterIP`     | Immediately `Operational`                                                |
 | `NodePort`      | Immediately `Operational`                                                |
 | `ExternalName`  | Immediately `Operational`                                                |

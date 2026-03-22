@@ -63,7 +63,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 				Status: corev1.ServiceStatus{},
 			},
 			wantStatus: concepts.OperationalStatusPending,
-			wantReason: "Awaiting load balancer IP assignment",
+			wantReason: "Awaiting load balancer IP/hostname assignment",
 		},
 		{
 			name: "LoadBalancer pending (empty ingress slice)",
@@ -78,7 +78,24 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.OperationalStatusPending,
-			wantReason: "Awaiting load balancer IP assignment",
+			wantReason: "Awaiting load balancer IP/hostname assignment",
+		},
+		{
+			name: "LoadBalancer pending (ingress entry without IP or hostname)",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeLoadBalancer,
+				},
+				Status: corev1.ServiceStatus{
+					LoadBalancer: corev1.LoadBalancerStatus{
+						Ingress: []corev1.LoadBalancerIngress{
+							{},
+						},
+					},
+				},
+			},
+			wantStatus: concepts.OperationalStatusPending,
+			wantReason: "Awaiting load balancer IP/hostname assignment",
 		},
 		{
 			name: "LoadBalancer operational (IP assigned)",
@@ -95,7 +112,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.OperationalStatusOperational,
-			wantReason: "Load balancer IP address assigned",
+			wantReason: "Load balancer IP/hostname assigned",
 		},
 		{
 			name: "LoadBalancer operational (hostname assigned)",
@@ -112,7 +129,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.OperationalStatusOperational,
-			wantReason: "Load balancer IP address assigned",
+			wantReason: "Load balancer IP/hostname assigned",
 		},
 	}
 

@@ -21,15 +21,24 @@ func DefaultOperationalStatusHandler(
 	_ concepts.ConvergingOperation, svc *corev1.Service,
 ) (concepts.OperationalStatusWithReason, error) {
 	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
-		if len(svc.Status.LoadBalancer.Ingress) == 0 {
+		hasIngressAddress := false
+		for _, ing := range svc.Status.LoadBalancer.Ingress {
+			if ing.IP != "" || ing.Hostname != "" {
+				hasIngressAddress = true
+				break
+			}
+		}
+
+		if !hasIngressAddress {
 			return concepts.OperationalStatusWithReason{
 				Status: concepts.OperationalStatusPending,
-				Reason: "Awaiting load balancer IP assignment",
+				Reason: "Awaiting load balancer IP/hostname assignment",
 			}, nil
 		}
+
 		return concepts.OperationalStatusWithReason{
 			Status: concepts.OperationalStatusOperational,
-			Reason: "Load balancer IP address assigned",
+			Reason: "Load balancer IP/hostname assigned",
 		}, nil
 	}
 

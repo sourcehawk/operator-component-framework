@@ -1,9 +1,9 @@
 // Package features provides sample mutations for the pod primitive example.
 //
 // These examples only mutate object metadata because most Pod spec fields
-// (including containers, env, args, and resources) are immutable after creation.
-// To change spec fields on an existing Pod the controller must delete and
-// recreate it.
+// are immutable after creation. Kubernetes does allow a small set of in-place
+// updates (notably container images), but other fields such as env, args, and
+// resources require the Pod to be deleted and recreated.
 package features
 
 import (
@@ -30,8 +30,8 @@ func TracingFeature(enabled bool) pod.Mutation {
 }
 
 // VersionFeature records the desired version on the pod as a label.
-// It avoids mutating container images directly, which would be invalid
-// on an already-created Pod.
+// It avoids mutating container images directly; while Kubernetes allows
+// in-place image updates, this example keeps mutations in metadata only.
 func VersionFeature(version string) pod.Mutation {
 	return pod.Mutation{
 		Name:    "Version",

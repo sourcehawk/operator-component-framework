@@ -28,7 +28,7 @@ func NewPodResource(owner *app.ExampleApp) (component.Resource, error) {
 			Containers: []corev1.Container{
 				{
 					Name:  "app",
-					Image: "my-app:latest", // Will be overwritten by VersionFeature
+					Image: "my-app:latest", // Base image for the app container
 				},
 			},
 		},

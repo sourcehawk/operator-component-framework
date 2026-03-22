@@ -4,7 +4,7 @@ This example demonstrates the usage of the `pod` primitive within the operator c
 It shows how to manage a Kubernetes Pod as a component of a larger application, utilizing features like:
 
 - **Base Construction**: Initializing a Pod with basic metadata and spec.
-- **Feature Mutations**: Applying version-gated or conditional changes (sidecars, env vars) using the `Mutator`.
+- **Feature Mutations**: Applying version-gated or conditional metadata changes (labels) using the `Mutator`.
 - **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., ArgoCD, manual edits).
 - **Suspension**: Deleting the pod when the component is suspended (pods cannot be paused).
 - **Data Extraction**: Harvesting information from the reconciled resource.
@@ -13,7 +13,7 @@ It shows how to manage a Kubernetes Pod as a component of a larger application, 
 
 - `app/`: Defines the mock `ExampleApp` CRD and the controller that uses the component framework.
 - `features/`: Contains modular feature definitions:
-    - `mutations.go`: sidecar injection, env vars, and version-based image updates.
+    - `mutations.go`: label mutations applied to the Pod using the `Mutator`.
 - `resources/`: Contains the central `NewPodResource` factory that assembles all features using the `pod.Builder`.
 - `main.go`: A standalone entry point that demonstrates a single reconciliation loop using a fake client.
 

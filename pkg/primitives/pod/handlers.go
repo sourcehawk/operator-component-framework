@@ -10,7 +10,7 @@ import (
 // It considers a Pod:
 //   - Healthy: when Status.Phase is Running AND all container statuses report Ready.
 //   - Failing: when any container is in CrashLoopBackOff or has terminated with an error.
-//   - Updating: when the converging operation indicates the pod is being recreated.
+//   - Updating: when the converging operation is concepts.ConvergingOperationUpdated.
 //   - Creating: when Status.Phase is Pending and no restart failures are detected.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via

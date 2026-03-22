@@ -15,13 +15,13 @@ import (
 // and data extractors. Build() validates the configuration and returns an
 // initialized Resource ready for use in a reconciliation loop.
 type Builder struct {
-	obj                  *rbacv1.ClusterRoleBinding
-	identityFunc         func(*rbacv1.ClusterRoleBinding) string
-	defaultApplicator    func(current, desired *rbacv1.ClusterRoleBinding) error
-	customApplicator     func(current, desired *rbacv1.ClusterRoleBinding) error
-	mutations            []feature.Mutation[*Mutator]
-	flavors              []generic.FieldApplicationFlavor[*rbacv1.ClusterRoleBinding]
-	dataExtractors       []func(*rbacv1.ClusterRoleBinding) error
+	obj               *rbacv1.ClusterRoleBinding
+	identityFunc      func(*rbacv1.ClusterRoleBinding) string
+	defaultApplicator func(current, desired *rbacv1.ClusterRoleBinding) error
+	customApplicator  func(current, desired *rbacv1.ClusterRoleBinding) error
+	mutations         []feature.Mutation[*Mutator]
+	flavors           []generic.FieldApplicationFlavor[*rbacv1.ClusterRoleBinding]
+	dataExtractors    []func(*rbacv1.ClusterRoleBinding) error
 }
 
 // NewBuilder initializes a new Builder with the provided ClusterRoleBinding object.

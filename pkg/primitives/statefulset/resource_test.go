@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestDefaultFieldApplicator_Create(t *testing.T) {
@@ -87,4 +88,47 @@ func TestDefaultFieldApplicator_Update_PreservesVCTs(t *testing.T) {
 	assert.Equal(t, "live-data", current.Spec.VolumeClaimTemplates[0].Name)
 	qty := current.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage]
 	assert.Equal(t, "10Gi", qty.String())
+}
+
+func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
+	current := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test",
+			Namespace:       "default",
+			ResourceVersion: "12345",
+			UID:             "abc-def",
+			Generation:      3,
+			OwnerReferences: []metav1.OwnerReference{
+				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
+			},
+			Finalizers: []string{"finalizer.example.com"},
+		},
+	}
+	desired := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "test"},
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: ptr.To(int32(3)),
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec and labels are applied
+	assert.Equal(t, int32(3), *current.Spec.Replicas)
+	assert.Equal(t, "test", current.Labels["app"])
+
+	// Server-managed fields are preserved
+	assert.Equal(t, "12345", current.ResourceVersion)
+	assert.Equal(t, "abc-def", string(current.UID))
+	assert.Equal(t, int64(3), current.Generation)
+
+	// Shared-controller fields are preserved
+	assert.Len(t, current.OwnerReferences, 1)
+	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
+	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }

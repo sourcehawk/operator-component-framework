@@ -7,21 +7,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired, but preserves
-// the existing VolumeClaimTemplates from the current object.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
+// and shared-controller fields (OwnerReferences, Finalizers) from the original
+// current object.
 //
-// spec.volumeClaimTemplates is immutable after creation in Kubernetes. Attempting to
-// update it will be rejected by the API server. This applicator preserves the live
-// VolumeClaimTemplates to avoid such rejections while still replacing all other fields.
+// It also preserves the existing VolumeClaimTemplates from the current object
+// when it already exists on the server. spec.volumeClaimTemplates is immutable
+// after creation in Kubernetes; attempting to update it will be rejected by the
+// API server.
 func DefaultFieldApplicator(current, desired *appsv1.StatefulSet) error {
-	// Capture whether the live object already exists before overwriting.
-	// DeepCopy clears ResourceVersion, so we must check before the copy.
-	exists := current.ResourceVersion != ""
+	original := current.DeepCopy()
 
 	vcts := current.Spec.VolumeClaimTemplates
 	*current = *desired.DeepCopy()
+	generic.PreserveServerManagedFields(current, original)
 
-	if exists {
+	if original.ResourceVersion != "" {
 		current.Spec.VolumeClaimTemplates = vcts
 	}
 	return nil

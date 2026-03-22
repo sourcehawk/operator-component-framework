@@ -33,7 +33,7 @@ func DefaultFieldApplicator(current, desired *rbacv1.ClusterRoleBinding) error {
 // grace periods, or suspension. Use a workload or task primitive for resources
 // that require those concepts.
 type Resource struct {
-	base *generic.BaseResource[*rbacv1.ClusterRoleBinding, *Mutator]
+	base *generic.StaticResource[*rbacv1.ClusterRoleBinding, *Mutator]
 }
 
 // Identity returns a unique identifier for the ClusterRoleBinding in the format

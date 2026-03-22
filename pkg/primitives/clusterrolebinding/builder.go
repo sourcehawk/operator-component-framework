@@ -112,17 +112,22 @@ func (b *Builder) Build() (*Resource, error) {
 	if b.obj.Name == "" {
 		return nil, errors.New("object name cannot be empty")
 	}
+	if b.obj.Namespace != "" {
+		return nil, errors.New("object namespace must be empty for cluster-scoped resource")
+	}
 
 	res := &Resource{
-		base: &generic.BaseResource[*rbacv1.ClusterRoleBinding, *Mutator]{
-			DesiredObject:          b.obj,
-			IdentityFunc:           b.identityFunc,
-			DefaultFieldApplicator: b.defaultApplicator,
-			CustomFieldApplicator:  b.customApplicator,
-			NewMutator:             NewMutator,
-			Mutations:              b.mutations,
-			FieldFlavors:           b.flavors,
-			DataExtractors:         b.dataExtractors,
+		base: &generic.StaticResource[*rbacv1.ClusterRoleBinding, *Mutator]{
+			BaseResource: generic.BaseResource[*rbacv1.ClusterRoleBinding, *Mutator]{
+				DesiredObject:          b.obj,
+				IdentityFunc:           b.identityFunc,
+				DefaultFieldApplicator: b.defaultApplicator,
+				CustomFieldApplicator:  b.customApplicator,
+				NewMutator:             NewMutator,
+				Mutations:              b.mutations,
+				FieldFlavors:           b.flavors,
+				DataExtractors:         b.dataExtractors,
+			},
 		},
 	}
 

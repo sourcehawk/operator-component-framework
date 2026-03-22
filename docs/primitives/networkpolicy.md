@@ -202,6 +202,9 @@ Sets the policy types. Valid values are `networkingv1.PolicyTypeIngress` and `ne
 ```go
 m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
     raw := e.Raw()
+    if raw.PodSelector.MatchLabels == nil {
+        raw.PodSelector.MatchLabels = make(map[string]string)
+    }
     raw.PodSelector.MatchLabels["role"] = "db"
     return nil
 })

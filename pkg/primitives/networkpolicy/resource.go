@@ -12,9 +12,7 @@ import (
 // resources. Use a custom field applicator via Builder.WithCustomFieldApplicator
 // if you need to preserve fields that other controllers manage.
 func DefaultFieldApplicator(current, desired *networkingv1.NetworkPolicy) error {
-	rv := current.ResourceVersion
 	*current = *desired.DeepCopy()
-	current.ResourceVersion = rv
 	return nil
 }
 

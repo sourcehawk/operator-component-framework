@@ -7,7 +7,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator handles the immutable nature of pod specs.
+// DefaultFieldApplicator handles the immutable nature of pod specs while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
+// and shared-controller fields (OwnerReferences, Finalizers) from the original
+// current object.
 //
 // For new pods (empty ResourceVersion), the entire desired state is applied.
 // For existing pods, only metadata (labels and annotations) is propagated
@@ -17,10 +20,12 @@ func DefaultFieldApplicator(current, desired *corev1.Pod) error {
 		*current = *desired.DeepCopy()
 		return nil
 	}
+	original := current.DeepCopy()
 	// Pod spec is largely immutable; only propagate metadata changes.
 	// Clone maps to avoid sharing mutable references between desired and current.
 	current.Labels = cloneStringMap(desired.Labels)
 	current.Annotations = cloneStringMap(desired.Annotations)
+	generic.PreserveServerManagedFields(current, original)
 	return nil
 }
 

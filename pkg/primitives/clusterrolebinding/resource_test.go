@@ -54,6 +54,7 @@ func TestDefaultFieldApplicator(t *testing.T) {
 		err := DefaultFieldApplicator(current, desired)
 		require.NoError(t, err)
 		assert.Equal(t, "original-role", current.RoleRef.Name, "roleRef must be preserved on update")
+		assert.Equal(t, "12345", current.ResourceVersion, "ResourceVersion must be preserved on update")
 		assert.Len(t, current.Subjects, 1)
 		assert.Equal(t, "bob", current.Subjects[0].Name)
 	})

@@ -7,17 +7,18 @@ import (
 )
 
 // DefaultFieldApplicator replaces current with a deep copy of desired, preserving
-// roleRef on updates.
+// roleRef and metadata.resourceVersion on updates.
 //
 // roleRef is immutable after creation in the Kubernetes RBAC API. When the current
 // object has a ResourceVersion (indicating it already exists in the cluster), the
-// applicator restores the original roleRef after copying.
+// applicator restores the original roleRef and ResourceVersion after copying.
 func DefaultFieldApplicator(current, desired *rbacv1.ClusterRoleBinding) error {
 	roleRef := current.RoleRef
 	resourceVersion := current.ResourceVersion
 	*current = *desired.DeepCopy()
 	if resourceVersion != "" {
 		current.RoleRef = roleRef
+		current.ResourceVersion = resourceVersion
 	}
 	return nil
 }

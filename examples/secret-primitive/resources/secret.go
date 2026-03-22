@@ -2,7 +2,6 @@
 package resources
 
 import (
-	"encoding/base64"
 	"fmt"
 
 	"github.com/sourcehawk/operator-component-framework/examples/secret-primitive/features"
@@ -43,10 +42,13 @@ func NewSecretResource(owner *sharedapp.ExampleApp) (component.Resource, error) 
 	builder.WithFieldApplicationFlavor(features.PreserveExternalEntriesFlavor())
 
 	// 5. Extract data from the reconciled Secret (only the persisted Data field is observable).
+	//
+	// NOTE: Never log secret values in production controllers. This extractor
+	// prints only key names and value lengths to avoid leaking credentials.
 	builder.WithDataExtractor(func(s corev1.Secret) error {
 		fmt.Printf("Reconciled Secret: %s\n", s.Name)
 		for key, value := range s.Data {
-			fmt.Printf("  [%s]: %s\n", key, base64.StdEncoding.EncodeToString(value))
+			fmt.Printf("  [%s]: %d bytes\n", key, len(value))
 		}
 		return nil
 	})

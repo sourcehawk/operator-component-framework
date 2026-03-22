@@ -6,7 +6,7 @@ The `cronjob` primitive is the framework's built-in integration abstraction for 
 
 | Capability               | Detail                                                                                       |
 |--------------------------|----------------------------------------------------------------------------------------------|
-| **Operational tracking** | Reports `Pending` (never scheduled) or `Operational` (has scheduled at least once)           |
+| **Operational tracking** | Reports `OperationPending` (never scheduled) or `Operational` (has scheduled at least once)  |
 | **Suspension**           | Sets `spec.suspend = true`; reports `Suspending` (active jobs running) / `Suspended`         |
 | **Mutation pipeline**    | Typed editors for metadata, CronJob spec, Job spec, pod spec, and containers                 |
 | **Flavors**              | Preserves externally-managed fields (labels, annotations, pod template metadata)             |

@@ -101,7 +101,7 @@ func main() {
 
 		// Show that immutable fields were preserved from current.
 		var preservedPath string
-		if hp := current.Spec.PersistentVolumeSource.HostPath; hp != nil {
+		if hp := current.Spec.HostPath; hp != nil {
 			preservedPath = hp.Path
 		}
 		fmt.Printf("Preserved volume source path: %s (original: /mnt/old-data)\n", preservedPath)

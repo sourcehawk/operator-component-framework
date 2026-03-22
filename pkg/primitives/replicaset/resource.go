@@ -14,10 +14,14 @@ import (
 // applicator saves the current selector before overwriting and restores it if the
 // object already exists in the cluster (indicated by a non-empty ResourceVersion).
 func DefaultFieldApplicator(current, desired *appsv1.ReplicaSet) error {
+	originalResourceVersion := current.ResourceVersion
 	selector := current.Spec.Selector
+
 	*current = *desired.DeepCopy()
-	if current.ResourceVersion != "" {
+
+	if originalResourceVersion != "" {
 		current.Spec.Selector = selector
+		current.ResourceVersion = originalResourceVersion
 	}
 	return nil
 }
@@ -63,7 +67,7 @@ func (r *Resource) Object() (client.Object, error) {
 //
 // The mutation process follows a specific order:
 //  1. Core State: The current object is reset to the desired base state, or
-//     modified via a custom customFieldApplicator if one is configured.
+//     modified via a custom field applicator if one is configured.
 //  2. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the ReplicaSet.
 //  3. Suspension: If the resource is in a suspending state, the suspension

@@ -8,8 +8,7 @@ ReplicaSets are rarely managed directly — operators typically use Deployments.
 
 | Capability            | Detail                                                                                          |
 |-----------------------|-------------------------------------------------------------------------------------------------|
-| **Health tracking**   | Monitors `ReadyReplicas` and reports `Healthy`, `Creating`, `Updating`, `Scaling`, or `Failing` |
-| **Graceful rollouts** | Detects stalled or failing rollouts via configurable grace periods                              |
+| **Health tracking**   | Monitors `ReadyReplicas` and reports `Healthy`, `Creating`, `Updating`, or `Scaling`            |
 | **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                     |
 | **Mutation pipeline** | Typed editors for metadata, replicaset spec, pod spec, and containers                           |
 | **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                |

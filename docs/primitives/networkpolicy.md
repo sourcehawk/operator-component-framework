@@ -296,7 +296,7 @@ func MetricsIngressMutation(version string, enabled bool) networkpolicy.Mutation
 resource, err := networkpolicy.NewBuilder(base).
     WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels).
     WithMutation(HTTPIngressMutation(owner.Spec.Version)).
-    WithMutation(MetricsIngressMutation(owner.Spec.Version, owner.Spec.MetricsEnabled)).
+    WithMutation(MetricsIngressMutation(owner.Spec.Version, owner.Spec.EnableMetrics)).
     Build()
 ```
 

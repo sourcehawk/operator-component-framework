@@ -42,14 +42,11 @@ func NewSecretResource(owner *sharedapp.ExampleApp) (component.Resource, error) 
 	// 4. Preserve entries added by external controllers or admission webhooks.
 	builder.WithFieldApplicationFlavor(features.PreserveExternalEntriesFlavor())
 
-	// 5. Extract data from the reconciled Secret.
+	// 5. Extract data from the reconciled Secret (only the persisted Data field is observable).
 	builder.WithDataExtractor(func(s corev1.Secret) error {
 		fmt.Printf("Reconciled Secret: %s\n", s.Name)
 		for key, value := range s.Data {
 			fmt.Printf("  [%s]: %s\n", key, base64.StdEncoding.EncodeToString(value))
-		}
-		for key, value := range s.StringData {
-			fmt.Printf("  [%s] (stringData): %s\n", key, value)
 		}
 		return nil
 	})

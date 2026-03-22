@@ -114,6 +114,39 @@ func TestDataHash_ReturnsHexString(t *testing.T) {
 	}
 }
 
+// --- StringData merging ---
+
+func TestDataHash_StringDataIncluded(t *testing.T) {
+	s := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+		StringData: map[string]string{"key": "value"},
+	}
+	hSD, err := DataHash(s)
+	require.NoError(t, err)
+
+	sData := newHashTestSecret(map[string][]byte{"key": []byte("value")})
+	hData, err := DataHash(sData)
+	require.NoError(t, err)
+
+	assert.Equal(t, hSD, hData, "stringData and equivalent data must produce the same hash")
+}
+
+func TestDataHash_StringDataOverridesData(t *testing.T) {
+	s := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+		Data:       map[string][]byte{"key": []byte("from-data")},
+		StringData: map[string]string{"key": "from-stringdata"},
+	}
+	h1, err := DataHash(s)
+	require.NoError(t, err)
+
+	sExpected := newHashTestSecret(map[string][]byte{"key": []byte("from-stringdata")})
+	h2, err := DataHash(sExpected)
+	require.NoError(t, err)
+
+	assert.Equal(t, h1, h2, "stringData must override data for the same key")
+}
+
 // --- DesiredHash ---
 
 func newHashTestResource(t *testing.T, data map[string][]byte, mutations ...Mutation) *Resource {

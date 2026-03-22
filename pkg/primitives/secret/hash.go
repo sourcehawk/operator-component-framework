@@ -9,16 +9,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// DataHash computes a stable SHA-256 hash of the .data field of the given Secret.
+// DataHash computes a stable SHA-256 hash of the effective data content of the
+// given Secret.
 //
-// The hash is derived from the canonical JSON encoding of .data with map keys
-// sorted alphabetically, so it is deterministic regardless of insertion order.
-// The returned string is the lowercase hex encoding of the 256-bit digest.
+// The hash is derived from the canonical JSON encoding of the merged data map
+// with keys sorted alphabetically, so it is deterministic regardless of
+// insertion order. The returned string is the lowercase hex encoding of the
+// 256-bit digest.
 //
-// Only .data is hashed. The .stringData field is write-only in the Kubernetes API
-// and is absent from objects returned by the API server; it is intentionally
-// excluded so that DataHash is consistent whether called on a desired object or
-// a cluster-read object.
+// Both .data and .stringData are included. To match Kubernetes API-server write
+// semantics, .stringData entries are merged into a copy of .data (with
+// .stringData keys taking precedence) before hashing. This ensures the hash is
+// consistent whether called on a desired object (which may use .stringData) or
+// a cluster-read object (where the API server has already merged .stringData
+// into .data).
 //
 // A common use case is to annotate a Deployment's pod template with this hash
 // so that a change in Secret content triggers a rolling restart:
@@ -32,11 +36,14 @@ import (
 //	    return nil
 //	})
 func DataHash(s corev1.Secret) (string, error) {
-	// Normalize nil to empty so that a Secret with no .data hashes identically
-	// to one with an empty map — both represent "no entries".
-	data := s.Data
-	if data == nil {
-		data = map[string][]byte{}
+	// Build the effective data map by merging .stringData into a copy of .data,
+	// mirroring the Kubernetes API server's write semantics.
+	data := make(map[string][]byte, len(s.Data)+len(s.StringData))
+	for k, v := range s.Data {
+		data[k] = v
+	}
+	for k, v := range s.StringData {
+		data[k] = []byte(v)
 	}
 
 	encoded, err := json.Marshal(data)

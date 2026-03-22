@@ -42,6 +42,9 @@ Use `WithCustomFieldApplicator` when other controllers manage fields that should
 resource, err := secret.NewBuilder(base).
     WithCustomFieldApplicator(func(current, desired *corev1.Secret) error {
         // Only synchronise owned keys; leave other fields untouched.
+        if current.Data == nil {
+            current.Data = make(map[string][]byte)
+        }
         current.Data["owned-key"] = desired.Data["owned-key"]
         return nil
     }).
@@ -250,7 +253,7 @@ Two utilities are provided for computing a stable SHA-256 hash of a Secret's `.d
 hash, err := secret.DataHash(s)
 ```
 
-The hash is derived from the canonical JSON encoding of `.data` with map keys sorted alphabetically, so it is deterministic regardless of insertion order. Metadata fields (labels, annotations, etc.) and `.stringData` are excluded. Only `.data` is hashed because `.stringData` is write-only in the Kubernetes API and is absent from objects returned by the API server.
+The hash is derived from the canonical JSON encoding of the effective data map with keys sorted alphabetically, so it is deterministic regardless of insertion order. Both `.data` and `.stringData` are included: `.stringData` entries are merged into a copy of `.data` (with `.stringData` keys taking precedence) before hashing, matching Kubernetes API-server write semantics. This ensures the hash is consistent whether called on a desired object (which may use `.stringData`) or a cluster-read object (where `.stringData` has already been merged into `.data`).
 
 ### Resource.DesiredHash
 

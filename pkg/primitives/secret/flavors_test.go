@@ -90,6 +90,17 @@ func TestPreserveExternalEntries(t *testing.T) {
 		assert.Len(t, applied.Data, 1)
 		assert.Equal(t, []byte("applied"), applied.Data["owned"])
 	})
+
+	t.Run("stringData key treated as owned", func(t *testing.T) {
+		applied := &corev1.Secret{
+			StringData: map[string]string{"key": "from-stringdata"},
+		}
+		current := &corev1.Secret{Data: map[string][]byte{"key": []byte("from-cluster")}}
+
+		require.NoError(t, PreserveExternalEntries(applied, current, nil))
+		// key is owned via stringData, so it should NOT be copied into applied.Data
+		assert.Nil(t, applied.Data, "key owned via stringData must not be preserved into Data")
+	})
 }
 
 func TestFlavors_Integration(t *testing.T) {

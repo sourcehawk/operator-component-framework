@@ -30,15 +30,20 @@ func PreserveCurrentAnnotations(applied, current, desired *corev1.Secret) error 
 //
 // This is useful when other controllers or admission webhooks inject entries into
 // the Secret that your operator does not own. Keys present in both are left
-// as-is on the applied object (the desired value wins).
+// as-is on the applied object (the desired value wins). A key is treated as
+// owned if it exists in either applied.Data or applied.StringData.
 func PreserveExternalEntries(applied, current, _ *corev1.Secret) error {
 	for k, v := range current.Data {
-		if _, exists := applied.Data[k]; !exists {
-			if applied.Data == nil {
-				applied.Data = make(map[string][]byte)
-			}
-			applied.Data[k] = v
+		if _, exists := applied.Data[k]; exists {
+			continue
 		}
+		if _, exists := applied.StringData[k]; exists {
+			continue
+		}
+		if applied.Data == nil {
+			applied.Data = make(map[string][]byte)
+		}
+		applied.Data[k] = v
 	}
 	return nil
 }

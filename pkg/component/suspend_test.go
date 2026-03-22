@@ -342,4 +342,36 @@ func TestSuspendResource(t *testing.T) {
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 		cli.AssertCalled(t, "Delete", ctx, obj, mock.Anything)
 	})
+
+	t.Run("should skip CreateOrUpdate when DeleteOnSuspend is true and object does not exist", func(t *testing.T) {
+		cli := &MockClient{}
+		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
+		res, _ := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
+
+		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "configmaps"}, "cm"))
+
+		status, err := suspendResource(ctx, rec, res, res)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
+		assert.Contains(t, status.Reason, "already deleted")
+
+		// Verify CreateOrUpdate was never called (no Update or Create calls)
+		cli.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
+		cli.AssertNotCalled(t, "Create", mock.Anything, mock.Anything, mock.Anything)
+		cli.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("should return error if existence check fails for DeleteOnSuspend resource", func(t *testing.T) {
+		cli := &MockClient{}
+		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
+		res, _ := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
+
+		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(errors.New("network error"))
+
+		_, err := suspendResource(ctx, rec, res, res)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "network error")
+	})
 }

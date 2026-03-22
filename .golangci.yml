@@ -1,27 +1,20 @@
 version: "2"
-
-run:
-  timeout: 5m
-
 linters:
-  disable-all: true
+  default: none
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
     - asciicheck
     - bidichk
     - bodyclose
     - dupl
+    - errcheck
     - errname
     - errorlint
     - goconst
     - gocritic
     - gocyclo
     - godot
-    - revive
+    - govet
+    - ineffassign
     - misspell
     - nakedret
     - nilerr
@@ -30,47 +23,56 @@ linters:
     - prealloc
     - predeclared
     - reassign
+    - revive
+    - staticcheck
     - unconvert
     - unparam
+    - unused
     - whitespace
-
+  settings:
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - dupl
+          - goconst
+          - revive
+        path: _test\.go
+      - linters:
+          - revive
+        text: dot-imports
+    paths:
+      - third_party$
+      - builtin$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 formatters:
   enable:
     - gofmt
     - goimports
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - dupl
-        - goconst
-        - revive
-    - text: "dot-imports"
-      linters:
-        - revive
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
-linters-settings:
-  revive:
-    rules:
-      - name: blank-imports
-      - name: context-as-first-argument
-      - name: context-keys-type
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: exported
-      - name: if-return
-      - name: increment-decrement
-      - name: var-naming
-      - name: var-declaration
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: time-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$

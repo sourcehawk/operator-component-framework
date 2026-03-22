@@ -32,7 +32,11 @@ func NewServiceAccountResource(owner *sharedapp.ExampleApp) (component.Resource,
 	builder.WithMutation(features.VersionLabelMutation(owner.Spec.Version))
 	builder.WithMutation(features.ImagePullSecretMutation(owner.Spec.Version))
 	builder.WithMutation(features.PrivateRegistryMutation(owner.Spec.Version, owner.Spec.EnableTracing))
-	builder.WithMutation(features.DisableAutomountMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
+	// In this example, we reuse EnableMetrics to drive the disable-automount feature
+	// purely to demonstrate the mutation. A real application would typically use a
+	// dedicated DisableAutomount boolean in its spec instead.
+	disableAutomount := owner.Spec.EnableMetrics
+	builder.WithMutation(features.DisableAutomountMutation(owner.Spec.Version, disableAutomount))
 
 	// 4. Preserve labels added by external controllers.
 	builder.WithFieldApplicationFlavor(serviceaccount.PreserveCurrentLabels)

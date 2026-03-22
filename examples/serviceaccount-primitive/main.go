@@ -90,7 +90,7 @@ func main() {
 	ctx := context.Background()
 
 	for i, spec := range specs {
-		fmt.Printf("\n--- Step %d: Version=%s, PrivateRegistry=%v, DisableAutomount=%v ---\n",
+		fmt.Printf("\n--- Step %d: Version=%s, EnableTracing=%v, EnableMetrics=%v ---\n",
 			i+1, spec.Version, spec.EnableTracing, spec.EnableMetrics)
 
 		owner.Spec = spec

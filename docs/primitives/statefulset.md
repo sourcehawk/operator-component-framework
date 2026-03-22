@@ -58,7 +58,7 @@ Use `WithCustomFieldApplicator` when other controllers manage fields that should
 resource, err := statefulset.NewBuilder(base).
     WithCustomFieldApplicator(func(current, desired *appsv1.StatefulSet) error {
         // Custom merge logic
-        current.Spec.Template = desired.Spec.Template.DeepCopy()
+        current.Spec.Template = *desired.Spec.Template.DeepCopy()
         return nil
     }).
     Build()
@@ -142,9 +142,9 @@ Within a single mutation, edit operations are grouped into categories and applie
 | 2 | StatefulSetSpec edits | Replicas, service name, update strategy, etc. |
 | 3 | Pod template metadata edits | Labels and annotations on the pod template |
 | 4 | Pod spec edits | Volumes, tolerations, node selectors, service account, security context |
-| 5 | Regular container presence | Adding or removing containers from `spec.containers` |
+| 5 | Regular container presence | Adding or removing containers from `spec.template.spec.containers` |
 | 6 | Regular container edits | Env vars, args, resources (snapshot taken after step 5) |
-| 7 | Init container presence | Adding or removing containers from `spec.initContainers` |
+| 7 | Init container presence | Adding or removing containers from `spec.template.spec.initContainers` |
 | 8 | Init container edits | Env vars, args, resources (snapshot taken after step 7) |
 | 9 | Volume claim template operations | Adding or removing entries from `spec.volumeClaimTemplates` |
 

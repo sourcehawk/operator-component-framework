@@ -14,9 +14,14 @@ import (
 // update it will be rejected by the API server. This applicator preserves the live
 // VolumeClaimTemplates to avoid such rejections while still replacing all other fields.
 func DefaultFieldApplicator(current, desired *appsv1.StatefulSet) error {
+	// Capture whether the live object already exists before overwriting.
+	// DeepCopy clears ResourceVersion, so we must check before the copy.
+	exists := current.ResourceVersion != ""
+
 	vcts := current.Spec.VolumeClaimTemplates
 	*current = *desired.DeepCopy()
-	if current.ResourceVersion != "" {
+
+	if exists {
 		current.Spec.VolumeClaimTemplates = vcts
 	}
 	return nil

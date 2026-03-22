@@ -101,7 +101,7 @@ func main() {
 
 		// Show that immutable fields were preserved from current.
 		fmt.Printf("Preserved volume source path: %s (original: /mnt/old-data)\n",
-			current.Spec.PersistentVolumeSource.HostPath.Path)
+			current.Spec.HostPath.Path)
 	}
 
 	// 3. Demonstrate the operational status handler.

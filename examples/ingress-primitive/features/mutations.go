@@ -1,3 +1,4 @@
+// Package features provides modular feature mutations for the ingress primitive example.
 package features
 
 import (

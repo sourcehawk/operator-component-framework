@@ -23,8 +23,8 @@ type containerPresenceOp struct {
 }
 
 type featurePlan struct {
-	daemonsetMetadataEdits  []func(*editors.ObjectMetaEditor) error
-	daemonsetSpecEdits      []func(*editors.DaemonSetSpecEditor) error
+	daemonsetMetadataEdits   []func(*editors.ObjectMetaEditor) error
+	daemonsetSpecEdits       []func(*editors.DaemonSetSpecEditor) error
 	podTemplateMetadataEdits []func(*editors.ObjectMetaEditor) error
 	podSpecEdits             []func(*editors.PodSpecEditor) error
 	containerPresence        []containerPresenceOp

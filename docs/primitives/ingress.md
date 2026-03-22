@@ -214,10 +214,10 @@ The Ingress primitive uses the **Integration** lifecycle, which implements `conc
 
 | Condition                                  | Status        | Reason                                    |
 |--------------------------------------------|---------------|-------------------------------------------|
-| `len(Status.LoadBalancer.Ingress) > 0`     | `Operational` | Ingress has been assigned an address      |
+| Entry with `IP != ""` or `Hostname != ""` | `Operational` | Ingress has been assigned an address      |
 | Otherwise                                  | `Pending`     | Awaiting load balancer address assignment |
 
-The handler does not distinguish between IP and hostname assignments — any non-empty `Status.LoadBalancer.Ingress` slice is considered operational.
+The handler iterates over `Status.LoadBalancer.Ingress` entries and requires at least one with a non-empty `IP` or `Hostname` to report operational.
 
 Override with `WithCustomOperationalStatus` for more complex health checks (e.g. verifying specific annotations set by cloud providers).
 

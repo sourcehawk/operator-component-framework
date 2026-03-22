@@ -41,6 +41,21 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 			wantReason: "Awaiting load balancer address assignment",
 		},
 		{
+			name: "pending with non-empty slice but empty entries",
+			op:   concepts.ConvergingOperationCreated,
+			ingress: &networkingv1.Ingress{
+				Status: networkingv1.IngressStatus{
+					LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+						Ingress: []networkingv1.IngressLoadBalancerIngress{
+							{},
+						},
+					},
+				},
+			},
+			wantStatus: concepts.OperationalStatusPending,
+			wantReason: "Awaiting load balancer address assignment",
+		},
+		{
 			name: "operational with IP assigned",
 			op:   concepts.ConvergingOperationCreated,
 			ingress: &networkingv1.Ingress{

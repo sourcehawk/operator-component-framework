@@ -16,11 +16,13 @@ import (
 func DefaultOperationalStatusHandler(
 	_ concepts.ConvergingOperation, ing *networkingv1.Ingress,
 ) (concepts.OperationalStatusWithReason, error) {
-	if len(ing.Status.LoadBalancer.Ingress) > 0 {
-		return concepts.OperationalStatusWithReason{
-			Status: concepts.OperationalStatusOperational,
-			Reason: "Ingress has been assigned an address",
-		}, nil
+	for _, lb := range ing.Status.LoadBalancer.Ingress {
+		if lb.IP != "" || lb.Hostname != "" {
+			return concepts.OperationalStatusWithReason{
+				Status: concepts.OperationalStatusOperational,
+				Reason: "Ingress has been assigned an address",
+			}, nil
+		}
 	}
 
 	return concepts.OperationalStatusWithReason{

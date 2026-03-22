@@ -64,13 +64,13 @@ resource, err := rolebinding.NewBuilder(base).
 
 Mutations are the primary mechanism for modifying a `RoleBinding` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func AddServiceAccountMutation(version, saName, saNamespace string) rolebinding.Mutation {
     return rolebinding.Mutation{
         Name:    "add-service-account",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewResourceFeature(version, nil), // always enabled
         Mutate: func(m *rolebinding.Mutator) error {
             m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
                 e.EnsureSubject(rbacv1.Subject{

@@ -17,9 +17,10 @@ func CustomConvergeStatus() func(concepts.ConvergingOperation, *batchv1.Job) (co
 			return status, err
 		}
 
-		if status.Status == concepts.CompletionStatusCompleted {
+		switch status.Status {
+		case concepts.CompletionStatusCompleted:
 			status.Reason = "Migration completed successfully"
-		} else if status.Status == concepts.CompletionStatusRunning {
+		case concepts.CompletionStatusRunning:
 			status.Reason = fmt.Sprintf("Migration in progress: %s", status.Reason)
 		}
 

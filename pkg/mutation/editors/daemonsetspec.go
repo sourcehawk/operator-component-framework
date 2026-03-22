@@ -32,7 +32,7 @@ func (e *DaemonSetSpecEditor) SetMinReadySeconds(seconds int32) {
 	e.spec.MinReadySeconds = seconds
 }
 
-// SetRevisionHistoryLimit sets the number of old history to retain to allow rollback.
+// SetRevisionHistoryLimit sets the number of old DaemonSet revisions to retain to allow rollback.
 func (e *DaemonSetSpecEditor) SetRevisionHistoryLimit(limit int32) {
 	e.spec.RevisionHistoryLimit = &limit
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestDefaultConvergingStatusHandler(t *testing.T) {
@@ -78,12 +79,28 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			wantReason: "Waiting for pods: 1/3 ready",
 		},
 		{
-			name: "zero desired is not ready",
+			name: "zero desired with observed generation is healthy",
 			op:   concepts.ConvergingOperationCreated,
 			daemonset: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 1},
 				Status: appsv1.DaemonSetStatus{
 					DesiredNumberScheduled: 0,
 					NumberReady:            0,
+					ObservedGeneration:     1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusHealthy,
+			wantReason: "No nodes match the DaemonSet node selector",
+		},
+		{
+			name: "zero desired with stale generation is not ready",
+			op:   concepts.ConvergingOperationCreated,
+			daemonset: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Status: appsv1.DaemonSetStatus{
+					DesiredNumberScheduled: 0,
+					NumberReady:            0,
+					ObservedGeneration:     1,
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusCreating,

@@ -89,9 +89,9 @@ Within a single mutation, edit operations are grouped into categories and applie
 | 2 | DaemonSetSpec edits | Update strategy, min ready seconds, revision history limit |
 | 3 | Pod template metadata edits | Labels and annotations on the pod template |
 | 4 | Pod spec edits | Volumes, tolerations, node selectors, service account, security context |
-| 5 | Regular container presence | Adding or removing containers from `spec.containers` |
+| 5 | Regular container presence | Adding or removing containers from `spec.template.spec.containers` |
 | 6 | Regular container edits | Env vars, args, resources (snapshot taken after step 5) |
-| 7 | Init container presence | Adding or removing containers from `spec.initContainers` |
+| 7 | Init container presence | Adding or removing containers from `spec.template.spec.initContainers` |
 | 8 | Init container edits | Env vars, args, resources (snapshot taken after step 7) |
 
 Container edits (steps 6 and 8) are evaluated against a snapshot taken *after* presence operations in the same mutation. This means a single mutation can add a container and then configure it without selector resolution issues.
@@ -198,7 +198,7 @@ Override these handlers via `WithCustomSuspendDeletionDecision`, `WithCustomSusp
 
 ### ConvergingStatus
 
-`DefaultConvergingStatusHandler` considers a DaemonSet ready when `Status.NumberReady >= Status.DesiredNumberScheduled` and `DesiredNumberScheduled > 0`. When `DesiredNumberScheduled` is zero (no matching nodes), the DaemonSet is **not** considered converged — use the grace status handler for this case.
+`DefaultConvergingStatusHandler` considers a DaemonSet ready when `Status.NumberReady >= Status.DesiredNumberScheduled` and `DesiredNumberScheduled > 0`. When `DesiredNumberScheduled` is zero (no matching nodes) and the controller has observed the current generation (`ObservedGeneration >= Generation`), the DaemonSet is considered converged with the reason "No nodes match the DaemonSet node selector".
 
 ### GraceStatus
 

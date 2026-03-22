@@ -9,8 +9,10 @@ import (
 
 // DefaultConvergingStatusHandler is the default logic for determining if a DaemonSet has reached its desired state.
 //
-// It considers a DaemonSet ready when its Status.NumberReady matches Status.DesiredNumberScheduled
-// and DesiredNumberScheduled is greater than zero.
+// It considers a DaemonSet ready when:
+//   - Status.NumberReady >= Status.DesiredNumberScheduled and DesiredNumberScheduled > 0, or
+//   - DesiredNumberScheduled is zero and the controller has observed the current generation
+//     (no matching nodes is a valid converged state).
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
@@ -23,6 +25,13 @@ func DefaultConvergingStatusHandler(
 		return concepts.AliveStatusWithReason{
 			Status: concepts.AliveConvergingStatusHealthy,
 			Reason: "All pods are ready",
+		}, nil
+	}
+
+	if desired == 0 && ds.Status.ObservedGeneration >= ds.Generation {
+		return concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusHealthy,
+			Reason: "No nodes match the DaemonSet node selector",
 		}, nil
 	}
 

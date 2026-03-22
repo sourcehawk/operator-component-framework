@@ -63,8 +63,8 @@ func NewMutator(current *appsv1.DaemonSet) *Mutator {
 }
 
 // beginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan until EndFeature
-// or another beginFeature is called.
+// registrations will be grouped into this feature's plan until another
+// beginFeature is called.
 //
 // This is used to ensure that mutations from different features are applied
 // in registration order while maintaining internal category ordering within

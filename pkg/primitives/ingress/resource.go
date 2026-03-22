@@ -8,13 +8,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired.
-//
-// This is the default baseline field application strategy for Ingress resources.
-// Ingress status (status.loadBalancer) is managed via the status subresource by
-// the ingress controller; regular Update calls do not overwrite it on the server side.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
+// and shared-controller fields (OwnerReferences, Finalizers) from the original
+// current object.
 func DefaultFieldApplicator(current, desired *networkingv1.Ingress) error {
+	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
+	generic.PreserveServerManagedFields(current, original)
 	return nil
 }
 

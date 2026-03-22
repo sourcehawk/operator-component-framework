@@ -134,3 +134,67 @@ func TestDefaultFieldApplicator(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
+	storageClass := "fast-ssd"
+	volumeMode := corev1.PersistentVolumeFilesystem
+
+	current := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "app-data",
+			Namespace:       "default",
+			ResourceVersion: "12345",
+			UID:             "abc-def",
+			Generation:      3,
+			OwnerReferences: []metav1.OwnerReference{
+				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
+			},
+			Finalizers: []string{"finalizer.example.com"},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: &storageClass,
+			VolumeMode:       &volumeMode,
+			VolumeName:       "pv-001",
+		},
+	}
+	desired := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app-data",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "test"},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany},
+			VolumeName:  "pv-new",
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("20Gi"),
+				},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec (mutable fields) and labels are applied
+	assert.Equal(t, resource.MustParse("20Gi"), current.Spec.Resources.Requests[corev1.ResourceStorage])
+	assert.Equal(t, "test", current.Labels["app"])
+
+	// Immutable PVC fields are preserved
+	assert.Equal(t, []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}, current.Spec.AccessModes)
+	assert.Equal(t, &storageClass, current.Spec.StorageClassName)
+	assert.Equal(t, &volumeMode, current.Spec.VolumeMode)
+	assert.Equal(t, "pv-001", current.Spec.VolumeName)
+
+	// Server-managed fields are preserved
+	assert.Equal(t, "12345", current.ResourceVersion)
+	assert.Equal(t, "abc-def", string(current.UID))
+	assert.Equal(t, int64(3), current.Generation)
+
+	// Shared-controller fields are preserved
+	assert.Len(t, current.OwnerReferences, 1)
+	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
+	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
+}

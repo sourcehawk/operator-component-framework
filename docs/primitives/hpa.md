@@ -270,6 +270,8 @@ hpa.NewBuilder(base).
     })
 ```
 
+If you choose to keep the HPA during suspension, ensure that your suspend mutation and status handling are updated to match this behavior so that the component's suspended state and reported reasons remain accurate.
+
 ## Flavors
 
 | Flavor | Effect |

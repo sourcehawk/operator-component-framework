@@ -43,10 +43,15 @@ func DefaultOperationalStatusHandler(
 				Status: concepts.OperationalStatusFailing,
 				Reason: conditionReason(scalingActive, "ScalingActive is False"),
 			}, nil
+		case corev1.ConditionUnknown:
+			return concepts.OperationalStatusWithReason{
+				Status: concepts.OperationalStatusPending,
+				Reason: conditionReason(scalingActive, "ScalingActive is Unknown"),
+			}, nil
 		}
 	}
 
-	// Conditions absent or ScalingActive is Unknown
+	// Conditions absent or ScalingActive has an unrecognized status
 	return concepts.OperationalStatusWithReason{
 		Status: concepts.OperationalStatusPending,
 		Reason: "Waiting for HPA conditions to be populated",
@@ -81,6 +86,10 @@ func DefaultSuspendMutationHandler(_ *Mutator) error {
 // It always returns Suspended with a reason indicating the HPA is deleted on suspend.
 // Since the HPA is deleted during suspension, its status is inherently Suspended once
 // the framework reaches this handler.
+//
+// This handler assumes DefaultDeleteOnSuspendHandler (delete-on-suspend) is in effect.
+// If you override the deletion decision to keep the HPA, provide a custom suspension
+// status handler via Builder.WithCustomSuspendStatus as well.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered
 // via Builder.WithCustomSuspendStatus. It can be reused within custom handlers.

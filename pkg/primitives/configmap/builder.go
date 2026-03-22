@@ -40,11 +40,12 @@ func NewBuilder(cm *corev1.ConfigMap) *Builder {
 	}
 }
 
-// WithMutation registers a feature-gated mutation for the ConfigMap.
+// WithMutation registers a mutation for the ConfigMap.
 //
 // Mutations are applied sequentially during the Mutate() phase of reconciliation,
 // after the baseline field applicator and any registered flavors have run.
-// A mutation whose feature gate is nil or disabled is skipped.
+// A mutation with a nil Feature is applied unconditionally; one with a non-nil
+// Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
 	return b

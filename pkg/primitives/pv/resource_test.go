@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestDefaultFieldApplicator_Create(t *testing.T) {
@@ -45,7 +46,7 @@ func TestDefaultFieldApplicator_Create(t *testing.T) {
 	// On create (empty ResourceVersion), all fields should be applied.
 	assert.Equal(t, "myapp", current.Labels["app"])
 	assert.Equal(t, resource.MustParse("10Gi"), current.Spec.Capacity[corev1.ResourceStorage])
-	assert.Equal(t, "nfs.example.com", current.Spec.PersistentVolumeSource.NFS.Server)
+	assert.Equal(t, "nfs.example.com", current.Spec.NFS.Server)
 	assert.Equal(t, &volumeMode, current.Spec.VolumeMode)
 	assert.Equal(t, "fast-ssd", current.Spec.StorageClassName)
 	assert.Equal(t, corev1.PersistentVolumeReclaimRetain, current.Spec.PersistentVolumeReclaimPolicy)
@@ -109,9 +110,9 @@ func TestDefaultFieldApplicator_Update_PreservesImmutableFields(t *testing.T) {
 	require.NoError(t, err)
 
 	// Immutable fields should be preserved from the existing object.
-	assert.Equal(t, "nfs.example.com", current.Spec.PersistentVolumeSource.NFS.Server,
+	assert.Equal(t, "nfs.example.com", current.Spec.NFS.Server,
 		"PersistentVolumeSource should be preserved on update")
-	assert.Nil(t, current.Spec.PersistentVolumeSource.HostPath,
+	assert.Nil(t, current.Spec.HostPath,
 		"desired volume source should not overwrite existing")
 	assert.Equal(t, &existingVolumeMode, current.Spec.VolumeMode,
 		"VolumeMode should be preserved on update")
@@ -163,7 +164,7 @@ func TestDefaultFieldApplicator_Update_NilImmutableFields(t *testing.T) {
 	require.NoError(t, err)
 
 	// Immutable fields from current (all zero/nil) should be restored.
-	assert.Nil(t, current.Spec.PersistentVolumeSource.NFS,
+	assert.Nil(t, current.Spec.NFS,
 		"nil volume source should be preserved")
 	assert.Nil(t, current.Spec.VolumeMode,
 		"nil volume mode should be preserved")
@@ -206,6 +207,62 @@ func TestDefaultFieldApplicator_DoesNotMutateDesired(t *testing.T) {
 	require.NoError(t, err)
 
 	// Desired object must not be mutated.
-	assert.Equal(t, "desired.example.com", desired.Spec.PersistentVolumeSource.NFS.Server)
+	assert.Equal(t, "desired.example.com", desired.Spec.NFS.Server)
 	assert.Equal(t, "desired-class", desired.Spec.StorageClassName)
+}
+
+func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
+	existingVolumeMode := corev1.PersistentVolumeBlock
+	current := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pv",
+			ResourceVersion: "12345",
+			UID:             types.UID("abc-def"),
+			Generation:      3,
+			OwnerReferences: []metav1.OwnerReference{
+				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
+			},
+			Finalizers: []string{"finalizer.example.com"},
+		},
+		Spec: corev1.PersistentVolumeSpec{
+			PersistentVolumeSource: corev1.PersistentVolumeSource{
+				NFS: &corev1.NFSVolumeSource{
+					Server: "nfs.example.com",
+					Path:   "/exports/data",
+				},
+			},
+			VolumeMode: &existingVolumeMode,
+		},
+	}
+	desired := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "test-pv",
+			Labels: map[string]string{"app": "test"},
+		},
+		Spec: corev1.PersistentVolumeSpec{
+			StorageClassName:              "fast-ssd",
+			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec and labels are applied
+	assert.Equal(t, "fast-ssd", current.Spec.StorageClassName)
+	assert.Equal(t, "test", current.Labels["app"])
+
+	// Server-managed fields are preserved
+	assert.Equal(t, "12345", current.ResourceVersion)
+	assert.Equal(t, "abc-def", string(current.UID))
+	assert.Equal(t, int64(3), current.Generation)
+
+	// Shared-controller fields are preserved
+	assert.Len(t, current.OwnerReferences, 1)
+	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
+	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
+
+	// PV-specific immutable fields are preserved
+	assert.Equal(t, "nfs.example.com", current.Spec.NFS.Server)
+	assert.Equal(t, &existingVolumeMode, current.Spec.VolumeMode)
 }

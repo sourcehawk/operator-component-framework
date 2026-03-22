@@ -7,14 +7,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator preserves immutable fields from the existing PersistentVolume
-// while applying the desired state.
-//
-// PersistentVolumes have immutable fields that cannot be changed after creation
-// (e.g. the volume source). This applicator deep-copies the desired state onto
-// the current object but preserves the existing Spec.PersistentVolumeSource,
-// Spec.VolumeMode, and Spec.ClaimRef so that updates do not attempt to change
-// server-enforced immutable fields.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
+// shared-controller fields (OwnerReferences, Finalizers), and PV-specific
+// immutable fields (PersistentVolumeSource, VolumeMode, ClaimRef) from the
+// original current object.
 //
 // On a fresh PV (empty ResourceVersion, meaning it has not yet been persisted),
 // the full desired state is applied without preservation.
@@ -30,9 +27,11 @@ func DefaultFieldApplicator(current, desired *corev1.PersistentVolume) error {
 	savedVolumeMode := current.Spec.VolumeMode
 	savedClaimRef := current.Spec.ClaimRef
 
+	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
+	generic.PreserveServerManagedFields(current, original)
 
-	// Restore immutable fields from the live object.
+	// Restore PV-specific immutable fields from the live object.
 	current.Spec.PersistentVolumeSource = savedSource
 	current.Spec.VolumeMode = savedVolumeMode
 	current.Spec.ClaimRef = savedClaimRef

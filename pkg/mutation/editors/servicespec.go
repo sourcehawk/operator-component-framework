@@ -88,7 +88,7 @@ func (e *ServiceSpecEditor) SetPublishNotReadyAddresses(v bool) {
 }
 
 // SetExternalTrafficPolicy sets the external traffic policy for the service.
-func (e *ServiceSpecEditor) SetExternalTrafficPolicy(policy corev1.ServiceExternalTrafficPolicyType) {
+func (e *ServiceSpecEditor) SetExternalTrafficPolicy(policy corev1.ServiceExternalTrafficPolicy) {
 	e.spec.ExternalTrafficPolicy = policy
 }
 

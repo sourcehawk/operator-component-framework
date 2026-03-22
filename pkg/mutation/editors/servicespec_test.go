@@ -119,7 +119,7 @@ func TestServiceSpecEditor(t *testing.T) {
 		assert.Equal(t, "prod", spec.Selector["env"])
 	})
 
-	t.Run("RemoveSelector no-op on nil selector", func(t *testing.T) {
+	t.Run("RemoveSelector no-op on nil selector", func(_ *testing.T) {
 		spec := &corev1.ServiceSpec{}
 		editor := NewServiceSpecEditor(spec)
 		editor.RemoveSelector("missing") // should not panic

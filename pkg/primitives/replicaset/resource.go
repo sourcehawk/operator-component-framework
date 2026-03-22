@@ -7,21 +7,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired, preserving
-// the immutable spec.selector from the live object.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
+// and shared-controller fields (OwnerReferences, Finalizers) from the original
+// current object.
 //
 // In Kubernetes, a ReplicaSet's spec.selector is immutable after creation. This
-// applicator saves the current selector before overwriting and restores it if the
-// object already exists in the cluster (indicated by a non-empty ResourceVersion).
+// applicator also preserves the current selector when updating an existing object
+// (indicated by a non-empty ResourceVersion).
 func DefaultFieldApplicator(current, desired *appsv1.ReplicaSet) error {
-	originalResourceVersion := current.ResourceVersion
-	selector := current.Spec.Selector
-
+	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
+	generic.PreserveServerManagedFields(current, original)
 
-	if originalResourceVersion != "" {
-		current.Spec.Selector = selector
-		current.ResourceVersion = originalResourceVersion
+	if original.ResourceVersion != "" {
+		current.Spec.Selector = original.Spec.Selector
 	}
 	return nil
 }

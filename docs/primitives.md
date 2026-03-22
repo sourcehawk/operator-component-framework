@@ -107,6 +107,7 @@ Editors provide scoped, typed APIs for modifying specific parts of a resource:
 | `PodSpecEditor`        | Volumes, tolerations, node selectors, service account, security context |
 | `DeploymentSpecEditor` | Replicas, update strategy, label selectors                              |
 | `ConfigMapDataEditor`  | `.data` entries — set, remove, deep-merge YAML patches, raw access      |
+| `SecretDataEditor`     | `.data` and `.stringData` entries — set, remove, raw access             |
 | `ObjectMetaEditor`     | Labels and annotations on any Kubernetes object                         |
 
 Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the underlying Kubernetes struct while keeping the mutation scoped to that editor's target.
@@ -130,6 +131,7 @@ Selectors are evaluated against the container list *after* any presence operatio
 |--------------------------------------|------------|-----------------------------------------|
 | `pkg/primitives/deployment`          | Workload   | [deployment.md](primitives/deployment.md) |
 | `pkg/primitives/configmap`           | Static     | [configmap.md](primitives/configmap.md)   |
+| `pkg/primitives/secret`             | Static     | [secret.md](primitives/secret.md)         |
 
 ## Usage Examples
 

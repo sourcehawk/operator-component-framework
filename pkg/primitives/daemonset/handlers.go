@@ -45,9 +45,16 @@ func DefaultConvergingStatusHandler(
 		status = concepts.AliveConvergingStatusScaling
 	}
 
+	var reason string
+	if ds.Status.ObservedGeneration < ds.Generation {
+		reason = "Waiting for controller to observe latest generation"
+	} else {
+		reason = fmt.Sprintf("Waiting for pods: %d/%d ready", ds.Status.NumberReady, desired)
+	}
+
 	return concepts.AliveStatusWithReason{
 		Status: status,
-		Reason: fmt.Sprintf("Waiting for pods: %d/%d ready", ds.Status.NumberReady, desired),
+		Reason: reason,
 	}, nil
 }
 

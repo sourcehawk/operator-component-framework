@@ -54,7 +54,7 @@ func (r *Resource) Object() (client.Object, error) {
 //
 // The mutation process follows a specific order:
 //  1. Core State: The current object is reset to the desired base state, or
-//     modified via a custom customFieldApplicator if one is configured.
+//     modified via a customFieldApplicator if one is configured.
 //  2. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the DaemonSet.
 //  3. Suspension: If the resource is in a suspending state, the suspension
@@ -69,8 +69,12 @@ func (r *Resource) Mutate(current client.Object) error {
 
 // ConvergingStatus evaluates if the DaemonSet has successfully reached its desired state.
 //
-// By default, it uses DefaultConvergingStatusHandler, which checks if the number of NumberReady
-// pods matches DesiredNumberScheduled and that DesiredNumberScheduled is greater than zero.
+// By default, it uses DefaultConvergingStatusHandler, which first ensures that
+// status.ObservedGeneration is at least the DaemonSet's metadata.Generation.
+// Once the generation has been observed:
+//   - If DesiredNumberScheduled is zero, the DaemonSet is considered converged (no pods expected).
+//   - If DesiredNumberScheduled is greater than zero, the DaemonSet is considered converged when
+//     NumberReady is greater than or equal to DesiredNumberScheduled.
 //
 // The return value includes a descriptive status (Ready, Creating, Updating, or Scaling)
 // and a human-readable reason, which are used to update the component's conditions.
@@ -82,7 +86,7 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.A
 // reached full readiness.
 //
 // By default, it uses DefaultGraceStatusHandler, which categorizes the current state into:
-//   - GraceStatusUp: DesiredNumberScheduled is zero (no matching nodes).
+//   - GraceStatusHealthy: DesiredNumberScheduled is zero (no matching nodes).
 //   - GraceStatusDegraded: Some pods are ready but below the desired count.
 //   - GraceStatusDown: No pods are ready.
 func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {

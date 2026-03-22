@@ -104,7 +104,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusCreating,
-			wantReason: "Waiting for pods: 0/0 ready",
+			wantReason: "Waiting for controller to observe latest generation",
 		},
 	}
 

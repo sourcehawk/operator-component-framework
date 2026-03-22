@@ -190,6 +190,7 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+
 func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
 	desired := newValidIngress()
 

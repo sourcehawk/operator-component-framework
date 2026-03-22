@@ -2,6 +2,7 @@ package features
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
@@ -54,7 +55,7 @@ func CustomSuspendMutation() func(*deployment.Mutator) error {
 
 		// Additionally, add an annotation indicating when it was suspended.
 		m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
-			meta.EnsureAnnotation("example.io/suspended-at", "2026-03-20")
+			meta.EnsureAnnotation("example.io/suspended-at", time.Now().UTC().Format(time.RFC3339))
 			return nil
 		})
 

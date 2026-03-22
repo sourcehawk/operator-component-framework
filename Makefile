@@ -1,5 +1,5 @@
 .PHONY: all
-all: fmt lint test
+all: fmt lint test build-examples
 
 ##@ General
 
@@ -76,6 +76,16 @@ lint:
 .PHONY: test
 test: setup-envtest
 	go test -v $(shell go list ./... | grep -v /examples/) -coverprofile cover.out
+
+.PHONY: build-examples
+build-examples: ## Build all example binaries.
+	go build ./examples/...
+
+.PHONY: run-examples
+run-examples: ## Run all examples to verify they execute without error.
+	go run ./examples/deployment-primitive/.
+	go run ./examples/configmap-primitive/.
+	go run ./examples/custom-resource-implementation/.
 
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist

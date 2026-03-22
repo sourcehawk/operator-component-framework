@@ -75,7 +75,19 @@ Update documentation in the **same response** as the code change — never leave
 
 If you change a method signature, type name, or behaviour in `pkg/`, search `examples/` for usages and update them.
 
-Ensure examples still build and run as expected after editing them using the appropriate `go build` or `go run` commands.
+Ensure examples still build and run as expected after editing them using:
+
+```bash
+make build-examples
+```
+
+or to run them
+
+```bash
+make run-exampels
+```
+
+or use a more targeted `go run` command for a specific example.
 
 ### Tests
 

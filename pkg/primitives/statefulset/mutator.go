@@ -28,15 +28,15 @@ type volumeClaimTemplateOp struct {
 }
 
 type featurePlan struct {
-	statefulsetMetadataEdits  []func(*editors.ObjectMetaEditor) error
-	statefulsetSpecEdits      []func(*editors.StatefulSetSpecEditor) error
-	podTemplateMetadataEdits  []func(*editors.ObjectMetaEditor) error
-	podSpecEdits              []func(*editors.PodSpecEditor) error
-	containerPresence         []containerPresenceOp
-	containerEdits            []containerEdit
-	initContainerPresence     []containerPresenceOp
-	initContainerEdits        []containerEdit
-	volumeClaimTemplateOps    []volumeClaimTemplateOp
+	statefulsetMetadataEdits []func(*editors.ObjectMetaEditor) error
+	statefulsetSpecEdits     []func(*editors.StatefulSetSpecEditor) error
+	podTemplateMetadataEdits []func(*editors.ObjectMetaEditor) error
+	podSpecEdits             []func(*editors.PodSpecEditor) error
+	containerPresence        []containerPresenceOp
+	containerEdits           []containerEdit
+	initContainerPresence    []containerPresenceOp
+	initContainerEdits       []containerEdit
+	volumeClaimTemplateOps   []volumeClaimTemplateOp
 }
 
 // Mutator is a high-level helper for modifying a Kubernetes StatefulSet.

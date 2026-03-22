@@ -1,12 +1,12 @@
 # Ingress Primitive
 
-The `ingress` primitive is the framework's built-in integration abstraction for managing Kubernetes `Ingress` resources. It integrates with the component lifecycle and provides a structured mutation API for managing rules, TLS configuration, and metadata.
+The `ingress` primitive is the framework's built-in integration abstraction for managing Kubernetes `Ingress` resources. It integrates with the component lifecycle and provides a structured mutation API for managing rules, TLS configuration, and metadata. For an overview of all built-in primitives, see [Primitives](../primitives.md).
 
 ## Capabilities
 
 | Capability              | Detail                                                                                         |
 |-------------------------|------------------------------------------------------------------------------------------------|
-| **Operational status**  | Reports `Pending` until the ingress controller assigns an address, then `Operational`          |
+| **Operational status**  | Reports `OperationPending` until the ingress controller assigns an address, then `Operational` |
 | **Suspension**          | No-op by default — Ingress is left in place; backend returns 502/503                           |
 | **Mutation pipeline**   | Typed editors for metadata and ingress spec (rules, TLS, class name, default backend)          |
 | **Flavors**             | Preserves externally-managed fields (labels, annotations)                                      |
@@ -215,7 +215,7 @@ The Ingress primitive uses the **Integration** lifecycle, which implements `conc
 | Condition                                  | Status        | Reason                                    |
 |--------------------------------------------|---------------|-------------------------------------------|
 | Entry with `IP != ""` or `Hostname != ""` | `Operational` | Ingress has been assigned an address      |
-| Otherwise                                  | `Pending`     | Awaiting load balancer address assignment |
+| Otherwise                                  | `OperationPending` | Awaiting load balancer address assignment |
 
 The handler iterates over `Status.LoadBalancer.Ingress` entries and requires at least one with a non-empty `IP` or `Hostname` to report operational.
 

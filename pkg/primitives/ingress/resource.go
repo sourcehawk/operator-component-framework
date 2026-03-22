@@ -21,11 +21,11 @@ func DefaultFieldApplicator(current, desired *networkingv1.Ingress) error {
 // Resource is a high-level abstraction for managing a Kubernetes Ingress within
 // a controller's reconciliation loop.
 //
-// It implements the following component interfaces:
+// It implements the following component lifecycle interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for tracking whether the ingress has been assigned an address.
-//   - component.Suspendable: for controlled suspension when the parent component is suspended.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Operational: for tracking whether the ingress has been assigned an address.
+//   - concepts.Suspendable: for controlled suspension when the parent component is suspended.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // Ingress resources are integration primitives: they depend on an external ingress
 // controller to assign load balancer addresses. The default operational status handler
@@ -64,8 +64,8 @@ func (r *Resource) Mutate(current client.Object) error {
 
 // ConvergingStatus evaluates whether the Ingress has reached its operational state.
 //
-// By default, it uses DefaultOperationalStatusHandler, which reports Pending until
-// the ingress controller has assigned at least one IP or hostname, then Operational.
+// By default, it uses DefaultOperationalStatusHandler, which reports OperationPending
+// until the ingress controller has assigned at least one IP or hostname, then Operational.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
 }

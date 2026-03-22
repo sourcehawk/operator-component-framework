@@ -7,17 +7,17 @@ import (
 )
 
 // DefaultFieldApplicator replaces the current RoleBinding with a deep copy of
-// the desired object, preserving the live roleRef when the resource already
-// exists in the cluster.
-//
-// roleRef is immutable after creation in Kubernetes. If the current object has
-// a non-empty ResourceVersion (indicating it was read from the API server),
-// the live roleRef is preserved regardless of what the desired object declares.
+// the desired object, preserving server-managed metadata (ResourceVersion, UID,
+// Generation, etc.) and shared-controller fields (OwnerReferences, Finalizers)
+// from the original current object. It also preserves the live roleRef when the
+// resource already exists in the cluster, since roleRef is immutable after
+// creation in Kubernetes.
 func DefaultFieldApplicator(current, desired *rbacv1.RoleBinding) error {
-	existed := current.ResourceVersion != ""
+	original := current.DeepCopy()
 	roleRef := current.RoleRef
 	*current = *desired.DeepCopy()
-	if existed {
+	generic.PreserveServerManagedFields(current, original)
+	if original.ResourceVersion != "" {
 		current.RoleRef = roleRef
 	}
 	return nil

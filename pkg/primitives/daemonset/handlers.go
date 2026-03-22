@@ -10,7 +10,8 @@ import (
 // DefaultConvergingStatusHandler is the default logic for determining if a DaemonSet has reached its desired state.
 //
 // It considers a DaemonSet ready when:
-//   - Status.NumberReady >= Status.DesiredNumberScheduled and DesiredNumberScheduled > 0, or
+//   - Status.ObservedGeneration >= Generation and Status.NumberReady >= Status.DesiredNumberScheduled
+//     and DesiredNumberScheduled > 0, or
 //   - DesiredNumberScheduled is zero and the controller has observed the current generation
 //     (no matching nodes is a valid converged state).
 //
@@ -21,7 +22,7 @@ func DefaultConvergingStatusHandler(
 ) (concepts.AliveStatusWithReason, error) {
 	desired := ds.Status.DesiredNumberScheduled
 
-	if desired > 0 && ds.Status.NumberReady >= desired {
+	if desired > 0 && ds.Status.ObservedGeneration >= ds.Generation && ds.Status.NumberReady >= desired {
 		return concepts.AliveStatusWithReason{
 			Status: concepts.AliveConvergingStatusHealthy,
 			Reason: "All pods are ready",
@@ -62,7 +63,7 @@ func DefaultConvergingStatusHandler(
 // reached full readiness.
 //
 // It categorizes the current state into:
-//   - GraceStatusUp: DesiredNumberScheduled is zero — no nodes match the selector; this is a
+//   - GraceStatusHealthy: DesiredNumberScheduled is zero — no nodes match the selector; this is a
 //     valid configuration state, not a failure.
 //   - GraceStatusDegraded: DesiredNumberScheduled > 0 and at least one pod is ready, but below desired.
 //   - GraceStatusDown: DesiredNumberScheduled > 0 and no pods are ready.

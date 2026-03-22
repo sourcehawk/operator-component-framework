@@ -22,9 +22,11 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			name: "ready with all pods scheduled",
 			op:   concepts.ConvergingOperationUpdated,
 			daemonset: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 1},
 				Status: appsv1.DaemonSetStatus{
 					DesiredNumberScheduled: 3,
 					NumberReady:            3,
+					ObservedGeneration:     1,
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusHealthy,
@@ -34,13 +36,29 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			name: "ready with more than desired",
 			op:   concepts.ConvergingOperationUpdated,
 			daemonset: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 1},
 				Status: appsv1.DaemonSetStatus{
 					DesiredNumberScheduled: 3,
 					NumberReady:            5,
+					ObservedGeneration:     1,
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusHealthy,
 			wantReason: "All pods are ready",
+		},
+		{
+			name: "stale observed generation with desired pods ready reports updating not healthy",
+			op:   concepts.ConvergingOperationUpdated,
+			daemonset: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Status: appsv1.DaemonSetStatus{
+					DesiredNumberScheduled: 3,
+					NumberReady:            3,
+					ObservedGeneration:     1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusUpdating,
+			wantReason: "Waiting for controller to observe latest generation",
 		},
 		{
 			name: "creating",

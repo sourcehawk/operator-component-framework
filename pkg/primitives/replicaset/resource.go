@@ -31,9 +31,9 @@ func DefaultFieldApplicator(current, desired *appsv1.ReplicaSet) error {
 //
 // It implements several component interfaces to integrate with the operator-component-framework:
 //   - component.Resource: for basic identity and mutation behavior.
-//   - component.Alive: for health and readiness tracking.
-//   - component.Suspendable: for graceful scale-down or temporary deactivation.
-//   - component.DataExtractable: for exporting information after successful reconciliation.
+//   - concepts.Alive: for health and readiness tracking.
+//   - concepts.Suspendable: for graceful scale-down or temporary deactivation.
+//   - concepts.DataExtractable: for exporting information after successful reconciliation.
 //
 // This resource handles the lifecycle of a ReplicaSet, including initial creation,
 // updates via feature mutations, and status monitoring.

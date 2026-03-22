@@ -52,25 +52,16 @@ AI_BASE  := .ai/base.md
 AI_REVIEW := .ai/review.md
 
 .PHONY: ai-instructions
-ai-instructions: CLAUDE.md .junie/guidelines.md .github/copilot-instructions.md .github/copilot-review-guidelines.md ## Generate all AI instruction files from source templates in .ai/
-
-CLAUDE.md: $(AI_BASE)
-	cp $< $@
-
-.junie/guidelines.md: $(AI_BASE)
+ai-instructions: ## Generate all AI instruction files from source templates in .ai/
+	cp $(AI_BASE) CLAUDE.md
 	@mkdir -p .junie
-	cp $< $@
-
-.github/copilot-review-guidelines.md: $(AI_REVIEW)
+	cp $(AI_BASE) .junie/guidelines.md
 	@mkdir -p .github
-	cp $< $@
-
-.github/copilot-instructions.md: $(AI_BASE) $(AI_REVIEW)
-	@mkdir -p .github
+	cp $(AI_REVIEW) .github/copilot-review-guidelines.md
 	@{ \
 		cat $(AI_BASE); \
 		printf '\n\n---\n\n## Code Review\n\nWhen reviewing pull requests, apply the standards in [`.github/copilot-review-guidelines.md`](copilot-review-guidelines.md).\n'; \
-	} > $@
+	} > .github/copilot-instructions.md
 
 ##@ Development
 

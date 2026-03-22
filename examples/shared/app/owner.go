@@ -41,6 +41,7 @@ type ExampleApp struct {
 func (in *ExampleApp) DeepCopyObject() runtime.Object {
 	out := &ExampleApp{}
 	*out = *in
+	in.DeepCopyInto(&out.ObjectMeta)
 	out.Status.Conditions = make([]metav1.Condition, len(in.Status.Conditions))
 	copy(out.Status.Conditions, in.Status.Conditions)
 	return out

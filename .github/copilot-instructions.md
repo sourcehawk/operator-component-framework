@@ -75,6 +75,8 @@ Update documentation in the **same response** as the code change — never leave
 
 If you change a method signature, type name, or behaviour in `pkg/`, search `examples/` for usages and update them.
 
+Ensure examples still build and run as expected after editing them using the appropriate `go build` or `go run` commands.
+
 ### Tests
 
 The project uses Ginkgo/Gomega and testify. Run with:

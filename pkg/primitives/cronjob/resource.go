@@ -8,9 +8,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
+// and shared-controller fields (OwnerReferences, Finalizers) from the original
+// current object.
 func DefaultFieldApplicator(current, desired *batchv1.CronJob) error {
+	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
+	generic.PreserveServerManagedFields(current, original)
 	return nil
 }
 

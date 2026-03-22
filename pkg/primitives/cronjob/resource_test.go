@@ -176,6 +176,49 @@ func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
 	})
 }
 
+func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
+	current := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-cj",
+			Namespace:       "test-ns",
+			ResourceVersion: "12345",
+			UID:             "abc-def",
+			Generation:      3,
+			OwnerReferences: []metav1.OwnerReference{
+				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
+			},
+			Finalizers: []string{"finalizer.example.com"},
+		},
+	}
+	desired := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cj",
+			Namespace: "test-ns",
+			Labels:    map[string]string{"app": "test"},
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule: "0 2 * * *",
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec and labels are applied
+	assert.Equal(t, "0 2 * * *", current.Spec.Schedule)
+	assert.Equal(t, "test", current.Labels["app"])
+
+	// Server-managed fields are preserved
+	assert.Equal(t, "12345", current.ResourceVersion)
+	assert.Equal(t, "abc-def", string(current.UID))
+	assert.Equal(t, int64(3), current.Generation)
+
+	// Shared-controller fields are preserved
+	assert.Len(t, current.OwnerReferences, 1)
+	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
+	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
+}
+
 type mockHandlers struct {
 	mock.Mock
 }

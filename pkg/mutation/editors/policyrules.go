@@ -18,6 +18,10 @@ type PolicyRulesEditor struct {
 // automatically. Pass a non-nil pointer (e.g. &cr.Rules) so that writes are
 // reflected on the object.
 func NewPolicyRulesEditor(rules *[]rbacv1.PolicyRule) *PolicyRulesEditor {
+	if rules == nil {
+		var r []rbacv1.PolicyRule
+		rules = &r
+	}
 	return &PolicyRulesEditor{rules: rules}
 }
 

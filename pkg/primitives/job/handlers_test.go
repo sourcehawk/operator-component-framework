@@ -45,7 +45,20 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			wantReason: "Job failed: BackoffLimitExceeded",
 		},
 		{
-			name: "failed without message",
+			name: "failed with reason only",
+			op:   concepts.ConvergingOperationUpdated,
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded"},
+					},
+				},
+			},
+			wantStatus: concepts.CompletionStatusFailing,
+			wantReason: "Job failed: BackoffLimitExceeded",
+		},
+		{
+			name: "failed without message or reason",
 			op:   concepts.ConvergingOperationUpdated,
 			job: &batchv1.Job{
 				Status: batchv1.JobStatus{

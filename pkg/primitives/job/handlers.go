@@ -29,8 +29,11 @@ func DefaultConvergingStatusHandler(
 		}
 		if cond.Type == batchv1.JobFailed && cond.Status == corev1.ConditionTrue {
 			reason := "Job failed"
-			if cond.Message != "" {
+			switch {
+			case cond.Message != "":
 				reason = fmt.Sprintf("Job failed: %s", cond.Message)
+			case cond.Reason != "":
+				reason = fmt.Sprintf("Job failed: %s", cond.Reason)
 			}
 			return concepts.CompletionStatusWithReason{
 				Status: concepts.CompletionStatusFailing,

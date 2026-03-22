@@ -17,10 +17,10 @@ func DefaultFieldApplicator(current, desired *batchv1.Job) error {
 // reconciliation loop.
 //
 // It implements several component interfaces to integrate with the operator-component-framework:
-//   - concepts.Resource: for basic identity and mutation behavior.
-//   - concepts.Completable: for run-to-completion tracking.
-//   - concepts.Suspendable: for controlled deactivation (suspend or delete).
-//   - concepts.DataExtractable: for exporting information after successful reconciliation.
+//   - component.Resource: for basic identity and mutation behavior.
+//   - component.Completable: for run-to-completion tracking.
+//   - component.Suspendable: for controlled deactivation (suspend or delete).
+//   - component.DataExtractable: for exporting information after successful reconciliation.
 //
 // This resource handles the lifecycle of a Job, including initial creation,
 // updates via feature mutations, and completion status monitoring.

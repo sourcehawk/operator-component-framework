@@ -6,6 +6,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // DefaultConvergingStatusHandler is the default logic for determining if a Job has completed or is still running.
@@ -20,13 +21,13 @@ func DefaultConvergingStatusHandler(
 	op concepts.ConvergingOperation, job *batchv1.Job,
 ) (concepts.CompletionStatusWithReason, error) {
 	for _, cond := range job.Status.Conditions {
-		if cond.Type == batchv1.JobComplete && cond.Status == "True" {
+		if cond.Type == batchv1.JobComplete && cond.Status == corev1.ConditionTrue {
 			return concepts.CompletionStatusWithReason{
 				Status: concepts.CompletionStatusCompleted,
 				Reason: "Job completed successfully",
 			}, nil
 		}
-		if cond.Type == batchv1.JobFailed && cond.Status == "True" {
+		if cond.Type == batchv1.JobFailed && cond.Status == corev1.ConditionTrue {
 			reason := "Job failed"
 			if cond.Message != "" {
 				reason = fmt.Sprintf("Job failed: %s", cond.Message)

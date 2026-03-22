@@ -64,7 +64,7 @@ func VersionFeature(version string) deployment.Mutation {
 				return nil
 			})
 
-			m.EditDeploymentMetadata(func(meta *editors.ObjectMetaEditor) error {
+			m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
 				meta.EnsureLabel("app.kubernetes.io/version", version)
 				return nil
 			})

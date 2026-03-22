@@ -22,11 +22,15 @@ func TestStaticResource(t *testing.T) {
 		current.Data = desired.Data
 		return nil
 	}
+	newMutator := func(_ *corev1.ConfigMap) *mockMutator { return &mockMutator{} }
 
-	res := &StaticResource[*corev1.ConfigMap]{
-		DesiredObject:          obj,
-		IdentityFunc:           identityFunc,
-		DefaultFieldApplicator: defaultApp,
+	res := &StaticResource[*corev1.ConfigMap, *mockMutator]{
+		BaseResource: BaseResource[*corev1.ConfigMap, *mockMutator]{
+			DesiredObject:          obj,
+			IdentityFunc:           identityFunc,
+			DefaultFieldApplicator: defaultApp,
+			NewMutator:             newMutator,
+		},
 	}
 
 	t.Run("Identity", func(t *testing.T) {
@@ -57,6 +61,25 @@ func TestStaticResource(t *testing.T) {
 		if current.Data["foo"] != testVal {
 			t.Errorf("expected foo=%s, got %v", testVal, current.Data["foo"])
 		}
+	})
+
+	t.Run("Mutate applies registered mutations", func(t *testing.T) {
+		applied := false
+		res.Mutations = nil
+		res.Mutations = append(res.Mutations, mockMutation(func(_ *mockMutator) error {
+			applied = true
+			return nil
+		}))
+
+		current := &corev1.ConfigMap{}
+		if err := res.Mutate(current); err != nil {
+			t.Fatalf("Mutate() error = %v", err)
+		}
+		if !applied {
+			t.Errorf("mutation was not applied")
+		}
+
+		res.Mutations = nil
 	})
 
 	t.Run("ExtractData", func(t *testing.T) {

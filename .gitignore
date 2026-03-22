@@ -37,3 +37,5 @@ tmp/
 # Ai slob
 .junie
 CLAUDE.md
+.claude
+CONTEXT.md

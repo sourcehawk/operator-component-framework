@@ -37,7 +37,7 @@ resource, err := deployment.NewBuilder(base).
 
 Mutations are the primary mechanism for modifying a `Deployment` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
 
-A mutation requires a `Feature` to control when it applies. A feature with no version constraints and no `When()` conditions is always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) deployment.Mutation {
@@ -195,13 +195,13 @@ m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEdito
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditDeploymentMetadata` to target the `Deployment` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `Deployment` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
 ```go
 // On the Deployment itself
-m.EditDeploymentMetadata(func(e *editors.ObjectMetaEditor) error {
+m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
     e.EnsureLabel("app.kubernetes.io/version", version)
     return nil
 })
@@ -230,13 +230,13 @@ m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEdito
 
 The `Mutator` also exposes convenience wrappers that target all containers at once:
 
-| Method | Equivalent to |
-|---|---|
-| `EnsureReplicas(n)` | `EditDeploymentSpec` → `SetReplicas(n)` |
-| `EnsureContainerEnvVar(ev)` | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)` |
+| Method                        | Equivalent to                                                 |
+|-------------------------------|---------------------------------------------------------------|
+| `EnsureReplicas(n)`           | `EditDeploymentSpec` → `SetReplicas(n)`                       |
+| `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
 | `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
-| `EnsureContainerArg(arg)` | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)` |
-| `RemoveContainerArg(arg)` | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)` |
+| `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
+| `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
 ## Full Example: Adding a Sidecar
 
@@ -282,7 +282,7 @@ Note: although `EditPodSpec` is called after `EnsureContainer` in the source, it
 
 ## Guidance
 
-**Every mutation requires a `Feature`.** A `Mutation` with `Feature: nil` is never applied. Use `feature.NewResourceFeature(version, nil)` for an unconditional mutation, and chain `.When(bool)` for boolean gating.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first. The internal ordering within each mutation handles intra-mutation dependencies automatically.
 

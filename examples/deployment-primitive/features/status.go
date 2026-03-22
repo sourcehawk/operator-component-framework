@@ -2,6 +2,7 @@ package features
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
@@ -52,9 +53,17 @@ func CustomSuspendMutation() func(*deployment.Mutator) error {
 			return err
 		}
 
-		// Additionally, add an annotation indicating when it was suspended.
-		m.EditDeploymentMetadata(func(meta *editors.ObjectMetaEditor) error {
-			meta.EnsureAnnotation("example.io/suspended-at", "2026-03-20")
+		// Additionally, record when the deployment was first suspended.
+		// Only set if absent so the timestamp is stable across reconcile cycles.
+		// This works because PreserveCurrentAnnotations (registered as a flavor)
+		// restores live-cluster annotations before mutations run — so on the second
+		// and subsequent reconciles while suspended the annotation is already present
+		// and is left unchanged.
+		m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
+			raw := meta.Raw()
+			if _, exists := raw.Annotations["example.io/suspended-at"]; !exists {
+				meta.EnsureAnnotation("example.io/suspended-at", time.Now().UTC().Format(time.RFC3339))
+			}
 			return nil
 		})
 

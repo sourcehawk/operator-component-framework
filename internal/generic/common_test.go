@@ -27,6 +27,20 @@ func (m *mockMutator) Apply() error {
 	return nil
 }
 
+// alwaysEnabled is a MutationFeature that always reports enabled.
+type alwaysEnabled struct{}
+
+func (alwaysEnabled) Enabled() (bool, error) { return true, nil }
+
+// mockMutation constructs a Mutation for *mockMutator that is always applied.
+func mockMutation(fn func(*mockMutator) error) Mutation[*mockMutator] {
+	return Mutation[*mockMutator]{
+		Name:    "mock-mutation",
+		Feature: alwaysEnabled{},
+		Mutate:  fn,
+	}
+}
+
 type genericBuilder[T any] interface {
 	Build() (T, error)
 }

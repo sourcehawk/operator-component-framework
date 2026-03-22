@@ -2,7 +2,6 @@ package generic
 
 import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -37,7 +36,7 @@ func NewWorkloadBuilder[T client.Object, M MutatorApplier](
 
 // WithMutation registers a typed feature mutation for the workload.
 func (b *WorkloadBuilder[T, M]) WithMutation(
-	m feature.Mutation[M],
+	m Mutation[M],
 ) *WorkloadBuilder[T, M] {
 	b.BaseBuilder.WithMutation(m)
 	return b

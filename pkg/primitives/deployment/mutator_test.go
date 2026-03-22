@@ -180,7 +180,7 @@ func TestMutator_EditDeploymentSpec(t *testing.T) {
 func TestMutator_EditMetadata(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	m := NewMutator(deploy)
-	m.EditDeploymentMetadata(func(e *editors.ObjectMetaEditor) error {
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"deploy": "label"}
 		return nil
 	})
@@ -245,7 +245,7 @@ func TestMutator_Order(t *testing.T) {
 		return nil
 	})
 	// 2. Deployment metadata edits
-	m.EditDeploymentMetadata(func(_ *editors.ObjectMetaEditor) error {
+	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 		order = append(order, "depmeta")
 		return nil
 	})
@@ -462,7 +462,7 @@ func TestMutator_NilSafety(t *testing.T) {
 	m.EditContainers(selectors.AllContainers(), nil)
 	m.EditPodSpec(nil)
 	m.EditPodTemplateMetadata(nil)
-	m.EditDeploymentMetadata(nil)
+	m.EditObjectMetadata(nil)
 	m.EditDeploymentSpec(nil)
 
 	err := m.Apply()
@@ -541,7 +541,7 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 		executionOrder = append(executionOrder, "deploymentspec")
 		return nil
 	})
-	m.EditDeploymentMetadata(func(_ *editors.ObjectMetaEditor) error {
+	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 		executionOrder = append(executionOrder, "deploymentmeta")
 		return nil
 	})

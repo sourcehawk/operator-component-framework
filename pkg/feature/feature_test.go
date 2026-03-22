@@ -207,7 +207,7 @@ func TestMutation_ApplyIntent(t *testing.T) {
 			want:    &testObj{Value: "old-value"},
 		},
 		{
-			name: "feature nil, mutation not applied (treated as disabled)",
+			name: "feature nil, mutation applied unconditionally",
 			mutation: Mutation[*testObj]{
 				Name:    "set-value",
 				Feature: nil,
@@ -217,7 +217,19 @@ func TestMutation_ApplyIntent(t *testing.T) {
 				},
 			},
 			initial: &testObj{Value: "old-value"},
-			want:    &testObj{Value: "old-value"},
+			want:    &testObj{Value: newValue},
+		},
+		{
+			name: "feature nil, mutate nil, returns error",
+			mutation: Mutation[*testObj]{
+				Name:    "nil-mutate-unconditional",
+				Feature: nil,
+				Mutate:  nil,
+			},
+			initial:   &testObj{Value: "old-value"},
+			want:      &testObj{Value: "old-value"},
+			wantErr:   true,
+			errString: "mutation handler of nil-mutate-unconditional is nil",
 		},
 		{
 			name: "feature enabled but mutate is nil, returns error",

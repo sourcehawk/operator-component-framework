@@ -1,9 +1,51 @@
 // Package feature provides mechanisms for version-gated feature mutations.
 package feature
 
-import (
-	"fmt"
-)
+import "fmt"
+
+// MutationFeature is an optional feature gate for a Mutation.
+// If Enabled returns false, the mutation is not applied.
+type MutationFeature interface {
+	Enabled() (bool, error)
+}
+
+// Mutation defines a conditional mutation applied to an object of type T.
+//
+// If Feature is nil the mutation is applied unconditionally on every
+// reconciliation. If Feature is non-nil the mutation is applied only when
+// Feature.Enabled() returns true.
+type Mutation[T any] struct {
+	// Name is a human-readable identifier used for error reporting.
+	Name string
+	// Feature gates this mutation. If nil, the mutation is applied unconditionally.
+	Feature MutationFeature
+	// Mutate is the function that applies the changes to the object.
+	Mutate func(T) error
+}
+
+// ApplyIntent applies the mutation to obj.
+//
+// If Feature is nil the mutation is applied unconditionally.
+// If Feature is non-nil and disabled, ApplyIntent returns nil without
+// performing any action.
+// If the mutation would be applied but Mutate is nil, it returns an error.
+func (m *Mutation[T]) ApplyIntent(obj T) error {
+	if m.Feature != nil {
+		enabled, err := m.Feature.Enabled()
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			return nil
+		}
+	}
+
+	if m.Mutate == nil {
+		return fmt.Errorf("mutation handler of %s is nil", m.Name)
+	}
+
+	return m.Mutate(obj)
+}
 
 // VersionConstraint defines a condition based on a semantic version.
 // Implementations should report whether a feature is enabled for the given version string.
@@ -44,8 +86,7 @@ func NewResourceFeature(currentVersion string, versionConstraints []VersionConst
 	}
 }
 
-// When adds a boolean condition that must be true for the feature
-// to be enabled.
+// When adds a boolean condition that must be true for the feature to be enabled.
 //
 // Calls are additive: all values passed through When must be true for Enabled()
 // to return true.
@@ -77,38 +118,4 @@ func (f *ResourceFeature) Enabled() (bool, error) {
 	}
 
 	return true, nil
-}
-
-// Mutation defines a mutation that is applied to an object of type T
-// only if its associated ResourceFeature is enabled.
-type Mutation[T any] struct {
-	// Name is a human-readable identifier for the mutation, used for error reporting.
-	Name string
-	// Feature determines whether the mutation should be applied.
-	Feature *ResourceFeature
-	// Mutate is the function that applies the changes to the object.
-	Mutate func(T) error
-}
-
-// ApplyIntent applies the mutation intent on the provided object if the feature is enabled.
-// If the feature is nil or disabled, it returns nil without performing any action.
-// If the mutation is enabled but the Mutate function is nil, it returns an error.
-func (m *Mutation[T]) ApplyIntent(obj T) error {
-	if m.Feature == nil {
-		return nil
-	}
-
-	enabled, err := m.Feature.Enabled()
-	if err != nil {
-		return err
-	}
-	if !enabled {
-		return nil
-	}
-
-	if m.Mutate == nil {
-		return fmt.Errorf("mutation handler of %s is nil", m.Name)
-	}
-
-	return m.Mutate(obj)
 }

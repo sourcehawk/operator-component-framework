@@ -3,7 +3,6 @@ package generic
 import (
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -56,10 +55,10 @@ func TestApplyMutationsOrder(t *testing.T) {
 		return &recordingMutator{recorder: recorder}
 	}
 
-	mutations := []feature.Mutation[*recordingMutator]{
+	mutations := []Mutation[*recordingMutator]{
 		{
 			Name:    "feat1",
-			Feature: feature.NewResourceFeature("1.0.0", nil),
+			Feature: alwaysEnabled{},
 			Mutate: func(_ *recordingMutator) error {
 				recorder.record("mutation1")
 				return nil

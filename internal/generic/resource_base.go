@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -21,7 +20,7 @@ type BaseResource[T client.Object, M MutatorApplier] struct {
 	DataExtractors []func(T) error
 
 	NewMutator func(T) M
-	Mutations  []feature.Mutation[M]
+	Mutations  []Mutation[M]
 
 	Suspender func(M) error
 
@@ -75,6 +74,33 @@ func (r *BaseResource[T, M]) ApplyBaselineAndFlavors(current T) (T, error) {
 		r.DefaultFieldApplicator,
 		r.CustomFieldApplicator,
 		r.FieldFlavors,
+	)
+}
+
+// PreviewObject returns the object as it would appear after the field applicator, flavors,
+// and feature mutations have been applied, without modifying the resource's internal DesiredObject.
+//
+// The desired object is used as a stand-in for the current cluster state. Flavors that
+// depend on live cluster content (e.g. PreserveExternalEntries) will see only the
+// operator-owned baseline — externally-managed fields are excluded from the result.
+//
+// Suspension mutations are not applied; the preview reflects content state only.
+func (r *BaseResource[T, M]) PreviewObject() (T, error) {
+	currentCopy, ok := r.DesiredObject.DeepCopyObject().(T)
+	if !ok {
+		var zero T
+		return zero, fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
+	}
+
+	return ApplyMutations(
+		currentCopy,
+		r.DesiredObject,
+		r.DefaultFieldApplicator,
+		r.CustomFieldApplicator,
+		r.FieldFlavors,
+		r.NewMutator,
+		r.Mutations,
+		nil,
 	)
 }
 

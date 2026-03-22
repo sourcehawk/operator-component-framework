@@ -14,9 +14,10 @@ import (
 // a non-empty ResourceVersion (indicating it was read from the API server),
 // the live roleRef is preserved regardless of what the desired object declares.
 func DefaultFieldApplicator(current, desired *rbacv1.RoleBinding) error {
+	existed := current.ResourceVersion != ""
 	roleRef := current.RoleRef
 	*current = *desired.DeepCopy()
-	if current.ResourceVersion != "" {
+	if existed {
 		current.RoleRef = roleRef
 	}
 	return nil

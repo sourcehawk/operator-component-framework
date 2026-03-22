@@ -7,13 +7,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired.
-//
-// This is the default baseline field application strategy for Role resources.
-// Use a custom field applicator via Builder.WithCustomFieldApplicator if you need
-// to preserve fields that other controllers manage.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
+// and shared-controller fields (OwnerReferences, Finalizers) from the original
+// current object.
 func DefaultFieldApplicator(current, desired *rbacv1.Role) error {
+	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
+	generic.PreserveServerManagedFields(current, original)
 	return nil
 }
 

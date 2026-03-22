@@ -67,8 +67,8 @@ func main() {
 	specs := []sharedapp.ExampleAppSpec{
 		{
 			Version:       "1.2.3",
-			EnableTracing: true,  // adds private registry secret
-			EnableMetrics: true,  // disables automount
+			EnableTracing: true, // adds private registry secret
+			EnableMetrics: true, // disables automount
 		},
 		{
 			Version:       "1.2.4", // Version upgrade

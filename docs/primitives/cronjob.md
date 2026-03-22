@@ -96,9 +96,9 @@ Within a single mutation, edit operations are grouped into categories and applie
 | 3 | JobSpec edits | Completions, parallelism, backoff limit, TTL |
 | 4 | Pod template metadata edits | Labels and annotations on the pod template |
 | 5 | Pod spec edits | Volumes, tolerations, node selectors, service account, security context |
-| 6 | Regular container presence | Adding or removing containers from `spec.containers` |
+| 6 | Regular container presence | Adding or removing containers from `spec.jobTemplate.spec.template.spec.containers` |
 | 7 | Regular container edits | Env vars, args, resources (snapshot taken after step 6) |
-| 8 | Init container presence | Adding or removing containers from `spec.initContainers` |
+| 8 | Init container presence | Adding or removing containers from `spec.jobTemplate.spec.template.spec.initContainers` |
 | 9 | Init container edits | Env vars, args, resources (snapshot taken after step 8) |
 
 Container edits (steps 7 and 9) are evaluated against a snapshot taken *after* presence operations in the same mutation. This means a single mutation can add a container and then configure it without selector resolution issues.
@@ -194,8 +194,8 @@ The CronJob primitive reports operational status based on the CronJob's scheduli
 
 | Status        | Condition                          |
 |---------------|------------------------------------|
-| `Pending`     | `Status.LastScheduleTime == nil`   |
-| `Operational` | `Status.LastScheduleTime != nil`   |
+| `OperationPending` | `Status.LastScheduleTime == nil`   |
+| `Operational`      | `Status.LastScheduleTime != nil`   |
 
 Failures are reported on the spawned Job resources, not on the CronJob itself.
 

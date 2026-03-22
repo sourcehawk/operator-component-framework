@@ -27,7 +27,7 @@ func DefaultOperationalStatusHandler(
 
 	return concepts.OperationalStatusWithReason{
 		Status: concepts.OperationalStatusOperational,
-		Reason: fmt.Sprintf("CronJob last scheduled at %s", cj.Status.LastScheduleTime.Format("2006-01-02T15:04:05Z")),
+		Reason: fmt.Sprintf("CronJob last scheduled at %s", cj.Status.LastScheduleTime.UTC().Format("2006-01-02T15:04:05Z")),
 	}, nil
 }
 

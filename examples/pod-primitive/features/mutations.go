@@ -1,3 +1,4 @@
+// Package features provides sample mutations for the pod primitive example.
 package features
 
 import (

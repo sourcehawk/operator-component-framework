@@ -49,9 +49,19 @@ Use `WithCustomFieldApplicator` when additional metadata fields need to be selec
 ```go
 resource, err := pod.NewBuilder(base).
     WithCustomFieldApplicator(func(current, desired *corev1.Pod) error {
-        current.Labels = desired.Labels
+        if desired.Labels != nil {
+            current.Labels = make(map[string]string, len(desired.Labels))
+            for k, v := range desired.Labels {
+                current.Labels[k] = v
+            }
+        }
         // Selectively preserve some annotations
-        current.Annotations = desired.Annotations
+        if desired.Annotations != nil {
+            current.Annotations = make(map[string]string, len(desired.Annotations))
+            for k, v := range desired.Annotations {
+                current.Annotations[k] = v
+            }
+        }
         return nil
     }).
     Build()
@@ -110,7 +120,7 @@ Within a single mutation, edit operations are grouped into categories and applie
 
 Container edits (steps 4 and 6) are evaluated against a snapshot taken *after* presence operations in the same mutation. This means a single mutation can add a container and then configure it without selector resolution issues.
 
-**Kubernetes immutability note:** most fields in `Pod.spec` are immutable after creation, including the overall structure of `spec.containers` and `spec.initContainers`. Presence operations such as `EnsureContainer` / `RemoveContainer` (and the corresponding init container operations) are intended for use when constructing a new Pod or when recreating the Pod, not for in-place updates to an existing Pod. If a mutation attempts to add or remove containers on an existing Pod, the Kubernetes API server will reject the update. Only per-container mutable fields (such as environment variables, args, and resources) should be edited on existing Pods.
+**Kubernetes immutability note:** most fields in `Pod.spec` are immutable after creation, including the overall structure of `spec.containers` and `spec.initContainers` and the majority of per-container fields (such as `env`, `args`, resources, ports, and probes). Presence operations such as `EnsureContainer` / `RemoveContainer` (and the corresponding init container operations) are intended for use when constructing a new Pod or when recreating the Pod, not for in-place updates to an existing Pod. If a mutation attempts to add or remove containers on an existing Pod, the Kubernetes API server will reject the update. In practice, the set of fields that can be updated in-place on an existing Pod is very small (primarily container images, plus a few feature-gated fields such as resources with in-place resize); treat Pods as effectively immutable and use delete-and-recreate when you need to change other container attributes.
 
 ## Editors
 

@@ -36,6 +36,13 @@ func DefaultConvergingStatusHandler(
 
 	// Check if pod is running and all containers are ready
 	if pod.Status.Phase == corev1.PodRunning {
+		if len(pod.Status.ContainerStatuses) == 0 {
+			// Container statuses not yet populated; readiness is unknown.
+			return concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusCreating,
+				Reason: "Pod running but container readiness unknown",
+			}, nil
+		}
 		allReady := true
 		for _, cs := range pod.Status.ContainerStatuses {
 			if !cs.Ready {
@@ -71,7 +78,7 @@ func DefaultConvergingStatusHandler(
 	case concepts.ConvergingOperationUpdated:
 		return concepts.AliveStatusWithReason{
 			Status: concepts.AliveConvergingStatusUpdating,
-			Reason: "Pod is being recreated",
+			Reason: "Pod is being updated",
 		}, nil
 	case concepts.ConvergingOperationCreated:
 		return concepts.AliveStatusWithReason{

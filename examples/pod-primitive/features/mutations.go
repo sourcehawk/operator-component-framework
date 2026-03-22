@@ -1,53 +1,46 @@
 // Package features provides sample mutations for the pod primitive example.
+//
+// These examples only mutate object metadata because most Pod spec fields
+// (including containers, env, args, and resources) are immutable after creation.
+// To change spec fields on an existing Pod the controller must delete and
+// recreate it.
 package features
 
 import (
-	"fmt"
-
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
-	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/pod"
-	corev1 "k8s.io/api/core/v1"
 )
 
-// TracingFeature adds a Jaeger sidecar to the pod.
+// TracingFeature marks the pod as tracing-enabled via metadata.
+// Controllers or sidecar injectors can watch the label and handle
+// any required Pod replacement or injection.
 func TracingFeature(enabled bool) pod.Mutation {
 	return pod.Mutation{
 		Name:    "Tracing",
 		Feature: feature.NewResourceFeature("any", nil).When(enabled),
 		Mutate: func(m *pod.Mutator) error {
-			m.EnsureContainer(corev1.Container{
-				Name:  "jaeger-agent",
-				Image: "jaegertracing/jaeger-agent:1.28",
+			m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
+				meta.EnsureLabel("sidecar.jaegertracing.io/inject", "true")
+				return nil
 			})
-
-			m.EnsureContainerEnvVar(corev1.EnvVar{
-				Name:  "JAEGER_AGENT_HOST",
-				Value: "localhost",
-			})
-
 			return nil
 		},
 	}
 }
 
-// VersionFeature sets the image version and a label.
+// VersionFeature records the desired version on the pod as a label.
+// It avoids mutating container images directly, which would be invalid
+// on an already-created Pod.
 func VersionFeature(version string) pod.Mutation {
 	return pod.Mutation{
 		Name:    "Version",
 		Feature: feature.NewResourceFeature(version, nil),
 		Mutate: func(m *pod.Mutator) error {
-			m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
-				ce.Raw().Image = fmt.Sprintf("my-app:%s", version)
-				return nil
-			})
-
 			m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
 				meta.EnsureLabel("app.kubernetes.io/version", version)
 				return nil
 			})
-
 			return nil
 		},
 	}

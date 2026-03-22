@@ -32,15 +32,15 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			wantReason: "Pod is running and all containers are ready",
 		},
 		{
-			name: "healthy - running with no container statuses",
+			name: "creating - running with no container statuses",
 			op:   concepts.ConvergingOperationNone,
 			pod: &corev1.Pod{
 				Status: corev1.PodStatus{
 					Phase: corev1.PodRunning,
 				},
 			},
-			wantStatus: concepts.AliveConvergingStatusHealthy,
-			wantReason: "Pod is running and all containers are ready",
+			wantStatus: concepts.AliveConvergingStatusCreating,
+			wantReason: "Pod running but container readiness unknown",
 		},
 		{
 			name: "failing - crash loop backoff",
@@ -104,7 +104,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusUpdating,
-			wantReason: "Pod is being recreated",
+			wantReason: "Pod is being updated",
 		},
 		{
 			name: "creating - on none operation when pending",

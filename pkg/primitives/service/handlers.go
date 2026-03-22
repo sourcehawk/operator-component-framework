@@ -1,0 +1,77 @@
+package service
+
+import (
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	corev1 "k8s.io/api/core/v1"
+)
+
+// DefaultOperationalStatusHandler is the default logic for determining if a Service is operational.
+//
+// For LoadBalancer services, it reports OperationalStatusPending until at least one ingress
+// entry (IP or hostname) is assigned to Status.LoadBalancer.Ingress, then reports
+// OperationalStatusOperational.
+//
+// For all other service types (ClusterIP, NodePort, ExternalName, headless), it
+// immediately reports OperationalStatusOperational.
+//
+// This function is used as the default handler by the Resource if no custom handler is
+// registered via Builder.WithCustomOperationalStatus. It can be reused within custom
+// handlers to augment the default behavior.
+func DefaultOperationalStatusHandler(
+	_ concepts.ConvergingOperation, svc *corev1.Service,
+) (concepts.OperationalStatusWithReason, error) {
+	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if len(svc.Status.LoadBalancer.Ingress) == 0 {
+			return concepts.OperationalStatusWithReason{
+				Status: concepts.OperationalStatusPending,
+				Reason: "Awaiting load balancer IP assignment",
+			}, nil
+		}
+		return concepts.OperationalStatusWithReason{
+			Status: concepts.OperationalStatusOperational,
+			Reason: "Load balancer IP address assigned",
+		}, nil
+	}
+
+	return concepts.OperationalStatusWithReason{
+		Status: concepts.OperationalStatusOperational,
+		Reason: "Service is operational",
+	}, nil
+}
+
+// DefaultDeleteOnSuspendHandler provides the default decision of whether to delete the Service
+// when the parent component is suspended.
+//
+// It always returns true because Services have no meaningful "scaled down" state and should
+// be deleted when the component is suspended.
+//
+// This function is used as the default handler by the Resource if no custom handler is registered via
+// Builder.WithCustomSuspendDeletionDecision. It can be reused within custom handlers.
+func DefaultDeleteOnSuspendHandler(_ *corev1.Service) bool {
+	return true
+}
+
+// DefaultSuspendMutationHandler provides the default mutation applied to a Service when the
+// component is suspended.
+//
+// It is a no-op because Services are deleted on suspend rather than mutated.
+//
+// This function is used as the default handler by the Resource if no custom handler is registered via
+// Builder.WithCustomSuspendMutation. It can be reused within custom handlers.
+func DefaultSuspendMutationHandler(_ *Mutator) error {
+	return nil
+}
+
+// DefaultSuspensionStatusHandler reports the progress of the suspension process.
+//
+// It always reports Suspended because the Service is deleted on suspend. This handler
+// is called before the deletion to confirm that the resource is ready to be removed.
+//
+// This function is used as the default handler by the Resource if no custom handler is registered via
+// Builder.WithCustomSuspendStatus. It can be reused within custom handlers.
+func DefaultSuspensionStatusHandler(_ *corev1.Service) (concepts.SuspensionStatusWithReason, error) {
+	return concepts.SuspensionStatusWithReason{
+		Status: concepts.SuspensionStatusSuspended,
+		Reason: "Service deleted on suspend",
+	}, nil
+}

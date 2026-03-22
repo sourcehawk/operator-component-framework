@@ -1,0 +1,181 @@
+package service
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+func newTestService() *corev1.Service {
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "default",
+		},
+	}
+}
+
+// --- EditObjectMetadata ---
+
+func TestMutator_EditObjectMetadata(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("app", "myapp")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	assert.Equal(t, "myapp", svc.Labels["app"])
+}
+
+func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditObjectMetadata(nil)
+	assert.NoError(t, m.Apply())
+}
+
+func TestMutator_EditObjectMetadata_Error(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
+		return errors.New("metadata error")
+	})
+	err := m.Apply()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "metadata error")
+}
+
+// --- EditServiceSpec ---
+
+func TestMutator_EditServiceSpec(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.SetType(corev1.ServiceTypeNodePort)
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	assert.Equal(t, corev1.ServiceTypeNodePort, svc.Spec.Type)
+}
+
+func TestMutator_EditServiceSpec_Nil(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(nil)
+	assert.NoError(t, m.Apply())
+}
+
+func TestMutator_EditServiceSpec_Error(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(_ *editors.ServiceSpecEditor) error {
+		return errors.New("spec error")
+	})
+	err := m.Apply()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "spec error")
+}
+
+func TestMutator_EditServiceSpec_Ports(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
+		e.EnsurePort(corev1.ServicePort{Name: "https", Port: 443})
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	assert.Len(t, svc.Spec.Ports, 2)
+}
+
+func TestMutator_EditServiceSpec_Selector(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsureSelector("app", "myapp")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	assert.Equal(t, "myapp", svc.Spec.Selector["app"])
+}
+
+func TestMutator_EditServiceSpec_RawAccess(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.Raw().ExternalName = "external.example.com"
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	assert.Equal(t, "external.example.com", svc.Spec.ExternalName)
+}
+
+// --- Execution order ---
+
+func TestMutator_OperationOrder(t *testing.T) {
+	// Within a feature: metadata edits run before service spec edits.
+	svc := newTestService()
+	m := NewMutator(svc)
+	// Register in reverse logical order to confirm Apply() enforces category ordering.
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
+		return nil
+	})
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("order", "tested")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Equal(t, "tested", svc.Labels["order"])
+	assert.Len(t, svc.Spec.Ports, 1)
+	assert.Equal(t, "http", svc.Spec.Ports[0].Name)
+}
+
+func TestMutator_MultipleFeatures(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
+		return nil
+	})
+	m.beginFeature()
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "https", Port: 443})
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Len(t, svc.Spec.Ports, 2)
+}
+
+func TestMutator_MultipleFeatures_LaterSeesEarlier(t *testing.T) {
+	svc := newTestService()
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsureSelector("app", "myapp")
+		return nil
+	})
+	m.beginFeature()
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		// Later feature should see the selector set by the earlier feature.
+		e.EnsureSelector("env", "prod")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Equal(t, "myapp", svc.Spec.Selector["app"])
+	assert.Equal(t, "prod", svc.Spec.Selector["env"])
+}
+
+// --- ObjectMutator interface ---
+
+func TestMutator_ImplementsObjectMutator(_ *testing.T) {
+	var _ editors.ObjectMutator = (*Mutator)(nil)
+}

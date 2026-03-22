@@ -41,7 +41,7 @@ resource, err := networkpolicy.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current NetworkPolicy with a deep copy of the desired object, preserving the `ResourceVersion` from the current object. This ensures every reconciliation cycle produces a clean, predictable state and avoids any drift from the desired baseline.
+`DefaultFieldApplicator` replaces the current NetworkPolicy with a deep copy of the desired object. This ensures every reconciliation cycle produces a clean, predictable state and avoids any drift from the desired baseline.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

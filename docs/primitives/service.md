@@ -7,7 +7,7 @@ The `service` primitive is the framework's built-in integration abstraction for 
 | Capability              | Detail                                                                                              |
 |-------------------------|-----------------------------------------------------------------------------------------------------|
 | **Operational tracking** | Monitors LoadBalancer ingress assignment; reports `Operational` or `Pending`                        |
-| **Suspension**           | Deletes the Service on suspend (no meaningful "scaled down" state)                                 |
+| **Suspension**           | Unaffected by suspension by default; customizable via handlers to delete or mutate on suspend      |
 | **Mutation pipeline**    | Typed editors for metadata and service spec, with a raw escape hatch for free-form access          |
 | **Flavors**              | Preserves externally-managed fields (labels, annotations)                                          |
 | **Data extraction**      | Reads generated or updated values (ClusterIP, LoadBalancer ingress) after each sync cycle          |
@@ -254,19 +254,21 @@ resource, err := service.NewBuilder(base).
 
 ## Suspension
 
-By default, Services are **deleted** when the parent component is suspended (`DefaultDeleteOnSuspendHandler` returns `true`). This is because Services have no meaningful "scaled down" state — they are either present and routing traffic, or absent.
+By default, Services are **unaffected** by suspension — they remain in the cluster when the parent component is suspended. The default suspend mutation handler is a no-op, `DefaultDeleteOnSuspendHandler` returns `false`, and the default suspension status handler reports `Suspended` immediately (no work required).
 
-The default suspend mutation handler is a no-op, and the default suspension status handler always reports `Suspended` with reason "Service deleted on suspend".
+This is appropriate for most use cases because Services are stateless routing objects that are safe to leave in place.
 
-Override with `WithCustomSuspendDeletionDecision` if you want to keep the Service during suspension:
+Override with `WithCustomSuspendDeletionDecision` if you want to delete the Service on suspend:
 
 ```go
 resource, err := service.NewBuilder(base).
     WithCustomSuspendDeletionDecision(func(_ *corev1.Service) bool {
-        return false // keep the Service during suspension
+        return true // delete the Service during suspension
     }).
     Build()
 ```
+
+You can also combine `WithCustomSuspendMutation` and `WithCustomSuspendStatus` for more advanced suspension behaviour, such as modifying the Service before it is deleted or tracking external readiness before reporting suspended.
 
 ## Data Extraction
 

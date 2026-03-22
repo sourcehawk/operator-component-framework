@@ -51,19 +51,20 @@ func DefaultOperationalStatusHandler(
 // DefaultDeleteOnSuspendHandler provides the default decision of whether to delete the Service
 // when the parent component is suspended.
 //
-// It always returns true because Services have no meaningful "scaled down" state and should
-// be deleted when the component is suspended.
+// It always returns false, leaving the Service untouched during suspension. Services are
+// typically stateless routing objects that are safe to leave in place. Override with
+// Builder.WithCustomSuspendDeletionDecision to delete the Service on suspend.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomSuspendDeletionDecision. It can be reused within custom handlers.
 func DefaultDeleteOnSuspendHandler(_ *corev1.Service) bool {
-	return true
+	return false
 }
 
 // DefaultSuspendMutationHandler provides the default mutation applied to a Service when the
 // component is suspended.
 //
-// It is a no-op because Services are deleted on suspend rather than mutated.
+// It is a no-op because the default behaviour leaves the Service unaffected by suspension.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomSuspendMutation. It can be reused within custom handlers.
@@ -73,14 +74,14 @@ func DefaultSuspendMutationHandler(_ *Mutator) error {
 
 // DefaultSuspensionStatusHandler reports the progress of the suspension process.
 //
-// It always reports Suspended because the Service is deleted on suspend. This handler
-// is called before the deletion to confirm that the resource is ready to be removed.
+// It always reports Suspended because the default behaviour is a no-op — the Service
+// is left in place and requires no work to reach the suspended state.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomSuspendStatus. It can be reused within custom handlers.
 func DefaultSuspensionStatusHandler(_ *corev1.Service) (concepts.SuspensionStatusWithReason, error) {
 	return concepts.SuspensionStatusWithReason{
 		Status: concepts.SuspensionStatusSuspended,
-		Reason: "Service deleted on suspend",
+		Reason: "Service unaffected by suspension",
 	}, nil
 }

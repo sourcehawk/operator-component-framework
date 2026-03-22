@@ -145,7 +145,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	svc := &corev1.Service{}
-	assert.True(t, DefaultDeleteOnSuspendHandler(svc))
+	assert.False(t, DefaultDeleteOnSuspendHandler(svc))
 }
 
 func TestDefaultSuspendMutationHandler(t *testing.T) {
@@ -162,5 +162,5 @@ func TestDefaultSuspensionStatusHandler(t *testing.T) {
 	got, err := DefaultSuspensionStatusHandler(svc)
 	require.NoError(t, err)
 	assert.Equal(t, concepts.SuspensionStatusSuspended, got.Status)
-	assert.Equal(t, "Service deleted on suspend", got.Reason)
+	assert.Equal(t, "Service unaffected by suspension", got.Reason)
 }

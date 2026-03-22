@@ -31,7 +31,7 @@ func DefaultFieldApplicator(current, desired *corev1.Service) error {
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - component.Operational: for tracking whether the Service is operational.
-//   - component.Suspendable: for controlled deletion when the component is suspended.
+//   - component.Suspendable: for participating in the component suspension lifecycle.
 //   - component.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*corev1.Service, *Mutator]
@@ -76,16 +76,15 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.O
 // DeleteOnSuspend determines whether the Service should be deleted from the
 // cluster when the parent component is suspended.
 //
-// By default, it uses DefaultDeleteOnSuspendHandler, which returns true — Services
-// are deleted on suspend because they have no meaningful "scaled down" state.
+// By default, it uses DefaultDeleteOnSuspendHandler, which returns false — the
+// Service is left in place during suspension.
 func (r *Resource) DeleteOnSuspend() bool {
 	return r.base.DeleteOnSuspend()
 }
 
 // Suspend triggers the suspension of the Service.
 //
-// The default handler is a no-op because Services are deleted on suspend
-// rather than mutated.
+// The default handler is a no-op — the Service is left unaffected by suspension.
 func (r *Resource) Suspend() error {
 	return r.base.Suspend()
 }
@@ -93,7 +92,7 @@ func (r *Resource) Suspend() error {
 // SuspensionStatus reports the progress of the suspension process.
 //
 // By default, it uses DefaultSuspensionStatusHandler, which always reports
-// Suspended with a reason indicating the Service is deleted on suspend.
+// Suspended because the default behaviour leaves the Service untouched.
 func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
 	return r.base.SuspensionStatus()
 }

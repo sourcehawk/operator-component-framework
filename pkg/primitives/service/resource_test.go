@@ -222,7 +222,7 @@ func TestResource_DeleteOnSuspend(t *testing.T) {
 	res, err := NewBuilder(newValidService()).Build()
 	require.NoError(t, err)
 
-	assert.True(t, res.DeleteOnSuspend())
+	assert.False(t, res.DeleteOnSuspend())
 }
 
 func TestResource_SuspensionStatus(t *testing.T) {

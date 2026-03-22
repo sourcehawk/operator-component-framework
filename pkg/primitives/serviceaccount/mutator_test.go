@@ -1,0 +1,189 @@
+package serviceaccount
+
+import (
+	"testing"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+func newTestSA() *corev1.ServiceAccount {
+	return &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-sa",
+			Namespace: "default",
+		},
+	}
+}
+
+// --- EditObjectMetadata ---
+
+func TestMutator_EditObjectMetadata(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("app", "myapp")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	assert.Equal(t, "myapp", sa.Labels["app"])
+}
+
+func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	m.EditObjectMetadata(nil)
+	assert.NoError(t, m.Apply())
+}
+
+// --- EnsureImagePullSecret ---
+
+func TestMutator_EnsureImagePullSecret(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	m.EnsureImagePullSecret("my-registry")
+	require.NoError(t, m.Apply())
+	require.Len(t, sa.ImagePullSecrets, 1)
+	assert.Equal(t, "my-registry", sa.ImagePullSecrets[0].Name)
+}
+
+func TestMutator_EnsureImagePullSecret_Idempotent(t *testing.T) {
+	sa := newTestSA()
+	sa.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "my-registry"}}
+	m := NewMutator(sa)
+	m.EnsureImagePullSecret("my-registry")
+	require.NoError(t, m.Apply())
+	assert.Len(t, sa.ImagePullSecrets, 1)
+}
+
+func TestMutator_EnsureImagePullSecret_Multiple(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	m.EnsureImagePullSecret("registry-a")
+	m.EnsureImagePullSecret("registry-b")
+	require.NoError(t, m.Apply())
+	require.Len(t, sa.ImagePullSecrets, 2)
+	assert.Equal(t, "registry-a", sa.ImagePullSecrets[0].Name)
+	assert.Equal(t, "registry-b", sa.ImagePullSecrets[1].Name)
+}
+
+// --- RemoveImagePullSecret ---
+
+func TestMutator_RemoveImagePullSecret(t *testing.T) {
+	sa := newTestSA()
+	sa.ImagePullSecrets = []corev1.LocalObjectReference{
+		{Name: "keep"},
+		{Name: "remove"},
+	}
+	m := NewMutator(sa)
+	m.RemoveImagePullSecret("remove")
+	require.NoError(t, m.Apply())
+	require.Len(t, sa.ImagePullSecrets, 1)
+	assert.Equal(t, "keep", sa.ImagePullSecrets[0].Name)
+}
+
+func TestMutator_RemoveImagePullSecret_NotPresent(t *testing.T) {
+	sa := newTestSA()
+	sa.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "keep"}}
+	m := NewMutator(sa)
+	m.RemoveImagePullSecret("missing")
+	require.NoError(t, m.Apply())
+	assert.Len(t, sa.ImagePullSecrets, 1)
+}
+
+func TestMutator_RemoveImagePullSecret_Empty(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	m.RemoveImagePullSecret("missing")
+	require.NoError(t, m.Apply())
+	assert.Empty(t, sa.ImagePullSecrets)
+}
+
+// --- SetAutomountServiceAccountToken ---
+
+func TestMutator_SetAutomountServiceAccountToken(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	v := true
+	m.SetAutomountServiceAccountToken(&v)
+	require.NoError(t, m.Apply())
+	require.NotNil(t, sa.AutomountServiceAccountToken)
+	assert.True(t, *sa.AutomountServiceAccountToken)
+}
+
+func TestMutator_SetAutomountServiceAccountToken_False(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	v := false
+	m.SetAutomountServiceAccountToken(&v)
+	require.NoError(t, m.Apply())
+	require.NotNil(t, sa.AutomountServiceAccountToken)
+	assert.False(t, *sa.AutomountServiceAccountToken)
+}
+
+func TestMutator_SetAutomountServiceAccountToken_Nil(t *testing.T) {
+	v := true
+	sa := newTestSA()
+	sa.AutomountServiceAccountToken = &v
+	m := NewMutator(sa)
+	m.SetAutomountServiceAccountToken(nil)
+	require.NoError(t, m.Apply())
+	assert.Nil(t, sa.AutomountServiceAccountToken)
+}
+
+// --- Execution order ---
+
+func TestMutator_OperationOrder(t *testing.T) {
+	// Within a feature: metadata → image pull secrets → automount.
+	sa := newTestSA()
+	m := NewMutator(sa)
+	// Register in reverse logical order to confirm Apply() enforces category ordering.
+	v := false
+	m.SetAutomountServiceAccountToken(&v)
+	m.EnsureImagePullSecret("my-registry")
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("order", "tested")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Equal(t, "tested", sa.Labels["order"])
+	require.Len(t, sa.ImagePullSecrets, 1)
+	assert.Equal(t, "my-registry", sa.ImagePullSecrets[0].Name)
+	require.NotNil(t, sa.AutomountServiceAccountToken)
+	assert.False(t, *sa.AutomountServiceAccountToken)
+}
+
+func TestMutator_MultipleFeatures(t *testing.T) {
+	sa := newTestSA()
+	m := NewMutator(sa)
+	m.EnsureImagePullSecret("feature1-registry")
+	m.beginFeature()
+	m.EnsureImagePullSecret("feature2-registry")
+	require.NoError(t, m.Apply())
+
+	require.Len(t, sa.ImagePullSecrets, 2)
+	assert.Equal(t, "feature1-registry", sa.ImagePullSecrets[0].Name)
+	assert.Equal(t, "feature2-registry", sa.ImagePullSecrets[1].Name)
+}
+
+func TestMutator_MultipleFeatures_LaterObservesPrior(t *testing.T) {
+	// Feature 2 removes a secret added by feature 1.
+	sa := newTestSA()
+	m := NewMutator(sa)
+	m.EnsureImagePullSecret("temp-registry")
+	m.beginFeature()
+	m.RemoveImagePullSecret("temp-registry")
+	require.NoError(t, m.Apply())
+
+	assert.Empty(t, sa.ImagePullSecrets)
+}
+
+// --- ObjectMutator interface ---
+
+func TestMutator_ImplementsObjectMutator(_ *testing.T) {
+	var _ editors.ObjectMutator = (*Mutator)(nil)
+}

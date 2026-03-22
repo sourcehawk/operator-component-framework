@@ -6,19 +6,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired, preserving
-// roleRef and metadata.resourceVersion on updates.
-//
-// roleRef is immutable after creation in the Kubernetes RBAC API. When the current
-// object has a ResourceVersion (indicating it already exists in the cluster), the
-// applicator restores the original roleRef and ResourceVersion after copying.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
+// and shared-controller fields (OwnerReferences, Finalizers) from the original
+// current object. It also preserves roleRef on updates because roleRef is
+// immutable after creation in the Kubernetes RBAC API.
 func DefaultFieldApplicator(current, desired *rbacv1.ClusterRoleBinding) error {
-	roleRef := current.RoleRef
-	resourceVersion := current.ResourceVersion
+	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
-	if resourceVersion != "" {
-		current.RoleRef = roleRef
-		current.ResourceVersion = resourceVersion
+	generic.PreserveServerManagedFields(current, original)
+	if original.ResourceVersion != "" {
+		current.RoleRef = original.RoleRef
 	}
 	return nil
 }

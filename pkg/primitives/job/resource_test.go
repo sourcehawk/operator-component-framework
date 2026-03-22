@@ -313,6 +313,50 @@ func TestResource_ExtractData_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "extract error")
 }
 
+func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
+	current := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-job",
+			Namespace:       "test-ns",
+			ResourceVersion: "12345",
+			UID:             "abc-def",
+			Generation:      3,
+			OwnerReferences: []metav1.OwnerReference{
+				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
+			},
+			Finalizers: []string{"finalizer.example.com"},
+		},
+	}
+	desired := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-job",
+			Namespace: "test-ns",
+			Labels:    map[string]string{"app": "test"},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: int32Ptr(5),
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec and labels are applied
+	require.NotNil(t, current.Spec.BackoffLimit)
+	assert.Equal(t, int32(5), *current.Spec.BackoffLimit)
+	assert.Equal(t, "test", current.Labels["app"])
+
+	// Server-managed fields are preserved
+	assert.Equal(t, "12345", current.ResourceVersion)
+	assert.Equal(t, "abc-def", string(current.UID))
+	assert.Equal(t, int64(3), current.Generation)
+
+	// Shared-controller fields are preserved
+	assert.Len(t, current.OwnerReferences, 1)
+	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
+	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
+}
+
 func TestResource_CustomFieldApplicator(t *testing.T) {
 	desired := newValidJob()
 	desired.Labels = map[string]string{"app": "test"}

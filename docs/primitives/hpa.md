@@ -10,7 +10,7 @@ The `hpa` primitive is the framework's built-in integration abstraction for mana
 | **Suspension (delete)**    | Deletes the HPA on suspend — prevents it from interfering with manually-scaled replicas                   |
 | **Mutation pipeline**      | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                          |
 | **Flavors**                | Preserves externally-managed labels and annotations                                                       |
-| **Data extraction**        | Reads current and desired replica counts from the reconciled HPA after each sync cycle                    |
+| **Data extraction**        | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
 
 ## Building an HPA Primitive
 
@@ -48,8 +48,10 @@ Use `WithCustomFieldApplicator` when other controllers manage fields that should
 ```go
 resource, err := hpa.NewBuilder(base).
     WithCustomFieldApplicator(func(current, desired *autoscalingv2.HorizontalPodAutoscaler) error {
-        // Preserve status-managed fields while updating spec
+        // Preserve the current status while updating spec and metadata from desired
+        savedStatus := current.Status
         desired.DeepCopyInto(current)
+        current.Status = savedStatus
         return nil
     }).
     Build()

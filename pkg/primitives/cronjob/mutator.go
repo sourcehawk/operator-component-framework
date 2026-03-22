@@ -261,104 +261,102 @@ func (m *Mutator) RemoveContainerArgs(args []string) {
 //  9. Init container edits
 func (m *Mutator) Apply() error {
 	for _, plan := range m.plans {
-		// 1. Object metadata
-		if len(plan.cronjobMetadataEdits) > 0 {
-			editor := editors.NewObjectMetaEditor(&m.current.ObjectMeta)
-			for _, edit := range plan.cronjobMetadataEdits {
-				if err := edit(editor); err != nil {
+		if err := m.applyPlan(plan); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *Mutator) applyPlan(plan featurePlan) error {
+	// 1. Object metadata
+	if len(plan.cronjobMetadataEdits) > 0 {
+		editor := editors.NewObjectMetaEditor(&m.current.ObjectMeta)
+		for _, edit := range plan.cronjobMetadataEdits {
+			if err := edit(editor); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 2. CronJobSpec
+	if len(plan.cronjobSpecEdits) > 0 {
+		editor := editors.NewCronJobSpecEditor(&m.current.Spec)
+		for _, edit := range plan.cronjobSpecEdits {
+			if err := edit(editor); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 3. JobSpec
+	if len(plan.jobSpecEdits) > 0 {
+		editor := editors.NewJobSpecEditor(&m.current.Spec.JobTemplate.Spec)
+		for _, edit := range plan.jobSpecEdits {
+			if err := edit(editor); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 4. Pod template metadata
+	if len(plan.podTemplateMetadataEdits) > 0 {
+		editor := editors.NewObjectMetaEditor(&m.current.Spec.JobTemplate.Spec.Template.ObjectMeta)
+		for _, edit := range plan.podTemplateMetadataEdits {
+			if err := edit(editor); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 5. Pod spec
+	if len(plan.podSpecEdits) > 0 {
+		editor := editors.NewPodSpecEditor(&m.current.Spec.JobTemplate.Spec.Template.Spec)
+		for _, edit := range plan.podSpecEdits {
+			if err := edit(editor); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 6. Regular container presence
+	for _, op := range plan.containerPresence {
+		applyPresenceOp(&m.current.Spec.JobTemplate.Spec.Template.Spec.Containers, op)
+	}
+
+	// 7. Regular container edits
+	if err := applyContainerEdits(m.current.Spec.JobTemplate.Spec.Template.Spec.Containers, plan.containerEdits); err != nil {
+		return err
+	}
+
+	// 8. Init container presence
+	for _, op := range plan.initContainerPresence {
+		applyPresenceOp(&m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers, op)
+	}
+
+	// 9. Init container edits
+	return applyContainerEdits(m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers, plan.initContainerEdits)
+}
+
+func applyContainerEdits(containers []corev1.Container, edits []containerEdit) error {
+	if len(edits) == 0 {
+		return nil
+	}
+
+	snapshots := make([]corev1.Container, len(containers))
+	for i := range containers {
+		containers[i].DeepCopyInto(&snapshots[i])
+	}
+
+	for i := range containers {
+		container := &containers[i]
+		snapshot := &snapshots[i]
+		editor := editors.NewContainerEditor(container)
+		for _, ce := range edits {
+			if ce.selector(i, snapshot) {
+				if err := ce.edit(editor); err != nil {
 					return err
-				}
-			}
-		}
-
-		// 2. CronJobSpec
-		if len(plan.cronjobSpecEdits) > 0 {
-			editor := editors.NewCronJobSpecEditor(&m.current.Spec)
-			for _, edit := range plan.cronjobSpecEdits {
-				if err := edit(editor); err != nil {
-					return err
-				}
-			}
-		}
-
-		// 3. JobSpec
-		if len(plan.jobSpecEdits) > 0 {
-			editor := editors.NewJobSpecEditor(&m.current.Spec.JobTemplate.Spec)
-			for _, edit := range plan.jobSpecEdits {
-				if err := edit(editor); err != nil {
-					return err
-				}
-			}
-		}
-
-		// 4. Pod template metadata
-		if len(plan.podTemplateMetadataEdits) > 0 {
-			editor := editors.NewObjectMetaEditor(&m.current.Spec.JobTemplate.Spec.Template.ObjectMeta)
-			for _, edit := range plan.podTemplateMetadataEdits {
-				if err := edit(editor); err != nil {
-					return err
-				}
-			}
-		}
-
-		// 5. Pod spec
-		if len(plan.podSpecEdits) > 0 {
-			editor := editors.NewPodSpecEditor(&m.current.Spec.JobTemplate.Spec.Template.Spec)
-			for _, edit := range plan.podSpecEdits {
-				if err := edit(editor); err != nil {
-					return err
-				}
-			}
-		}
-
-		// 6. Regular container presence
-		for _, op := range plan.containerPresence {
-			applyPresenceOp(&m.current.Spec.JobTemplate.Spec.Template.Spec.Containers, op)
-		}
-
-		// 7. Regular container edits
-		if len(plan.containerEdits) > 0 {
-			snapshots := make([]corev1.Container, len(m.current.Spec.JobTemplate.Spec.Template.Spec.Containers))
-			for i := range m.current.Spec.JobTemplate.Spec.Template.Spec.Containers {
-				m.current.Spec.JobTemplate.Spec.Template.Spec.Containers[i].DeepCopyInto(&snapshots[i])
-			}
-
-			for i := range m.current.Spec.JobTemplate.Spec.Template.Spec.Containers {
-				container := &m.current.Spec.JobTemplate.Spec.Template.Spec.Containers[i]
-				snapshot := &snapshots[i]
-				editor := editors.NewContainerEditor(container)
-				for _, ce := range plan.containerEdits {
-					if ce.selector(i, snapshot) {
-						if err := ce.edit(editor); err != nil {
-							return err
-						}
-					}
-				}
-			}
-		}
-
-		// 8. Init container presence
-		for _, op := range plan.initContainerPresence {
-			applyPresenceOp(&m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers, op)
-		}
-
-		// 9. Init container edits
-		if len(plan.initContainerEdits) > 0 {
-			snapshots := make([]corev1.Container, len(m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers))
-			for i := range m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers {
-				m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers[i].DeepCopyInto(&snapshots[i])
-			}
-
-			for i := range m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers {
-				container := &m.current.Spec.JobTemplate.Spec.Template.Spec.InitContainers[i]
-				snapshot := &snapshots[i]
-				editor := editors.NewContainerEditor(container)
-				for _, ce := range plan.initContainerEdits {
-					if ce.selector(i, snapshot) {
-						if err := ce.edit(editor); err != nil {
-							return err
-						}
-					}
 				}
 			}
 		}

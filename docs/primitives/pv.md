@@ -285,4 +285,9 @@ resource, err := pv.NewBuilder(base).
 
 **Use the Integration lifecycle for status.** PVs report `Operational`, `OperationPending`, or `OperationFailing` based on their phase. Override with `WithCustomOperationalStatus` only when phase-based readiness is insufficient.
 
+**Controller references require a cluster-scoped owner.** The component reconciliation pipeline sets a controller reference on created/updated resources. Because `PersistentVolume` is cluster-scoped, its controller owner must also be cluster-scoped. Using a namespace-scoped component (the common case) as the owner will cause the API server to reject the PV. If you need to manage PVs from a namespace-scoped component, either:
+
+- Model the PV as owned by a dedicated cluster-scoped controller/component, or
+- Manage the PV outside the default component create/update pipeline (for example, via a custom controller that does **not** set `ownerReferences` on the PV).
+
 **Register mutations in dependency order.** If mutation B relies on a field set by mutation A, register A first.

@@ -156,13 +156,12 @@ func TestMutator_OperationOrder(t *testing.T) {
 	assert.Equal(t, "pods", cr.Rules[0].Resources[0])
 }
 
-func TestMutator_MultipleFeatures(t *testing.T) {
+func TestMutator_MultipleMutations(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
 	})
-	m.beginFeature()
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"list"},
 	})

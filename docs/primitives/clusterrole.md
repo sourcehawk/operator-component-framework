@@ -2,7 +2,7 @@
 
 The `clusterrole` primitive is the framework's built-in static abstraction for managing Kubernetes `ClusterRole` resources. It integrates with the component lifecycle and provides a structured mutation API for managing `.rules`, `.aggregationRule`, and object metadata.
 
-ClusterRole is cluster-scoped: it has no namespace. The builder validates only that the Name is set.
+ClusterRole is cluster-scoped: it has no namespace. The builder validates that the Name is set and that Namespace is empty — setting a namespace on a cluster-scoped resource is rejected.
 
 ## Capabilities
 
@@ -125,7 +125,7 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are recorded:
+All mutation intents from all registered mutations are collected into flat lists and applied in a fixed category order, regardless of the order they are recorded:
 
 | Step | Category          | What it affects                                 |
 |------|-------------------|-------------------------------------------------|
@@ -133,7 +133,7 @@ Within a single mutation, edit operations are applied in a fixed category order 
 | 2    | Rules edits       | `.rules` entries — EditRules, AddRule            |
 | 3    | Aggregation rule  | `.aggregationRule` — SetAggregationRule          |
 
-Within each category, edits are applied in their registration order. Later features observe the ClusterRole as modified by all previous features.
+Within each category, edits are applied in their registration order. For aggregation rules, the last `SetAggregationRule` call wins.
 
 ## Editors
 

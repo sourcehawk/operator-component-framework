@@ -107,3 +107,15 @@ func TestBindingSubjectsEditor_Raw_NilSlice(t *testing.T) {
 	raw := e.Raw()
 	require.NotNil(t, raw)
 }
+
+func TestBindingSubjectsEditor_NilPointer(t *testing.T) {
+	e := NewBindingSubjectsEditor(nil)
+
+	// Should not panic; operations work on the internal slice.
+	e.EnsureSubject(rbacv1.Subject{Kind: "ServiceAccount", Name: "sa", Namespace: "ns"})
+	e.RemoveSubject("ServiceAccount", "sa", "ns")
+
+	raw := e.Raw()
+	require.NotNil(t, raw)
+	assert.Empty(t, *raw)
+}

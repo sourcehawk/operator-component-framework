@@ -38,6 +38,24 @@ func TestBuilder_Build_Validation(t *testing.T) {
 			expectedErr: "object namespace cannot be empty",
 		},
 		{
+			name: "empty roleRef",
+			rb: &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+			},
+			expectedErr: "roleRef must have non-empty APIGroup, Kind, and Name",
+		},
+		{
+			name: "partial roleRef missing kind",
+			rb: &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Name:     "my-role",
+				},
+			},
+			expectedErr: "roleRef must have non-empty APIGroup, Kind, and Name",
+		},
+		{
 			name: "valid rolebinding",
 			rb: &rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
@@ -66,10 +84,15 @@ func TestBuilder_Build_Validation(t *testing.T) {
 	}
 }
 
+func testRoleRef() rbacv1.RoleRef {
+	return rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "Role", Name: "my-role"}
+}
+
 func TestBuilder_WithMutation(t *testing.T) {
 	t.Parallel()
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+		RoleRef:    testRoleRef(),
 	}
 	res, err := NewBuilder(rb).
 		WithMutation(Mutation{Name: "test-mutation"}).
@@ -83,6 +106,7 @@ func TestBuilder_WithCustomFieldApplicator(t *testing.T) {
 	t.Parallel()
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+		RoleRef:    testRoleRef(),
 	}
 	called := false
 	applicator := func(_, _ *rbacv1.RoleBinding) error {
@@ -102,6 +126,7 @@ func TestBuilder_WithFieldApplicationFlavor(t *testing.T) {
 	t.Parallel()
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+		RoleRef:    testRoleRef(),
 	}
 	res, err := NewBuilder(rb).
 		WithFieldApplicationFlavor(PreserveCurrentLabels).
@@ -115,6 +140,7 @@ func TestBuilder_WithDataExtractor(t *testing.T) {
 	t.Parallel()
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+		RoleRef:    testRoleRef(),
 	}
 	called := false
 	extractor := func(_ rbacv1.RoleBinding) error {
@@ -134,6 +160,7 @@ func TestBuilder_WithDataExtractor_Nil(t *testing.T) {
 	t.Parallel()
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+		RoleRef:    testRoleRef(),
 	}
 	res, err := NewBuilder(rb).
 		WithDataExtractor(nil).
@@ -146,6 +173,7 @@ func TestBuilder_WithDataExtractor_ErrorPropagated(t *testing.T) {
 	t.Parallel()
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+		RoleRef:    testRoleRef(),
 	}
 	res, err := NewBuilder(rb).
 		WithDataExtractor(func(_ rbacv1.RoleBinding) error {

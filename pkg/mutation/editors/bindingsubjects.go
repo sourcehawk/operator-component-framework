@@ -15,8 +15,13 @@ type BindingSubjectsEditor struct {
 // given subjects slice pointer.
 //
 // The pointer may refer to a nil slice; methods that add subjects initialise
-// it automatically.
+// it automatically. If a nil pointer is provided, an empty slice is allocated
+// and used internally.
 func NewBindingSubjectsEditor(subjects *[]rbacv1.Subject) *BindingSubjectsEditor {
+	if subjects == nil {
+		empty := make([]rbacv1.Subject, 0)
+		subjects = &empty
+	}
 	return &BindingSubjectsEditor{subjects: subjects}
 }
 

@@ -106,10 +106,17 @@ func (b *Builder) WithDataExtractor(extractor func(rbacv1.RoleBinding) error) *B
 // It returns an error if:
 //   - No RoleBinding object was provided.
 //   - The RoleBinding is missing a Name or Namespace.
+//   - The RoleRef is missing APIGroup, Kind, or Name.
 func (b *Builder) Build() (*Resource, error) {
 	genericRes, err := b.base.Build()
 	if err != nil {
 		return nil, err
 	}
+
+	ref := genericRes.DesiredObject.RoleRef
+	if ref.APIGroup == "" || ref.Kind == "" || ref.Name == "" {
+		return nil, fmt.Errorf("roleRef must have non-empty APIGroup, Kind, and Name")
+	}
+
 	return &Resource{base: genericRes}, nil
 }

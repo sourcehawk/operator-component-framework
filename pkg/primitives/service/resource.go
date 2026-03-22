@@ -8,13 +8,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired, preserving
-// the immutable spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns
-// after creation.
+// DefaultFieldApplicator replaces current with a deep copy of desired while
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
+// shared-controller fields (OwnerReferences, Finalizers), and the immutable
+// spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns after creation.
 func DefaultFieldApplicator(current, desired *corev1.Service) error {
+	original := current.DeepCopy()
 	clusterIP := current.Spec.ClusterIP
 	clusterIPs := current.Spec.ClusterIPs
 	*current = *desired.DeepCopy()
+	generic.PreserveServerManagedFields(current, original)
 	if clusterIP != "" {
 		current.Spec.ClusterIP = clusterIP
 		current.Spec.ClusterIPs = clusterIPs

@@ -14,7 +14,7 @@ This example demonstrates the usage of the `clusterrolebinding` primitive within
 - `features/`: Contains modular feature definitions:
     - `mutations.go`: version labelling and feature-gated monitoring subject addition.
 - `resources/`: Contains the central `NewClusterRoleBindingResource` factory that assembles all features using `clusterrolebinding.Builder`.
-- `main.go`: A standalone entry point that demonstrates multiple reconciliation cycles with a fake client.
+- `main.go`: A standalone entry point that demonstrates building and mutating a ClusterRoleBinding through multiple spec variations.
 
 ## Running the Example
 
@@ -23,7 +23,6 @@ go run examples/clusterrolebinding-primitive/main.go
 ```
 
 This will:
-1. Initialize a fake Kubernetes client.
-2. Create an `ExampleApp` owner object.
-3. Reconcile through three spec variations, printing the reconciled ClusterRoleBinding state after each cycle.
-4. Print the resulting status conditions.
+1. Create an in-memory `ExampleApp` owner object.
+2. For each of three spec variations, build a fresh resource and apply mutations to a simulated current ClusterRoleBinding.
+3. Print the reconciled ClusterRoleBinding state (labels, roleRef, subjects) after each mutation cycle.

@@ -14,15 +14,24 @@ func TestBindingSubjectsEditor_Raw(t *testing.T) {
 		e := NewBindingSubjectsEditor(&subjects)
 		raw := e.Raw()
 		require.NotNil(t, raw)
-		assert.Empty(t, raw)
+		assert.Empty(t, *raw)
 	})
 
 	t.Run("returns existing slice", func(t *testing.T) {
 		subjects := []rbacv1.Subject{{Kind: "User", Name: "alice"}}
 		e := NewBindingSubjectsEditor(&subjects)
 		raw := e.Raw()
-		assert.Len(t, raw, 1)
-		assert.Equal(t, "alice", raw[0].Name)
+		assert.Len(t, *raw, 1)
+		assert.Equal(t, "alice", (*raw)[0].Name)
+	})
+
+	t.Run("append through pointer propagates", func(t *testing.T) {
+		var subjects []rbacv1.Subject
+		e := NewBindingSubjectsEditor(&subjects)
+		raw := e.Raw()
+		*raw = append(*raw, rbacv1.Subject{Kind: "User", Name: "bob"})
+		assert.Len(t, subjects, 1)
+		assert.Equal(t, "bob", subjects[0].Name)
 	})
 }
 

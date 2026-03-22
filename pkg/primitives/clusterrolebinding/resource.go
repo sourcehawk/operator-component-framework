@@ -14,8 +14,9 @@ import (
 // applicator restores the original roleRef after copying.
 func DefaultFieldApplicator(current, desired *rbacv1.ClusterRoleBinding) error {
 	roleRef := current.RoleRef
+	resourceVersion := current.ResourceVersion
 	*current = *desired.DeepCopy()
-	if current.ResourceVersion != "" {
+	if resourceVersion != "" {
 		current.RoleRef = roleRef
 	}
 	return nil

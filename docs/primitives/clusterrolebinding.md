@@ -169,14 +169,14 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 
 #### Raw Escape Hatch
 
-`Raw()` returns the underlying `[]rbacv1.Subject` for free-form editing:
+`Raw()` returns a pointer to the underlying `[]rbacv1.Subject` for free-form editing:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
     raw := e.Raw()
-    for i := range raw {
-        if raw[i].Kind == "ServiceAccount" {
-            raw[i].Namespace = "updated-namespace"
+    for i := range *raw {
+        if (*raw)[i].Kind == "ServiceAccount" {
+            (*raw)[i].Namespace = "updated-namespace"
         }
     }
     return nil

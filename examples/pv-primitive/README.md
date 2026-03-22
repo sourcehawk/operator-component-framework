@@ -14,7 +14,7 @@ It shows how to manage a Kubernetes PersistentVolume as a component of a larger 
 - `features/`: Contains modular feature definitions:
     - `mutations.go`: version labelling, boolean-gated retain policy, and mount options mutations.
 - `resources/`: Contains the central `NewPVResource` factory that assembles all features using `pv.Builder`.
-- `main.go`: A standalone entry point that demonstrates multiple reconciliation cycles with a fake client.
+- `main.go`: A standalone entry point that demonstrates in-memory mutation across multiple spec variations.
 
 ## Running the Example
 
@@ -23,7 +23,6 @@ go run examples/pv-primitive/main.go
 ```
 
 This will:
-1. Initialize a fake Kubernetes client.
-2. Create an `ExampleApp` owner object.
-3. Reconcile through four spec variations, printing the PV configuration after each cycle.
-4. Print the resulting status conditions.
+1. Create an `ExampleApp` owner object.
+2. Apply mutations across four spec variations, printing the resulting PV YAML after each cycle.
+3. Print operational status examples for each PV phase.

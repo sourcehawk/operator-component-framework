@@ -84,7 +84,7 @@ make build-examples
 or to run them
 
 ```bash
-make run-exampels
+make run-examples
 ```
 
 or use a more targeted `go run` command for a specific example.

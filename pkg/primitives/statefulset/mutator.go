@@ -447,8 +447,12 @@ func (m *Mutator) Apply() error {
 		}
 
 		// 9. Volume claim template operations
-		for _, op := range plan.volumeClaimTemplateOps {
-			applyVolumeClaimTemplateOp(&m.current.Spec.VolumeClaimTemplates, op)
+		// VolumeClaimTemplates are immutable after creation. Only apply these
+		// operations when the StatefulSet does not yet exist on the server.
+		if m.current.ResourceVersion == "" {
+			for _, op := range plan.volumeClaimTemplateOps {
+				applyVolumeClaimTemplateOp(&m.current.Spec.VolumeClaimTemplates, op)
+			}
 		}
 	}
 

@@ -665,6 +665,32 @@ func TestMutator_VolumeClaimTemplates(t *testing.T) {
 		require.Len(t, sts.Spec.VolumeClaimTemplates, 1)
 	})
 
+	t.Run("VCT ops are skipped on existing StatefulSet", func(t *testing.T) {
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				ResourceVersion: "12345",
+			},
+			Spec: appsv1.StatefulSetSpec{
+				VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+					{ObjectMeta: metav1.ObjectMeta{Name: "data"}},
+				},
+			},
+		}
+		m := NewMutator(sts)
+
+		m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "new-volume"},
+		})
+		m.RemoveVolumeClaimTemplate("data")
+
+		err := m.Apply()
+		require.NoError(t, err)
+
+		// VCT ops should be skipped since the StatefulSet already exists
+		require.Len(t, sts.Spec.VolumeClaimTemplates, 1)
+		assert.Equal(t, "data", sts.Spec.VolumeClaimTemplates[0].Name)
+	})
+
 	t.Run("VCT ops run after container edits", func(t *testing.T) {
 		sts := &appsv1.StatefulSet{
 			Spec: appsv1.StatefulSetSpec{

@@ -147,6 +147,22 @@ func TestPreserveStatus(t *testing.T) {
 		assert.Nil(t, dst.Data)
 	})
 
+	t.Run("nil dst is a no-op", func(_ *testing.T) {
+		var dst *appsv1.Deployment
+		src := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{ReadyReplicas: 3},
+		}
+		// Should not panic.
+		PreserveStatus(dst, src)
+	})
+
+	t.Run("nil src is a no-op", func(_ *testing.T) {
+		dst := &appsv1.Deployment{}
+		var src *appsv1.Deployment
+		// Should not panic.
+		PreserveStatus(dst, src)
+	})
+
 	t.Run("does not affect non-status fields", func(t *testing.T) {
 		src := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{Name: "src-name"},

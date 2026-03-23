@@ -44,8 +44,15 @@ func PreserveServerManagedFields(dst, src client.Object) {
 // If either object's underlying struct does not have a field named "Status",
 // the call is a no-op.
 func PreserveStatus[T client.Object](dst, src T) {
-	dstVal := reflect.ValueOf(dst).Elem()
-	srcVal := reflect.ValueOf(src).Elem()
+	dstReflect := reflect.ValueOf(dst)
+	srcReflect := reflect.ValueOf(src)
+
+	if dstReflect.IsNil() || srcReflect.IsNil() {
+		return
+	}
+
+	dstVal := dstReflect.Elem()
+	srcVal := srcReflect.Elem()
 
 	dstStatus := dstVal.FieldByName("Status")
 	srcStatus := srcVal.FieldByName("Status")

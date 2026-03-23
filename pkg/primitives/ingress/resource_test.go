@@ -190,6 +190,74 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test",
+			Namespace:       "default",
+			ResourceVersion: "12345",
+		},
+		Status: networkingv1.IngressStatus{
+			LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+				Ingress: []networkingv1.IngressLoadBalancerIngress{
+					{IP: "10.0.0.1"},
+					{Hostname: "lb.example.com"},
+				},
+			},
+		},
+	}
+	desired := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Spec: networkingv1.IngressSpec{
+			IngressClassName: ptr.To("nginx"),
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, ptr.To("nginx"), current.Spec.IngressClassName)
+
+	// Status is preserved from the live object
+	require.Len(t, current.Status.LoadBalancer.Ingress, 2)
+	assert.Equal(t, "10.0.0.1", current.Status.LoadBalancer.Ingress[0].IP)
+	assert.Equal(t, "lb.example.com", current.Status.LoadBalancer.Ingress[1].Hostname)
+}
+
+func TestDefaultOperationalStatusHandler_Operational(t *testing.T) {
+	ing := newValidIngress()
+	ing.Status = networkingv1.IngressStatus{
+		LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+			Ingress: []networkingv1.IngressLoadBalancerIngress{
+				{IP: "10.0.0.1"},
+			},
+		},
+	}
+
+	status, err := DefaultOperationalStatusHandler(concepts.ConvergingOperationUpdated, ing)
+	require.NoError(t, err)
+	assert.Equal(t, concepts.OperationalStatusOperational, status.Status)
+}
+
+func TestDefaultOperationalStatusHandler_OperationalWithHostname(t *testing.T) {
+	ing := newValidIngress()
+	ing.Status = networkingv1.IngressStatus{
+		LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+			Ingress: []networkingv1.IngressLoadBalancerIngress{
+				{Hostname: "lb.example.com"},
+			},
+		},
+	}
+
+	status, err := DefaultOperationalStatusHandler(concepts.ConvergingOperationUpdated, ing)
+	require.NoError(t, err)
+	assert.Equal(t, concepts.OperationalStatusOperational, status.Status)
+}
+
 func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
 	desired := newValidIngress()
 

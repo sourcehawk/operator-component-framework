@@ -12,9 +12,14 @@ import (
 // preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
 // and shared-controller fields (OwnerReferences, Finalizers) from the original
 // current object.
+//
+// The live Status field is preserved so that ingress-controller-owned fields
+// such as Status.LoadBalancer.Ingress are not cleared during reconciliation.
 func DefaultFieldApplicator(current, desired *networkingv1.Ingress) error {
 	original := current.DeepCopy()
+	savedStatus := *current.Status.DeepCopy()
 	*current = *desired.DeepCopy()
+	current.Status = savedStatus
 	generic.PreserveServerManagedFields(current, original)
 	return nil
 }

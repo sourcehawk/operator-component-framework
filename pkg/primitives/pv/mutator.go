@@ -33,8 +33,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given PersistentVolume.
 func NewMutator(pv *corev1.PersistentVolume) *Mutator {
-	m := &Mutator{pv: pv}
-	m.beginFeature()
+	m := &Mutator{
+		pv:    pv,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

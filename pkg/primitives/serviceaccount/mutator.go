@@ -43,9 +43,12 @@ func NewMutator(sa *corev1.ServiceAccount) *Mutator {
 	return m
 }
 
-// beginFeature starts a new feature planning scope. All subsequent mutation
+// BeginFeature starts a new feature planning scope. All subsequent mutation
 // registrations will be grouped into this feature's plan.
-func (m *Mutator) beginFeature() {
+//
+// This method satisfies the generic.FeatureMutator interface, allowing the
+// generic builder to maintain per-feature ordering semantics for external mutators.
+func (m *Mutator) BeginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

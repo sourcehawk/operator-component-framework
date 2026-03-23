@@ -12,7 +12,7 @@ import (
 func VersionLabelMutation(version string) serviceaccount.Mutation {
 	return serviceaccount.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: nil,
 		Mutate: func(m *serviceaccount.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -28,7 +28,7 @@ func VersionLabelMutation(version string) serviceaccount.Mutation {
 func ImagePullSecretMutation(version string) serviceaccount.Mutation {
 	return serviceaccount.Mutation{
 		Name:    "image-pull-secret",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: nil,
 		Mutate: func(m *serviceaccount.Mutator) error {
 			m.EnsureImagePullSecret("default-registry-creds")
 			return nil

@@ -161,7 +161,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	sa := newTestSA()
 	m := NewMutator(sa)
 	m.EnsureImagePullSecret("feature1-registry")
-	m.beginFeature()
+	m.BeginFeature()
 	m.EnsureImagePullSecret("feature2-registry")
 	require.NoError(t, m.Apply())
 
@@ -175,7 +175,7 @@ func TestMutator_MultipleFeatures_LaterObservesPrior(t *testing.T) {
 	sa := newTestSA()
 	m := NewMutator(sa)
 	m.EnsureImagePullSecret("temp-registry")
-	m.beginFeature()
+	m.BeginFeature()
 	m.RemoveImagePullSecret("temp-registry")
 	require.NoError(t, m.Apply())
 

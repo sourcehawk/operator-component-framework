@@ -86,6 +86,7 @@ run-examples: ## Run all examples to verify they execute without error.
 	go run ./examples/deployment-primitive/.
 	go run ./examples/configmap-primitive/.
 	go run ./examples/custom-resource-implementation/.
+	go run ./examples/clusterrolebinding-primitive/.
 
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist

@@ -403,6 +403,41 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-job",
+			Namespace: "test-ns",
+		},
+		Status: batchv1.JobStatus{
+			Active:    2,
+			Succeeded: 1,
+			Failed:    0,
+		},
+	}
+	desired := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-job",
+			Namespace: "test-ns",
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: int32Ptr(5),
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	require.NotNil(t, current.Spec.BackoffLimit)
+	assert.Equal(t, int32(5), *current.Spec.BackoffLimit)
+
+	// Status from the live object is preserved
+	assert.Equal(t, int32(2), current.Status.Active)
+	assert.Equal(t, int32(1), current.Status.Succeeded)
+	assert.Equal(t, int32(0), current.Status.Failed)
+}
+
 func TestResource_CustomFieldApplicator(t *testing.T) {
 	desired := newValidJob()
 	desired.Labels = map[string]string{"app": "test"}

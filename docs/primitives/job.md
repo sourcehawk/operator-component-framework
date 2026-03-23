@@ -11,6 +11,12 @@ The `job` primitive is the framework's built-in task abstraction for managing Ku
 | **Mutation pipeline**   | Typed editors for metadata, job spec, pod spec, and containers                                    |
 | **Flavors**             | Preserves externally-managed fields (labels, annotations, pod template metadata)                  |
 
+## Default Field Application
+
+`DefaultFieldApplicator` replaces the current Job with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+
+Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten.
+
 ## Building a Job Primitive
 
 ```go

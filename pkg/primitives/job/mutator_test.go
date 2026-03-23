@@ -339,7 +339,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	m := NewMutator(job)
 
 	// Feature A: sets backoff to 2, image to v2
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditJobSpec(func(e *editors.JobSpecEditor) error {
 		e.SetBackoffLimit(2)
 		return nil
@@ -350,7 +350,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	})
 
 	// Feature B: sets backoff to 3, image to v3
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditJobSpec(func(e *editors.JobSpecEditor) error {
 		e.SetBackoffLimit(3)
 		return nil
@@ -382,14 +382,14 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 	m := NewMutator(job)
 
 	// Feature A renames container
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "app-v2"
 		return nil
 	})
 
 	// Feature B selects by the new name
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2-image"
 		return nil

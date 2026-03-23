@@ -21,8 +21,14 @@ type featurePlan struct {
 // It uses a "plan-and-apply" pattern: mutations are recorded first, then
 // applied to the NetworkPolicy in a single controlled pass when Apply() is called.
 //
-// Within a single plan, edits are applied in category order: metadata edits
-// first, then spec edits. All edits within a category run in registration order.
+// The Mutator maintains feature boundaries: each feature's mutations are planned
+// together and applied in the order the features were registered.
+//
+// Within a single feature plan, edits are applied in category order: metadata
+// edits first, then spec edits. All edits within a category run in registration
+// order.
+//
+// Mutator implements editors.ObjectMutator.
 type Mutator struct {
 	np *networkingv1.NetworkPolicy
 

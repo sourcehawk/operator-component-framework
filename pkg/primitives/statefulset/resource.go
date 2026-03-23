@@ -8,9 +8,9 @@ import (
 )
 
 // DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
-// and shared-controller fields (OwnerReferences, Finalizers) from the original
-// current object.
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
+// shared-controller fields (OwnerReferences, Finalizers), and the Status
+// subresource from the original current object.
 //
 // It also preserves the existing VolumeClaimTemplates from the current object
 // when it already exists on the server. spec.volumeClaimTemplates is immutable
@@ -22,6 +22,7 @@ func DefaultFieldApplicator(current, desired *appsv1.StatefulSet) error {
 	vcts := current.Spec.VolumeClaimTemplates
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 
 	if original.ResourceVersion != "" {
 		current.Spec.VolumeClaimTemplates = vcts

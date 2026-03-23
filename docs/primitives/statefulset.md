@@ -48,9 +48,9 @@ resource, err := statefulset.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current StatefulSet with a deep copy of the desired object, but preserves `spec.volumeClaimTemplates` from the live object when the resource already exists (i.e., has a non-empty `ResourceVersion`).
+`DefaultFieldApplicator` replaces the current StatefulSet with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
 
-This is necessary because `spec.volumeClaimTemplates` is immutable after creation in Kubernetes — the API server rejects any update that changes it.
+It also preserves `spec.volumeClaimTemplates` from the live object when the resource already exists (i.e., has a non-empty `ResourceVersion`). This is necessary because `spec.volumeClaimTemplates` is immutable after creation in Kubernetes — the API server rejects any update that changes it.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

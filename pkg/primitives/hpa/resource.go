@@ -68,9 +68,10 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.O
 // DeleteOnSuspend determines whether the HPA should be deleted from the cluster
 // when the parent component is suspended.
 //
-// By default, it uses DefaultDeleteOnSuspendHandler, which returns false. An idle
-// HPA has no effect on the cluster when its scale target is absent or suspended,
-// so there is no reason to delete it.
+// By default, it uses DefaultDeleteOnSuspendHandler, which returns false. The HPA
+// is left in place to avoid unnecessary churn and simplify resumption. Note that
+// a retained HPA may attempt to scale its target if the target still exists and is
+// scaled to zero; override with WithCustomSuspendDeletionDecision if this is a concern.
 func (r *Resource) DeleteOnSuspend() bool {
 	return r.base.DeleteOnSuspend()
 }

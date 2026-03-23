@@ -171,17 +171,17 @@ m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 
 #### EnsureMetric
 
-`EnsureMetric` upserts a metric by type and name. Matching rules:
+`EnsureMetric` upserts a metric based on its full metric identity, not just type and name. Matching rules:
 
 | Metric type | Match key |
 |---|---|
 | Resource | `Resource.Name` (e.g. `cpu`, `memory`) |
-| Pods | `Pods.Metric.Name` |
-| Object | `Object.Metric.Name` |
+| Pods | `Pods.Metric.Name` + `Pods.Metric.Selector` (label selector; `nil` is a distinct identity) |
+| Object | `Object.DescribedObject` (`APIVersion`, `Kind`, `Name`) + `Object.Metric.Name` + `Object.Metric.Selector` |
 | ContainerResource | `ContainerResource.Name` + `ContainerResource.Container` |
-| External | `External.Metric.Name` |
+| External | `External.Metric.Name` + `External.Metric.Selector` (label selector; `nil` is a distinct identity) |
 
-If a matching entry exists it is replaced; otherwise the metric is appended.
+If a matching entry exists it is replaced; otherwise the metric is appended. Be aware that different selectors or described objects result in different metric identities, even if the metric names are the same.
 
 #### RemoveMetric
 
@@ -350,6 +350,6 @@ Note: although `EditObjectMetadata` is called after `EditHPASpec` in the source,
 
 **Register mutations in dependency order.** If mutation B relies on a metric added by mutation A, register A first.
 
-**Use `EnsureMetric` for idempotent metric management.** The editor matches by type and name, so repeated calls with the same metric identity update rather than duplicate.
+**Use `EnsureMetric` for idempotent metric management.** The editor matches by full metric identity (type, name, selector, and described object where applicable), so repeated calls with the same identity update rather than duplicate.
 
-**HPA deletion on suspend is intentional.** Without a native suspend field, leaving the HPA active during suspension would cause it to scale the target workload back up, fighting against the suspension logic. Override `WithCustomSuspendDeletionDecision` only if you have a specific reason to keep the HPA alive.
+**HPA retention on suspend is the default.** The primitive's default `DeleteOnSuspend` decision leaves the HPA in place during component suspension (matching the "Suspension (no-op)" capability). This avoids unnecessary churn and simplifies resumption. Note that a retained HPA may attempt to scale its target if the target still exists and is scaled to zero. If you need the HPA to be removed during suspension — for example, to guarantee that no scaling can interfere — override `WithCustomSuspendDeletionDecision` to return `true`.

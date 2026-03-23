@@ -9,9 +9,9 @@ import (
 
 // DefaultFieldApplicator replaces current with a deep copy of desired while
 // preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), and PV-specific
-// immutable fields (PersistentVolumeSource, VolumeMode, ClaimRef) from the
-// original current object.
+// shared-controller fields (OwnerReferences, Finalizers), the Status
+// subresource, and PV-specific immutable fields (PersistentVolumeSource,
+// VolumeMode, ClaimRef) from the original current object.
 //
 // On a fresh PV (empty ResourceVersion, meaning it has not yet been persisted),
 // the full desired state is applied without preservation.
@@ -30,6 +30,7 @@ func DefaultFieldApplicator(current, desired *corev1.PersistentVolume) error {
 	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 
 	// Restore PV-specific immutable fields from the live object.
 	current.Spec.PersistentVolumeSource = savedSource

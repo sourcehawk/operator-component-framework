@@ -45,7 +45,9 @@ func TestDefaultFieldApplicator_Create(t *testing.T) {
 
 	// On create (empty ResourceVersion), all fields should be applied.
 	assert.Equal(t, "myapp", current.Labels["app"])
-	assert.Equal(t, resource.MustParse("10Gi"), current.Spec.Capacity[corev1.ResourceStorage])
+	expectedCapacity := resource.MustParse("10Gi")
+	actualCapacity := current.Spec.Capacity[corev1.ResourceStorage]
+	assert.True(t, expectedCapacity.Equal(actualCapacity), "expected storage capacity %s, got %s", expectedCapacity.String(), actualCapacity.String())
 	assert.Equal(t, "nfs.example.com", current.Spec.NFS.Server)
 	assert.Equal(t, &volumeMode, current.Spec.VolumeMode)
 	assert.Equal(t, "fast-ssd", current.Spec.StorageClassName)
@@ -122,8 +124,10 @@ func TestDefaultFieldApplicator_Update_PreservesImmutableFields(t *testing.T) {
 	// Mutable fields should be updated from desired.
 	assert.Equal(t, "true", current.Labels["updated"],
 		"labels should be updated from desired")
-	assert.Equal(t, resource.MustParse("20Gi"), current.Spec.Capacity[corev1.ResourceStorage],
-		"capacity should be updated from desired")
+	expectedUpdatedCapacity := resource.MustParse("20Gi")
+	actualUpdatedCapacity := current.Spec.Capacity[corev1.ResourceStorage]
+	assert.True(t, expectedUpdatedCapacity.Equal(actualUpdatedCapacity),
+		"capacity should be updated from desired: expected %s, got %s", expectedUpdatedCapacity.String(), actualUpdatedCapacity.String())
 	assert.Equal(t, "new-class", current.Spec.StorageClassName,
 		"storage class should be updated from desired")
 	assert.Equal(t, corev1.PersistentVolumeReclaimRetain, current.Spec.PersistentVolumeReclaimPolicy,
@@ -209,6 +213,39 @@ func TestDefaultFieldApplicator_DoesNotMutateDesired(t *testing.T) {
 	// Desired object must not be mutated.
 	assert.Equal(t, "desired.example.com", desired.Spec.NFS.Server)
 	assert.Equal(t, "desired-class", desired.Spec.StorageClassName)
+}
+
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pv",
+			ResourceVersion: "12345",
+		},
+		Status: corev1.PersistentVolumeStatus{
+			Phase:   corev1.VolumeBound,
+			Message: "bound to claim default/data",
+			Reason:  "Bound",
+		},
+	}
+	desired := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-pv",
+		},
+		Spec: corev1.PersistentVolumeSpec{
+			StorageClassName: "fast-ssd",
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, "fast-ssd", current.Spec.StorageClassName)
+
+	// Status from the live object is preserved
+	assert.Equal(t, corev1.VolumeBound, current.Status.Phase)
+	assert.Equal(t, "bound to claim default/data", current.Status.Message)
+	assert.Equal(t, "Bound", current.Status.Reason)
 }
 
 func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {

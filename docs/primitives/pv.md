@@ -46,7 +46,9 @@ PersistentVolumes are cluster-scoped. The builder validates that Name is set and
 
 ## Default Field Application
 
-`DefaultFieldApplicator` preserves immutable fields when updating an existing PersistentVolume:
+`DefaultFieldApplicator` replaces the current PersistentVolume with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), the Status subresource, and PV-specific immutable fields from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+
+Preserved immutable fields:
 
 - `Spec.PersistentVolumeSource` — the volume backend (NFS, CSI, HostPath, etc.)
 - `Spec.VolumeMode` — Filesystem or Block
@@ -285,9 +287,9 @@ resource, err := pv.NewBuilder(base).
 
 **Use the Integration lifecycle for status.** PVs report `Operational`, `OperationPending`, or `OperationFailing` based on their phase. Override with `WithCustomOperationalStatus` only when phase-based readiness is insufficient.
 
-**Controller references require a cluster-scoped owner.** The component reconciliation pipeline sets a controller reference on created/updated resources. Because `PersistentVolume` is cluster-scoped, its controller owner must also be cluster-scoped. Using a namespace-scoped component (the common case) as the owner will cause the API server to reject the PV. If you need to manage PVs from a namespace-scoped component, either:
+**Controller references and garbage collection.** The component reconciliation pipeline attempts to set a controller reference on created/updated resources. Because `PersistentVolume` is cluster-scoped, its controller owner must also be cluster-scoped. When the owner is namespace-scoped and the PV is cluster-scoped, the framework detects this mismatch and **skips setting `ownerReferences`** (logging an informational message) instead of letting the API server reject the request. As a result, such PVs will **not** be garbage collected automatically when the owning component is deleted. If you need garbage collection for PVs, either:
 
-- Model the PV as owned by a dedicated cluster-scoped controller/component, or
-- Manage the PV outside the default component create/update pipeline (for example, via a custom controller that does **not** set `ownerReferences` on the PV).
+- Model the PV as owned by a dedicated **cluster-scoped** controller/component so a valid controller reference can be set, or
+- Accept that PVs managed from a **namespace-scoped** component will not have `ownerReferences` and handle their lifecycle explicitly (for example, by deleting them in custom logic when appropriate).
 
 **Register mutations in dependency order.** If mutation B relies on a field set by mutation A, register A first.

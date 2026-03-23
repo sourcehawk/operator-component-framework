@@ -6,7 +6,7 @@ It shows how to manage a Kubernetes PersistentVolume as a component of a larger 
 - **Base Construction**: Initializing a cluster-scoped PersistentVolume with storage configuration.
 - **Feature Mutations**: Applying feature-gated changes to reclaim policy, mount options, and metadata.
 - **Field Flavors**: Preserving annotations managed by external controllers using `PreserveCurrentAnnotations`.
-- **Data Extraction**: Inspecting PV configuration after each reconcile cycle.
+- **Result Inspection**: Printing PV configuration after each reconcile cycle.
 
 ## Directory Structure
 

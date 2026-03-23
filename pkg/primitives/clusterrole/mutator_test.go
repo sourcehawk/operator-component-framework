@@ -207,7 +207,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	})
 
 	// Feature B: add another rule and a label
-	m.beginFeature()
+	m.BeginFeature()
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"list"},
 	})

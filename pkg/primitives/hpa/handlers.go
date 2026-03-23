@@ -68,19 +68,25 @@ func DefaultOperationalStatusHandler(
 // DefaultDeleteOnSuspendHandler provides the default decision of whether to delete the HPA
 // when the parent component is suspended.
 //
-// It always returns true. HPA has no native suspend field; deleting prevents it from
-// interfering with manually-scaled replicas while suspended.
+// It always returns false. An idle HPA has no effect on a cluster when its scale target is
+// absent or suspended, so there is no reason to delete it. Keeping it in place avoids
+// unnecessary churn and simplifies resumption.
+//
+// Override this via Builder.WithCustomSuspendDeletionDecision if your use case requires
+// the HPA to be removed during suspension.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered
 // via Builder.WithCustomSuspendDeletionDecision. It can be reused within custom handlers.
 func DefaultDeleteOnSuspendHandler(_ *autoscalingv2.HorizontalPodAutoscaler) bool {
-	return true
+	return false
 }
 
 // DefaultSuspendMutationHandler provides the default mutation applied to an HPA when
 // the component is suspended.
 //
-// It is a no-op because the HPA is deleted on suspend (DefaultDeleteOnSuspendHandler returns true).
+// It is a no-op. The default suspension behavior leaves the HPA in place
+// (DefaultDeleteOnSuspendHandler returns false) because an idle HPA has no impact on
+// the cluster when its scale target is absent or suspended. No mutations are needed.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered
 // via Builder.WithCustomSuspendMutation. It can be reused within custom handlers.
@@ -90,13 +96,10 @@ func DefaultSuspendMutationHandler(_ *Mutator) error {
 
 // DefaultSuspensionStatusHandler reports the suspension status of the HPA.
 //
-// It always returns Suspended with a reason indicating the HPA is deleted on suspend.
-// Since the HPA is deleted during suspension, its status is inherently Suspended once
-// the framework reaches this handler.
-//
-// This handler assumes DefaultDeleteOnSuspendHandler (delete-on-suspend) is in effect.
-// If you override the deletion decision to keep the HPA, provide a custom suspension
-// status handler via Builder.WithCustomSuspendStatus as well.
+// It always returns Suspended immediately. The default suspension behaviour is a no-op:
+// the HPA is left in place because an idle HPA has no effect on the cluster when its
+// scale target is absent or suspended. Because no work is required to suspend, the
+// status is always Suspended.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered
 // via Builder.WithCustomSuspendStatus. It can be reused within custom handlers.
@@ -105,7 +108,7 @@ func DefaultSuspensionStatusHandler(
 ) (concepts.SuspensionStatusWithReason, error) {
 	return concepts.SuspensionStatusWithReason{
 		Status: concepts.SuspensionStatusSuspended,
-		Reason: "HorizontalPodAutoscaler deleted on suspend",
+		Reason: "HorizontalPodAutoscaler left in place; no-op suspend",
 	}, nil
 }
 

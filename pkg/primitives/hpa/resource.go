@@ -24,7 +24,7 @@ func DefaultFieldApplicator(current, desired *autoscalingv2.HorizontalPodAutosca
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - component.Operational: for reporting operational status based on HPA conditions.
-//   - component.Suspendable: for delete-on-suspend behaviour (HPA has no native suspend).
+//   - component.Suspendable: for no-op suspend behaviour (idle HPA has no cluster impact).
 //   - component.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]
@@ -68,25 +68,25 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.O
 // DeleteOnSuspend determines whether the HPA should be deleted from the cluster
 // when the parent component is suspended.
 //
-// By default, it uses DefaultDeleteOnSuspendHandler, which returns true. HPA has
-// no native suspend field; deleting prevents it from interfering with manually-scaled
-// replicas while suspended.
+// By default, it uses DefaultDeleteOnSuspendHandler, which returns false. An idle
+// HPA has no effect on the cluster when its scale target is absent or suspended,
+// so there is no reason to delete it.
 func (r *Resource) DeleteOnSuspend() bool {
 	return r.base.DeleteOnSuspend()
 }
 
 // Suspend registers the configured suspension mutation for the next mutate cycle.
 //
-// For HPA, the default suspension mutation is a no-op since the resource is deleted
-// on suspend.
+// For HPA, the default suspension mutation is a no-op since an idle HPA has no
+// impact on the cluster.
 func (r *Resource) Suspend() error {
 	return r.base.Suspend()
 }
 
 // SuspensionStatus reports the suspension status of the HPA.
 //
-// By default, it uses DefaultSuspensionStatusHandler, which reports Suspended with
-// a reason indicating the HPA was deleted on suspend.
+// By default, it uses DefaultSuspensionStatusHandler, which reports Suspended
+// immediately because the default suspend is a no-op.
 func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
 	return r.base.SuspensionStatus()
 }

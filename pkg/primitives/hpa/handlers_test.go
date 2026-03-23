@@ -148,7 +148,7 @@ func TestDefaultOperationalStatusHandler_UsesConditionMessage(t *testing.T) {
 
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
-	assert.True(t, DefaultDeleteOnSuspendHandler(hpa))
+	assert.False(t, DefaultDeleteOnSuspendHandler(hpa))
 }
 
 func TestDefaultSuspendMutationHandler(t *testing.T) {
@@ -163,5 +163,5 @@ func TestDefaultSuspensionStatusHandler(t *testing.T) {
 	got, err := DefaultSuspensionStatusHandler(hpa)
 	require.NoError(t, err)
 	assert.Equal(t, concepts.SuspensionStatusSuspended, got.Status)
-	assert.Equal(t, "HorizontalPodAutoscaler deleted on suspend", got.Reason)
+	assert.Equal(t, "HorizontalPodAutoscaler left in place; no-op suspend", got.Reason)
 }

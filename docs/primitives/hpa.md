@@ -7,7 +7,7 @@ The `hpa` primitive is the framework's built-in integration abstraction for mana
 | Capability                 | Detail                                                                                                    |
 |----------------------------|-----------------------------------------------------------------------------------------------------------|
 | **Operational status**     | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`    |
-| **Suspension (delete)**    | Deletes the HPA on suspend — prevents it from interfering with manually-scaled replicas                   |
+| **Suspension (no-op)**     | Leaves the HPA in place on suspend — an idle HPA has no cluster impact when its scale target is absent    |
 | **Mutation pipeline**      | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                          |
 | **Flavors**                | Preserves externally-managed labels and annotations                                                       |
 | **Data extraction**        | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
@@ -257,20 +257,20 @@ hpa.NewBuilder(base).
 
 ## Suspension
 
-HPA has no native suspend field. The default behavior is to **delete the HPA** when the component is suspended (`DefaultDeleteOnSuspendHandler` returns `true`). This prevents the autoscaler from interfering with manually-scaled replicas during suspension.
+HPA has no native suspend field. The default behavior is a **no-op**: the HPA is left in place when the component is suspended (`DefaultDeleteOnSuspendHandler` returns `false`). An idle HPA has no effect on the cluster when its scale target is absent or suspended, so there is no reason to delete it. Keeping it avoids unnecessary churn and simplifies resumption.
 
-The default suspension status handler reports `Suspended` with the reason `"HorizontalPodAutoscaler deleted on suspend"`.
+The default suspension status handler reports `Suspended` immediately with the reason `"HorizontalPodAutoscaler left in place; no-op suspend"`.
 
-Override with `WithCustomSuspendDeletionDecision` if you want to keep the HPA during suspension:
+Override with `WithCustomSuspendDeletionDecision` if you want to delete the HPA during suspension:
 
 ```go
 hpa.NewBuilder(base).
     WithCustomSuspendDeletionDecision(func(_ *autoscalingv2.HorizontalPodAutoscaler) bool {
-        return false // keep HPA during suspension
+        return true // delete HPA during suspension
     })
 ```
 
-If you choose to keep the HPA during suspension, ensure that your suspend mutation and status handling are updated to match this behavior so that the component's suspended state and reported reasons remain accurate.
+If you choose to delete the HPA during suspension, consider providing a custom suspend status handler via `WithCustomSuspendStatus` to report an accurate reason.
 
 ## Flavors
 

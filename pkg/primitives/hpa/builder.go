@@ -99,7 +99,7 @@ func (b *Builder) WithCustomOperationalStatus(
 // WithCustomSuspendStatus overrides how the progress of suspension is reported.
 //
 // The default behavior uses DefaultSuspensionStatusHandler, which reports
-// Suspended with a reason indicating the HPA was deleted on suspend.
+// Suspended immediately because the default suspend is a no-op.
 func (b *Builder) WithCustomSuspendStatus(
 	handler func(*autoscalingv2.HorizontalPodAutoscaler) (concepts.SuspensionStatusWithReason, error),
 ) *Builder {
@@ -111,7 +111,7 @@ func (b *Builder) WithCustomSuspendStatus(
 // the component is suspended.
 //
 // The default behavior uses DefaultSuspendMutationHandler, which is a no-op
-// since the HPA is deleted on suspend.
+// since an idle HPA has no impact on the cluster.
 func (b *Builder) WithCustomSuspendMutation(
 	handler func(*Mutator) error,
 ) *Builder {
@@ -122,9 +122,9 @@ func (b *Builder) WithCustomSuspendMutation(
 // WithCustomSuspendDeletionDecision overrides the decision of whether to delete
 // the HPA when the component is suspended.
 //
-// The default behavior uses DefaultDeleteOnSuspendHandler, which returns true.
-// HPA has no native suspend field; deleting prevents it from interfering with
-// manually-scaled replicas while suspended.
+// The default behavior uses DefaultDeleteOnSuspendHandler, which returns false.
+// An idle HPA has no effect on the cluster when its scale target is absent or
+// suspended, so there is no reason to delete it.
 func (b *Builder) WithCustomSuspendDeletionDecision(
 	handler func(*autoscalingv2.HorizontalPodAutoscaler) bool,
 ) *Builder {

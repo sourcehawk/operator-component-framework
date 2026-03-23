@@ -4,13 +4,13 @@ The `statefulset` primitive is the framework's built-in workload abstraction for
 
 ## Capabilities
 
-| Capability            | Detail                                                                                          |
-|-----------------------|-------------------------------------------------------------------------------------------------|
-| **Health tracking**   | Monitors `ReadyReplicas` and reports `Healthy`, `Creating`, `Updating`, `Scaling`, or `Failing` |
-| **Graceful rollouts** | Detects stalled or failing rollouts via configurable grace periods                              |
-| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                     |
-| **Mutation pipeline** | Typed editors for metadata, statefulset spec, pod spec, containers, and volume claim templates  |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                |
+| Capability            | Detail                                                                                                            |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------|
+| **Health tracking**   | Monitors `ReadyReplicas` and reports `Healthy`, `Creating`, `Updating`, or `Scaling`; grace handler can mark Down/Degraded |
+| **Rollout health**    | Surfaces stalled or failing rollouts by transitioning the resource to `Degraded` or `Down` (no grace-period timing)       |
+| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                       |
+| **Mutation pipeline** | Typed editors for metadata, statefulset spec, pod spec, containers, and volume claim templates                    |
+| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                  |
 
 ## Building a StatefulSet Primitive
 

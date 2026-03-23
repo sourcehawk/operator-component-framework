@@ -47,9 +47,9 @@ func TestMutator_EnvVars(t *testing.T) {
 	assert.Len(t, env, 3)
 
 	findEnv := func(name string) *corev1.EnvVar {
-		for _, e := range env {
-			if e.Name == name {
-				return &e
+		for i := range env {
+			if env[i].Name == name {
+				return &env[i]
 			}
 		}
 		return nil

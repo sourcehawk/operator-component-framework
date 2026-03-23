@@ -132,7 +132,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 		e.EnsureServiceAccount("sa1", "ns1")
 		return nil
 	})
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("sa2", "ns2")
 		return nil

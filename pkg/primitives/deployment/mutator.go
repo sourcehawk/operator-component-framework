@@ -55,7 +55,7 @@ type Mutator struct {
 // It is typically used within a Feature's Mutation logic to express desired
 // changes to the Deployment.
 func NewMutator(current *appsv1.Deployment) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		current: current,
 		plans:   []featurePlan{{}},
 	}
@@ -73,13 +73,6 @@ func NewMutator(current *appsv1.Deployment) *Mutator {
 func (m *Mutator) BeginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
-}
-
-// ensureActive lazily initializes a feature plan if none has been started.
-func (m *Mutator) ensureActive() {
-	if m.active == nil {
-		m.beginFeature()
-	}
 }
 
 // EditContainers records a mutation for containers matching the given selector.
@@ -101,7 +94,6 @@ func (m *Mutator) EditContainers(selector selectors.ContainerSelector, edit func
 	if selector == nil || edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.containerEdits = append(m.active.containerEdits, containerEdit{
 		selector: selector,
 		edit:     edit,
@@ -126,7 +118,6 @@ func (m *Mutator) EditInitContainers(selector selectors.ContainerSelector, edit 
 	if selector == nil || edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.initContainerEdits = append(m.active.initContainerEdits, containerEdit{
 		selector: selector,
 		edit:     edit,
@@ -136,7 +127,6 @@ func (m *Mutator) EditInitContainers(selector selectors.ContainerSelector, edit 
 // EnsureContainer records that a regular container must be present in the Deployment.
 // If a container with the same name exists, it is replaced; otherwise, it is appended.
 func (m *Mutator) EnsureContainer(container corev1.Container) {
-	m.ensureActive()
 	m.active.containerPresence = append(m.active.containerPresence, containerPresenceOp{
 		name:      container.Name,
 		container: &container,
@@ -145,7 +135,6 @@ func (m *Mutator) EnsureContainer(container corev1.Container) {
 
 // RemoveContainer records that a regular container should be removed by name.
 func (m *Mutator) RemoveContainer(name string) {
-	m.ensureActive()
 	m.active.containerPresence = append(m.active.containerPresence, containerPresenceOp{
 		name:      name,
 		container: nil,
@@ -162,7 +151,6 @@ func (m *Mutator) RemoveContainers(names []string) {
 // EnsureInitContainer records that an init container must be present in the Deployment.
 // If an init container with the same name exists, it is replaced; otherwise, it is appended.
 func (m *Mutator) EnsureInitContainer(container corev1.Container) {
-	m.ensureActive()
 	m.active.initContainerPresence = append(m.active.initContainerPresence, containerPresenceOp{
 		name:      container.Name,
 		container: &container,
@@ -171,7 +159,6 @@ func (m *Mutator) EnsureInitContainer(container corev1.Container) {
 
 // RemoveInitContainer records that an init container should be removed by name.
 func (m *Mutator) RemoveInitContainer(name string) {
-	m.ensureActive()
 	m.active.initContainerPresence = append(m.active.initContainerPresence, containerPresenceOp{
 		name:      name,
 		container: nil,
@@ -199,7 +186,6 @@ func (m *Mutator) EditDeploymentSpec(edit func(*editors.DeploymentSpecEditor) er
 	if edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.deploymentSpecEdits = append(m.active.deploymentSpecEdits, edit)
 }
 
@@ -217,7 +203,6 @@ func (m *Mutator) EditPodSpec(edit func(*editors.PodSpecEditor) error) {
 	if edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.podSpecEdits = append(m.active.podSpecEdits, edit)
 }
 
@@ -235,7 +220,6 @@ func (m *Mutator) EditPodTemplateMetadata(edit func(*editors.ObjectMetaEditor) e
 	if edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.podTemplateMetadataEdits = append(m.active.podTemplateMetadataEdits, edit)
 }
 
@@ -253,7 +237,6 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.deploymentMetadataEdits = append(m.active.deploymentMetadataEdits, edit)
 }
 

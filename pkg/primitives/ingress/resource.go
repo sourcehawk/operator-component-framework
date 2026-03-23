@@ -9,18 +9,14 @@ import (
 )
 
 // DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
-// and shared-controller fields (OwnerReferences, Finalizers) from the original
-// current object.
-//
-// The live Status field is preserved so that ingress-controller-owned fields
-// such as Status.LoadBalancer.Ingress are not cleared during reconciliation.
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
+// shared-controller fields (OwnerReferences, Finalizers), and the Status
+// subresource from the original current object.
 func DefaultFieldApplicator(current, desired *networkingv1.Ingress) error {
 	original := current.DeepCopy()
-	savedStatus := *current.Status.DeepCopy()
 	*current = *desired.DeepCopy()
-	current.Status = savedStatus
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 	return nil
 }
 

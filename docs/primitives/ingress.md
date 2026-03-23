@@ -53,6 +53,12 @@ resource, err := ingress.NewBuilder(base).
     Build()
 ```
 
+## Default Field Application
+
+`DefaultFieldApplicator` replaces the current Ingress with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the ingress controller (e.g. `Status.LoadBalancer.Ingress` addresses).
+
+Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten.
+
 ## Mutations
 
 Mutations are the primary mechanism for modifying an `Ingress` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.

@@ -138,7 +138,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 		return nil
 	})
 
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		// Second feature overwrites the label
 		e.EnsureLabel("feature", "two")

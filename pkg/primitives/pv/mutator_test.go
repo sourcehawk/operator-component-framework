@@ -125,7 +125,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
 	m.SetStorageClassName("feature1-class")
-	m.beginFeature()
+	m.BeginFeature()
 	m.SetReclaimPolicy(corev1.PersistentVolumeReclaimRetain)
 	require.NoError(t, m.Apply())
 
@@ -137,7 +137,7 @@ func TestMutator_LaterFeatureObservesPrior(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
 	m.SetStorageClassName("first")
-	m.beginFeature()
+	m.BeginFeature()
 	// Second feature should see the storage class set by the first.
 	m.EditPVSpec(func(e *editors.PVSpecEditor) error {
 		if e.Raw().StorageClassName == "first" {

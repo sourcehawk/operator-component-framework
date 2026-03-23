@@ -131,7 +131,7 @@ Selectors are evaluated against the container list *after* any presence operatio
 |--------------------------------------|------------|-----------------------------------------|
 | `pkg/primitives/deployment`          | Workload   | [deployment.md](primitives/deployment.md) |
 | `pkg/primitives/configmap`           | Static     | [configmap.md](primitives/configmap.md)   |
-| `pkg/primitives/pv`                 | Integration| [pv.md](primitives/pv.md)                 |
+| `pkg/primitives/pv`                  | Integration | [pv.md](primitives/pv.md)                 |
 
 ## Usage Examples
 

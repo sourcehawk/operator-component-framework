@@ -36,7 +36,7 @@ func TestBuilder_Build_Validation(t *testing.T) {
 			pv: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pv", Namespace: "should-not-be-set"},
 			},
-			expectedErr: "PersistentVolume is cluster-scoped: namespace must not be set",
+			expectedErr: "cluster-scoped object must not have a namespace",
 		},
 		{
 			name: "valid persistent volume",

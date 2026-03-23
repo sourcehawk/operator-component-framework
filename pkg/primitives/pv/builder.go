@@ -2,7 +2,6 @@
 package pv
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/sourcehawk/operator-component-framework/internal/generic"
@@ -18,8 +17,7 @@ import (
 // configuration and returns an initialized Resource ready for use in a
 // reconciliation loop.
 type Builder struct {
-	base                     *generic.IntegrationBuilder[*corev1.PersistentVolume, *Mutator]
-	operationalStatusHandler func(concepts.ConvergingOperation, *corev1.PersistentVolume) (concepts.OperationalStatusWithReason, error)
+	base *generic.IntegrationBuilder[*corev1.PersistentVolume, *Mutator]
 }
 
 // NewBuilder initializes a new Builder with the provided PersistentVolume object.
@@ -41,13 +39,10 @@ func NewBuilder(pv *corev1.PersistentVolume) *Builder {
 		DefaultFieldApplicator,
 		NewMutator,
 	)
+	base.MarkClusterScoped()
+	base.WithCustomOperationalStatus(DefaultOperationalStatusHandler)
 
-	b := &Builder{
-		base:                     base,
-		operationalStatusHandler: DefaultOperationalStatusHandler,
-	}
-
-	return b
+	return &Builder{base: base}
 }
 
 // WithMutation registers a mutation for the PersistentVolume.
@@ -100,7 +95,7 @@ func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Bui
 func (b *Builder) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, *corev1.PersistentVolume) (concepts.OperationalStatusWithReason, error),
 ) *Builder {
-	b.operationalStatusHandler = handler
+	b.base.WithCustomOperationalStatus(handler)
 	return b
 }
 
@@ -126,35 +121,12 @@ func (b *Builder) WithDataExtractor(extractor func(corev1.PersistentVolume) erro
 //   - No PersistentVolume object was provided.
 //   - The PersistentVolume is missing a Name.
 //   - The PersistentVolume has a Namespace set (PVs are cluster-scoped).
+//   - Identity function, field applicator, or mutator factory is nil.
 func (b *Builder) Build() (*Resource, error) {
-	if err := b.validate(); err != nil {
+	genericRes, err := b.base.Build()
+	if err != nil {
 		return nil, err
 	}
 
-	res := &generic.IntegrationResource[*corev1.PersistentVolume, *Mutator]{
-		BaseResource:             *b.base.BaseRes,
-		OperationalStatusHandler: b.operationalStatusHandler,
-	}
-
-	return &Resource{base: res}, nil
-}
-
-// validate checks PV-specific builder constraints.
-//
-// PersistentVolumes are cluster-scoped: Name is required, Namespace must be empty.
-func (b *Builder) validate() error {
-	obj := b.base.BaseRes.DesiredObject
-	if obj == nil {
-		return errors.New("object cannot be nil")
-	}
-
-	if obj.GetName() == "" {
-		return errors.New("object name cannot be empty")
-	}
-
-	if obj.GetNamespace() != "" {
-		return errors.New("PersistentVolume is cluster-scoped: namespace must not be set")
-	}
-
-	return nil
+	return &Resource{base: genericRes}, nil
 }

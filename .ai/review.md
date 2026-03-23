@@ -77,4 +77,4 @@ Aim to be exhaustive in a single review. Do not hold back comments with the inte
 
 - After the author addresses your comments and requests a new review, focus only on what changed and any issues introduced by those changes. Do not use re-reviews as an opportunity to raise issues you could have caught in the first pass.
 
-- If you are uncertain whether something is an issue, raise it in the first review with appropriate hedging ("Not sure if intentional, but…") rather than omitting it and bringing it up later.
+- If you are uncertain whether something is an issue, first do a quick verification pass (e.g. read surrounding code, search for similar patterns, or check existing docs). Only leave a comment when you can point to a specific, evidenced concern, or clearly frame it as a question when you cannot confirm the intent.

@@ -484,7 +484,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	m := NewMutator(deploy)
 
 	// Feature A: sets replicas to 2, image to v2
-	m.BeginFeature()
+	m.beginFeature()
 	m.EnsureReplicas(2)
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2"
@@ -492,7 +492,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	})
 
 	// Feature B: sets replicas to 3, image to v3
-	m.BeginFeature()
+	m.beginFeature()
 	m.EnsureReplicas(3)
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v3"
@@ -574,14 +574,14 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 	m := NewMutator(deploy)
 
 	// Feature A renames container
-	m.BeginFeature()
+	m.beginFeature()
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "app-v2"
 		return nil
 	})
 
 	// Feature B selects by the new name - this should work!
-	m.BeginFeature()
+	m.beginFeature()
 	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2-image"
 		return nil

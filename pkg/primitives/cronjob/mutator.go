@@ -53,12 +53,12 @@ func NewMutator(current *batchv1.CronJob) *Mutator {
 	m := &Mutator{
 		current: current,
 	}
-	m.BeginFeature()
+	m.beginFeature()
 	return m
 }
 
-// BeginFeature starts a new feature planning scope.
-func (m *Mutator) BeginFeature() {
+// beginFeature starts a new feature planning scope.
+func (m *Mutator) beginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

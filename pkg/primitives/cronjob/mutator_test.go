@@ -416,7 +416,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	m := NewMutator(cj)
 
 	// Feature A
-	m.BeginFeature()
+	m.beginFeature()
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("*/10 * * * *")
 		return nil
@@ -427,7 +427,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	})
 
 	// Feature B
-	m.BeginFeature()
+	m.beginFeature()
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("0 * * * *")
 		return nil
@@ -539,14 +539,14 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 	m := NewMutator(cj)
 
 	// Feature A renames container
-	m.BeginFeature()
+	m.beginFeature()
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "app-v2"
 		return nil
 	})
 
 	// Feature B selects by the new name
-	m.BeginFeature()
+	m.beginFeature()
 	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2-image"
 		return nil

@@ -156,7 +156,7 @@ func TestMutator_MergeYAML_Composable(t *testing.T) {
 	cm := newTestCM(map[string]string{"config.yaml": "a: 1\n"})
 	m := NewMutator(cm)
 	m.MergeYAML("config.yaml", "b: 2\n")
-	m.BeginFeature()
+	m.beginFeature()
 	m.MergeYAML("config.yaml", "c: 3\n")
 	require.NoError(t, m.Apply())
 
@@ -207,7 +207,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
 	m.SetEntry("feature1", "on")
-	m.BeginFeature()
+	m.beginFeature()
 	m.SetEntry("feature2", "on")
 	require.NoError(t, m.Apply())
 

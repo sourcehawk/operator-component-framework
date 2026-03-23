@@ -66,10 +66,10 @@ func NewMutator(current *appsv1.StatefulSet) *Mutator {
 	return m
 }
 
-// beginFeature starts a new feature planning scope. All subsequent mutation
+// BeginFeature starts a new feature planning scope. All subsequent mutation
 // registrations will be grouped into this feature's plan until another
-// beginFeature is called.
-func (m *Mutator) beginFeature() {
+// BeginFeature is called.
+func (m *Mutator) BeginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

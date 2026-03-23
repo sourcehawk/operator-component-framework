@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// Mutation defines a mutation that is applied to a cronjob Mutator
+// Mutation defines a mutation that is applied to a CronJob Mutator
 // only if its associated feature.ResourceFeature is enabled.
 type Mutation feature.Mutation[*Mutator]
 

@@ -52,8 +52,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given Job.
 func NewMutator(current *batchv1.Job) *Mutator {
-	m := &Mutator{current: current}
-	m.beginFeature()
+	m := &Mutator{
+		current: current,
+		plans:   []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

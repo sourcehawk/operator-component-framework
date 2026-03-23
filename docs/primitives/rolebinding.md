@@ -42,10 +42,11 @@ resource, err := rolebinding.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current RoleBinding with a deep copy of the desired object, preserving the live `roleRef` when the resource already exists in the cluster (i.e. has a non-empty `ResourceVersion`).
+`DefaultFieldApplicator` replaces the current RoleBinding with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the immutable `roleRef` from the original live object. RoleBinding has no Status subresource, so no status preservation is needed.
 
 This ensures that:
 - Every reconciliation cycle produces a clean, predictable state.
+- Server-managed metadata and shared-controller fields are not lost.
 - The immutable `roleRef` from the API server is never overwritten.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields you need to preserve:

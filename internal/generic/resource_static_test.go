@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -34,33 +36,21 @@ func TestStaticResource(t *testing.T) {
 	}
 
 	t.Run("Identity", func(t *testing.T) {
-		if res.Identity() != "test-cm" {
-			t.Errorf("expected identity test-cm, got %s", res.Identity())
-		}
+		assert.Equal(t, "test-cm", res.Identity())
 	})
 
 	t.Run("Object", func(t *testing.T) {
 		got, err := res.Object()
-		if err != nil {
-			t.Fatalf("Object() error = %v", err)
-		}
-		if got.GetName() != "test-cm" {
-			t.Errorf("expected name test-cm, got %s", got.GetName())
-		}
-		if got == res.DesiredObject {
-			t.Errorf("Object() should return a deep copy, but got same pointer")
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "test-cm", got.GetName())
+		assert.NotSame(t, res.DesiredObject, got, "Object() should return a deep copy, but got same pointer")
 	})
 
 	t.Run("Mutate", func(t *testing.T) {
 		current := &corev1.ConfigMap{}
 		err := res.Mutate(current)
-		if err != nil {
-			t.Fatalf("Mutate() error = %v", err)
-		}
-		if current.Data["foo"] != testVal {
-			t.Errorf("expected foo=%s, got %v", testVal, current.Data["foo"])
-		}
+		require.NoError(t, err)
+		assert.Equal(t, testVal, current.Data["foo"])
 	})
 
 	t.Run("Mutate applies registered mutations", func(t *testing.T) {
@@ -72,12 +62,8 @@ func TestStaticResource(t *testing.T) {
 		}))
 
 		current := &corev1.ConfigMap{}
-		if err := res.Mutate(current); err != nil {
-			t.Fatalf("Mutate() error = %v", err)
-		}
-		if !applied {
-			t.Errorf("mutation was not applied")
-		}
+		require.NoError(t, res.Mutate(current))
+		assert.True(t, applied, "mutation was not applied")
 
 		res.Mutations = nil
 	})
@@ -87,19 +73,13 @@ func TestStaticResource(t *testing.T) {
 		res.DataExtractors = []func(*corev1.ConfigMap) error{
 			func(cm *corev1.ConfigMap) error {
 				extracted = true
-				if cm.Data["foo"] != testVal {
-					t.Errorf("expected foo=%s in extractor", testVal)
-				}
+				assert.Equal(t, testVal, cm.Data["foo"])
 				return nil
 			},
 		}
 		err := res.ExtractData()
-		if err != nil {
-			t.Fatalf("ExtractData() error = %v", err)
-		}
-		if !extracted {
-			t.Errorf("extractor was not called")
-		}
+		require.NoError(t, err)
+		assert.True(t, extracted, "extractor was not called")
 	})
 
 	t.Run("ExtractData error", func(t *testing.T) {
@@ -109,8 +89,6 @@ func TestStaticResource(t *testing.T) {
 			},
 		}
 		err := res.ExtractData()
-		if err == nil || err.Error() != "extract error" {
-			t.Errorf("expected extract error, got %v", err)
-		}
+		assert.EqualError(t, err, "extract error")
 	})
 }

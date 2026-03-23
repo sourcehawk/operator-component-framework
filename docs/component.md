@@ -52,7 +52,7 @@ Each resource is registered with a `ResourceOptions` struct that controls how th
 If the component is marked suspended, it calls `Suspend()` on all managed resources that support suspension (create/update resources, not read-only ones), updates the condition, then processes any pending deletions and returns. The remaining phases are skipped.
 
 **Phase 2 — Resource synchronization**
-All managed resources are created or updated to match their desired state.
+All managed resources are created or updated to match their desired state. Each resource gets a controller owner reference pointing to the owner CRD, unless the resource is cluster-scoped and the owner is namespace-scoped — in that case the reference is automatically skipped (see [Cluster-Scoped Resources](#cluster-scoped-resources)).
 
 **Phase 3 — Read-only resource fetching**
 Read-only resources are fetched from the cluster so their current state is available for health evaluation.
@@ -65,6 +65,18 @@ The health of each resource is collected, the grace period is consulted, and a s
 
 **Phase 6 — Resource deletion**
 Resources registered for deletion are removed from the cluster.
+
+## Cluster-Scoped Resources
+
+When a component manages cluster-scoped resources (e.g., `ClusterRole`, `PersistentVolume`) and the owner CRD is namespace-scoped, the framework **automatically skips** setting a controller owner reference on those resources. This is a Kubernetes API constraint — a namespace-scoped object cannot own a cluster-scoped object.
+
+The scope of both the owner and the resource is determined at reconcile time using the cluster's REST mapper. No configuration is needed; the framework detects the incompatibility and logs an info-level message.
+
+**Garbage collection caveat:** Without an owner reference, cluster-scoped resources are **not** automatically deleted when the owner is removed. To ensure cleanup, either:
+- Register the resource with `ResourceOptions{Delete: true}` so it is removed during reconciliation when no longer needed.
+- Use a finalizer on the owner CRD to clean up cluster-scoped resources before the owner is deleted.
+
+If the owner CRD is itself cluster-scoped, owner references are set normally on all resources regardless of their scope.
 
 ## Status Model
 

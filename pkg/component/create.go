@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/internal/scope"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/sourcehawk/operator-component-framework/pkg/recording"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/sourcehawk/operator-component-framework/pkg/recording"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // createOrUpdateResources ensures that all registered "creation" resources exist and match
@@ -32,7 +35,7 @@ import (
 // Returns a slice of convergingResults for all processed Alive resources, or an error if
 // any operation fails.
 func createOrUpdateResources(
-	ctx context.Context, rec ReconcileContext, resources []Resource,
+	ctx context.Context, rec ReconcileContext, resources []Resource, mapper meta.RESTMapper,
 ) ([]convergingResult, error) {
 	var results []convergingResult
 
@@ -45,14 +48,25 @@ func createOrUpdateResources(
 			)
 		}
 
+		var ownerRefSkipped bool
 		op, err := ctrl.CreateOrUpdate(ctx, rec.Client, obj, func() error {
-			return mutateResource(resource, obj, rec.Owner, rec.Scheme)
+			skipped, mutErr := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper)
+			ownerRefSkipped = skipped
+			return mutErr
 		})
 		// We return immediately on errors because resource may depend on each other and creating them regardless of
 		// previous errors may result in the real problem being hidden.
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to create or update resource %s: %w", resource.Identity(), err,
+			)
+		}
+
+		if ownerRefSkipped && op != controllerutil.OperationResultNone {
+			log.FromContext(ctx).Info(
+				"skipping owner reference for cluster-scoped resource owned by namespace-scoped owner; "+
+					"this resource will not be garbage-collected when the owner is deleted",
+				"resource", resource.Identity(),
 			)
 		}
 
@@ -81,11 +95,29 @@ func createOrUpdateResources(
 //     The `obj` passed here is the same object instance that `ctrl.CreateOrUpdate` works with.
 //     If the object exists, it is pre-populated with server state; if not, it is the original
 //     object from `resource.Object()`.
-//  2. Ownership: Ensures the object has a controller reference pointing to the owner CRD.
-func mutateResource(resource Resource, obj client.Object, owner client.Object, scheme *runtime.Scheme) error {
+//  2. Ownership: Sets a controller reference pointing to the owner CRD, unless the
+//     owned resource is cluster-scoped and the owner is namespace-scoped (which Kubernetes
+//     does not allow). In that case the reference is skipped and an info message is logged
+//     on create or update operations.
+func mutateResource(
+	resource Resource, obj client.Object, owner client.Object,
+	scheme *runtime.Scheme, mapper meta.RESTMapper,
+) (ownerRefSkipped bool, err error) {
 	if err := resource.Mutate(obj); err != nil {
-		return err
+		return false, err
 	}
 
-	return ctrl.SetControllerReference(owner, obj, scheme)
+	canSet, err := scope.CanSetOwnerReference(owner, obj, scheme, mapper)
+	if err != nil {
+		return false, fmt.Errorf(
+			"failed to determine owner reference eligibility for resource %s: %w",
+			resource.Identity(), err,
+		)
+	}
+
+	if !canSet {
+		return true, nil
+	}
+
+	return false, ctrl.SetControllerReference(owner, obj, scheme)
 }

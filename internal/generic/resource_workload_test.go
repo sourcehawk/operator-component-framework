@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,19 +34,13 @@ func TestWorkloadResource(t *testing.T) {
 	}
 
 	t.Run("Identity", func(t *testing.T) {
-		if res.Identity() != "test-deploy" {
-			t.Errorf("expected identity test-deploy, got %s", res.Identity())
-		}
+		assert.Equal(t, "test-deploy", res.Identity())
 	})
 
 	t.Run("Object", func(t *testing.T) {
 		got, err := res.Object()
-		if err != nil {
-			t.Fatalf("Object() error = %v", err)
-		}
-		if got.GetName() != "test-deploy" {
-			t.Errorf("expected name test-deploy, got %s", got.GetName())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "test-deploy", got.GetName())
 	})
 
 	t.Run("Mutate", func(t *testing.T) {
@@ -62,12 +58,8 @@ func TestWorkloadResource(t *testing.T) {
 		}
 
 		err := res.Mutate(current)
-		if err != nil {
-			t.Fatalf("Mutate() error = %v", err)
-		}
-		if !mutCalled {
-			t.Errorf("mutation was not called")
-		}
+		require.NoError(t, err)
+		assert.True(t, mutCalled, "mutation was not called")
 	})
 
 	t.Run("Suspend", func(t *testing.T) {
@@ -78,22 +70,14 @@ func TestWorkloadResource(t *testing.T) {
 		}
 
 		err := res.Suspend()
-		if err != nil {
-			t.Fatalf("Suspend() error = %v", err)
-		}
+		require.NoError(t, err)
 
 		current := &appsv1.Deployment{}
 		err = res.Mutate(current)
-		if err != nil {
-			t.Fatalf("Mutate() error = %v", err)
-		}
+		require.NoError(t, err)
 
-		if !suspendMutCalled {
-			t.Errorf("suspend mutation was not called")
-		}
-		if res.Suspender != nil {
-			t.Errorf("suspender should be nil after use")
-		}
+		assert.True(t, suspendMutCalled, "suspend mutation was not called")
+		assert.Nil(t, res.Suspender, "suspender should be nil after use")
 	})
 
 	t.Run("Status handlers", func(t *testing.T) {
@@ -111,22 +95,14 @@ func TestWorkloadResource(t *testing.T) {
 		}
 
 		cs, _ := res.ConvergingStatus(concepts.ConvergingOperationCreated)
-		if cs.Status != concepts.AliveConvergingStatusHealthy {
-			t.Errorf("expected healthy")
-		}
+		assert.Equal(t, concepts.AliveConvergingStatusHealthy, cs.Status)
 
 		gs, _ := res.GraceStatus()
-		if gs.Status != concepts.GraceStatusHealthy {
-			t.Errorf("expected healthy")
-		}
+		assert.Equal(t, concepts.GraceStatusHealthy, gs.Status)
 
 		ss, _ := res.SuspensionStatus()
-		if ss.Status != concepts.SuspensionStatusSuspended {
-			t.Errorf("expected suspended")
-		}
+		assert.Equal(t, concepts.SuspensionStatusSuspended, ss.Status)
 
-		if !res.DeleteOnSuspend() {
-			t.Errorf("expected delete on suspend true")
-		}
+		assert.True(t, res.DeleteOnSuspend())
 	})
 }

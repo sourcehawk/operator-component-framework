@@ -3,6 +3,8 @@ package generic
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -21,12 +23,8 @@ func TestStaticBuilder(t *testing.T) {
 	t.Run("successful build", func(t *testing.T) {
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp, newMutator)
 		res, err := builder.Build()
-		if err != nil {
-			t.Fatalf("Build() error = %v", err)
-		}
-		if res.DesiredObject != obj {
-			t.Errorf("expected object %v, got %v", obj, res.DesiredObject)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, obj, res.DesiredObject)
 	})
 
 	t.Run("with custom applicator", func(t *testing.T) {
@@ -34,9 +32,7 @@ func TestStaticBuilder(t *testing.T) {
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp, newMutator).
 			WithCustomFieldApplicator(customApp)
 		res, _ := builder.Build()
-		if reflectValueOf(res.CustomFieldApplicator).Pointer() != reflectValueOf(customApp).Pointer() {
-			t.Errorf("custom applicator not set correctly")
-		}
+		assert.Equal(t, reflectValueOf(customApp).Pointer(), reflectValueOf(res.CustomFieldApplicator).Pointer(), "custom applicator not set correctly")
 	})
 
 	t.Run("with field application flavor", func(t *testing.T) {
@@ -44,9 +40,7 @@ func TestStaticBuilder(t *testing.T) {
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp, newMutator).
 			WithFieldApplicationFlavor(flavor)
 		res, _ := builder.Build()
-		if len(res.FieldFlavors) != 1 {
-			t.Errorf("expected 1 flavor, got %d", len(res.FieldFlavors))
-		}
+		assert.Len(t, res.FieldFlavors, 1)
 	})
 
 	t.Run("with data extractor", func(t *testing.T) {
@@ -54,9 +48,7 @@ func TestStaticBuilder(t *testing.T) {
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp, newMutator).
 			WithDataExtractor(extractor)
 		res, _ := builder.Build()
-		if len(res.DataExtractors) != 1 {
-			t.Errorf("expected 1 extractor, got %d", len(res.DataExtractors))
-		}
+		assert.Len(t, res.DataExtractors, 1)
 	})
 
 	t.Run("with mutation", func(t *testing.T) {
@@ -68,9 +60,28 @@ func TestStaticBuilder(t *testing.T) {
 		builder := NewStaticBuilder(obj, identityFunc, defaultApp, newMutator).
 			WithMutation(mut)
 		res, _ := builder.Build()
-		if len(res.Mutations) != 1 {
-			t.Errorf("expected 1 mutation, got %d", len(res.Mutations))
+		assert.Len(t, res.Mutations, 1)
+	})
+
+	t.Run("cluster-scoped build succeeds without namespace", func(t *testing.T) {
+		clusterObj := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
 		}
+		builder := NewStaticBuilder(clusterObj, identityFunc, defaultApp, newMutator)
+		builder.MarkClusterScoped()
+		res, err := builder.Build()
+		require.NoError(t, err)
+		assert.Equal(t, clusterObj, res.DesiredObject)
+	})
+
+	t.Run("cluster-scoped build rejects non-empty namespace", func(t *testing.T) {
+		nsObj := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj", Namespace: "oops"},
+		}
+		builder := NewStaticBuilder(nsObj, identityFunc, defaultApp, newMutator)
+		builder.MarkClusterScoped()
+		_, err := builder.Build()
+		require.EqualError(t, err, errClusterScopedNamespace)
 	})
 
 	t.Run("validation errors", func(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 )
 
 // DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
-// and shared-controller fields (OwnerReferences, Finalizers) from the original
-// current object.
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
+// shared-controller fields (OwnerReferences, Finalizers), and the Status
+// subresource from the original current object.
 //
 // This is the default baseline field application strategy for ConfigMap resources.
 // Use a custom field applicator via Builder.WithCustomFieldApplicator if you need
@@ -18,6 +18,7 @@ func DefaultFieldApplicator(current, desired *corev1.ConfigMap) error {
 	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 	return nil
 }
 

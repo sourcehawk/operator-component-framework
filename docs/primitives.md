@@ -76,6 +76,12 @@ When a primitive is reconciled, it applies changes in a fixed three-stage pipeli
 
 This ordering guarantees that mutations always operate on a predictable, fully-formed baseline.
 
+### Status Preservation
+
+The default field applicator for every built-in primitive preserves the Status subresource from the live cluster object. Because baseline application replaces the entire struct (`*current = *desired`), the applicator restores server-managed metadata, shared-controller fields, **and** the Status field from the original object. This prevents spec-level reconciliation from inadvertently clearing status data written by the API server or status-writing controllers.
+
+Custom field applicators should follow the same pattern. The generic `PreserveStatus` helper in `internal/generic` handles this via reflection and works for any Kubernetes type — including types without a Status field, where it is a safe no-op.
+
 ### Flavors
 
 Flavors are reusable merge policies that run after baseline application but before mutations. Their purpose is to preserve fields that may be managed by external controllers or tools — sidecar injectors, autoscalers, annotation-based tooling — that the primitive should not overwrite.

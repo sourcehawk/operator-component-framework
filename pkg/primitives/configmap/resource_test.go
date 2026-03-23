@@ -149,6 +149,34 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	// ConfigMap does not have a Status field, so PreserveStatus is a no-op.
+	// This test verifies the applicator does not panic for status-less types
+	// and still applies desired state correctly.
+	current := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-cm",
+			Namespace:       "test-ns",
+			ResourceVersion: "999",
+		},
+		Data: map[string]string{"old": "data"},
+	}
+	desired := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cm",
+			Namespace: "test-ns",
+		},
+		Data: map[string]string{"new": "data"},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	assert.Equal(t, "data", current.Data["new"])
+	assert.NotContains(t, current.Data, "old")
+	assert.Equal(t, "999", current.ResourceVersion)
+}
+
 func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
 	desired := newValidCM()
 

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -86,4 +87,80 @@ func TestPreserveServerManagedFields_ZeroValues(t *testing.T) {
 	assert.Nil(t, dst.OwnerReferences)
 	assert.Nil(t, dst.Finalizers)
 	assert.Equal(t, "test", dst.Name)
+}
+
+func TestPreserveStatus(t *testing.T) {
+	t.Run("copies status from src to dst", func(t *testing.T) {
+		src := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas:     3,
+				Replicas:          5,
+				AvailableReplicas: 3,
+			},
+		}
+		dst := &appsv1.Deployment{}
+
+		PreserveStatus(dst, src)
+
+		assert.Equal(t, int32(3), dst.Status.ReadyReplicas)
+		assert.Equal(t, int32(5), dst.Status.Replicas)
+		assert.Equal(t, int32(3), dst.Status.AvailableReplicas)
+	})
+
+	t.Run("overwrites existing status on dst", func(t *testing.T) {
+		src := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 5,
+			},
+		}
+		dst := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 1,
+			},
+		}
+
+		PreserveStatus(dst, src)
+
+		assert.Equal(t, int32(5), dst.Status.ReadyReplicas)
+	})
+
+	t.Run("zero status from src clears dst status", func(t *testing.T) {
+		src := &appsv1.Deployment{}
+		dst := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 3,
+			},
+		}
+
+		PreserveStatus(dst, src)
+
+		assert.Equal(t, int32(0), dst.Status.ReadyReplicas)
+	})
+
+	t.Run("no-op for objects without Status field", func(t *testing.T) {
+		src := &corev1.ConfigMap{Data: map[string]string{"key": "val"}}
+		dst := &corev1.ConfigMap{}
+
+		// Should not panic.
+		PreserveStatus(dst, src)
+
+		assert.Nil(t, dst.Data)
+	})
+
+	t.Run("does not affect non-status fields", func(t *testing.T) {
+		src := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "src-name"},
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 3,
+			},
+		}
+		dst := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "dst-name"},
+		}
+
+		PreserveStatus(dst, src)
+
+		assert.Equal(t, "dst-name", dst.Name)
+		assert.Equal(t, int32(3), dst.Status.ReadyReplicas)
+	})
 }

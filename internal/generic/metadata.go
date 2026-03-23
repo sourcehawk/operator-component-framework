@@ -1,6 +1,10 @@
 package generic
 
-import "sigs.k8s.io/controller-runtime/pkg/client"
+import (
+	"reflect"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 // PreserveServerManagedFields restores server-managed and shared-controller
 // metadata fields from src onto dst.
@@ -27,4 +31,32 @@ func PreserveServerManagedFields(dst, src client.Object) {
 	// Shared across controllers
 	dst.SetOwnerReferences(src.GetOwnerReferences())
 	dst.SetFinalizers(src.GetFinalizers())
+}
+
+// PreserveStatus copies the Status field from src to dst using reflection.
+//
+// Most Kubernetes resource types have a Status subresource that is managed by
+// the API server or status-writing controllers, not by spec-level reconciliation.
+// Field applicators that replace the entire object (e.g. *current = *desired)
+// inadvertently overwrite the live status. Call this function after such a
+// replacement to restore the status from the original live object.
+//
+// If either object's underlying struct does not have a field named "Status",
+// the call is a no-op.
+func PreserveStatus[T client.Object](dst, src T) {
+	dstVal := reflect.ValueOf(dst).Elem()
+	srcVal := reflect.ValueOf(src).Elem()
+
+	dstStatus := dstVal.FieldByName("Status")
+	srcStatus := srcVal.FieldByName("Status")
+
+	if !dstStatus.IsValid() || !srcStatus.IsValid() {
+		return
+	}
+
+	if !dstStatus.CanSet() {
+		return
+	}
+
+	dstStatus.Set(srcStatus)
 }

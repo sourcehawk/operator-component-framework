@@ -57,19 +57,20 @@ type Mutator struct {
 func NewMutator(current *appsv1.ReplicaSet) *Mutator {
 	m := &Mutator{
 		current: current,
+		plans:   []featurePlan{{}},
 	}
-	m.beginFeature()
+	m.active = &m.plans[0]
 	return m
 }
 
-// beginFeature starts a new feature planning scope. All subsequent mutation
+// BeginFeature starts a new feature planning scope. All subsequent mutation
 // registrations will be grouped into this feature's plan until EndFeature
-// or another beginFeature is called.
+// or another BeginFeature is called.
 //
 // This is used to ensure that mutations from different features are applied
 // in registration order while maintaining internal category ordering within
 // each feature.
-func (m *Mutator) beginFeature() {
+func (m *Mutator) BeginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

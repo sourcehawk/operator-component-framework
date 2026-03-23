@@ -33,8 +33,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given Role.
 func NewMutator(role *rbacv1.Role) *Mutator {
-	m := &Mutator{role: role}
-	m.beginFeature()
+	m := &Mutator{
+		role:  role,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

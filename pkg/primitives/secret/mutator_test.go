@@ -143,7 +143,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
 	m.SetData("feature1", []byte("on"))
-	m.beginFeature()
+	m.BeginFeature()
 	m.SetData("feature2", []byte("on"))
 	require.NoError(t, m.Apply())
 

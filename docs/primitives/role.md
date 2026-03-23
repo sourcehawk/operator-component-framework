@@ -279,11 +279,11 @@ func SecretAccessMutation(version string, enabled bool) role.Mutation {
 
 resource, err := role.NewBuilder(base).
     WithMutation(BaseRuleMutation(owner.Spec.Version)).
-    WithMutation(SecretAccessMutation(owner.Spec.Version, owner.Spec.EnableSecretAccess)).
+    WithMutation(SecretAccessMutation(owner.Spec.Version, owner.Spec.EnableTracing)).
     Build()
 ```
 
-When `EnableSecretAccess` is true, the final Role will contain both the base pod rules and the secrets rule. When false, only the base rules are applied. Neither mutation needs to know about the other.
+When `EnableTracing` is true, the final Role will contain both the base pod rules and the secrets rule. When false, only the base rules are applied. Neither mutation needs to know about the other.
 
 ## Guidance
 

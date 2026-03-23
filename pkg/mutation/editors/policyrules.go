@@ -17,9 +17,12 @@ type PolicyRulesEditor struct {
 // NewPolicyRulesEditor creates a new PolicyRulesEditor wrapping the given rules
 // slice pointer.
 //
-// The pointer must be non-nil. The slice it points to may be nil; methods that
-// write to the slice initialise it automatically.
+// NewPolicyRulesEditor panics if rules is nil. The slice it points to may be
+// nil; methods that write to the slice initialise it automatically.
 func NewPolicyRulesEditor(rules *[]rbacv1.PolicyRule) *PolicyRulesEditor {
+	if rules == nil {
+		panic("editors.NewPolicyRulesEditor: rules pointer must be non-nil")
+	}
 	return &PolicyRulesEditor{rules: rules}
 }
 

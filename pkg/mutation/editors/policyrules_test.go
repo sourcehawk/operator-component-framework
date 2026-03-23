@@ -86,3 +86,11 @@ func TestPolicyRulesEditor_Raw_ReturnsPointer(t *testing.T) {
 	raw := e.Raw()
 	assert.Same(t, &rules, raw)
 }
+
+// --- Nil safety ---
+
+func TestNewPolicyRulesEditor_NilPanics(t *testing.T) {
+	assert.Panics(t, func() {
+		NewPolicyRulesEditor(nil)
+	})
+}

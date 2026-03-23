@@ -37,8 +37,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given Ingress.
 func NewMutator(ing *networkingv1.Ingress) *Mutator {
-	m := &Mutator{ing: ing}
-	m.beginFeature()
+	m := &Mutator{
+		ing:   ing,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

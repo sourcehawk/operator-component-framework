@@ -408,6 +408,42 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Status: appsv1.DeploymentStatus{
+			ReadyReplicas:     3,
+			Replicas:          3,
+			AvailableReplicas: 3,
+			UpdatedReplicas:   3,
+		},
+	}
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(5)),
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, int32(5), *current.Spec.Replicas)
+
+	// Status from the live object is preserved
+	assert.Equal(t, int32(3), current.Status.ReadyReplicas)
+	assert.Equal(t, int32(3), current.Status.Replicas)
+	assert.Equal(t, int32(3), current.Status.AvailableReplicas)
+	assert.Equal(t, int32(3), current.Status.UpdatedReplicas)
+}
+
 func TestResource_CustomFieldApplicator(t *testing.T) {
 	desired := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{

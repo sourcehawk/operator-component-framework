@@ -56,8 +56,9 @@ type Mutator struct {
 func NewMutator(current *corev1.Pod) *Mutator {
 	m := &Mutator{
 		current: current,
+		plans:   []featurePlan{{}},
 	}
-	m.beginFeature()
+	m.active = &m.plans[0]
 	return m
 }
 

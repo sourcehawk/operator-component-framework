@@ -34,8 +34,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given ConfigMap.
 func NewMutator(cm *corev1.ConfigMap) *Mutator {
-	m := &Mutator{cm: cm}
-	m.beginFeature()
+	m := &Mutator{
+		cm:    cm,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

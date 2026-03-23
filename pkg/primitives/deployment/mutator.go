@@ -64,7 +64,6 @@ func NewMutator(current *appsv1.Deployment) *Mutator {
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation
-<<<<<<< HEAD
 // registrations will be grouped into this feature's plan until another
 // BeginFeature is called.
 //

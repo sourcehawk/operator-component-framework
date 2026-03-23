@@ -33,6 +33,12 @@ resource, err := deployment.NewBuilder(base).
     Build()
 ```
 
+## Default Field Application
+
+`DefaultFieldApplicator` replaces the current Deployment with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+
+Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten (e.g., replicas managed by an HPA).
+
 ## Mutations
 
 Mutations are the primary mechanism for modifying a `Deployment` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.

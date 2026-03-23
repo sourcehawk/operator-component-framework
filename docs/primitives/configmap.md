@@ -35,7 +35,7 @@ resource, err := configmap.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current ConfigMap with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This ensures every reconciliation cycle produces a clean, predictable state without losing server-managed data.
+`DefaultFieldApplicator` replaces the current ConfigMap with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers). This ensures every reconciliation cycle produces a clean, predictable state without losing server-managed data.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

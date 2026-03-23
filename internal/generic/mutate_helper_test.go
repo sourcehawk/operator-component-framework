@@ -3,6 +3,8 @@ package generic
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -82,9 +84,7 @@ func TestApplyMutationsOrder(t *testing.T) {
 		suspender,
 	)
 
-	if err != nil {
-		t.Fatalf("ApplyMutations failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	expectedOrder := []string{
 		"defaultApplicator",
@@ -98,13 +98,9 @@ func TestApplyMutationsOrder(t *testing.T) {
 		"mutator.Apply",
 	}
 
-	if len(recorder.events) != len(expectedOrder) {
-		t.Fatalf("expected %d events, got %d: %v", len(expectedOrder), len(recorder.events), recorder.events)
-	}
+	require.Len(t, recorder.events, len(expectedOrder), "events: %v", recorder.events)
 
 	for i, event := range expectedOrder {
-		if recorder.events[i] != event {
-			t.Errorf("at index %d: expected %s, got %s", i, event, recorder.events[i])
-		}
+		assert.Equal(t, event, recorder.events[i], "at index %d", i)
 	}
 }

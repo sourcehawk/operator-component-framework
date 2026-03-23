@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -23,12 +25,8 @@ func TestTaskBuilder(t *testing.T) {
 	t.Run("successful build", func(t *testing.T) {
 		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator)
 		res, err := builder.Build()
-		if err != nil {
-			t.Fatalf("Build() error = %v", err)
-		}
-		if res.DesiredObject != obj {
-			t.Errorf("expected object %v, got %v", obj, res.DesiredObject)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, obj, res.DesiredObject)
 	})
 
 	t.Run("with mutation", func(t *testing.T) {
@@ -41,9 +39,7 @@ func TestTaskBuilder(t *testing.T) {
 		}
 		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator).WithMutation(mut)
 		res, _ := builder.Build()
-		if len(res.Mutations) != 1 {
-			t.Errorf("expected 1 mutation, got %d", len(res.Mutations))
-		}
+		assert.Len(t, res.Mutations, 1)
 	})
 
 	t.Run("with handlers", func(t *testing.T) {
@@ -62,9 +58,10 @@ func TestTaskBuilder(t *testing.T) {
 			})
 
 		res, _ := builder.Build()
-		if res.ConvergingStatusHandler == nil || res.SuspendStatusHandler == nil || res.SuspendMutationHandler == nil || res.DeleteOnSuspendHandler == nil {
-			t.Errorf("one or more handlers not set")
-		}
+		assert.NotNil(t, res.ConvergingStatusHandler, "ConvergingStatusHandler not set")
+		assert.NotNil(t, res.SuspendStatusHandler, "SuspendStatusHandler not set")
+		assert.NotNil(t, res.SuspendMutationHandler, "SuspendMutationHandler not set")
+		assert.NotNil(t, res.DeleteOnSuspendHandler, "DeleteOnSuspendHandler not set")
 	})
 
 	t.Run("cluster-scoped build succeeds without namespace", func(t *testing.T) {
@@ -74,12 +71,8 @@ func TestTaskBuilder(t *testing.T) {
 		builder := NewTaskBuilder(clusterObj, identityFunc, defaultApp, newMutator)
 		builder.MarkClusterScoped()
 		res, err := builder.Build()
-		if err != nil {
-			t.Fatalf("Build() error = %v", err)
-		}
-		if res.DesiredObject != clusterObj {
-			t.Errorf("expected object %v, got %v", clusterObj, res.DesiredObject)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, clusterObj, res.DesiredObject)
 	})
 
 	t.Run("cluster-scoped build rejects non-empty namespace", func(t *testing.T) {
@@ -89,9 +82,7 @@ func TestTaskBuilder(t *testing.T) {
 		builder := NewTaskBuilder(nsObj, identityFunc, defaultApp, newMutator)
 		builder.MarkClusterScoped()
 		_, err := builder.Build()
-		if err == nil || err.Error() != errClusterScopedNamespace {
-			t.Errorf("expected cluster-scoped namespace error, got %v", err)
-		}
+		require.EqualError(t, err, errClusterScopedNamespace)
 	})
 
 	t.Run("validation errors", func(t *testing.T) {

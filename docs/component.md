@@ -70,7 +70,7 @@ Resources registered for deletion are removed from the cluster.
 
 When a component manages cluster-scoped resources (e.g., `ClusterRole`, `PersistentVolume`) and the owner CRD is namespace-scoped, the framework **automatically skips** setting a controller owner reference on those resources. This is a Kubernetes API constraint — a namespace-scoped object cannot own a cluster-scoped object.
 
-The scope of both the owner and the resource is determined at reconcile time using the cluster's REST mapper. No configuration is needed; the framework detects the incompatibility and logs a warning.
+The scope of both the owner and the resource is determined at reconcile time using the cluster's REST mapper. No configuration is needed; the framework detects the incompatibility and logs an info-level message.
 
 **Garbage collection caveat:** Without an owner reference, cluster-scoped resources are **not** automatically deleted when the owner is removed. To ensure cleanup, either:
 - Register the resource with `ResourceOptions{Delete: true}` so it is removed during reconciliation when no longer needed.

@@ -150,7 +150,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 
 	mapper := rec.Client.RESTMapper()
 	if mapper == nil {
-		return fmt.Errorf("ReconcileContext.Client.RESTMapper() returned nil; a valid RESTMapper is required for reconciliation")
+		return fail(ctx, rec, c.conditionType, fmt.Errorf("ReconcileContext.Client.RESTMapper() returned nil; a valid RESTMapper is required for reconciliation"))
 	}
 
 	// Perform suspension reconciliation if component is marked as suspended

@@ -79,9 +79,11 @@ func suspendResources(
 //   - If DeleteOnSuspend() is true and the object does not exist on the cluster,
 //     returns SuspensionStatusSuspended immediately without creating the resource.
 //     This prevents a create→delete churn loop on every reconcile while suspended.
+//     The check runs before Suspend() to avoid queuing a mutation that will never be applied.
 //
 // Stage 2: Mutation
-//   - Applies suspension-specific mutations to the resource's desired state via Suspend().
+//   - Registers suspension-specific mutations via Suspend(), then applies them to the
+//     resource's desired state.
 //   - Persists these mutations to the cluster using createOrUpdateResources.
 //     If the resource does not yet exist, it is created with suspension mutations already applied
 //     (e.g., a Deployment is created with zero replicas). This is intentional: the resource is
@@ -96,11 +98,6 @@ func suspendResources(
 func suspendResource(
 	ctx context.Context, rec ReconcileContext, resource Resource, suspendable concepts.Suspendable,
 ) (concepts.SuspensionStatusWithReason, error) {
-	// Create suspension mutation on resource (if any)
-	if err := suspendable.Suspend(); err != nil {
-		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to suspend resource: %w", err)
-	}
-
 	// Get the object if possible
 	object, err := resource.Object()
 	if err != nil {
@@ -109,8 +106,14 @@ func suspendResource(
 
 	// Short-circuit: if the resource should be deleted on suspend and already doesn't exist,
 	// skip CreateOrUpdate to avoid a create->delete churn loop on every reconcile.
+	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.
 	if suspendable.DeleteOnSuspend() {
-		existing := object.DeepCopyObject().(client.Object)
+		existing, ok := object.DeepCopyObject().(client.Object)
+		if !ok {
+			return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
+				"failed to deep copy object of type %T", object,
+			)
+		}
 		err := rec.Client.Get(ctx, client.ObjectKeyFromObject(object), existing)
 		if apierrors.IsNotFound(err) {
 			return concepts.SuspensionStatusWithReason{
@@ -123,6 +126,11 @@ func suspendResource(
 				"failed to check existence of resource %s on suspension: %w", resource.Identity(), err,
 			)
 		}
+	}
+
+	// Create suspension mutation on resource (if any)
+	if err := suspendable.Suspend(); err != nil {
+		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to suspend resource: %w", err)
 	}
 
 	// Apply suspension mutation (if any)

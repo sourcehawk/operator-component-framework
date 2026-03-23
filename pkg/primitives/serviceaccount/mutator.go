@@ -35,8 +35,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given ServiceAccount.
 func NewMutator(sa *corev1.ServiceAccount) *Mutator {
-	m := &Mutator{sa: sa}
-	m.beginFeature()
+	m := &Mutator{
+		sa:    sa,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

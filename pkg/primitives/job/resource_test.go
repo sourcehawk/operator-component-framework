@@ -7,6 +7,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -124,6 +125,51 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 
 	require.NotNil(t, current.Spec.BackoffLimit)
 	assert.Equal(t, int32(10), *current.Spec.BackoffLimit)
+}
+
+func TestResource_Mutate_CrossMutationSelectorSnapshot(t *testing.T) {
+	desired := newValidJob()
+	res, err := NewBuilder(desired).
+		WithMutation(Mutation{
+			Name:    "add-sidecar",
+			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Mutate: func(m *Mutator) error {
+				m.EnsureContainer(corev1.Container{
+					Name:  "sidecar",
+					Image: "sidecar:latest",
+				})
+				return nil
+			},
+		}).
+		WithMutation(Mutation{
+			Name:    "configure-sidecar",
+			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Mutate: func(m *Mutator) error {
+				m.EditContainers(selectors.ContainerNamed("sidecar"), func(e *editors.ContainerEditor) error {
+					e.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
+					return nil
+				})
+				return nil
+			},
+		}).
+		Build()
+	require.NoError(t, err)
+
+	current := &batchv1.Job{}
+	require.NoError(t, res.Mutate(current))
+
+	// The sidecar container should exist and have the env var from the second mutation.
+	var sidecar *corev1.Container
+	for i := range current.Spec.Template.Spec.Containers {
+		if current.Spec.Template.Spec.Containers[i].Name == "sidecar" {
+			sidecar = &current.Spec.Template.Spec.Containers[i]
+			break
+		}
+	}
+	require.NotNil(t, sidecar, "sidecar container should be present")
+	require.Len(t, sidecar.Env, 1)
+	assert.Equal(t, "LOG_LEVEL", sidecar.Env[0].Name)
+	assert.Equal(t, "debug", sidecar.Env[0].Value)
 }
 
 type mockHandlers struct {

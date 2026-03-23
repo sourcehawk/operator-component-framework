@@ -135,6 +135,44 @@ func TestDefaultFieldApplicator(t *testing.T) {
 	}
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app-data",
+			Namespace: "default",
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimBound,
+			Capacity: corev1.ResourceList{
+				corev1.ResourceStorage: resource.MustParse("10Gi"),
+			},
+		},
+	}
+	desired := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app-data",
+			Namespace: "default",
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("20Gi"),
+				},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, resource.MustParse("20Gi"), current.Spec.Resources.Requests[corev1.ResourceStorage])
+
+	// Status from the live object is preserved
+	assert.Equal(t, corev1.ClaimBound, current.Status.Phase)
+	assert.Equal(t, resource.MustParse("10Gi"), current.Status.Capacity[corev1.ResourceStorage])
+}
+
 func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	storageClass := "fast-ssd"
 	volumeMode := corev1.PersistentVolumeFilesystem

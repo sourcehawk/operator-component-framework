@@ -41,7 +41,7 @@ resource, err := pvc.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current PVC with a deep copy of the desired object, but preserves immutable fields on existing PVCs.
+`DefaultFieldApplicator` replaces the current PVC with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
 
 Kubernetes marks several PVC spec fields as immutable after creation. The default applicator detects existing PVCs (via `ResourceVersion`) and restores these fields from the cluster object:
 
@@ -131,7 +131,7 @@ Within a single mutation, edit operations are applied in a fixed category order 
 | 1    | Metadata edits    | Labels and annotations on the `PersistentVolumeClaim` |
 | 2    | Spec edits        | PVC spec — storage requests, access modes, etc.    |
 
-Within each category, edits are applied in their registration order. Later features observe the PVC as modified by all previous features.
+Within each category, edits are applied in their registration order. The PVC primitive does not currently group mutations by feature boundary; all applicable edits are applied in a single deterministic sequence rather than guaranteeing that later features observe only fully-applied state from earlier features.
 
 ## Editors
 

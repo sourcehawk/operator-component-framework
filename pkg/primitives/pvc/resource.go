@@ -9,8 +9,8 @@ import (
 
 // DefaultFieldApplicator replaces current with a deep copy of desired, preserving
 // server-managed metadata (ResourceVersion, UID, Generation, etc.), shared-controller
-// fields (OwnerReferences, Finalizers), and immutable PVC spec fields on existing
-// resources.
+// fields (OwnerReferences, Finalizers), the Status subresource, and immutable PVC
+// spec fields on existing resources.
 //
 // Kubernetes marks several PVC spec fields as immutable after creation: accessModes,
 // storageClassName, volumeMode, and volumeName. If the current object has a non-empty
@@ -30,6 +30,7 @@ func DefaultFieldApplicator(current, desired *corev1.PersistentVolumeClaim) erro
 
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 
 	if isExisting {
 		current.Spec.AccessModes = savedAccessModes

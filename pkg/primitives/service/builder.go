@@ -111,7 +111,7 @@ func (b *Builder) WithCustomOperationalStatus(
 // WithCustomSuspendStatus overrides how the progress of suspension is reported.
 //
 // The default behavior uses DefaultSuspensionStatusHandler, which always reports
-// Suspended because Services are deleted on suspend.
+// Suspended because the default behaviour leaves the Service untouched.
 //
 // If you want to augment the default behavior, you can call DefaultSuspensionStatusHandler
 // within your custom handler.
@@ -126,7 +126,7 @@ func (b *Builder) WithCustomSuspendStatus(
 // the component is suspended.
 //
 // The default behavior uses DefaultSuspendMutationHandler, which is a no-op
-// because Services are deleted on suspend rather than mutated.
+// because the default behaviour leaves the Service unaffected by suspension.
 //
 // If you want to augment the default behavior, you can call DefaultSuspendMutationHandler
 // within your custom handler.
@@ -140,8 +140,8 @@ func (b *Builder) WithCustomSuspendMutation(
 // WithCustomSuspendDeletionDecision overrides the decision of whether to delete
 // the Service when the component is suspended.
 //
-// The default behavior uses DefaultDeleteOnSuspendHandler, which returns true
-// because Services have no meaningful "scaled down" state.
+// The default behavior uses DefaultDeleteOnSuspendHandler, which returns false
+// because Services are stateless routing objects that are safe to leave in place.
 //
 // If you want to augment the default behavior, you can call DefaultDeleteOnSuspendHandler
 // within your custom handler.

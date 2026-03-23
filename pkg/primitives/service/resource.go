@@ -10,14 +10,17 @@ import (
 
 // DefaultFieldApplicator replaces current with a deep copy of desired while
 // preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), and the immutable
-// spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns after creation.
+// shared-controller fields (OwnerReferences, Finalizers), the immutable
+// spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns after creation,
+// and the server-populated Status (including LoadBalancer.Ingress).
 func DefaultFieldApplicator(current, desired *corev1.Service) error {
 	original := current.DeepCopy()
 	clusterIP := current.Spec.ClusterIP
 	clusterIPs := current.Spec.ClusterIPs
+	originalStatus := current.Status
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
+	current.Status = originalStatus
 	if clusterIP != "" {
 		current.Spec.ClusterIP = clusterIP
 		current.Spec.ClusterIPs = clusterIPs

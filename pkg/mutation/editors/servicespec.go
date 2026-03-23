@@ -27,19 +27,28 @@ func (e *ServiceSpecEditor) SetType(t corev1.ServiceType) {
 }
 
 // EnsurePort upserts a service port. If a port with the same Name exists (or the same
-// Port number when Name is empty), it is replaced; otherwise the port is appended.
+// Port number and Protocol when Name is empty), it is replaced; otherwise the port is appended.
+// When matching unnamed ports, an empty Protocol is treated as TCP (the Kubernetes default).
 func (e *ServiceSpecEditor) EnsurePort(port corev1.ServicePort) {
 	for i, existing := range e.spec.Ports {
 		if port.Name != "" && existing.Name == port.Name {
 			e.spec.Ports[i] = port
 			return
 		}
-		if port.Name == "" && existing.Port == port.Port {
+		if port.Name == "" && existing.Port == port.Port && normalizeProtocol(existing.Protocol) == normalizeProtocol(port.Protocol) {
 			e.spec.Ports[i] = port
 			return
 		}
 	}
 	e.spec.Ports = append(e.spec.Ports, port)
+}
+
+// normalizeProtocol returns the effective protocol, treating empty as TCP (the Kubernetes default).
+func normalizeProtocol(p corev1.Protocol) corev1.Protocol {
+	if p == "" {
+		return corev1.ProtocolTCP
+	}
+	return p
 }
 
 // RemovePort removes a service port by name. It is a no-op if the port does not exist.

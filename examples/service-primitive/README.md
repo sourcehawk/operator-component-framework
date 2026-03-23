@@ -7,7 +7,7 @@ It shows how to manage a Kubernetes Service as a component of a larger applicati
 - **Feature Mutations**: Applying version-gated or conditional changes (additional ports, labels) using the `Mutator`.
 - **Field Flavors**: Preserving annotations that might be managed by external tools (e.g., cloud load balancer controllers).
 - **Operational Status**: Tracking whether the Service is operational (relevant for LoadBalancer types).
-- **Suspension**: Deleting the Service when the component is suspended.
+- **Suspension**: Demonstrating that, by default, the Service remains present when the component is suspended (`DeleteOnSuspend=false`), and how to opt into deletion if desired.
 - **Data Extraction**: Harvesting information (ClusterIP, ports) from the reconciled resource.
 
 ## Directory Structure

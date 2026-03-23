@@ -62,10 +62,10 @@ func NewMutator(current *corev1.Pod) *Mutator {
 	return m
 }
 
-// beginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan until beginFeature
+// BeginFeature starts a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this feature's plan until BeginFeature
 // is called again.
-func (m *Mutator) beginFeature() {
+func (m *Mutator) BeginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

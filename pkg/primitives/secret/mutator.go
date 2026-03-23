@@ -34,8 +34,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given Secret.
 func NewMutator(s *corev1.Secret) *Mutator {
-	m := &Mutator{secret: s}
-	m.beginFeature()
+	m := &Mutator{
+		secret: s,
+		plans:  []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

@@ -1,6 +1,8 @@
 package editors
 
 import (
+	"reflect"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
@@ -40,12 +42,12 @@ func (e *HPASpecEditor) SetMaxReplicas(n int32) {
 // EnsureMetric upserts a metric in the spec's Metrics slice.
 //
 // Matching is performed by MetricSpec.Type. Within that type, matching is refined
-// by the metric name where applicable:
+// by the full identity of the metric source:
 //   - Resource: matched by Resource.Name
-//   - Pods: matched by Pods.Metric.Name
-//   - Object: matched by Object.Metric.Name
+//   - Pods: matched by Pods.Metric (Name + Selector)
+//   - Object: matched by Object.DescribedObject + Object.Metric (Name + Selector)
 //   - ContainerResource: matched by ContainerResource.Name + ContainerResource.Container
-//   - External: matched by External.Metric.Name
+//   - External: matched by External.Metric (Name + Selector)
 //
 // If a matching entry exists it is replaced; otherwise the metric is appended.
 func (e *HPASpecEditor) EnsureMetric(metric autoscalingv2.MetricSpec) {
@@ -98,12 +100,13 @@ func metricsMatch(a, b autoscalingv2.MetricSpec) bool {
 		if a.Pods == nil || b.Pods == nil {
 			return false
 		}
-		return a.Pods.Metric.Name == b.Pods.Metric.Name
+		return metricIdentifiersMatch(a.Pods.Metric, b.Pods.Metric)
 	case autoscalingv2.ObjectMetricSourceType:
 		if a.Object == nil || b.Object == nil {
 			return false
 		}
-		return a.Object.Metric.Name == b.Object.Metric.Name
+		return a.Object.DescribedObject == b.Object.DescribedObject &&
+			metricIdentifiersMatch(a.Object.Metric, b.Object.Metric)
 	case autoscalingv2.ContainerResourceMetricSourceType:
 		if a.ContainerResource == nil || b.ContainerResource == nil {
 			return false
@@ -114,10 +117,16 @@ func metricsMatch(a, b autoscalingv2.MetricSpec) bool {
 		if a.External == nil || b.External == nil {
 			return false
 		}
-		return a.External.Metric.Name == b.External.Metric.Name
+		return metricIdentifiersMatch(a.External.Metric, b.External.Metric)
 	default:
 		return false
 	}
+}
+
+// metricIdentifiersMatch reports whether two MetricIdentifier values match.
+// It compares both Name and Selector.
+func metricIdentifiersMatch(a, b autoscalingv2.MetricIdentifier) bool {
+	return a.Name == b.Name && reflect.DeepEqual(a.Selector, b.Selector)
 }
 
 // metricName extracts the identifying name from a MetricSpec.

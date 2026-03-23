@@ -39,6 +39,20 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 			wantStatus: concepts.OperationalStatusPending,
 		},
 		{
+			name: "pending when conditions present but ScalingActive missing",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+					Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+						{
+							Type:   autoscalingv2.AbleToScale,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantStatus: concepts.OperationalStatusPending,
+		},
+		{
 			name: "pending when ScalingActive is Unknown",
 			hpa: &autoscalingv2.HorizontalPodAutoscaler{
 				Status: autoscalingv2.HorizontalPodAutoscalerStatus{

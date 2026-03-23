@@ -11,7 +11,7 @@ import (
 //
 // It inspects Status.Conditions to classify the HPA's state:
 //   - OperationalStatusOperational: condition ScalingActive is True.
-//   - OperationalStatusPending: conditions are absent, or ScalingActive is Unknown.
+//   - OperationalStatusPending: conditions are absent, ScalingActive is missing, or ScalingActive is Unknown.
 //   - OperationalStatusFailing: condition ScalingActive is False, or condition AbleToScale is False.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered
@@ -51,10 +51,17 @@ func DefaultOperationalStatusHandler(
 		}
 	}
 
-	// Conditions absent or ScalingActive has an unrecognized status
+	// Distinguish between no conditions at all and ScalingActive missing/unrecognized
+	if len(hpa.Status.Conditions) == 0 {
+		return concepts.OperationalStatusWithReason{
+			Status: concepts.OperationalStatusPending,
+			Reason: "Waiting for HPA conditions to be populated",
+		}, nil
+	}
+
 	return concepts.OperationalStatusWithReason{
 		Status: concepts.OperationalStatusPending,
-		Reason: "Waiting for HPA conditions to be populated",
+		Reason: "Waiting for ScalingActive condition on HPA",
 	}, nil
 }
 

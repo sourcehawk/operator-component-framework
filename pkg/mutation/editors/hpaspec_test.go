@@ -8,6 +8,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func int32Ptr(v int32) *int32 { return &v }
@@ -155,6 +156,72 @@ func TestHPASpecEditor_EnsureMetric_Object(t *testing.T) {
 	e.EnsureMetric(metric)
 	require.Len(t, spec.Metrics, 1)
 	assert.Equal(t, "queue_length", spec.Metrics[0].Object.Metric.Name)
+}
+
+func TestHPASpecEditor_EnsureMetric_Object_DifferentDescribedObject(t *testing.T) {
+	spec := &autoscalingv2.HorizontalPodAutoscalerSpec{}
+	e := NewHPASpecEditor(spec)
+
+	// Add metric for Service "worker"
+	m1 := autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ObjectMetricSourceType,
+		Object: &autoscalingv2.ObjectMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{Name: "queue_length"},
+			DescribedObject: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "v1", Kind: "Service", Name: "worker",
+			},
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resourcePtr("30")},
+		},
+	}
+	e.EnsureMetric(m1)
+	require.Len(t, spec.Metrics, 1)
+
+	// Same metric name but different described object -> separate entry
+	m2 := autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ObjectMetricSourceType,
+		Object: &autoscalingv2.ObjectMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{Name: "queue_length"},
+			DescribedObject: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "v1", Kind: "Service", Name: "processor",
+			},
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resourcePtr("50")},
+		},
+	}
+	e.EnsureMetric(m2)
+	assert.Len(t, spec.Metrics, 2, "different DescribedObject should create a separate metric entry")
+}
+
+func TestHPASpecEditor_EnsureMetric_External_DifferentSelector(t *testing.T) {
+	spec := &autoscalingv2.HorizontalPodAutoscalerSpec{}
+	e := NewHPASpecEditor(spec)
+
+	// Add external metric with selector
+	m1 := autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{
+				Name:     "pubsub_undelivered",
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"topic": "orders"}},
+			},
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resourcePtr("100")},
+		},
+	}
+	e.EnsureMetric(m1)
+	require.Len(t, spec.Metrics, 1)
+
+	// Same metric name but different selector -> separate entry
+	m2 := autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{
+				Name:     "pubsub_undelivered",
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"topic": "events"}},
+			},
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resourcePtr("200")},
+		},
+	}
+	e.EnsureMetric(m2)
+	assert.Len(t, spec.Metrics, 2, "different selector should create a separate metric entry")
 }
 
 func TestHPASpecEditor_EnsureMetric_External(t *testing.T) {

@@ -142,7 +142,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 		e.EnsureLabel("feature1", "on")
 		return nil
 	})
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("feature2", "on")
 		return nil

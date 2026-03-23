@@ -12,11 +12,10 @@ import (
 )
 
 // VersionLabelMutation sets the app.kubernetes.io/version label on the
-// NetworkPolicy. It is always enabled.
+// NetworkPolicy. It is always enabled (nil Feature gate).
 func VersionLabelMutation(version string) networkpolicy.Mutation {
 	return networkpolicy.Mutation{
-		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Name: "version-label",
 		Mutate: func(m *networkpolicy.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -28,11 +27,10 @@ func VersionLabelMutation(version string) networkpolicy.Mutation {
 }
 
 // HTTPIngressMutation adds an ingress rule allowing TCP traffic on port 8080.
-// It is always enabled.
-func HTTPIngressMutation(version string) networkpolicy.Mutation {
+// It is always enabled (nil Feature gate).
+func HTTPIngressMutation() networkpolicy.Mutation {
 	return networkpolicy.Mutation{
-		Name:    "http-ingress",
-		Feature: feature.NewResourceFeature(version, nil),
+		Name: "http-ingress",
 		Mutate: func(m *networkpolicy.Mutator) error {
 			m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 				port := intstr.FromInt32(8080)
@@ -72,11 +70,10 @@ func MetricsIngressMutation(version string, enableMetrics bool) networkpolicy.Mu
 }
 
 // DNSEgressMutation adds an egress rule allowing UDP traffic on port 53 for DNS
-// resolution. It is always enabled.
-func DNSEgressMutation(version string) networkpolicy.Mutation {
+// resolution. It is always enabled (nil Feature gate).
+func DNSEgressMutation() networkpolicy.Mutation {
 	return networkpolicy.Mutation{
-		Name:    "dns-egress",
-		Feature: feature.NewResourceFeature(version, nil),
+		Name: "dns-egress",
 		Mutate: func(m *networkpolicy.Mutator) error {
 			m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 				port := intstr.FromInt32(53)

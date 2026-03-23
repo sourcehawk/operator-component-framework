@@ -35,7 +35,7 @@ base := &networkingv1.NetworkPolicy{
 
 resource, err := networkpolicy.NewBuilder(base).
     WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels).
-    WithMutation(HTTPIngressMutation(owner.Spec.Version)).
+    WithMutation(HTTPIngressMutation()).
     Build()
 ```
 
@@ -59,13 +59,13 @@ resource, err := networkpolicy.NewBuilder(base).
 
 Mutations are the primary mechanism for modifying a `NetworkPolicy` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally — prefer this for mutations that should always run, as it avoids unnecessary version parsing:
 
 ```go
-func HTTPIngressMutation(version string) networkpolicy.Mutation {
+func HTTPIngressMutation() networkpolicy.Mutation {
     return networkpolicy.Mutation{
-        Name:    "http-ingress",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Name: "http-ingress",
+        // Feature is nil — mutation is applied unconditionally.
         Mutate: func(m *networkpolicy.Mutator) error {
             m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
                 port := intstr.FromInt32(8080)
@@ -253,10 +253,9 @@ Multiple flavors can be registered and run in registration order.
 ## Full Example: Feature-Composed Network Policy
 
 ```go
-func HTTPIngressMutation(version string) networkpolicy.Mutation {
+func HTTPIngressMutation() networkpolicy.Mutation {
     return networkpolicy.Mutation{
-        Name:    "http-ingress",
-        Feature: feature.NewResourceFeature(version, nil),
+        Name: "http-ingress",
         Mutate: func(m *networkpolicy.Mutator) error {
             m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
                 port := intstr.FromInt32(8080)
@@ -295,7 +294,7 @@ func MetricsIngressMutation(version string, enabled bool) networkpolicy.Mutation
 
 resource, err := networkpolicy.NewBuilder(base).
     WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels).
-    WithMutation(HTTPIngressMutation(owner.Spec.Version)).
+    WithMutation(HTTPIngressMutation()).
     WithMutation(MetricsIngressMutation(owner.Spec.Version, owner.Spec.EnableMetrics)).
     Build()
 ```

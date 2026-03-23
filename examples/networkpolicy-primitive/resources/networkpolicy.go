@@ -41,9 +41,9 @@ func NewNetworkPolicyResource(owner *sharedapp.ExampleApp) (component.Resource, 
 
 	// 3. Register mutations in dependency order.
 	builder.WithMutation(features.VersionLabelMutation(owner.Spec.Version))
-	builder.WithMutation(features.HTTPIngressMutation(owner.Spec.Version))
+	builder.WithMutation(features.HTTPIngressMutation())
 	builder.WithMutation(features.MetricsIngressMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
-	builder.WithMutation(features.DNSEgressMutation(owner.Spec.Version))
+	builder.WithMutation(features.DNSEgressMutation())
 
 	// 4. Preserve labels added by external controllers.
 	builder.WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels)

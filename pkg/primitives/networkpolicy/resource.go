@@ -22,7 +22,7 @@ func DefaultFieldApplicator(current, desired *networkingv1.NetworkPolicy) error 
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // NetworkPolicy resources are static: they do not model convergence health, grace
 // periods, or suspension. Use a workload or integration primitive for resources

@@ -16,7 +16,7 @@ type MutatorApplier interface {
 // FeatureMutator is implemented by workload mutators that support defining feature boundaries.
 type FeatureMutator interface {
 	MutatorApplier
-	beginFeature()
+	BeginFeature()
 }
 
 // WorkloadResource is a generic internal resource implementation for long-running Kubernetes

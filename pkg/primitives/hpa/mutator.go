@@ -34,8 +34,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given HorizontalPodAutoscaler.
 func NewMutator(hpa *autoscalingv2.HorizontalPodAutoscaler) *Mutator {
-	m := &Mutator{hpa: hpa}
-	m.beginFeature()
+	m := &Mutator{
+		hpa:   hpa,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

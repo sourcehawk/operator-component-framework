@@ -25,7 +25,7 @@ func VersionLabelMutation(version string) serviceaccount.Mutation {
 
 // ImagePullSecretMutation ensures the default registry pull secret is attached
 // to the ServiceAccount. It is always enabled.
-func ImagePullSecretMutation(version string) serviceaccount.Mutation {
+func ImagePullSecretMutation(_ string) serviceaccount.Mutation {
 	return serviceaccount.Mutation{
 		Name:    "image-pull-secret",
 		Feature: nil,

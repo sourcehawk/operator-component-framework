@@ -3,6 +3,7 @@ package generic
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -38,9 +39,7 @@ func TestIsNil(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isNil(tt.input); got != tt.expected {
-				t.Errorf("isNil() = %v, want %v", got, tt.expected)
-			}
+			assert.Equal(t, tt.expected, isNil(tt.input))
 		})
 	}
 }
@@ -67,9 +66,7 @@ func TestApplyBaselineAndFlavors(t *testing.T) {
 			desired:    &corev1.ConfigMap{Data: map[string]string{"foo": "bar"}},
 			defaultApp: defaultApp,
 			validate: func(t *testing.T, cm *corev1.ConfigMap) {
-				if cm.Data["foo"] != "bar" {
-					t.Errorf("expected foo=bar, got %v", cm.Data["foo"])
-				}
+				assert.Equal(t, "bar", cm.Data["foo"])
 			},
 		},
 		{
@@ -82,12 +79,8 @@ func TestApplyBaselineAndFlavors(t *testing.T) {
 				return nil
 			},
 			validate: func(t *testing.T, cm *corev1.ConfigMap) {
-				if cm.Data["custom"] != "value" {
-					t.Errorf("expected custom=value, got %v", cm.Data["custom"])
-				}
-				if _, ok := cm.Data["foo"]; ok {
-					t.Errorf("did not expect foo to be set")
-				}
+				assert.Equal(t, "value", cm.Data["custom"])
+				assert.NotContains(t, cm.Data, "foo")
 			},
 		},
 		{
@@ -109,12 +102,8 @@ func TestApplyBaselineAndFlavors(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, cm *corev1.ConfigMap) {
-				if cm.Data["foo"] != "bar" {
-					t.Errorf("expected foo=bar")
-				}
-				if cm.Data["preserved"] != "old" {
-					t.Errorf("expected preserved=old")
-				}
+				assert.Equal(t, "bar", cm.Data["foo"])
+				assert.Equal(t, "old", cm.Data["preserved"])
 			},
 		},
 		{
@@ -128,11 +117,12 @@ func TestApplyBaselineAndFlavors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := applyBaselineAndFlavors(tt.current, tt.desired, tt.defaultApp, tt.customApp, tt.flavors)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("applyBaselineAndFlavors() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
-			if !tt.wantErr && tt.validate != nil {
+			assert.NoError(t, err)
+			if tt.validate != nil {
 				tt.validate(t, got)
 			}
 		})

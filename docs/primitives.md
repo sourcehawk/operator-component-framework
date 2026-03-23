@@ -41,6 +41,14 @@ Examples: `Service`, `Ingress`, `Gateway`, `CronJob`
 
 These resources define integration points with external or cluster-level systems (networking, load balancers, DNS, schedules). Their readiness depends on external controllers and may be delayed or partial. They implement `Operational` and/or `Suspendable`.
 
+## Cluster-Scoped Primitives
+
+Some Kubernetes resources are cluster-scoped — they have no namespace. Examples include `ClusterRole`, `ClusterRoleBinding`, and `PersistentVolume`.
+
+When implementing a primitive for a cluster-scoped kind, the primitive's builder must explicitly call `MarkClusterScoped()` on its internal `BaseBuilder` during construction. This changes `ValidateBase()` behavior: instead of requiring a non-empty namespace, it rejects a non-empty namespace. The primitive's builder is also responsible for providing an identity function that formats the identity string appropriately — typically omitting the namespace segment (e.g., `rbac.authorization.k8s.io/v1/ClusterRole/my-role` rather than including a namespace).
+
+At reconcile time, the component framework automatically detects scope incompatibilities between the owner CRD and managed resources using the cluster's REST mapper. See [Cluster-Scoped Resources](component.md#cluster-scoped-resources) in the component documentation for details on owner reference behavior and garbage collection.
+
 ## Lifecycle Interfaces
 
 Primitives implement behavioral interfaces that the component layer uses for status aggregation:

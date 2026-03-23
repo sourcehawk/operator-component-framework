@@ -1,3 +1,4 @@
+//nolint:dupl
 package generic
 
 import (
@@ -6,23 +7,23 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestWorkloadBuilder(t *testing.T) {
-	obj := &appsv1.Deployment{
+func TestTaskBuilder(t *testing.T) {
+	obj := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-deploy",
+			Name:      "test-job",
 			Namespace: "default",
 		},
 	}
-	identityFunc := func(d *appsv1.Deployment) string { return d.Name }
-	defaultApp := func(_, _ *appsv1.Deployment) error { return nil }
-	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
+	identityFunc := func(j *batchv1.Job) string { return j.Name }
+	defaultApp := func(_, _ *batchv1.Job) error { return nil }
+	newMutator := func(j *batchv1.Job) *mockMutator { return &mockMutator{job: j} }
 
 	t.Run("successful build", func(t *testing.T) {
-		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator)
+		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator)
 		res, err := builder.Build()
 		require.NoError(t, err)
 		assert.Equal(t, obj, res.DesiredObject)
@@ -36,42 +37,38 @@ func TestWorkloadBuilder(t *testing.T) {
 				return nil
 			},
 		}
-		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator).WithMutation(mut)
+		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator).WithMutation(mut)
 		res, _ := builder.Build()
 		assert.Len(t, res.Mutations, 1)
 	})
 
 	t.Run("with handlers", func(t *testing.T) {
-		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator).
-			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
-				return concepts.AliveStatusWithReason{}, nil
+		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator).
+			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *batchv1.Job) (concepts.CompletionStatusWithReason, error) {
+				return concepts.CompletionStatusWithReason{}, nil
 			}).
-			WithCustomGraceStatus(func(_ *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
-				return concepts.GraceStatusWithReason{}, nil
-			}).
-			WithCustomSuspendStatus(func(_ *appsv1.Deployment) (concepts.SuspensionStatusWithReason, error) {
+			WithCustomSuspendStatus(func(_ *batchv1.Job) (concepts.SuspensionStatusWithReason, error) {
 				return concepts.SuspensionStatusWithReason{}, nil
 			}).
 			WithCustomSuspendMutation(func(_ *mockMutator) error {
 				return nil
 			}).
-			WithCustomSuspendDeletionDecision(func(_ *appsv1.Deployment) bool {
+			WithCustomSuspendDeletionDecision(func(_ *batchv1.Job) bool {
 				return true
 			})
 
 		res, _ := builder.Build()
 		assert.NotNil(t, res.ConvergingStatusHandler, "ConvergingStatusHandler not set")
-		assert.NotNil(t, res.GraceStatusHandler, "GraceStatusHandler not set")
 		assert.NotNil(t, res.SuspendStatusHandler, "SuspendStatusHandler not set")
 		assert.NotNil(t, res.SuspendMutationHandler, "SuspendMutationHandler not set")
 		assert.NotNil(t, res.DeleteOnSuspendHandler, "DeleteOnSuspendHandler not set")
 	})
 
 	t.Run("cluster-scoped build succeeds without namespace", func(t *testing.T) {
-		clusterObj := &appsv1.Deployment{
+		clusterObj := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
 		}
-		builder := NewWorkloadBuilder(clusterObj, identityFunc, defaultApp, newMutator)
+		builder := NewTaskBuilder(clusterObj, identityFunc, defaultApp, newMutator)
 		builder.MarkClusterScoped()
 		res, err := builder.Build()
 		require.NoError(t, err)
@@ -79,20 +76,20 @@ func TestWorkloadBuilder(t *testing.T) {
 	})
 
 	t.Run("cluster-scoped build rejects non-empty namespace", func(t *testing.T) {
-		nsObj := &appsv1.Deployment{
+		nsObj := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj", Namespace: "oops"},
 		}
-		builder := NewWorkloadBuilder(nsObj, identityFunc, defaultApp, newMutator)
+		builder := NewTaskBuilder(nsObj, identityFunc, defaultApp, newMutator)
 		builder.MarkClusterScoped()
 		_, err := builder.Build()
 		require.EqualError(t, err, errClusterScopedNamespace)
 	})
 
 	t.Run("validation errors", func(t *testing.T) {
-		runBuilderValidationTests[*WorkloadResource[*appsv1.Deployment, *mockMutator]](
+		runBuilderValidationTests[*TaskResource[*batchv1.Job, *mockMutator]](
 			t, obj, identityFunc, defaultApp, newMutator,
-			func(o *appsv1.Deployment, id func(*appsv1.Deployment) string, app FieldApplicator[*appsv1.Deployment], mut func(*appsv1.Deployment) *mockMutator) genericBuilder[*WorkloadResource[*appsv1.Deployment, *mockMutator]] {
-				return NewWorkloadBuilder(o, id, app, mut)
+			func(o *batchv1.Job, id func(*batchv1.Job) string, app FieldApplicator[*batchv1.Job], mut func(*batchv1.Job) *mockMutator) genericBuilder[*TaskResource[*batchv1.Job, *mockMutator]] {
+				return NewTaskBuilder(o, id, app, mut)
 			},
 		)
 	})

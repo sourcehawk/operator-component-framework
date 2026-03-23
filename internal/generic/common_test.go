@@ -4,11 +4,14 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const errClusterScopedNamespace = "cluster-scoped object must not have a namespace"
 
 // reflectValueOf is a helper for testing function equality.
 func reflectValueOf(i any) reflect.Value {
@@ -83,9 +86,7 @@ func runBuilderValidationTests[T any, O client.Object, M MutatorApplier](
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := newBuilder(tt.obj, tt.idFunc, tt.defApp, tt.newMut).Build()
-			if err == nil || err.Error() != tt.wantErr {
-				t.Errorf("expected error %q, got %v", tt.wantErr, err)
-			}
+			assert.EqualError(t, err, tt.wantErr)
 		})
 	}
 }

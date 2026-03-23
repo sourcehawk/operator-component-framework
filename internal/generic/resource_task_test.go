@@ -4,6 +4,8 @@ package generic
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,19 +34,13 @@ func TestTaskResource(t *testing.T) {
 	}
 
 	t.Run("Identity", func(t *testing.T) {
-		if res.Identity() != "test-job" {
-			t.Errorf("expected identity test-job, got %s", res.Identity())
-		}
+		assert.Equal(t, "test-job", res.Identity())
 	})
 
 	t.Run("Object", func(t *testing.T) {
 		got, err := res.Object()
-		if err != nil {
-			t.Fatalf("Object() error = %v", err)
-		}
-		if got.GetName() != "test-job" {
-			t.Errorf("expected name test-job, got %s", got.GetName())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "test-job", got.GetName())
 	})
 
 	t.Run("Mutate and Suspend", func(t *testing.T) {
@@ -62,12 +58,8 @@ func TestTaskResource(t *testing.T) {
 		}
 
 		err := res.Mutate(current)
-		if err != nil {
-			t.Fatalf("Mutate() error = %v", err)
-		}
-		if !mutCalled {
-			t.Errorf("mutation was not called")
-		}
+		require.NoError(t, err)
+		assert.True(t, mutCalled, "mutation was not called")
 
 		suspendMutCalled := false
 		res.SuspendMutationHandler = func(_ *mockMutator) error {
@@ -76,21 +68,13 @@ func TestTaskResource(t *testing.T) {
 		}
 
 		err = res.Suspend()
-		if err != nil {
-			t.Fatalf("Suspend() error = %v", err)
-		}
+		require.NoError(t, err)
 
 		current = &batchv1.Job{}
 		err = res.Mutate(current)
-		if err != nil {
-			t.Fatalf("Mutate() error = %v", err)
-		}
+		require.NoError(t, err)
 
-		if !suspendMutCalled {
-			t.Errorf("suspend mutation was not called")
-		}
-		if res.Suspender != nil {
-			t.Errorf("suspender should be nil after use")
-		}
+		assert.True(t, suspendMutCalled, "suspend mutation was not called")
+		assert.Nil(t, res.Suspender, "suspender should be nil after use")
 	})
 }

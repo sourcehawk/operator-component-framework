@@ -43,3 +43,4 @@ primitive-prompts
 push-primitive-pr.sh
 review-cycle.sh
 run-parallel-sessions.sh
+prompt-primitives.sh

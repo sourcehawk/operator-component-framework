@@ -32,8 +32,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given NetworkPolicy.
 func NewMutator(np *networkingv1.NetworkPolicy) *Mutator {
-	m := &Mutator{np: np}
-	m.beginFeature()
+	m := &Mutator{
+		np:    np,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

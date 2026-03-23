@@ -69,6 +69,33 @@ func TestWorkloadBuilder(t *testing.T) {
 		}
 	})
 
+	t.Run("cluster-scoped build succeeds without namespace", func(t *testing.T) {
+		clusterObj := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
+		}
+		builder := NewWorkloadBuilder(clusterObj, identityFunc, defaultApp, newMutator)
+		builder.MarkClusterScoped()
+		res, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+		if res.DesiredObject != clusterObj {
+			t.Errorf("expected object %v, got %v", clusterObj, res.DesiredObject)
+		}
+	})
+
+	t.Run("cluster-scoped build rejects non-empty namespace", func(t *testing.T) {
+		nsObj := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj", Namespace: "oops"},
+		}
+		builder := NewWorkloadBuilder(nsObj, identityFunc, defaultApp, newMutator)
+		builder.MarkClusterScoped()
+		_, err := builder.Build()
+		if err == nil || err.Error() != errClusterScopedNamespace {
+			t.Errorf("expected cluster-scoped namespace error, got %v", err)
+		}
+	})
+
 	t.Run("validation errors", func(t *testing.T) {
 		runBuilderValidationTests[*WorkloadResource[*appsv1.Deployment, *mockMutator]](
 			t, obj, identityFunc, defaultApp, newMutator,

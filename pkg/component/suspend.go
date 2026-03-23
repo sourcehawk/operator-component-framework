@@ -9,6 +9,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 )
 
 type suspensionResults []concepts.SuspensionStatusWithReason
@@ -46,14 +47,14 @@ func (s suspensionResults) summary() concepts.SuspensionStatusWithReason {
 // It ensures that suspension mutations are applied and tracks the progress of each resource.
 // If any resource fails to suspend, all encountered errors are joined and returned.
 func suspendResources(
-	ctx context.Context, rec ReconcileContext, resources []Resource,
+	ctx context.Context, rec ReconcileContext, resources []Resource, mapper meta.RESTMapper,
 ) ([]concepts.SuspensionStatusWithReason, error) {
 	var results []concepts.SuspensionStatusWithReason
 	var errs []error
 
 	for _, resource := range resources {
 		if suspendable, ok := resource.(concepts.Suspendable); ok {
-			status, err := suspendResource(ctx, rec, resource, suspendable)
+			status, err := suspendResource(ctx, rec, resource, suspendable, mapper)
 			if err != nil {
 				// gather the errors to suspend as many resources as possible
 				errs = append(errs, err)
@@ -86,6 +87,7 @@ func suspendResources(
 //     shutdown or final state persistence (e.g., via finalizers or pre-stop hooks).
 func suspendResource(
 	ctx context.Context, rec ReconcileContext, resource Resource, suspendable concepts.Suspendable,
+	mapper meta.RESTMapper,
 ) (concepts.SuspensionStatusWithReason, error) {
 	// Create suspension mutation on resource (if any)
 	if err := suspendable.Suspend(); err != nil {
@@ -99,7 +101,7 @@ func suspendResource(
 	}
 
 	// Apply suspension mutation (if any)
-	_, err = createOrUpdateResources(ctx, rec, []Resource{resource})
+	_, err = createOrUpdateResources(ctx, rec, []Resource{resource}, mapper)
 	if err != nil {
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 			"failed to create or update resource %s on suspension: %w", resource.Identity(), err,

@@ -10,6 +10,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const errClusterScopedNamespace = "cluster-scoped object must not have a namespace"
+
 // reflectValueOf is a helper for testing function equality.
 func reflectValueOf(i any) reflect.Value {
 	return reflect.ValueOf(i)

@@ -9,7 +9,8 @@ import (
 
 // BaseBuilder provides shared behavior for all generic internal resource builders.
 type BaseBuilder[T client.Object, M MutatorApplier] struct {
-	BaseRes *BaseResource[T, M]
+	BaseRes      *BaseResource[T, M]
+	clusterScope bool
 }
 
 // InitBase initializes the base resource configuration.
@@ -68,6 +69,12 @@ func (b *BaseBuilder[T, M]) WithCustomSuspendDeletionDecision(handler func(T) bo
 	b.BaseRes.DeleteOnSuspendHandler = handler
 }
 
+// MarkClusterScoped marks the resource as cluster-scoped. ValidateBase will
+// reject a non-empty namespace instead of requiring one.
+func (b *BaseBuilder[T, M]) MarkClusterScoped() {
+	b.clusterScope = true
+}
+
 // ValidateBase validates the base resource configuration.
 func (b *BaseBuilder[T, M]) ValidateBase() error {
 	if isNil(b.BaseRes.DesiredObject) {
@@ -78,8 +85,14 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 		return errors.New("object name cannot be empty")
 	}
 
-	if b.BaseRes.DesiredObject.GetNamespace() == "" {
-		return errors.New("object namespace cannot be empty")
+	if b.clusterScope {
+		if b.BaseRes.DesiredObject.GetNamespace() != "" {
+			return errors.New("cluster-scoped object must not have a namespace")
+		}
+	} else {
+		if b.BaseRes.DesiredObject.GetNamespace() == "" {
+			return errors.New("object namespace cannot be empty")
+		}
 	}
 
 	if b.BaseRes.IdentityFunc == nil {

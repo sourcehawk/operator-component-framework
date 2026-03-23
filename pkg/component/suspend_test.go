@@ -10,12 +10,24 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+// testRESTMapper returns a RESTMapper with ConfigMap and MockOperatorCRD registered as namespace-scoped.
+func testRESTMapper() meta.RESTMapper {
+	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{
+		v1.SchemeGroupVersion,
+		GroupVersion,
+	})
+	mapper.Add(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}, meta.RESTScopeNamespace)
+	mapper.Add(GroupVersion.WithKind("MockOperatorCRD"), meta.RESTScopeNamespace)
+	return mapper
+}
 
 func setupTestOwner() *MockOperatorCRD {
 	owner := &MockOperatorCRD{
@@ -147,7 +159,7 @@ func TestSuspendResources(t *testing.T) {
 		rec := setupReconcileContext(scheme, owner, cli)
 
 		resources := []Resource{r1, r2, nonSuspendable}
-		results, err := suspendResources(ctx, rec, resources)
+		results, err := suspendResources(ctx, rec, resources, testRESTMapper())
 
 		require.NoError(t, err)
 		assert.Len(t, results, 2)
@@ -163,7 +175,7 @@ func TestSuspendResources(t *testing.T) {
 		r2.On("Suspend").Return(errors.New("fail2"))
 
 		resources := []Resource{r1, r2}
-		results, err := suspendResources(ctx, rec, resources)
+		results, err := suspendResources(ctx, rec, resources, testRESTMapper())
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "fail1")
@@ -176,7 +188,7 @@ func TestSuspendResources(t *testing.T) {
 		nonSuspendable := &MockResource{}
 
 		resources := []Resource{nonSuspendable}
-		results, err := suspendResources(ctx, rec, resources)
+		results, err := suspendResources(ctx, rec, resources, testRESTMapper())
 
 		require.NoError(t, err)
 		assert.Empty(t, results)
@@ -193,7 +205,7 @@ func TestSuspendResource(t *testing.T) {
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
-		status, err := suspendResource(ctx, rec, res, res)
+		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 
@@ -208,7 +220,7 @@ func TestSuspendResource(t *testing.T) {
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
-		status, err := suspendResource(ctx, rec, res, res)
+		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 
@@ -238,7 +250,7 @@ func TestSuspendResource(t *testing.T) {
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
-		status, err := suspendResource(ctx, rec, res, res)
+		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspending, status.Status)
 
@@ -258,7 +270,7 @@ func TestSuspendResource(t *testing.T) {
 		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Delete", ctx, obj, mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{}, "cm"))
 
-		status, err := suspendResource(ctx, rec, res, res)
+		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
@@ -269,7 +281,7 @@ func TestSuspendResource(t *testing.T) {
 		res := &MockSuspendableResource{}
 		res.On("Suspend").Return(errors.New("suspend fail"))
 
-		_, err := suspendResource(ctx, rec, res, res)
+		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "suspend fail")
 	})
@@ -281,7 +293,7 @@ func TestSuspendResource(t *testing.T) {
 		res.On("Suspend").Return(nil)
 		res.On("Object").Return(nil, errors.New("object fail"))
 
-		_, err := suspendResource(ctx, rec, res, res)
+		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "object fail")
 	})
@@ -293,7 +305,7 @@ func TestSuspendResource(t *testing.T) {
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get fail"))
 
-		_, err := suspendResource(ctx, rec, res, res)
+		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get fail")
 	})
@@ -309,7 +321,7 @@ func TestSuspendResource(t *testing.T) {
 		res.On("SuspensionStatus").Unset()
 		res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{}, errors.New("status fail"))
 
-		_, err := suspendResource(ctx, rec, res, res)
+		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "status fail")
 	})
@@ -323,7 +335,7 @@ func TestSuspendResource(t *testing.T) {
 		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Delete", ctx, obj, mock.Anything).Return(errors.New("delete fail"))
 
-		_, err := suspendResource(ctx, rec, res, res)
+		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "delete fail")
 	})
@@ -337,7 +349,7 @@ func TestSuspendResource(t *testing.T) {
 		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Delete", ctx, obj, mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Group: "v1", Resource: "ConfigMap"}, "cm"))
 
-		status, err := suspendResource(ctx, rec, res, res)
+		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 		cli.AssertCalled(t, "Delete", ctx, obj, mock.Anything)

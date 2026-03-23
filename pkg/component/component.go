@@ -147,9 +147,11 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	)
 	ctx = log.IntoContext(ctx, logger)
 
+	mapper := rec.Client.RESTMapper()
+
 	// Perform suspension reconciliation if component is marked as suspended
 	if c.suspended {
-		results, err := suspendResources(ctx, rec, c.createResources)
+		results, err := suspendResources(ctx, rec, c.createResources, mapper)
 		if err != nil {
 			return fail(ctx, rec, c.conditionType, err)
 		}
@@ -171,7 +173,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	}
 
 	// Create or update resources otherwise
-	createResults, err := createOrUpdateResources(ctx, rec, c.createResources)
+	createResults, err := createOrUpdateResources(ctx, rec, c.createResources, mapper)
 	if err != nil {
 		return fail(ctx, rec, c.conditionType, err)
 	}

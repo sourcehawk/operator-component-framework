@@ -57,8 +57,9 @@ type Mutator struct {
 func NewMutator(current *appsv1.DaemonSet) *Mutator {
 	m := &Mutator{
 		current: current,
+		plans:   []featurePlan{{}},
 	}
-	m.BeginFeature()
+	m.active = &m.plans[0]
 	return m
 }
 

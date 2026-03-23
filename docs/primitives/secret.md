@@ -119,7 +119,7 @@ Within a single mutation, edit operations are applied in a fixed category order 
 | 1    | Metadata edits    | Labels and annotations on the `Secret`           |
 | 2    | Data edits        | `.data` and `.stringData` entries — Set, Remove, Raw |
 
-Within each category, edits are applied in their registration order. Later features observe the Secret as modified by all previous features.
+Within each category, edits are applied in their registration order. Later edits in the same mutation observe the Secret as modified by all earlier edits.
 
 ## Editors
 

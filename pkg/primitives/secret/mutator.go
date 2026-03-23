@@ -121,14 +121,14 @@ func (m *Mutator) RemoveStringData(key string) {
 
 // Apply executes all recorded mutation intents on the underlying Secret.
 //
-// Execution order across all registered features:
+// Execution order within each plan:
 //
-//  1. Metadata edits (in registration order within each feature)
+//  1. Metadata edits (in registration order)
 //  2. Data edits — EditData, SetData, RemoveData, SetStringData, RemoveStringData
-//     (in registration order within each feature)
+//     (in registration order)
 //
-// Features are applied in the order they were registered. Later features observe
-// the Secret as modified by all previous features.
+// Plans are applied sequentially. Later edits observe the Secret as modified
+// by all earlier edits.
 func (m *Mutator) Apply() error {
 	for _, plan := range m.plans {
 		// 1. Metadata edits

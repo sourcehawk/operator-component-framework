@@ -264,7 +264,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		WithMutation(Mutation{
 			Name:    "second-mutation",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
-			Mutate: func(m *Mutator) error {
+			Mutate: func(_ *Mutator) error {
 				if len(callOrder) == 1 && callOrder[0] == "first" {
 					observedFirstBeforeSecond = true
 				}

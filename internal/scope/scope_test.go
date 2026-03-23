@@ -3,6 +3,8 @@ package scope
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -70,15 +72,16 @@ func TestCanSetOwnerReference(t *testing.T) {
 		},
 	}
 
+	t.Run("nil RESTMapper returns error", func(t *testing.T) {
+		_, err := CanSetOwnerReference(namespacedOwner, namespacedResource, scheme, nil)
+		require.Error(t, err)
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := CanSetOwnerReference(tt.owner, tt.owned, scheme, mapper)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result != tt.expected {
-				t.Errorf("CanSetOwnerReference() = %v, want %v", result, tt.expected)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

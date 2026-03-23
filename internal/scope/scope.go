@@ -3,6 +3,8 @@
 package scope
 
 import (
+	"fmt"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -12,11 +14,17 @@ import (
 // CanSetOwnerReference reports whether the owner can set an OwnerReference on the
 // owned object. It returns false when the owned resource is cluster-scoped and the
 // owner is namespace-scoped, which the Kubernetes API server rejects.
+//
+// Returns an error if the provided RESTMapper is nil.
 func CanSetOwnerReference(
 	owner, owned client.Object,
 	scheme *runtime.Scheme,
 	mapper meta.RESTMapper,
 ) (bool, error) {
+	if mapper == nil {
+		return false, fmt.Errorf("RESTMapper must not be nil")
+	}
+
 	ownedGVK, err := apiutil.GVKForObject(owned, scheme)
 	if err != nil {
 		return false, err

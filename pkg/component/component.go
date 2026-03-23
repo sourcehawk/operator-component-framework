@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -148,6 +149,9 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	ctx = log.IntoContext(ctx, logger)
 
 	mapper := rec.Client.RESTMapper()
+	if mapper == nil {
+		return fmt.Errorf("ReconcileContext.Client.RESTMapper() returned nil; a valid RESTMapper is required for reconciliation")
+	}
 
 	// Perform suspension reconciliation if component is marked as suspended
 	if c.suspended {

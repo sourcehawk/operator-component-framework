@@ -91,7 +91,11 @@ or use a more targeted `go run` command for a specific example.
 
 ### Tests
 
-The project uses Ginkgo/Gomega and testify. Run with:
+The project uses Ginkgo/Gomega and testify (assert,require,mock).
+
+Do not use things like `t.Fatal` in tests, they should use asserts and require instead.
+
+Run with:
 
 ```bash
 go test ./...

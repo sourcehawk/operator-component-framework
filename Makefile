@@ -1,5 +1,5 @@
 .PHONY: all
-all: fmt lint test build-examples
+all: fmt fmt-md lint test build-examples
 
 ##@ General
 
@@ -25,6 +25,7 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
+PRETTIER ?= $(LOCALBIN)/prettier
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
@@ -66,8 +67,22 @@ ai-instructions: ## Generate all AI instruction files from source templates in .
 ##@ Development
 
 .PHONY: fmt
-fmt:
+fmt: ## Format Go source files.
 	go fmt $(shell go list ./... | grep -v /examples/)
+
+.PHONY: fmt-md
+fmt-md: prettier ## Format Markdown files.
+	$(PRETTIER) --write '**/*.md' --ignore-path .gitignore
+
+.PHONY: prettier
+prettier: $(PRETTIER) ## Download prettier locally if necessary.
+$(PRETTIER): $(LOCALBIN)
+	@[ -f $(PRETTIER) ] || { \
+		echo "Installing prettier..." ; \
+		npm install --prefix $(LOCALBIN)/prettier-pkg prettier ; \
+		printf '#!/bin/sh\nexec node "$(LOCALBIN)/prettier-pkg/node_modules/.bin/prettier" "$$@"\n' > $(PRETTIER) ; \
+		chmod +x $(PRETTIER) ; \
+	}
 
 .PHONY: lint
 lint:

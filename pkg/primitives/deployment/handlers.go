@@ -9,13 +9,22 @@ import (
 
 // DefaultConvergingStatusHandler is the default logic for determining if a Deployment has reached its desired state.
 //
-// It considers a Deployment ready when its Status.ReadyReplicas matches the Spec.Replicas (defaulting to 1 if nil).
+// It considers a Deployment ready when the deployment controller has observed the current generation
+// (Status.ObservedGeneration matches ObjectMeta.Generation) and Status.ReadyReplicas matches the
+// Spec.Replicas (defaulting to 1 if nil). If the controller has not yet observed the latest spec,
+// the handler reports Updating to avoid falsely reporting health based on stale status fields.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultConvergingStatusHandler(
 	op concepts.ConvergingOperation, deployment *appsv1.Deployment,
 ) (concepts.AliveStatusWithReason, error) {
+	if status := concepts.StaleGenerationStatus(
+		op, deployment.Status.ObservedGeneration, deployment.Generation, "deployment",
+	); status != nil {
+		return *status, nil
+	}
+
 	desiredReplicas := int32(1)
 	if deployment.Spec.Replicas != nil {
 		desiredReplicas = *deployment.Spec.Replicas

@@ -35,9 +35,12 @@ func main() {
 
 	// 2. Create an example Owner object.
 	// NOTE: This example uses a namespaced owner for simplicity with the fake client.
-	// In a real cluster, Kubernetes rejects owner references from a namespaced owner to
-	// a cluster-scoped dependent (ClusterRole). Production controllers that manage
-	// ClusterRoles should use a cluster-scoped owner CRD.
+	// The framework detects the scope mismatch between a namespaced owner and
+	// a cluster-scoped dependent (ClusterRole) and skips setting the controller
+	// reference (logging a message), so reconciliation still proceeds but without
+	// garbage collection or owner-based adoption for the ClusterRole. If you want
+	// owner references and GC/adoption for ClusterRoles in production, use a
+	// cluster-scoped owner CRD.
 	owner := &sharedapp.ExampleApp{
 		Spec: sharedapp.ExampleAppSpec{
 			Version:       "1.2.3",

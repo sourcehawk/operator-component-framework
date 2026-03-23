@@ -172,6 +172,60 @@ func TestMutator_MultipleMutations(t *testing.T) {
 	assert.Equal(t, "services", cr.Rules[1].Resources[0])
 }
 
+// --- Feature boundaries ---
+
+func TestMutator_MultipleFeatures(t *testing.T) {
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+
+	// Feature A: add a rule and a label
+	m.AddRule(rbacv1.PolicyRule{
+		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
+	})
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("feature-a", "true")
+		return nil
+	})
+
+	// Feature B: add another rule and a label
+	m.beginFeature()
+	m.AddRule(rbacv1.PolicyRule{
+		APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"list"},
+	})
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("feature-b", "true")
+		return nil
+	})
+
+	require.NoError(t, m.Apply())
+
+	// Both features' edits applied in order
+	assert.Equal(t, "true", cr.Labels["feature-a"])
+	assert.Equal(t, "true", cr.Labels["feature-b"])
+	require.Len(t, cr.Rules, 2)
+	assert.Equal(t, "pods", cr.Rules[0].Resources[0])
+	assert.Equal(t, "deployments", cr.Rules[1].Resources[0])
+}
+
+func TestMutator_FeatureOrder_MetadataBeforeRules(t *testing.T) {
+	// Within a single feature, metadata edits apply before rules edits,
+	// even when registered in the opposite order.
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+
+	m.AddRule(rbacv1.PolicyRule{
+		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
+	})
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("order", "correct")
+		return nil
+	})
+
+	require.NoError(t, m.Apply())
+	assert.Equal(t, "correct", cr.Labels["order"])
+	require.Len(t, cr.Rules, 1)
+}
+
 // --- ObjectMutator interface ---
 
 func TestMutator_ImplementsObjectMutator(_ *testing.T) {

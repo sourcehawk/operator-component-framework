@@ -36,10 +36,7 @@ func NewClusterRoleResource(owner *sharedapp.ExampleApp) (component.Resource, er
 	builder.WithMutation(features.SecretAccessMutation(owner.Spec.Version, owner.Spec.EnableTracing))
 	builder.WithMutation(features.DeploymentAccessMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve rules added by external controllers or admission webhooks.
-	builder.WithFieldApplicationFlavor(clusterrole.PreserveExternalRules)
-
-	// 5. Extract data from the reconciled ClusterRole.
+	// 4. Extract data from the reconciled ClusterRole.
 	builder.WithDataExtractor(func(cr rbacv1.ClusterRole) error {
 		fmt.Printf("Reconciled ClusterRole: %s\n", cr.Name)
 		fmt.Printf("  Rules: %d\n", len(cr.Rules))
@@ -50,6 +47,6 @@ func NewClusterRoleResource(owner *sharedapp.ExampleApp) (component.Resource, er
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

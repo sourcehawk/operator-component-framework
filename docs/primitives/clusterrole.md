@@ -4,7 +4,7 @@ The `clusterrole` primitive is the framework's built-in static abstraction for m
 
 ClusterRole is cluster-scoped: it has no namespace. The builder validates that the Name is set and that Namespace is empty — setting a namespace on a cluster-scoped resource is rejected.
 
-> **Ownership limitation:** The framework currently sets a controller reference on every managed object. Kubernetes and controller-runtime reject owner references where the owner is namespaced and the dependent is cluster-scoped, so a namespaced owner cannot own a `ClusterRole`. When using the `clusterrole` primitive, ensure that the owning custom resource (and its controller) is also cluster-scoped, or avoid managing `ClusterRole` resources with this framework until an ownership opt-out is available.
+> **Ownership limitation:** During reconciliation, the framework attempts to set a controller reference on managed objects, but only when the owner and dependent scopes are compatible. When a namespaced owner manages a cluster-scoped resource such as a `ClusterRole`, the owner reference is skipped (and this is logged) instead of causing the reconcile to fail. In this case, the `ClusterRole` is **not** owned by the custom resource for Kubernetes garbage-collection or ownership semantics, so it will not be automatically deleted when the owner is removed; you must handle its lifecycle explicitly or use a cluster-scoped owner if automatic cleanup is required.
 
 ## Capabilities
 
@@ -127,7 +127,7 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-All mutation intents from all registered mutations are collected into flat lists and applied in a fixed category order, regardless of the order they are recorded:
+The Mutator maintains feature boundaries: each feature's mutations are planned together and applied in the order the features were registered. Within each feature, edits are applied in a fixed category order:
 
 | Step | Category          | What it affects                                 |
 |------|-------------------|-------------------------------------------------|
@@ -135,7 +135,7 @@ All mutation intents from all registered mutations are collected into flat lists
 | 2    | Rules edits       | `.rules` entries — EditRules, AddRule            |
 | 3    | Aggregation rule  | `.aggregationRule` — SetAggregationRule          |
 
-Within each category, edits are applied in their registration order. For aggregation rules, the last `SetAggregationRule` call wins.
+Within each category, edits are applied in their registration order. For aggregation rules, the last `SetAggregationRule` call wins within each feature. Later features observe the ClusterRole as modified by all previous features.
 
 ## Editors
 
@@ -313,13 +313,14 @@ func CRDAccessMutation(version string, manageCRDs bool) clusterrole.Mutation {
 }
 
 resource, err := clusterrole.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrole.PreserveExternalRules).
     WithMutation(CoreRulesMutation(owner.Spec.Version)).
     WithMutation(CRDAccessMutation(owner.Spec.Version, owner.Spec.ManageCRDs)).
     Build()
 ```
 
 When `ManageCRDs` is true, the final rules include both core and CRD access rules. When false, only the core rules are written. Neither mutation needs to know about the other.
+
+> **Note:** Do not combine `PreserveExternalRules` with feature-gated mutations that add and remove rules. Because flavors run before mutations and preserve rules from the live object, previously-added rules will be retained even after a feature gate is disabled, and rules can be duplicated if a mutation re-adds a rule already present on the live object. Use `PreserveExternalRules` only when external controllers or admission webhooks manage rules that your operator does not own.
 
 ## Guidance
 

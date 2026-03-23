@@ -6,7 +6,6 @@ It shows how to manage a Kubernetes ClusterRole as a component of a larger appli
 - **Base Construction**: Initializing a cluster-scoped ClusterRole with basic metadata.
 - **Feature Mutations**: Composing RBAC rules from independent, feature-gated mutations using `AddRule`.
 - **Metadata Mutations**: Setting version labels on the ClusterRole via `EditObjectMetadata`.
-- **Field Flavors**: Preserving `.rules` entries managed by external controllers using `PreserveExternalRules`.
 - **Data Extraction**: Inspecting ClusterRole rules after each reconcile cycle.
 
 ## Directory Structure

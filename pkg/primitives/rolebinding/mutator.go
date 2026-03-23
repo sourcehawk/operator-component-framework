@@ -34,9 +34,7 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given RoleBinding.
 func NewMutator(rb *rbacv1.RoleBinding) *Mutator {
-	m := &Mutator{rb: rb}
-	m.beginFeature()
-	return m
+	return &Mutator{rb: rb}
 }
 
 // beginFeature starts a new feature planning scope. All subsequent mutation
@@ -44,6 +42,13 @@ func NewMutator(rb *rbacv1.RoleBinding) *Mutator {
 func (m *Mutator) beginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
+}
+
+// ensureActive lazily initializes a feature plan if none has been started.
+func (m *Mutator) ensureActive() {
+	if m.active == nil {
+		m.beginFeature()
+	}
 }
 
 // EditObjectMetadata records a mutation for the RoleBinding's own metadata.
@@ -54,6 +59,7 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -69,6 +75,7 @@ func (m *Mutator) EditSubjects(edit func(*editors.BindingSubjectsEditor) error) 
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.subjectEdits = append(m.active.subjectEdits, edit)
 }
 

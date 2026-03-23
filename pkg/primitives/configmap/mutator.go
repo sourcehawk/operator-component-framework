@@ -49,6 +49,13 @@ func (m *Mutator) BeginFeature() {
 	m.active = &m.plans[len(m.plans)-1]
 }
 
+// ensureActive lazily initializes a feature plan if none has been started.
+func (m *Mutator) ensureActive() {
+	if m.active == nil {
+		m.beginFeature()
+	}
+}
+
 // EditObjectMetadata records a mutation for the ConfigMap's own metadata.
 //
 // Metadata edits are applied before data edits within the same feature.
@@ -57,6 +64,7 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -72,6 +80,7 @@ func (m *Mutator) EditData(edit func(*editors.ConfigMapDataEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.dataEdits = append(m.active.dataEdits, edit)
 }
 

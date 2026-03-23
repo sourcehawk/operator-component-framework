@@ -204,13 +204,10 @@ func TestMutator_InitContainers(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if pod.Spec.InitContainers[0].Image != newImage {
-		t.Errorf("expected image %s, got %s", newImage, pod.Spec.InitContainers[0].Image)
-	}
+	assert.Equal(t, newImage, pod.Spec.InitContainers[0].Image)
 }
 
 func TestMutator_ContainerPresence(t *testing.T) {
@@ -232,21 +229,16 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	// Append
 	m.EnsureContainer(corev1.Container{Name: "new-container", Image: newImage})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if len(pod.Spec.Containers) != 2 {
-		t.Fatalf("expected 2 containers, got %d", len(pod.Spec.Containers))
-	}
+	require.Len(t, pod.Spec.Containers, 2)
 
-	if pod.Spec.Containers[0].Name != "app" || pod.Spec.Containers[0].Image != "app-new-image" {
-		t.Errorf("unexpected container at index 0: %+v", pod.Spec.Containers[0])
-	}
+	assert.Equal(t, "app", pod.Spec.Containers[0].Name)
+	assert.Equal(t, "app-new-image", pod.Spec.Containers[0].Image)
 
-	if pod.Spec.Containers[1].Name != "new-container" || pod.Spec.Containers[1].Image != newImage {
-		t.Errorf("unexpected container at index 1: %+v", pod.Spec.Containers[1])
-	}
+	assert.Equal(t, "new-container", pod.Spec.Containers[1].Name)
+	assert.Equal(t, newImage, pod.Spec.Containers[1].Image)
 }
 
 func TestMutator_InitContainerPresence(t *testing.T) {
@@ -262,17 +254,12 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if len(pod.Spec.InitContainers) != 1 {
-		t.Fatalf("expected 1 init container, got %d", len(pod.Spec.InitContainers))
-	}
+	require.Len(t, pod.Spec.InitContainers, 1)
 
-	if pod.Spec.InitContainers[0].Name != "init-2" {
-		t.Errorf("expected init-2, got %s", pod.Spec.InitContainers[0].Name)
-	}
+	assert.Equal(t, "init-2", pod.Spec.InitContainers[0].Name)
 }
 
 func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
@@ -305,17 +292,11 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if pod.Spec.Containers[0].Name != appV2 {
-		t.Errorf("expected name %s, got %s", appV2, pod.Spec.Containers[0].Name)
-	}
-
-	if pod.Spec.Containers[0].Image != "app-image-updated" {
-		t.Errorf("expected image app-image-updated, got %s", pod.Spec.Containers[0].Image)
-	}
+	assert.Equal(t, appV2, pod.Spec.Containers[0].Name)
+	assert.Equal(t, "app-image-updated", pod.Spec.Containers[0].Image)
 }
 
 func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
@@ -336,18 +317,13 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	// Register presence later
 	m.EnsureContainer(corev1.Container{Name: "new-app", Image: "original-image"})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	// It should work because presence happens before edits in Apply()
-	if len(pod.Spec.Containers) != 1 {
-		t.Fatalf("expected 1 container, got %d", len(pod.Spec.Containers))
-	}
+	require.Len(t, pod.Spec.Containers, 1)
 
-	if pod.Spec.Containers[0].Image != "edited-image" {
-		t.Errorf("expected edited-image, got %s", pod.Spec.Containers[0].Image)
-	}
+	assert.Equal(t, "edited-image", pod.Spec.Containers[0].Image)
 }
 
 func TestMutator_NilSafety(t *testing.T) {
@@ -391,9 +367,8 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	// Feature B should win
 	assert.Equal(t, "v3", pod.Spec.Containers[0].Image)
@@ -425,9 +400,8 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	expectedOrder := []string{
 		"podmeta",
@@ -460,9 +434,8 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	assert.Equal(t, "app-v2", pod.Spec.Containers[0].Name)
 	assert.Equal(t, "v2-image", pod.Spec.Containers[0].Image)
@@ -498,9 +471,8 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	require.Len(t, pod.Spec.InitContainers, 1)
 	assert.Equal(t, "init-1-renamed", pod.Spec.InitContainers[0].Name)

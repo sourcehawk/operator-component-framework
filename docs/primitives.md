@@ -45,7 +45,7 @@ These resources define integration points with external or cluster-level systems
 
 Some Kubernetes resources are cluster-scoped — they have no namespace. Examples include `ClusterRole`, `ClusterRoleBinding`, and `PersistentVolume`.
 
-When building a cluster-scoped primitive, the internal builder calls `MarkClusterScoped()` during construction. This changes `ValidateBase()` behavior: instead of requiring a non-empty namespace, it rejects a non-empty namespace. The primitive's identity string omits the namespace segment (e.g., `rbac.authorization.k8s.io/v1/ClusterRole/my-role`).
+When implementing a primitive for a cluster-scoped kind, the primitive's builder must explicitly call `MarkClusterScoped()` on its internal `BaseBuilder` during construction. This changes `ValidateBase()` behavior: instead of requiring a non-empty namespace, it rejects a non-empty namespace. The primitive's builder is also responsible for providing an identity function that formats the identity string appropriately — typically omitting the namespace segment (e.g., `rbac.authorization.k8s.io/v1/ClusterRole/my-role` rather than including a namespace).
 
 At reconcile time, the component framework automatically detects scope incompatibilities between the owner CRD and managed resources using the cluster's REST mapper. See [Cluster-Scoped Resources](component.md#cluster-scoped-resources) in the component documentation for details on owner reference behavior and garbage collection.
 

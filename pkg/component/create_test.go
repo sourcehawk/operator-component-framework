@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -354,7 +355,6 @@ func TestMutateResource(t *testing.T) {
 			},
 		}
 		mapper = createTestRESTMapper()
-		ctx    = t.Context()
 	)
 
 	t.Run("should call Mutate for new objects", func(t *testing.T) {
@@ -370,7 +370,7 @@ func TestMutateResource(t *testing.T) {
 		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-mutate")
 
 		// When
-		err := mutateResource(ctx, resource, resourceObject, owner, scheme, mapper)
+		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper)
 
 		// Then
 		require.NoError(t, err)
@@ -394,10 +394,97 @@ func TestMutateResource(t *testing.T) {
 		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-mutate-existing")
 
 		// When
-		err := mutateResource(ctx, resource, resourceObject, owner, scheme, mapper)
+		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper)
 
 		// Then
 		require.NoError(t, err)
+		resource.AssertExpectations(t)
+	})
+
+	t.Run("should skip owner reference for cluster-scoped resource with namespaced owner", func(t *testing.T) {
+		// Given
+		clusterScopedMapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{
+			{Group: "rbac.authorization.k8s.io", Version: "v1"},
+			corev1.SchemeGroupVersion,
+			GroupVersion,
+		})
+		clusterScopedMapper.Add(
+			schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"},
+			meta.RESTScopeRoot,
+		)
+		clusterScopedMapper.Add(GroupVersion.WithKind("MockOperatorCRD"), meta.RESTScopeNamespace)
+
+		resource := &MockResource{}
+		resourceObject := &rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-cluster-role",
+			},
+		}
+		resource.On("Mutate", mock.Anything).Return(nil)
+		resource.On("Identity").Maybe().Return("rbac.authorization.k8s.io/v1/ClusterRole/test-cluster-role")
+
+		// When
+		skipped, err := mutateResource(resource, resourceObject, owner, scheme, clusterScopedMapper)
+
+		// Then
+		require.NoError(t, err)
+		assert.True(t, skipped, "owner reference should be skipped for cluster-scoped resource with namespaced owner")
+		assert.Empty(t, resourceObject.OwnerReferences, "no owner reference should be set")
+		resource.AssertExpectations(t)
+	})
+}
+
+func TestCreateOrUpdateResources_ClusterScopedResource(t *testing.T) {
+	var (
+		scheme    = setupScheme()
+		namespace = "test-namespace"
+		owner     = &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-owner",
+				Namespace:  namespace,
+				Generation: 1,
+			},
+		}
+	)
+
+	clusterScopedMapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{
+		{Group: "rbac.authorization.k8s.io", Version: "v1"},
+		corev1.SchemeGroupVersion,
+		GroupVersion,
+	})
+	clusterScopedMapper.Add(
+		schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"},
+		meta.RESTScopeRoot,
+	)
+	clusterScopedMapper.Add(GroupVersion.WithKind("MockOperatorCRD"), meta.RESTScopeNamespace)
+
+	t.Run("should create cluster-scoped resource without owner reference", func(t *testing.T) {
+		// Given
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).WithStatusSubresource(owner).Build()
+		reconcileContext := setupReconcileContext(scheme, owner, fakeClient)
+		ctx := t.Context()
+
+		resourceObject := &rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-cluster-role-create",
+			},
+		}
+		resource := &MockResource{}
+		resource.On("Object").Return(resourceObject, nil)
+		resource.On("Mutate", mock.Anything).Return(nil)
+		resource.On("Identity").Maybe().Return("rbac.authorization.k8s.io/v1/ClusterRole/test-cluster-role-create")
+
+		// When
+		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, clusterScopedMapper)
+
+		// Then
+		require.NoError(t, err)
+		assert.Empty(t, results)
+
+		createdRole := &rbacv1.ClusterRole{}
+		err = fakeClient.Get(ctx, client.ObjectKey{Name: "test-cluster-role-create"}, createdRole)
+		require.NoError(t, err)
+		assert.Empty(t, createdRole.OwnerReferences, "cluster-scoped resource should have no owner references")
 		resource.AssertExpectations(t)
 	})
 }

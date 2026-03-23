@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -47,14 +48,25 @@ func createOrUpdateResources(
 			)
 		}
 
+		var ownerRefSkipped bool
 		op, err := ctrl.CreateOrUpdate(ctx, rec.Client, obj, func() error {
-			return mutateResource(ctx, resource, obj, rec.Owner, rec.Scheme, mapper)
+			skipped, mutErr := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper)
+			ownerRefSkipped = skipped
+			return mutErr
 		})
 		// We return immediately on errors because resource may depend on each other and creating them regardless of
 		// previous errors may result in the real problem being hidden.
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to create or update resource %s: %w", resource.Identity(), err,
+			)
+		}
+
+		if ownerRefSkipped && op != controllerutil.OperationResultNone {
+			log.FromContext(ctx).Info(
+				"skipping owner reference for cluster-scoped resource owned by namespace-scoped owner; "+
+					"this resource will not be garbage-collected when the owner is deleted",
+				"resource", resource.Identity(),
 			)
 		}
 
@@ -85,31 +97,27 @@ func createOrUpdateResources(
 //     object from `resource.Object()`.
 //  2. Ownership: Sets a controller reference pointing to the owner CRD, unless the
 //     owned resource is cluster-scoped and the owner is namespace-scoped (which Kubernetes
-//     does not allow). In that case the reference is skipped and a warning is logged.
+//     does not allow). In that case the reference is skipped and an info message is logged
+//     on create or update operations.
 func mutateResource(
-	ctx context.Context, resource Resource, obj client.Object, owner client.Object,
+	resource Resource, obj client.Object, owner client.Object,
 	scheme *runtime.Scheme, mapper meta.RESTMapper,
-) error {
+) (ownerRefSkipped bool, err error) {
 	if err := resource.Mutate(obj); err != nil {
-		return err
+		return false, err
 	}
 
 	canSet, err := scope.CanSetOwnerReference(owner, obj, scheme, mapper)
 	if err != nil {
-		return fmt.Errorf(
+		return false, fmt.Errorf(
 			"failed to determine owner reference eligibility for resource %s: %w",
 			resource.Identity(), err,
 		)
 	}
 
 	if !canSet {
-		log.FromContext(ctx).Info(
-			"skipping owner reference for cluster-scoped resource owned by namespace-scoped owner; "+
-				"this resource will not be garbage-collected when the owner is deleted",
-			"resource", resource.Identity(),
-		)
-		return nil
+		return true, nil
 	}
 
-	return ctrl.SetControllerReference(owner, obj, scheme)
+	return false, ctrl.SetControllerReference(owner, obj, scheme)
 }

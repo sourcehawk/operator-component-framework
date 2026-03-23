@@ -96,6 +96,22 @@ func TestPreserveExternalRules(t *testing.T) {
 		assert.Len(t, applied.Rules, 1)
 	})
 
+	t.Run("treats reordered-but-equivalent rules as equal", func(t *testing.T) {
+		applied := &rbacv1.ClusterRole{
+			Rules: []rbacv1.PolicyRule{
+				{APIGroups: []string{""}, Resources: []string{"pods", "services"}, Verbs: []string{"get", "list"}},
+			},
+		}
+		current := &rbacv1.ClusterRole{
+			Rules: []rbacv1.PolicyRule{
+				{APIGroups: []string{""}, Resources: []string{"services", "pods"}, Verbs: []string{"list", "get"}},
+			},
+		}
+
+		require.NoError(t, PreserveExternalRules(applied, current, nil))
+		assert.Len(t, applied.Rules, 1, "reordered rule should not be duplicated")
+	})
+
 	t.Run("no-op when current has no rules", func(t *testing.T) {
 		applied := &rbacv1.ClusterRole{
 			Rules: []rbacv1.PolicyRule{

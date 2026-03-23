@@ -97,7 +97,11 @@ func (m *Mutator) AddRule(rule rbacv1.PolicyRule) {
 //
 // A nil value clears the aggregation rule.
 func (m *Mutator) SetAggregationRule(rule *rbacv1.AggregationRule) {
-	m.active.aggregationRuleSets = append(m.active.aggregationRuleSets, rule)
+	var copied *rbacv1.AggregationRule
+	if rule != nil {
+		copied = rule.DeepCopy()
+	}
+	m.active.aggregationRuleSets = append(m.active.aggregationRuleSets, copied)
 }
 
 // Apply executes all recorded mutation intents on the underlying ClusterRole.

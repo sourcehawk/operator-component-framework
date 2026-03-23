@@ -1,7 +1,6 @@
 package clusterrole
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/sourcehawk/operator-component-framework/internal/generic"
@@ -98,13 +97,6 @@ func (b *Builder) WithDataExtractor(extractor func(rbacv1.ClusterRole) error) *B
 //   - No ClusterRole object was provided.
 //   - The ClusterRole is missing a Name.
 func (b *Builder) Build() (*Resource, error) {
-	if b.obj == nil {
-		return nil, errors.New("object cannot be nil")
-	}
-	if b.obj.Name == "" {
-		return nil, errors.New("object name cannot be empty")
-	}
-
 	identityFunc := func(cr *rbacv1.ClusterRole) string {
 		return fmt.Sprintf("rbac.authorization.k8s.io/v1/ClusterRole/%s", cr.Name)
 	}

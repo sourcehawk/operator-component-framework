@@ -136,6 +136,25 @@ func TestMutator_SetAggregationRule_LastWins(t *testing.T) {
 	assert.Equal(t, "true", cr.AggregationRule.ClusterRoleSelectors[0].MatchLabels["second"])
 }
 
+func TestMutator_SetAggregationRule_Immutable(t *testing.T) {
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+	aggRule := &rbacv1.AggregationRule{
+		ClusterRoleSelectors: []metav1.LabelSelector{
+			{MatchLabels: map[string]string{"aggregate": "true"}},
+		},
+	}
+	m.SetAggregationRule(aggRule)
+
+	// Mutate the original after registration — should not affect the mutator.
+	aggRule.ClusterRoleSelectors[0].MatchLabels["aggregate"] = "mutated"
+
+	require.NoError(t, m.Apply())
+	require.NotNil(t, cr.AggregationRule)
+	assert.Equal(t, "true", cr.AggregationRule.ClusterRoleSelectors[0].MatchLabels["aggregate"],
+		"mutating the original after SetAggregationRule should not affect the applied result")
+}
+
 // --- Execution order ---
 
 func TestMutator_OperationOrder(t *testing.T) {

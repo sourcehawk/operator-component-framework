@@ -1,6 +1,8 @@
 package clusterrole
 
 import (
+	"sort"
+
 	"github.com/sourcehawk/operator-component-framework/pkg/flavors"
 	rbacv1 "k8s.io/api/rbac/v1"
 )
@@ -50,22 +52,33 @@ func containsRule(rules []rbacv1.PolicyRule, target rbacv1.PolicyRule) bool {
 	return false
 }
 
-// policyRuleEqual reports whether two PolicyRules are equal by comparing all fields.
+// policyRuleEqual reports whether two PolicyRules are equal by comparing all
+// fields as sets, so that different orderings of the same elements are treated
+// as equivalent.
 func policyRuleEqual(a, b rbacv1.PolicyRule) bool {
-	return stringSliceEqual(a.Verbs, b.Verbs) &&
-		stringSliceEqual(a.APIGroups, b.APIGroups) &&
-		stringSliceEqual(a.Resources, b.Resources) &&
-		stringSliceEqual(a.ResourceNames, b.ResourceNames) &&
-		stringSliceEqual(a.NonResourceURLs, b.NonResourceURLs)
+	return stringSliceEqualUnordered(a.Verbs, b.Verbs) &&
+		stringSliceEqualUnordered(a.APIGroups, b.APIGroups) &&
+		stringSliceEqualUnordered(a.Resources, b.Resources) &&
+		stringSliceEqualUnordered(a.ResourceNames, b.ResourceNames) &&
+		stringSliceEqualUnordered(a.NonResourceURLs, b.NonResourceURLs)
 }
 
-// stringSliceEqual reports whether two string slices are equal.
-func stringSliceEqual(a, b []string) bool {
+// stringSliceEqualUnordered reports whether two string slices contain exactly
+// the same elements, regardless of order.
+func stringSliceEqualUnordered(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := range a {
-		if a[i] != b[i] {
+	aSorted := make([]string, len(a))
+	copy(aSorted, a)
+	sort.Strings(aSorted)
+
+	bSorted := make([]string, len(b))
+	copy(bSorted, b)
+	sort.Strings(bSorted)
+
+	for i := range aSorted {
+		if aSorted[i] != bSorted[i] {
 			return false
 		}
 	}

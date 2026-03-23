@@ -460,6 +460,54 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pod",
+			Namespace:       "test-ns",
+			ResourceVersion: "12345",
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "app", Image: "nginx:latest"},
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			PodIP: "10.0.0.1",
+			ContainerStatuses: []corev1.ContainerStatus{
+				{Name: "app", Ready: true, RestartCount: 2},
+			},
+		},
+	}
+	desired := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-ns",
+			Labels:    map[string]string{"app": "updated"},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "app", Image: "nginx:latest"},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired labels are applied
+	assert.Equal(t, "updated", current.Labels["app"])
+
+	// Status from the live object is preserved
+	assert.Equal(t, corev1.PodRunning, current.Status.Phase)
+	assert.Equal(t, "10.0.0.1", current.Status.PodIP)
+	require.Len(t, current.Status.ContainerStatuses, 1)
+	assert.Equal(t, "app", current.Status.ContainerStatuses[0].Name)
+	assert.True(t, current.Status.ContainerStatuses[0].Ready)
+	assert.Equal(t, int32(2), current.Status.ContainerStatuses[0].RestartCount)
+}
+
 func TestResource_DefaultFieldApplicator_ExistingPod(t *testing.T) {
 	desired := newValidPod()
 	desired.Labels = map[string]string{"app": "test"}

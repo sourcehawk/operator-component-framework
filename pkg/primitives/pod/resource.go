@@ -8,9 +8,9 @@ import (
 )
 
 // DefaultFieldApplicator handles the immutable nature of pod specs while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
-// and shared-controller fields (OwnerReferences, Finalizers) from the original
-// current object.
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
+// shared-controller fields (OwnerReferences, Finalizers), and the Status
+// subresource from the original current object.
 //
 // For new pods (empty ResourceVersion), the entire desired state is applied.
 // For existing pods, only metadata (labels and annotations) is propagated
@@ -26,6 +26,7 @@ func DefaultFieldApplicator(current, desired *corev1.Pod) error {
 	current.Labels = cloneStringMap(desired.Labels)
 	current.Annotations = cloneStringMap(desired.Annotations)
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 	return nil
 }
 

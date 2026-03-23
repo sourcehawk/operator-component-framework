@@ -42,7 +42,7 @@ resource, err := pod.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` handles the immutable nature of pod specs. For new pods (empty `ResourceVersion`), the entire desired state is applied. For existing pods, only metadata (labels and annotations) is propagated because pod spec fields are largely immutable after creation.
+`DefaultFieldApplicator` handles the immutable nature of pod specs. For new pods (empty `ResourceVersion`), the entire desired state is applied. For existing pods, only metadata (labels and annotations) is propagated because pod spec fields are largely immutable after creation. In both cases, server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource are preserved from the original live object. This prevents spec-level reconciliation from clearing status data written by the kubelet or other controllers.
 
 Use `WithCustomFieldApplicator` when additional metadata fields need to be selectively propagated:
 

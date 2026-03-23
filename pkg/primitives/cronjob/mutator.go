@@ -52,8 +52,9 @@ type Mutator struct {
 func NewMutator(current *batchv1.CronJob) *Mutator {
 	m := &Mutator{
 		current: current,
+		plans:   []featurePlan{{}},
 	}
-	m.beginFeature()
+	m.active = &m.plans[0]
 	return m
 }
 

@@ -1,10 +1,12 @@
 // Package app provides a sample controller using the clusterrolebinding primitive.
 //
-// Note: ClusterRoleBinding is cluster-scoped. The component framework sets a
-// controller owner reference, which requires the owner to also be cluster-scoped.
-// In production, use a cluster-scoped CRD as the owner. This example demonstrates
-// the controller pattern for reference; the main.go entry point exercises the
-// primitive API directly to avoid the cluster-scoped owner requirement.
+// Note: ClusterRoleBinding is cluster-scoped. When the owner is namespace-scoped,
+// the component framework automatically skips setting a controller owner reference
+// (since Kubernetes does not allow cross-scope owner references) and logs an info
+// message. This means the ClusterRoleBinding will not be garbage-collected when
+// the owner is deleted — operators should implement their own cleanup logic if
+// needed. In production, using a cluster-scoped CRD as the owner avoids this
+// limitation entirely.
 package app
 
 import (
@@ -19,8 +21,9 @@ import (
 
 // ExampleController reconciles an ExampleApp object using the component framework.
 //
-// In production usage with a cluster-scoped resource, the owner (ExampleApp) should
-// also be cluster-scoped to allow controller owner references to be set correctly.
+// When the owner is namespace-scoped, the framework skips the controller owner
+// reference for cluster-scoped resources. Use a cluster-scoped owner CRD in
+// production if automatic garbage collection is required.
 type ExampleController struct {
 	client.Client
 	Scheme   *runtime.Scheme

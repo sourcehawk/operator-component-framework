@@ -35,7 +35,7 @@ func TestBuilder_Build_Validation(t *testing.T) {
 			crb: &rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-crb", Namespace: "default"},
 			},
-			expectedErr: "object namespace must be empty for cluster-scoped resource",
+			expectedErr: "cluster-scoped object must not have a namespace",
 		},
 		{
 			name: "valid clusterrolebinding",

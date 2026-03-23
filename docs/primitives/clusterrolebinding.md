@@ -7,7 +7,7 @@ The `clusterrolebinding` primitive is the framework's built-in static abstractio
 | Capability            | Detail                                                                                               |
 |-----------------------|------------------------------------------------------------------------------------------------------|
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state       |
-| **Cluster-scoped**    | No namespace required — only Name is validated during Build()                                        |
+| **Cluster-scoped**    | Cluster-scoped resource — Build() validates Name and requires metadata.namespace to be empty (errors if set) |
 | **Immutable roleRef** | `DefaultFieldApplicator` preserves `roleRef` on updates since it is immutable after creation         |
 | **Mutation pipeline** | Typed editors for `.subjects` entries and object metadata, with a raw escape hatch for free-form access |
 | **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator               |

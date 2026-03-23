@@ -57,8 +57,9 @@ type Mutator struct {
 func NewMutator(current *appsv1.Deployment) *Mutator {
 	m := &Mutator{
 		current: current,
+		plans:   []featurePlan{{}},
 	}
-	m.beginFeature()
+	m.active = &m.plans[0]
 	return m
 }
 

@@ -156,7 +156,7 @@ m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 
 #### Port Management
 
-`EnsurePort` upserts a port: if a port with the same `Name` exists (or the same `Port` number when `Name` is empty), it is replaced; otherwise it is appended. `RemovePort` removes a port by name.
+`EnsurePort` upserts a port: if a port with the same `Name` exists, it is replaced; otherwise, when `Name` is empty, the match is performed on the combination of `Port` and the effective `Protocol` (treating an empty protocol value as TCP). This means TCP and UDP ports with the same port number are considered distinct unless you explicitly set matching protocols. If no existing port matches, the new port is appended. `RemovePort` removes a port by name.
 
 ```go
 m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {

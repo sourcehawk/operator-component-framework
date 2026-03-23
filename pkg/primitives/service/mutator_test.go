@@ -145,7 +145,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
 		return nil
 	})
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "https", Port: 443})
 		return nil
@@ -162,7 +162,7 @@ func TestMutator_MultipleFeatures_LaterSeesEarlier(t *testing.T) {
 		e.EnsureSelector("app", "myapp")
 		return nil
 	})
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		// Later feature should see the selector set by the earlier feature.
 		e.EnsureSelector("env", "prod")

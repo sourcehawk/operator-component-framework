@@ -41,9 +41,13 @@ func NewMutator(svc *corev1.Service) *Mutator {
 	return m
 }
 
-// beginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) beginFeature() {
+// BeginFeature starts a new feature planning scope.
+//
+// This method is intended for use by the generic feature/mutation framework to
+// delineate feature boundaries. All subsequent mutation registrations will be
+// grouped into a new feature plan and applied after any previously planned
+// features.
+func (m *Mutator) BeginFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

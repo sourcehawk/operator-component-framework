@@ -136,6 +136,87 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"10.0.0.1"}, current.Spec.ClusterIPs)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeLoadBalancer,
+			ClusterIP: "10.0.0.1",
+		},
+		Status: corev1.ServiceStatus{
+			LoadBalancer: corev1.LoadBalancerStatus{
+				Ingress: []corev1.LoadBalancerIngress{
+					{IP: "203.0.113.1", Hostname: "lb.example.com"},
+				},
+			},
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeLoadBalancer,
+			Selector: map[string]string{"app": "test"},
+			Ports:    []corev1.ServicePort{{Name: "http", Port: 80}},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, "test", current.Spec.Selector["app"])
+
+	// Status is preserved (not zeroed by the deep copy of desired)
+	require.Len(t, current.Status.LoadBalancer.Ingress, 1)
+	assert.Equal(t, "203.0.113.1", current.Status.LoadBalancer.Ingress[0].IP)
+	assert.Equal(t, "lb.example.com", current.Status.LoadBalancer.Ingress[0].Hostname)
+}
+
+func TestDefaultFieldApplicator_PreservesNodePorts(t *testing.T) {
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeNodePort,
+			ClusterIP: "10.0.0.1",
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080, Protocol: corev1.ProtocolTCP},
+				{Name: "https", Port: 443, NodePort: 30443, Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeNodePort,
+			Selector: map[string]string{"app": "test"},
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80},
+				{Name: "https", Port: 443},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Auto-allocated nodePorts are preserved when desired nodePort is 0
+	require.Len(t, current.Spec.Ports, 2)
+	assert.Equal(t, int32(30080), current.Spec.Ports[0].NodePort)
+	assert.Equal(t, int32(30443), current.Spec.Ports[1].NodePort)
+}
+
 func TestResource_Mutate_WithMutation(t *testing.T) {
 	desired := newValidService()
 	res, err := NewBuilder(desired).
@@ -159,6 +240,46 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	assert.Equal(t, int32(80), current.Spec.Ports[0].Port)
 	require.Len(t, current.Spec.Ports, 2)
 	assert.Equal(t, "metrics", current.Spec.Ports[1].Name)
+}
+
+func TestResource_Mutate_FeatureOrdering(t *testing.T) {
+	desired := newValidService()
+
+	var callOrder []string
+	observedFirstBeforeSecond := false
+
+	res, err := NewBuilder(desired).
+		WithMutation(Mutation{
+			Name:    "first-mutation",
+			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Mutate: func(m *Mutator) error {
+				callOrder = append(callOrder, "first")
+				m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+					e.EnsurePort(corev1.ServicePort{Name: "first", Port: 1000})
+					return nil
+				})
+				return nil
+			},
+		}).
+		WithMutation(Mutation{
+			Name:    "second-mutation",
+			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Mutate: func(m *Mutator) error {
+				if len(callOrder) == 1 && callOrder[0] == "first" {
+					observedFirstBeforeSecond = true
+				}
+				callOrder = append(callOrder, "second")
+				return nil
+			},
+		}).
+		Build()
+	require.NoError(t, err)
+
+	current := &corev1.Service{}
+	require.NoError(t, res.Mutate(current))
+
+	assert.Equal(t, []string{"first", "second"}, callOrder)
+	assert.True(t, observedFirstBeforeSecond, "second mutation should observe effects of the first mutation")
 }
 
 func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {

@@ -24,7 +24,46 @@ func DefaultFieldApplicator(current, desired *corev1.Service) error {
 		current.Spec.ClusterIP = clusterIP
 		current.Spec.ClusterIPs = clusterIPs
 	}
+	preserveNodePorts(current, original)
 	return nil
+}
+
+// preserveNodePorts restores auto-allocated nodePort values from the original
+// object when the desired port's NodePort is 0. Ports are matched by Name, or
+// by Port+Protocol (treating empty protocol as TCP) when unnamed.
+func preserveNodePorts(current, original *corev1.Service) {
+	if len(original.Spec.Ports) == 0 {
+		return
+	}
+
+	for i := range current.Spec.Ports {
+		if current.Spec.Ports[i].NodePort != 0 {
+			continue // explicitly set, don't override
+		}
+		for _, orig := range original.Spec.Ports {
+			if orig.NodePort == 0 {
+				continue
+			}
+			if matchPort(current.Spec.Ports[i], orig) {
+				current.Spec.Ports[i].NodePort = orig.NodePort
+				break
+			}
+		}
+	}
+}
+
+func matchPort(a, b corev1.ServicePort) bool {
+	if a.Name != "" || b.Name != "" {
+		return a.Name == b.Name
+	}
+	return a.Port == b.Port && normalizeProtocol(a.Protocol) == normalizeProtocol(b.Protocol)
+}
+
+func normalizeProtocol(p corev1.Protocol) corev1.Protocol {
+	if p == "" {
+		return corev1.ProtocolTCP
+	}
+	return p
 }
 
 // Resource is a high-level abstraction for managing a Kubernetes Service within

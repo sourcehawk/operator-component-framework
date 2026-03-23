@@ -26,8 +26,8 @@ type Builder struct {
 // The provided PodDisruptionBudget must have both Name and Namespace set, which is
 // validated during the Build() call.
 func NewBuilder(p *policyv1.PodDisruptionBudget) *Builder {
-	identityFunc := func(p *policyv1.PodDisruptionBudget) string {
-		return fmt.Sprintf("policy/v1/PodDisruptionBudget/%s/%s", p.Namespace, p.Name)
+	identityFunc := func(pdb *policyv1.PodDisruptionBudget) string {
+		return fmt.Sprintf("policy/v1/PodDisruptionBudget/%s/%s", pdb.Namespace, pdb.Name)
 	}
 
 	return &Builder{

@@ -6,7 +6,7 @@ The `daemonset` primitive is the framework's built-in workload abstraction for m
 
 | Capability            | Detail                                                                                          |
 |-----------------------|-------------------------------------------------------------------------------------------------|
-| **Health tracking**   | Monitors `NumberReady` and reports `Healthy`, `Creating`, `Updating`, `Scaling`, or `Failing`   |
+| **Health tracking**   | Monitors `NumberReady` and reports `Healthy`, `Creating`, `Updating`, or `Scaling`              |
 | **Graceful rollouts** | Detects stalled or failing rollouts via configurable grace periods                              |
 | **Suspension**        | Deletes the DaemonSet on suspend; reports `Suspended`                                           |
 | **Mutation pipeline** | Typed editors for metadata, DaemonSet spec, pod spec, and containers                            |
@@ -206,11 +206,11 @@ Override these handlers via `WithCustomSuspendDeletionDecision`, `WithCustomSusp
 
 | Status      | Condition                                                            |
 |-------------|----------------------------------------------------------------------|
-| `Healthy`   | `DesiredNumberScheduled == 0` — no nodes match the selector          |
-| `Degraded`  | `DesiredNumberScheduled > 0 && NumberReady >= 1` but below desired   |
+| `Healthy`   | `DesiredNumberScheduled == 0` and `ObservedGeneration >= Generation` — no nodes match the selector |
+| `Degraded`  | `DesiredNumberScheduled == 0` but controller has not observed latest generation, or `DesiredNumberScheduled > 0 && NumberReady >= 1` but below desired |
 | `Down`      | `DesiredNumberScheduled > 0 && NumberReady == 0`                     |
 
-The `Healthy` status for zero desired pods reflects that having no matching nodes is a valid configuration state, not a failure.
+The `Healthy` status for zero desired pods reflects that having no matching nodes is a valid configuration state, not a failure. The generation check ensures the controller has observed the latest spec before declaring health.
 
 ## Guidance
 

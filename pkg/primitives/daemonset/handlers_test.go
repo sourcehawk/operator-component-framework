@@ -137,17 +137,34 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 }
 
 func TestDefaultGraceStatusHandler(t *testing.T) {
-	t.Run("healthy when no nodes match selector", func(t *testing.T) {
+	t.Run("healthy when no nodes match selector and generation observed", func(t *testing.T) {
 		ds := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
 			Status: appsv1.DaemonSetStatus{
 				DesiredNumberScheduled: 0,
 				NumberReady:            0,
+				ObservedGeneration:     1,
 			},
 		}
 		got, err := DefaultGraceStatusHandler(ds)
 		require.NoError(t, err)
 		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
 		assert.Equal(t, "No nodes match the DaemonSet node selector", got.Reason)
+	})
+
+	t.Run("degraded when no nodes match selector but generation stale", func(t *testing.T) {
+		ds := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{Generation: 2},
+			Status: appsv1.DaemonSetStatus{
+				DesiredNumberScheduled: 0,
+				NumberReady:            0,
+				ObservedGeneration:     1,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(ds)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
+		assert.Equal(t, "Waiting for DaemonSet controller to observe latest generation", got.Reason)
 	})
 
 	t.Run("degraded (some ready)", func(t *testing.T) {

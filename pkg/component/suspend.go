@@ -10,6 +10,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type suspensionResults []concepts.SuspensionStatusWithReason
@@ -73,14 +74,24 @@ func suspendResources(
 	return results, nil
 }
 
-// suspendResource handles the two-stage suspension process for a single resource:
+// suspendResource handles the suspension process for a single resource:
 //
-// Stage 1: Mutation
-//   - Applies suspension-specific mutations to the resource's desired state via Suspend().
+// Stage 1: Short-circuit for absent delete-on-suspend resources
+//   - If DeleteOnSuspend() is true and the object does not exist on the cluster,
+//     returns SuspensionStatusSuspended immediately without creating the resource.
+//     This prevents a create→delete churn loop on every reconcile while suspended.
+//     The check runs before Suspend() to avoid queuing a mutation that will never be applied.
+//
+// Stage 2: Mutation
+//   - Registers suspension-specific mutations via Suspend(), then applies them to the
+//     resource's desired state.
 //   - Persists these mutations to the cluster using createOrUpdateResources.
+//     If the resource does not yet exist, it is created with suspension mutations already applied
+//     (e.g., a Deployment is created with zero replicas). This is intentional: the resource is
+//     immediately available in its suspended state, ready for when suspension ends.
 //   - Checks if the resource has reached the Suspended state via SuspensionStatus().
 //
-// Stage 2: Optional Deletion
+// Stage 3: Optional Deletion
 //   - If DeleteOnSuspend() is true AND the resource has reached SuspensionStatusSuspended,
 //     the Kubernetes object is deleted from the cluster.
 //   - Deletion is deferred until the Suspended state is reached to allow for graceful
@@ -89,15 +100,39 @@ func suspendResource(
 	ctx context.Context, rec ReconcileContext, resource Resource, suspendable concepts.Suspendable,
 	mapper meta.RESTMapper,
 ) (concepts.SuspensionStatusWithReason, error) {
-	// Create suspension mutation on resource (if any)
-	if err := suspendable.Suspend(); err != nil {
-		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to suspend resource: %w", err)
-	}
-
 	// Get the object if possible
 	object, err := resource.Object()
 	if err != nil {
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to get object on suspension: %w", err)
+	}
+
+	// Short-circuit: if the resource should be deleted on suspend and already doesn't exist,
+	// skip CreateOrUpdate to avoid a create->delete churn loop on every reconcile.
+	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.
+	if suspendable.DeleteOnSuspend() {
+		existing, ok := object.DeepCopyObject().(client.Object)
+		if !ok {
+			return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
+				"failed to deep copy object of type %T", object,
+			)
+		}
+		err := rec.Client.Get(ctx, client.ObjectKeyFromObject(object), existing)
+		if apierrors.IsNotFound(err) {
+			return concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: fmt.Sprintf("Resource %s already deleted.", resource.Identity()),
+			}, nil
+		}
+		if err != nil {
+			return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
+				"failed to check existence of resource %s on suspension: %w", resource.Identity(), err,
+			)
+		}
+	}
+
+	// Create suspension mutation on resource (if any)
+	if err := suspendable.Suspend(); err != nil {
+		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to suspend resource: %w", err)
 	}
 
 	// Apply suspension mutation (if any)

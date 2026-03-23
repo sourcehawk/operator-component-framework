@@ -452,6 +452,10 @@ var _ = Describe("Component Reconciler", func() {
 			// Given
 			comp.suspended = true
 			res := &MockSuspendableResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "failing-suspend-resource", Namespace: namespace},
+			}, nil)
+			res.On("DeleteOnSuspend").Return(false)
 			res.On("Suspend").Return(fmt.Errorf("suspend error"))
 			res.On("Identity").Return("failing-suspend-resource")
 

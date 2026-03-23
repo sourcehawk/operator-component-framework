@@ -41,7 +41,7 @@ resource, err := networkpolicy.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current NetworkPolicy with a deep copy of the desired object. This ensures every reconciliation cycle produces a clean, predictable state and avoids any drift from the desired baseline.
+`DefaultFieldApplicator` replaces the current NetworkPolicy with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the original live object. NetworkPolicy has no Status subresource, so no status preservation is needed.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

@@ -43,12 +43,17 @@ func (e *BindingSubjectsEditor) EnsureSubject(subject rbacv1.Subject) {
 // RemoveSubject removes a subject identified by kind, name, and namespace
 // from the subjects list. It is a no-op if no matching subject exists.
 func (e *BindingSubjectsEditor) RemoveSubject(kind, name, namespace string) {
-	filtered := (*e.subjects)[:0]
-	for _, s := range *e.subjects {
+	subjects := *e.subjects
+	filtered := subjects[:0]
+	for _, s := range subjects {
 		if s.Kind == kind && s.Name == name && s.Namespace == namespace {
 			continue
 		}
 		filtered = append(filtered, s)
+	}
+	// Zero trailing elements to avoid retaining references to removed subjects.
+	for i := len(filtered); i < len(subjects); i++ {
+		subjects[i] = rbacv1.Subject{}
 	}
 	*e.subjects = filtered
 }

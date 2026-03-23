@@ -241,6 +241,58 @@ func TestMutator_RemoveBinary(t *testing.T) {
 	assert.Equal(t, []byte("keep"), cm.BinaryData["other"])
 }
 
+// --- Constructor and feature plan invariants ---
+
+func TestNewMutator_InitializesExactlyOnePlan(t *testing.T) {
+	cm := newTestCM(nil)
+	m := NewMutator(cm)
+
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one initial plan")
+	require.NotNil(t, m.active, "active plan must be set")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the first plan")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	cm := newTestCM(nil)
+	m := NewMutator(cm)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 3)
+	assert.Equal(t, &m.plans[2], m.active)
+}
+
+func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+	cm := newTestCM(nil)
+	m := NewMutator(cm)
+
+	// Record a mutation in the initial plan
+	m.SetEntry("f0", "val0")
+
+	// Start a new feature and record a different mutation
+	m.BeginFeature()
+	m.SetEntry("f1", "val1")
+
+	// The initial plan should have exactly one data edit
+	assert.Len(t, m.plans[0].dataEdits, 1, "initial plan should have one edit")
+	// The second plan should also have exactly one data edit
+	assert.Len(t, m.plans[1].dataEdits, 1, "second plan should have one edit")
+}
+
+func TestMutator_SingleFeature_PlanCount(t *testing.T) {
+	// When no BeginFeature is called, Apply should process exactly one plan
+	cm := newTestCM(nil)
+	m := NewMutator(cm)
+	m.SetEntry("key", "value")
+
+	require.NoError(t, m.Apply())
+	assert.Len(t, m.plans, 1, "no extra plans should be created during Apply")
+	assert.Equal(t, "value", cm.Data["key"])
+}
+
 // --- ObjectMutator interface ---
 
 func TestMutator_ImplementsObjectMutator(_ *testing.T) {

@@ -114,6 +114,62 @@ func TestNewMutator(t *testing.T) {
 	m := NewMutator(deploy)
 	assert.NotNil(t, m)
 	assert.Equal(t, deploy, m.current)
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one initial plan")
+	require.NotNil(t, m.active, "active plan must be set")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the first plan")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	deploy := &appsv1.Deployment{}
+	m := NewMutator(deploy)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 3)
+	assert.Equal(t, &m.plans[2], m.active)
+}
+
+func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+	deploy := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "app"}},
+				},
+			},
+		},
+	}
+	m := NewMutator(deploy)
+
+	// Record mutations in the initial plan
+	m.EnsureReplicas(3)
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v1"
+		return nil
+	})
+
+	// Start a new feature and record different mutations
+	m.BeginFeature()
+	m.EnsureReplicas(5)
+
+	// Initial plan should have its edits, second plan should have its own
+	assert.Len(t, m.plans[0].deploymentSpecEdits, 1, "initial plan should have one spec edit")
+	assert.Len(t, m.plans[0].containerEdits, 1, "initial plan should have one container edit")
+	assert.Len(t, m.plans[1].deploymentSpecEdits, 1, "second plan should have one spec edit")
+	assert.Empty(t, m.plans[1].containerEdits, "second plan should have no container edits")
+}
+
+func TestMutator_SingleFeature_PlanCount(t *testing.T) {
+	deploy := &appsv1.Deployment{}
+	m := NewMutator(deploy)
+	m.EnsureReplicas(3)
+
+	require.NoError(t, m.Apply())
+	assert.Len(t, m.plans, 1, "no extra plans should be created during Apply")
+	assert.Equal(t, int32(3), *deploy.Spec.Replicas)
 }
 
 func TestMutator_EditContainers(t *testing.T) {

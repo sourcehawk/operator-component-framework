@@ -44,9 +44,9 @@ resource, err := clusterrolebinding.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current ClusterRoleBinding with a deep copy of the desired object, preserving `roleRef` on updates. The `roleRef` field is immutable after creation in the Kubernetes RBAC API — attempting to change it results in an API error.
+`DefaultFieldApplicator` replaces the current ClusterRoleBinding with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and `roleRef` from the original live object. ClusterRoleBinding does not have a Status subresource, so no status preservation is needed.
 
-When the current object already exists in the cluster (has a non-empty `ResourceVersion`), the applicator restores the original `roleRef` after copying. On initial creation, the desired `roleRef` is used as-is.
+The `roleRef` field is immutable after creation in the Kubernetes RBAC API — attempting to change it results in an API error. When the current object already exists in the cluster (has a non-empty `ResourceVersion`), the applicator restores the original `roleRef` after copying. On initial creation, the desired `roleRef` is used as-is.
 
 Use `WithCustomFieldApplicator` when you need different field application behaviour:
 

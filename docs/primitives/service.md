@@ -38,9 +38,9 @@ resource, err := service.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current Service with a deep copy of the desired object while preserving the immutable `spec.clusterIP` and `spec.clusterIPs` fields that Kubernetes assigns after creation.
+`DefaultFieldApplicator` replaces the current Service with a deep copy of the desired object while preserving server-managed metadata, the Status subresource (including `LoadBalancer.Ingress`), and the immutable `spec.clusterIP` and `spec.clusterIPs` fields that Kubernetes assigns after creation.
 
-This prevents the operator from clearing the cluster-assigned IP on every reconciliation cycle while ensuring all other fields converge to the desired state.
+This prevents the operator from clearing the cluster-assigned IP or load balancer ingress assignments on every reconciliation cycle while ensuring all other fields converge to the desired state.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

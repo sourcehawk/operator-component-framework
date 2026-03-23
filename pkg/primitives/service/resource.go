@@ -17,10 +17,9 @@ func DefaultFieldApplicator(current, desired *corev1.Service) error {
 	original := current.DeepCopy()
 	clusterIP := current.Spec.ClusterIP
 	clusterIPs := current.Spec.ClusterIPs
-	originalStatus := current.Status
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
-	current.Status = originalStatus
+	generic.PreserveStatus(current, original)
 	if clusterIP != "" {
 		current.Spec.ClusterIP = clusterIP
 		current.Spec.ClusterIPs = clusterIPs

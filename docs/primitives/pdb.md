@@ -38,7 +38,7 @@ resource, err := pdb.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current PodDisruptionBudget with a deep copy of the desired object. This ensures every reconciliation cycle produces a clean, predictable state and avoids any drift from the desired baseline.
+`DefaultFieldApplicator` replaces the current PodDisruptionBudget with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

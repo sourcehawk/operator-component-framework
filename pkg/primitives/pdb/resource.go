@@ -8,13 +8,14 @@ import (
 )
 
 // DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
-// and shared-controller fields (OwnerReferences, Finalizers) from the original
-// current object.
+// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
+// shared-controller fields (OwnerReferences, Finalizers), and the Status
+// subresource from the original current object.
 func DefaultFieldApplicator(current, desired *policyv1.PodDisruptionBudget) error {
 	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 	return nil
 }
 

@@ -132,7 +132,7 @@ func TestMutator_ExecutionOrder(t *testing.T) {
 		})
 
 		// Simulate second feature
-		m.beginFeature()
+		m.BeginFeature()
 		m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 			// Later feature sees earlier mutation
 			e.EnsureLabel("feature", "two")
@@ -165,7 +165,7 @@ func TestMutator_MultiFeature(t *testing.T) {
 	})
 
 	// Feature 2: override storage
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditPVCSpec(func(e *editors.PVCSpecEditor) error {
 		e.SetStorageRequest(resource.MustParse("10Gi"))
 		return nil

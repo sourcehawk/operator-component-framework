@@ -219,6 +219,40 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	now := metav1.NewTime(time.Now())
+	current := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cj",
+			Namespace: "test-ns",
+		},
+		Status: batchv1.CronJobStatus{
+			Active:           []corev1.ObjectReference{{Name: "test-cj-12345"}},
+			LastScheduleTime: &now,
+		},
+	}
+	desired := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cj",
+			Namespace: "test-ns",
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule: "0 */6 * * *",
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, "0 */6 * * *", current.Spec.Schedule)
+
+	// Status from the live object is preserved
+	assert.Len(t, current.Status.Active, 1)
+	assert.Equal(t, "test-cj-12345", current.Status.Active[0].Name)
+	assert.NotNil(t, current.Status.LastScheduleTime)
+}
+
 type mockHandlers struct {
 	mock.Mock
 }

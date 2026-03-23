@@ -140,7 +140,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 		e.EnsureRule(networkingv1.IngressRule{Host: "feature1.com"})
 		return nil
 	})
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
 		e.EnsureRule(networkingv1.IngressRule{Host: "feature2.com"})
 		return nil

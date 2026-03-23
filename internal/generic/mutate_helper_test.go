@@ -26,8 +26,8 @@ func (m *recordingMutator) Apply() error {
 	return nil
 }
 
-func (m *recordingMutator) beginFeature() {
-	m.recorder.record("mutator.beginFeature")
+func (m *recordingMutator) BeginFeature() {
+	m.recorder.record("mutator.BeginFeature")
 }
 
 func TestApplyMutationsOrder(t *testing.T) {
@@ -90,10 +90,10 @@ func TestApplyMutationsOrder(t *testing.T) {
 		"defaultApplicator",
 		"flavor1",
 		"newMutator",
-		"mutator.beginFeature",
+		"mutator.BeginFeature",
 		"mutation1",
 		"mutator.Apply",
-		"mutator.beginFeature",
+		"mutator.BeginFeature",
 		"suspender",
 		"mutator.Apply",
 	}

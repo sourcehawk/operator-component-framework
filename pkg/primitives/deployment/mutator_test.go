@@ -46,9 +46,9 @@ func TestMutator_EnvVars(t *testing.T) {
 	assert.Len(t, env, 3)
 
 	findEnv := func(name string) *corev1.EnvVar {
-		for _, e := range env {
-			if e.Name == name {
-				return &e
+		for i := range env {
+			if env[i].Name == name {
+				return &env[i]
 			}
 		}
 		return nil
@@ -283,13 +283,10 @@ func TestMutator_InitContainers(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if deploy.Spec.Template.Spec.InitContainers[0].Image != newImage {
-		t.Errorf("expected image %s, got %s", newImage, deploy.Spec.Template.Spec.InitContainers[0].Image)
-	}
+	assert.Equal(t, newImage, deploy.Spec.Template.Spec.InitContainers[0].Image)
 }
 
 func TestMutator_ContainerPresence(t *testing.T) {
@@ -315,21 +312,14 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	// Append
 	m.EnsureContainer(corev1.Container{Name: "new-container", Image: newImage})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if len(deploy.Spec.Template.Spec.Containers) != 2 {
-		t.Fatalf("expected 2 containers, got %d", len(deploy.Spec.Template.Spec.Containers))
-	}
-
-	if deploy.Spec.Template.Spec.Containers[0].Name != "app" || deploy.Spec.Template.Spec.Containers[0].Image != "app-new-image" {
-		t.Errorf("unexpected container at index 0: %+v", deploy.Spec.Template.Spec.Containers[0])
-	}
-
-	if deploy.Spec.Template.Spec.Containers[1].Name != "new-container" || deploy.Spec.Template.Spec.Containers[1].Image != newImage {
-		t.Errorf("unexpected container at index 1: %+v", deploy.Spec.Template.Spec.Containers[1])
-	}
+	require.Len(t, deploy.Spec.Template.Spec.Containers, 2)
+	assert.Equal(t, "app", deploy.Spec.Template.Spec.Containers[0].Name)
+	assert.Equal(t, "app-new-image", deploy.Spec.Template.Spec.Containers[0].Image)
+	assert.Equal(t, "new-container", deploy.Spec.Template.Spec.Containers[1].Name)
+	assert.Equal(t, newImage, deploy.Spec.Template.Spec.Containers[1].Image)
 }
 
 func TestMutator_InitContainerPresence(t *testing.T) {
@@ -349,17 +339,11 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if len(deploy.Spec.Template.Spec.InitContainers) != 1 {
-		t.Fatalf("expected 1 init container, got %d", len(deploy.Spec.Template.Spec.InitContainers))
-	}
-
-	if deploy.Spec.Template.Spec.InitContainers[0].Name != "init-2" {
-		t.Errorf("expected init-2, got %s", deploy.Spec.Template.Spec.InitContainers[0].Name)
-	}
+	require.Len(t, deploy.Spec.Template.Spec.InitContainers, 1)
+	assert.Equal(t, "init-2", deploy.Spec.Template.Spec.InitContainers[0].Name)
 }
 
 func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
@@ -396,17 +380,11 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if deploy.Spec.Template.Spec.Containers[0].Name != appV2 {
-		t.Errorf("expected name %s, got %s", appV2, deploy.Spec.Template.Spec.Containers[0].Name)
-	}
-
-	if deploy.Spec.Template.Spec.Containers[0].Image != "app-image-updated" {
-		t.Errorf("expected image app-image-updated, got %s", deploy.Spec.Template.Spec.Containers[0].Image)
-	}
+	assert.Equal(t, appV2, deploy.Spec.Template.Spec.Containers[0].Name)
+	assert.Equal(t, "app-image-updated", deploy.Spec.Template.Spec.Containers[0].Image)
 }
 
 func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
@@ -431,18 +409,12 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	// Register presence later
 	m.EnsureContainer(corev1.Container{Name: "new-app", Image: "original-image"})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	// It should work because presence happens before edits in Apply()
-	if len(deploy.Spec.Template.Spec.Containers) != 1 {
-		t.Fatalf("expected 1 container, got %d", len(deploy.Spec.Template.Spec.Containers))
-	}
-
-	if deploy.Spec.Template.Spec.Containers[0].Image != "edited-image" {
-		t.Errorf("expected edited-image, got %s", deploy.Spec.Template.Spec.Containers[0].Image)
-	}
+	require.Len(t, deploy.Spec.Template.Spec.Containers, 1)
+	assert.Equal(t, "edited-image", deploy.Spec.Template.Spec.Containers[0].Image)
 }
 
 func TestMutator_NilSafety(t *testing.T) {
@@ -484,7 +456,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	m := NewMutator(deploy)
 
 	// Feature A: sets replicas to 2, image to v2
-	m.beginFeature()
+	m.BeginFeature()
 	m.EnsureReplicas(2)
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2"
@@ -492,16 +464,15 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	})
 
 	// Feature B: sets replicas to 3, image to v3
-	m.beginFeature()
+	m.BeginFeature()
 	m.EnsureReplicas(3)
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v3"
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	// Feature B should win
 	assert.Equal(t, int32(3), *deploy.Spec.Replicas)
@@ -546,9 +517,8 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	expectedOrder := []string{
 		"deploymentmeta",
@@ -574,22 +544,21 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 	m := NewMutator(deploy)
 
 	// Feature A renames container
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "app-v2"
 		return nil
 	})
 
 	// Feature B selects by the new name - this should work!
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2-image"
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	assert.Equal(t, "app-v2", deploy.Spec.Template.Spec.Containers[0].Name)
 	assert.Equal(t, "v2-image", deploy.Spec.Template.Spec.Containers[0].Image)
@@ -629,9 +598,8 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	require.Len(t, deploy.Spec.Template.Spec.InitContainers, 1)
 	assert.Equal(t, "init-1-renamed", deploy.Spec.Template.Spec.InitContainers[0].Name)

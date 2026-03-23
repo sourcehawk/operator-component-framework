@@ -161,7 +161,7 @@ Suspension allows a component to be intentionally deactivated without deleting i
 
 Resources that do not yet exist in the cluster are created in their suspended state (with suspension mutations already applied). For example, a Deployment is created with zero replicas. This ensures the resource is immediately available when suspension ends.
 
-Resources with `DeleteOnSuspend` enabled (e.g., DaemonSets) are **not** created if they are already absent — their absence is treated as already suspended. This avoids a create→delete churn loop on every reconcile while the component remains suspended.
+Resources with `DeleteOnSuspend` enabled are **not** created if they are already absent — their absence is treated as already suspended. This avoids a create→delete churn loop on every reconcile while the component remains suspended.
 
 Resources that are not `Suspendable` are left in place.
 

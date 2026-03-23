@@ -190,7 +190,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 		})
 		return nil
 	})
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 		e.EnsureEgressRule(networkingv1.NetworkPolicyEgressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port443}},

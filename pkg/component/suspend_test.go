@@ -371,7 +371,7 @@ func TestSuspendResource(t *testing.T) {
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "configmaps"}, "cm"))
 
-		status, err := suspendResource(ctx, rec, res, res)
+		status, err := suspendResource(ctx, rec, res, res, nil)
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 		assert.Contains(t, status.Reason, "already deleted")
@@ -392,7 +392,7 @@ func TestSuspendResource(t *testing.T) {
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(errors.New("network error"))
 
-		_, err := suspendResource(ctx, rec, res, res)
+		_, err := suspendResource(ctx, rec, res, res, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "network error")
 	})

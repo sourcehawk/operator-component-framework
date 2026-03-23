@@ -63,8 +63,7 @@ func NewDaemonSetResource(owner *app.ExampleApp) (component.Resource, error) {
 
 	// 5. Data extraction (optional).
 	builder.WithDataExtractor(func(d appsv1.DaemonSet) error {
-		fmt.Printf("Reconciling daemonset: %s, ready pods: %d/%d\n",
-			d.Name, d.Status.NumberReady, d.Status.DesiredNumberScheduled)
+		fmt.Printf("Reconciling desired DaemonSet object: %s/%s\n", d.Namespace, d.Name)
 
 		// Print the complete daemonset resource object as yaml
 		y, err := yaml.Marshal(d)

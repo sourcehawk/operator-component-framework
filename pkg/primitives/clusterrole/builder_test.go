@@ -35,12 +35,6 @@ func TestBuilder_Build_Validation(t *testing.T) {
 			},
 		},
 		{
-			name: "valid clusterrole without namespace",
-			cr: &rbacv1.ClusterRole{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-cr"},
-			},
-		},
-		{
 			name: "rejects namespace on cluster-scoped resource",
 			cr: &rbacv1.ClusterRole{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "oops"},

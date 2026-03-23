@@ -4,6 +4,8 @@ The `clusterrole` primitive is the framework's built-in static abstraction for m
 
 ClusterRole is cluster-scoped: it has no namespace. The builder validates that the Name is set and that Namespace is empty — setting a namespace on a cluster-scoped resource is rejected.
 
+> **Ownership limitation:** The framework currently sets a controller reference on every managed object. Kubernetes and controller-runtime reject owner references where the owner is namespaced and the dependent is cluster-scoped, so a namespaced owner cannot own a `ClusterRole`. When using the `clusterrole` primitive, ensure that the owning custom resource (and its controller) is also cluster-scoped, or avoid managing `ClusterRole` resources with this framework until an ownership opt-out is available.
+
 ## Capabilities
 
 | Capability            | Detail                                                                                                        |

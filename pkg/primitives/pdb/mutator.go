@@ -33,8 +33,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given PodDisruptionBudget.
 func NewMutator(pdb *policyv1.PodDisruptionBudget) *Mutator {
-	m := &Mutator{pdb: pdb}
-	m.beginFeature()
+	m := &Mutator{
+		pdb:   pdb,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

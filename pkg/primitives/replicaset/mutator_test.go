@@ -272,13 +272,10 @@ func TestMutator_InitContainers(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if rs.Spec.Template.Spec.InitContainers[0].Image != newImage {
-		t.Errorf("expected image %s, got %s", newImage, rs.Spec.Template.Spec.InitContainers[0].Image)
-	}
+	assert.Equal(t, newImage, rs.Spec.Template.Spec.InitContainers[0].Image)
 }
 
 func TestMutator_ContainerPresence(t *testing.T) {
@@ -301,21 +298,15 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	m.RemoveContainer("sidecar")
 	m.EnsureContainer(corev1.Container{Name: "new-container", Image: newImage})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if len(rs.Spec.Template.Spec.Containers) != 2 {
-		t.Fatalf("expected 2 containers, got %d", len(rs.Spec.Template.Spec.Containers))
-	}
+	require.Len(t, rs.Spec.Template.Spec.Containers, 2)
 
-	if rs.Spec.Template.Spec.Containers[0].Name != "app" || rs.Spec.Template.Spec.Containers[0].Image != "app-new-image" {
-		t.Errorf("unexpected container at index 0: %+v", rs.Spec.Template.Spec.Containers[0])
-	}
-
-	if rs.Spec.Template.Spec.Containers[1].Name != "new-container" || rs.Spec.Template.Spec.Containers[1].Image != newImage {
-		t.Errorf("unexpected container at index 1: %+v", rs.Spec.Template.Spec.Containers[1])
-	}
+	assert.Equal(t, "app", rs.Spec.Template.Spec.Containers[0].Name)
+	assert.Equal(t, "app-new-image", rs.Spec.Template.Spec.Containers[0].Image)
+	assert.Equal(t, "new-container", rs.Spec.Template.Spec.Containers[1].Name)
+	assert.Equal(t, newImage, rs.Spec.Template.Spec.Containers[1].Image)
 }
 
 func TestMutator_InitContainerPresence(t *testing.T) {
@@ -335,17 +326,11 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if len(rs.Spec.Template.Spec.InitContainers) != 1 {
-		t.Fatalf("expected 1 init container, got %d", len(rs.Spec.Template.Spec.InitContainers))
-	}
-
-	if rs.Spec.Template.Spec.InitContainers[0].Name != "init-2" {
-		t.Errorf("expected init-2, got %s", rs.Spec.Template.Spec.InitContainers[0].Name)
-	}
+	require.Len(t, rs.Spec.Template.Spec.InitContainers, 1)
+	assert.Equal(t, "init-2", rs.Spec.Template.Spec.InitContainers[0].Name)
 }
 
 func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
@@ -379,17 +364,11 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if rs.Spec.Template.Spec.Containers[0].Name != appV2 {
-		t.Errorf("expected name %s, got %s", appV2, rs.Spec.Template.Spec.Containers[0].Name)
-	}
-
-	if rs.Spec.Template.Spec.Containers[0].Image != "app-image-updated" {
-		t.Errorf("expected image app-image-updated, got %s", rs.Spec.Template.Spec.Containers[0].Image)
-	}
+	assert.Equal(t, appV2, rs.Spec.Template.Spec.Containers[0].Name)
+	assert.Equal(t, "app-image-updated", rs.Spec.Template.Spec.Containers[0].Image)
 }
 
 func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
@@ -412,17 +391,11 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 
 	m.EnsureContainer(corev1.Container{Name: "new-app", Image: "original-image"})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
-	if len(rs.Spec.Template.Spec.Containers) != 1 {
-		t.Fatalf("expected 1 container, got %d", len(rs.Spec.Template.Spec.Containers))
-	}
-
-	if rs.Spec.Template.Spec.Containers[0].Image != "edited-image" {
-		t.Errorf("expected edited-image, got %s", rs.Spec.Template.Spec.Containers[0].Image)
-	}
+	require.Len(t, rs.Spec.Template.Spec.Containers, 1)
+	assert.Equal(t, "edited-image", rs.Spec.Template.Spec.Containers[0].Image)
 }
 
 func TestMutator_NilSafety(t *testing.T) {
@@ -478,9 +451,8 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	assert.Equal(t, int32(3), *rs.Spec.Replicas)
 	assert.Equal(t, "v3", rs.Spec.Template.Spec.Containers[0].Image)
@@ -523,9 +495,8 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	expectedOrder := []string{
 		"replicasetmeta",
@@ -564,9 +535,8 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	assert.Equal(t, "app-v2", rs.Spec.Template.Spec.Containers[0].Name)
 	assert.Equal(t, "v2-image", rs.Spec.Template.Spec.Containers[0].Image)
@@ -602,9 +572,8 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 		return nil
 	})
 
-	if err := m.Apply(); err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
+	err := m.Apply()
+	require.NoError(t, err)
 
 	require.Len(t, rs.Spec.Template.Spec.InitContainers, 1)
 	assert.Equal(t, "init-1-renamed", rs.Spec.Template.Spec.InitContainers[0].Name)

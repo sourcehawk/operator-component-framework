@@ -35,8 +35,11 @@ type Mutator struct {
 
 // NewMutator creates a new Mutator for the given PersistentVolumeClaim.
 func NewMutator(pvc *corev1.PersistentVolumeClaim) *Mutator {
-	m := &Mutator{pvc: pvc}
-	m.beginFeature()
+	m := &Mutator{
+		pvc:   pvc,
+		plans: []featurePlan{{}},
+	}
+	m.active = &m.plans[0]
 	return m
 }
 

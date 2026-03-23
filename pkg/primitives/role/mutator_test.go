@@ -127,7 +127,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 		})
 		return nil
 	})
-	m.beginFeature()
+	m.BeginFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"list"},

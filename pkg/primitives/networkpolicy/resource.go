@@ -25,8 +25,8 @@ func DefaultFieldApplicator(current, desired *networkingv1.NetworkPolicy) error 
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // NetworkPolicy resources are static: they do not model convergence health, grace
-// periods, or suspension. Use a workload or integration primitive for resources
-// that require those concepts.
+// periods, or suspension. Use a workload or task primitive for resources that
+// require those concepts.
 type Resource struct {
 	base *generic.StaticResource[*networkingv1.NetworkPolicy, *Mutator]
 }

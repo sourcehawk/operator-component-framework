@@ -74,8 +74,8 @@ func (e *NetworkPolicySpecEditor) RemoveEgressRules() {
 // SetPolicyTypes sets the policy types for the NetworkPolicy.
 //
 // Valid values are networkingv1.PolicyTypeIngress and networkingv1.PolicyTypeEgress.
-// When Egress is included in PolicyTypes, EgressRules must be set explicitly
-// to permit traffic; an empty list denies all egress.
+// When networkingv1.PolicyTypeEgress is included in PolicyTypes, the .Egress field
+// (egress rules) must be set explicitly to permit traffic; an empty list denies all egress.
 func (e *NetworkPolicySpecEditor) SetPolicyTypes(types []networkingv1.PolicyType) {
 	e.spec.PolicyTypes = types
 }

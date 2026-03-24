@@ -184,7 +184,8 @@ func TestResource_Identity(t *testing.T) {
 			Namespace: "test-ns",
 		},
 	}
-	res, _ := NewBuilder(sts).Build()
+	res, err := NewBuilder(sts).Build()
+	require.NoError(t, err)
 
 	assert.Equal(t, "apps/v1/StatefulSet/test-ns/test-sts", res.Identity())
 }
@@ -196,7 +197,8 @@ func TestResource_Object(t *testing.T) {
 			Namespace: "test-ns",
 		},
 	}
-	res, _ := NewBuilder(sts).Build()
+	res, err := NewBuilder(sts).Build()
+	require.NoError(t, err)
 
 	obj, err := res.Object()
 	require.NoError(t, err)
@@ -237,7 +239,7 @@ func TestResource_Mutate(t *testing.T) {
 		},
 	}
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "test-mutation",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
@@ -247,9 +249,10 @@ func TestResource_Mutate(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &appsv1.StatefulSet{}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(3), *current.Spec.Replicas)
@@ -274,7 +277,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		},
 	}
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "feature-a",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
@@ -300,9 +303,10 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &appsv1.StatefulSet{}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.Equal(t, "v3", current.Spec.Template.Spec.Containers[0].Image)
@@ -357,9 +361,10 @@ func TestResource_Status(t *testing.T) {
 		statusReady := concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusHealthy}
 		m.On("ConvergingStatus", concepts.ConvergingOperationUpdated, sts).Return(statusReady, nil)
 
-		res, _ := NewBuilder(sts).
+		res, err := NewBuilder(sts).
 			WithCustomConvergeStatus(m.ConvergingStatus).
 			Build()
+		require.NoError(t, err)
 
 		status, err := res.ConvergingStatus(concepts.ConvergingOperationUpdated)
 		require.NoError(t, err)
@@ -380,9 +385,10 @@ func TestResource_Status(t *testing.T) {
 		statusReady := concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}
 		m.On("GraceStatus", sts).Return(statusReady, nil)
 
-		res, _ := NewBuilder(sts).
+		res, err := NewBuilder(sts).
 			WithCustomGraceStatus(m.GraceStatus).
 			Build()
+		require.NoError(t, err)
 
 		status, err := res.GraceStatus()
 		require.NoError(t, err)
@@ -538,7 +544,7 @@ func TestResource_CustomFieldApplicator(t *testing.T) {
 	}
 
 	applicatorCalled := false
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithCustomFieldApplicator(func(current *appsv1.StatefulSet, desired *appsv1.StatefulSet) error {
 			applicatorCalled = true
 			current.Name = desired.Name
@@ -548,13 +554,14 @@ func TestResource_CustomFieldApplicator(t *testing.T) {
 			return nil
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{"external": "label"},
 		},
 	}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.True(t, applicatorCalled)
@@ -563,13 +570,14 @@ func TestResource_CustomFieldApplicator(t *testing.T) {
 	assert.NotContains(t, current.Labels, "app", "Desired label should NOT be applied by custom applicator")
 
 	t.Run("returns error", func(t *testing.T) {
-		res, _ := NewBuilder(desired).
+		res, err := NewBuilder(desired).
 			WithCustomFieldApplicator(func(_ *appsv1.StatefulSet, _ *appsv1.StatefulSet) error {
 				return errors.New("applicator error")
 			}).
 			Build()
+		require.NoError(t, err)
 
-		err := res.Mutate(&appsv1.StatefulSet{})
+		err = res.Mutate(&appsv1.StatefulSet{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "applicator error")
 	})

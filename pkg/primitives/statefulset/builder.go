@@ -64,9 +64,12 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // WithCustomFieldApplicator sets a custom strategy for applying the desired
 // state to the existing StatefulSet in the cluster.
 //
-// There is a default field applicator (DefaultFieldApplicator) that overwrites
-// the entire spec of the current object with the desired state, while preserving
-// VolumeClaimTemplates from the live object (since they are immutable after creation).
+// By default, the field applicator (DefaultFieldApplicator) deep-copies the
+// entire desired object (metadata and spec) over the current object, and then
+// restores server-managed fields, status, and VolumeClaimTemplates from the
+// live object (since VCTs are immutable after creation). This means metadata
+// such as labels and annotations is not merged or automatically preserved
+// unless your custom applicator or a flavor explicitly handles it.
 func (b *Builder) WithCustomFieldApplicator(
 	applicator func(current *appsv1.StatefulSet, desired *appsv1.StatefulSet) error,
 ) *Builder {

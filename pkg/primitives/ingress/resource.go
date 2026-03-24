@@ -31,7 +31,8 @@ func DefaultFieldApplicator(current, desired *networkingv1.Ingress) error {
 //
 // Ingress resources are integration primitives: they depend on an external ingress
 // controller to assign load balancer addresses. The default operational status handler
-// reports Pending until at least one IP or hostname is assigned, then Operational.
+// reports OperationPending (concepts.OperationalStatusPending) until at least one IP or
+// hostname is assigned, then Operational.
 type Resource struct {
 	base *generic.IntegrationResource[*networkingv1.Ingress, *Mutator]
 }

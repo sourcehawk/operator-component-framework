@@ -12,7 +12,11 @@ import (
 // preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
 // shared-controller fields (OwnerReferences, Finalizers), the immutable
 // spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns after creation,
-// and the server-populated Status (including LoadBalancer.Ingress).
+// the server-populated Status (including LoadBalancer.Ingress), and auto-allocated
+// NodePort values for NodePort and LoadBalancer Services. NodePorts are only
+// preserved when the resulting Service type is NodePort or LoadBalancer and the
+// desired port's NodePort is 0 (unset); explicitly specified NodePort values in
+// the desired object are always applied.
 func DefaultFieldApplicator(current, desired *corev1.Service) error {
 	original := current.DeepCopy()
 	clusterIP := current.Spec.ClusterIP

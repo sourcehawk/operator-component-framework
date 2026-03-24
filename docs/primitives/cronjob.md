@@ -135,7 +135,8 @@ m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 })
 ```
 
-Note: no typed helper is provided for `spec.suspend`; it can be set via `Raw()` if needed, but suspension should typically be handled via the framework's suspend mechanism.
+Note: no typed helper is provided for `spec.suspend`; it can be set via `Raw()` if needed, but suspension should
+typically be handled via the framework's suspend mechanism.
 
 ### JobSpecEditor
 

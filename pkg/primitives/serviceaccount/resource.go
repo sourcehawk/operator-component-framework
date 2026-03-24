@@ -9,7 +9,7 @@ import (
 // DefaultFieldApplicator replaces current with a deep copy of desired while
 // preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
 // shared-controller fields (OwnerReferences, Finalizers), and controller-managed
-// ServiceAccount spec fields such as .Secrets from the original current object.
+// ServiceAccount fields such as .Secrets from the original current object.
 func DefaultFieldApplicator(current, desired *corev1.ServiceAccount) error {
 	original := current.DeepCopy()
 	originalSecrets := current.Secrets

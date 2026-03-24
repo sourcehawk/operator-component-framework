@@ -53,7 +53,7 @@ func preserveNodePorts(current, original *corev1.Service) {
 }
 
 func matchPort(a, b corev1.ServicePort) bool {
-	if a.Name != "" || b.Name != "" {
+	if a.Name != "" && b.Name != "" {
 		return a.Name == b.Name
 	}
 	return a.Port == b.Port && normalizeProtocol(a.Protocol) == normalizeProtocol(b.Protocol)

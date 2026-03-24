@@ -279,7 +279,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	require.NoError(t, res.Mutate(current))
 
 	assert.Equal(t, []string{"first", "second"}, callOrder)
-	assert.True(t, observedFirstBeforeSecond, "second mutation should observe effects of the first mutation")
+	assert.True(t, observedFirstBeforeSecond, "second mutation function should execute after the first")
 }
 
 func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {

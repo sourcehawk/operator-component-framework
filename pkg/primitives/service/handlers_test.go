@@ -47,7 +47,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 			wantReason: "Service is operational",
 		},
 		{
-			name: "headless service (empty type) is immediately operational",
+			name: "service with default type (empty spec) is immediately operational",
 			svc: &corev1.Service{
 				Spec: corev1.ServiceSpec{},
 			},

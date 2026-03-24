@@ -32,8 +32,9 @@ func PreserveCurrentAnnotations(applied, current, desired *rbacv1.ClusterRole) e
 //
 // This is useful when other controllers or admission webhooks inject rules into
 // the ClusterRole that your operator does not own. Rules present in both are
-// determined by comparing all PolicyRule fields with slice fields treated as
-// unordered sets, so different orderings of the same elements are considered equal.
+// determined by comparing all PolicyRule fields with slice fields compared
+// order-insensitively; duplicate elements are significant (i.e. ["get","get"]
+// is not equal to ["get"]).
 func PreserveExternalRules(applied, current, _ *rbacv1.ClusterRole) error {
 	for _, currentRule := range current.Rules {
 		if !containsRule(applied.Rules, currentRule) {
@@ -54,8 +55,8 @@ func containsRule(rules []rbacv1.PolicyRule, target rbacv1.PolicyRule) bool {
 }
 
 // policyRuleEqual reports whether two PolicyRules are equal by comparing all
-// fields as sets, so that different orderings of the same elements are treated
-// as equivalent.
+// fields order-insensitively. Duplicate elements are significant: slices must
+// contain the same elements with the same multiplicities to be considered equal.
 func policyRuleEqual(a, b rbacv1.PolicyRule) bool {
 	return stringSliceEqualUnordered(a.Verbs, b.Verbs) &&
 		stringSliceEqualUnordered(a.APIGroups, b.APIGroups) &&

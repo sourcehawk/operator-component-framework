@@ -33,13 +33,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given RoleBinding.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(rb *rbacv1.RoleBinding) *Mutator {
-	m := &Mutator{
-		rb:    rb,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		rb: rb,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

@@ -277,6 +277,52 @@ func TestHPASpecEditor_EnsureMetric_ContainerResource(t *testing.T) {
 	assert.Len(t, spec.Metrics, 2)
 }
 
+func TestHPASpecEditor_EnsureMetric_SelectorOrderInsensitive(t *testing.T) {
+	spec := &autoscalingv2.HorizontalPodAutoscalerSpec{}
+	e := NewHPASpecEditor(spec)
+
+	// Add external metric with two match expressions in order A, B.
+	m1 := autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{
+				Name: "queue_depth",
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "worker"},
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{Key: "env", Operator: metav1.LabelSelectorOpIn, Values: []string{"staging", "prod"}},
+						{Key: "region", Operator: metav1.LabelSelectorOpIn, Values: []string{"us-east-1"}},
+					},
+				},
+			},
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resourcePtr("50")},
+		},
+	}
+	e.EnsureMetric(m1)
+	require.Len(t, spec.Metrics, 1)
+
+	// Upsert with same selector but expressions in order B, A and values reversed.
+	m2 := autoscalingv2.MetricSpec{
+		Type: autoscalingv2.ExternalMetricSourceType,
+		External: &autoscalingv2.ExternalMetricSource{
+			Metric: autoscalingv2.MetricIdentifier{
+				Name: "queue_depth",
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "worker"},
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{Key: "region", Operator: metav1.LabelSelectorOpIn, Values: []string{"us-east-1"}},
+						{Key: "env", Operator: metav1.LabelSelectorOpIn, Values: []string{"prod", "staging"}},
+					},
+				},
+			},
+			Target: autoscalingv2.MetricTarget{Type: autoscalingv2.ValueMetricType, Value: resourcePtr("100")},
+		},
+	}
+	e.EnsureMetric(m2)
+	assert.Len(t, spec.Metrics, 1, "semantically equal selectors in different order should upsert, not append")
+	assert.Equal(t, resourcePtr("100").String(), spec.Metrics[0].External.Target.Value.String())
+}
+
 func TestHPASpecEditor_RemoveMetric(t *testing.T) {
 	spec := &autoscalingv2.HorizontalPodAutoscalerSpec{
 		Metrics: []autoscalingv2.MetricSpec{

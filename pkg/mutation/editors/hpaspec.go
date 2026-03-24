@@ -1,9 +1,12 @@
 package editors
 
 import (
-	"reflect"
+	"maps"
+	"slices"
+	"strings"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // HPASpecEditor provides a typed API for mutating a Kubernetes HorizontalPodAutoscalerSpec.
@@ -60,12 +63,16 @@ func (e *HPASpecEditor) EnsureMetric(metric autoscalingv2.MetricSpec) {
 	e.spec.Metrics = append(e.spec.Metrics, metric)
 }
 
-// RemoveMetric removes a metric matching the given type and name.
+// RemoveMetric removes all metrics matching the given type and name.
 //
 // For Resource metrics, name corresponds to the resource name (e.g. "cpu").
 // For Pods, Object, and External metrics, name corresponds to the metric name.
 // For ContainerResource metrics, name corresponds to the resource name; all
 // container variants of that resource are removed.
+//
+// This method removes every metric entry that matches the type and name,
+// regardless of selector or described object. For fine-grained removal of a
+// single metric identity, use [HPASpecEditor.Raw] and modify the Metrics slice directly.
 //
 // If no matching metric is found, this is a no-op.
 func (e *HPASpecEditor) RemoveMetric(metricType autoscalingv2.MetricSourceType, name string) {
@@ -124,9 +131,43 @@ func metricsMatch(a, b autoscalingv2.MetricSpec) bool {
 }
 
 // metricIdentifiersMatch reports whether two MetricIdentifier values match.
-// It compares both Name and Selector.
+// It compares both Name and Selector. Selector comparison is semantic: label
+// selectors that differ only in the ordering of MatchExpressions or expression
+// Values are treated as equal.
 func metricIdentifiersMatch(a, b autoscalingv2.MetricIdentifier) bool {
-	return a.Name == b.Name && reflect.DeepEqual(a.Selector, b.Selector)
+	return a.Name == b.Name && labelSelectorsEqual(a.Selector, b.Selector)
+}
+
+// labelSelectorsEqual performs a semantic comparison of two LabelSelectors.
+// Unlike reflect.DeepEqual it is insensitive to the ordering of
+// MatchExpressions and the Values within each expression.
+func labelSelectorsEqual(a, b *metav1.LabelSelector) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if !maps.Equal(a.MatchLabels, b.MatchLabels) {
+		return false
+	}
+	if len(a.MatchExpressions) != len(b.MatchExpressions) {
+		return false
+	}
+
+	// Build a canonical key for each expression and compare as sorted sets.
+	canon := func(exprs []metav1.LabelSelectorRequirement) []string {
+		keys := make([]string, len(exprs))
+		for i, e := range exprs {
+			vals := slices.Clone(e.Values)
+			slices.Sort(vals)
+			keys[i] = e.Key + "\x00" + string(e.Operator) + "\x00" + strings.Join(vals, "\x00")
+		}
+		slices.Sort(keys)
+		return keys
+	}
+
+	return slices.Equal(canon(a.MatchExpressions), canon(b.MatchExpressions))
 }
 
 // metricName extracts the identifying name from a MetricSpec.

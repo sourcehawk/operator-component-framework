@@ -90,11 +90,91 @@ func TestApplyMutationsOrder(t *testing.T) {
 		"defaultApplicator",
 		"flavor1",
 		"newMutator",
-		"mutator.BeginFeature",
 		"mutation1",
 		"mutator.Apply",
 		"mutator.BeginFeature",
 		"suspender",
+		"mutator.Apply",
+	}
+
+	require.Len(t, recorder.events, len(expectedOrder), "events: %v", recorder.events)
+
+	for i, event := range expectedOrder {
+		assert.Equal(t, event, recorder.events[i], "at index %d", i)
+	}
+}
+
+func TestApplyMutationsOrder_MultipleMutations(t *testing.T) {
+	recorder := &orderRecorder{}
+
+	current := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+	}
+	desired := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+	}
+
+	defaultApplicator := func(_, _ *corev1.ConfigMap) error {
+		recorder.record("defaultApplicator")
+		return nil
+	}
+
+	newMutator := func(_ *corev1.ConfigMap) *recordingMutator {
+		recorder.record("newMutator")
+		return &recordingMutator{recorder: recorder}
+	}
+
+	mutations := []Mutation[*recordingMutator]{
+		{
+			Name:    "feat1",
+			Feature: alwaysEnabled{},
+			Mutate: func(_ *recordingMutator) error {
+				recorder.record("mutation1")
+				return nil
+			},
+		},
+		{
+			Name:    "feat2",
+			Feature: alwaysEnabled{},
+			Mutate: func(_ *recordingMutator) error {
+				recorder.record("mutation2")
+				return nil
+			},
+		},
+		{
+			Name:    "feat3",
+			Feature: alwaysEnabled{},
+			Mutate: func(_ *recordingMutator) error {
+				recorder.record("mutation3")
+				return nil
+			},
+		},
+	}
+
+	_, err := ApplyMutations[*corev1.ConfigMap, *recordingMutator](
+		current,
+		desired,
+		defaultApplicator,
+		nil,
+		nil,
+		newMutator,
+		mutations,
+		nil,
+	)
+
+	require.NoError(t, err)
+
+	// First mutation uses the initial plan from NewMutator.
+	// Subsequent mutations get a new plan via BeginFeature.
+	// This yields exactly N plans for N mutations (no unused empty plan).
+	expectedOrder := []string{
+		"defaultApplicator",
+		"newMutator",
+		"mutation1",
+		"mutator.BeginFeature",
+		"mutation2",
+		"mutator.BeginFeature",
+		"mutation3",
 		"mutator.Apply",
 	}
 

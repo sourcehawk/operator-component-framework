@@ -223,6 +223,8 @@ The [examples directory](examples/) contains runnable, end-to-end implementation
 | Example                                                                      | Description                                                                                |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | [`deployment-primitive`](examples/deployment-primitive/)                     | Core Deployment primitive: mutations, flavors, suspension, data extraction                 |
+| [`cronjob-primitive`](examples/cronjob-primitive/)                           | CronJob primitive: schedule mutations, job template configuration, suspension              |
+| [`configmap-primitive`](examples/configmap-primitive/)                       | ConfigMap primitive: data mutations, field application, immutability                       |
 | [`custom-resource-implementation`](examples/custom-resource-implementation/) | Full custom resource wrapper implementing lifecycle interfaces and version-gated mutations |
 
 Run any example with:

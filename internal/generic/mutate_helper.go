@@ -42,8 +42,8 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	mutator := newMutator(applied)
 	fm, isFeatureMutator := any(mutator).(FeatureMutator)
 
-	for _, mutation := range mutations {
-		if isFeatureMutator {
+	for i, mutation := range mutations {
+		if isFeatureMutator && i > 0 {
 			fm.BeginFeature()
 		}
 

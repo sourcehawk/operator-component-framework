@@ -151,10 +151,11 @@ have been applied. This means a single mutation can safely add a container and t
 
 ## Built-in Primitives
 
-| Primitive                   | Category | Documentation                             |
-| --------------------------- | -------- | ----------------------------------------- |
-| `pkg/primitives/deployment` | Workload | [deployment.md](primitives/deployment.md) |
-| `pkg/primitives/configmap`  | Static   | [configmap.md](primitives/configmap.md)   |
+| Primitive                   | Category    | Documentation                             |
+| --------------------------- | ----------- | ----------------------------------------- |
+| `pkg/primitives/deployment` | Workload    | [deployment.md](primitives/deployment.md) |
+| `pkg/primitives/cronjob`    | Integration | [cronjob.md](primitives/cronjob.md)       |
+| `pkg/primitives/configmap`  | Static      | [configmap.md](primitives/configmap.md)   |
 
 ## Usage Examples
 

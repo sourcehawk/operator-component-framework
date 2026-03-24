@@ -86,7 +86,17 @@ func TestBuilder_WithMutation(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "test-cr"},
 	}
 	res, err := NewBuilder(cr).
-		WithMutation(Mutation{Name: "test-mutation"}).
+		WithMutation(Mutation{
+			Name: "test-mutation",
+			Mutate: func(m *Mutator) error {
+				m.AddRule(rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+					Verbs:     []string{"get"},
+				})
+				return nil
+			},
+		}).
 		Build()
 	require.NoError(t, err)
 	assert.Len(t, res.base.Mutations, 1)

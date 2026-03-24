@@ -243,11 +243,11 @@ Multiple flavors can be registered and run in registration order.
 
 The default handler (`DefaultOperationalStatusHandler`) maps PVC phase to operational status:
 
-| PVC Phase | Status      | Reason                          |
-| --------- | ----------- | ------------------------------- |
-| `Bound`   | Operational | PVC is bound to volume \<name\> |
-| `Pending` | Pending     | Waiting for PVC to be bound     |
-| `Lost`    | Failing     | PVC has lost its bound volume   |
+| PVC Phase | Status             | Reason                          |
+| --------- | ------------------ | ------------------------------- |
+| `Bound`   | `Operational`      | PVC is bound to volume \<name\> |
+| `Pending` | `OperationPending` | Waiting for PVC to be bound     |
+| `Lost`    | `OperationFailing` | PVC has lost its bound volume   |
 
 Override with `WithCustomOperationalStatus` for additional checks (e.g. verifying specific annotations or volume
 attributes).

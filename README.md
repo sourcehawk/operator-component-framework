@@ -4,19 +4,25 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sourcehawk/operator-component-framework)](https://goreportcard.com/report/github.com/sourcehawk/operator-component-framework)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A Go framework for building highly maintainable Kubernetes operators using a behavioral component model and version-gated feature mutations.
+A Go framework for building highly maintainable Kubernetes operators using a behavioral component model and
+version-gated feature mutations.
 
 ---
 
 ## Overview
 
-Kubernetes operators tend to accumulate complexity over time: reconciliation functions grow large, lifecycle logic is duplicated across resources, status reporting becomes inconsistent, and version-compatibility code gets tangled into orchestration. The Operator Component Framework addresses these problems through a clear layered architecture.
+Kubernetes operators tend to accumulate complexity over time: reconciliation functions grow large, lifecycle logic is
+duplicated across resources, status reporting becomes inconsistent, and version-compatibility code gets tangled into
+orchestration. The Operator Component Framework addresses these problems through a clear layered architecture.
 
 The framework organizes operator logic into three composable layers:
 
-- **Components** — logical feature units that reconcile multiple resources together and report a single user-facing condition.
-- **Resource Primitives** — reusable, type-safe wrappers for individual Kubernetes objects with built-in lifecycle semantics.
-- **Feature Mutations** — composable, version-gated modifications that keep baseline resource definitions clean while managing optional and historical behavior explicitly.
+- **Components** — logical feature units that reconcile multiple resources together and report a single user-facing
+  condition.
+- **Resource Primitives** — reusable, type-safe wrappers for individual Kubernetes objects with built-in lifecycle
+  semantics.
+- **Feature Mutations** — composable, version-gated modifications that keep baseline resource definitions clean while
+  managing optional and historical behavior explicitly.
 
 ## Mental Model
 
@@ -28,7 +34,7 @@ Controller
 ```
 
 | Layer                  | Responsibility                                                                          |
-|------------------------|-----------------------------------------------------------------------------------------|
+| ---------------------- | --------------------------------------------------------------------------------------- |
 | **Controller**         | Determines which components should exist; orchestrates reconciliation at a high level   |
 | **Component**          | Represents one logical feature; reconciles its resources and reports a single condition |
 | **Resource Primitive** | Encapsulates desired state and lifecycle behavior for a single Kubernetes object        |
@@ -42,7 +48,8 @@ Controller
 - **Suspension handling** with configurable behavior — scale to zero, delete, or custom logic
 - **Version-gated mutations** to apply backward-compatibility patches only when needed
 - **Composable mutation layers** that stack without interfering with each other
-- **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`, `DataExtractable`) covering the full range of Kubernetes workload types
+- **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`,
+  `DataExtractable`) covering the full range of Kubernetes workload types
 - **Typed mutation editors** for kubernetes resource primitives
 - **Metrics and event recording** integrations out of the box
 
@@ -56,7 +63,8 @@ Requires Go 1.21+ and a project using [controller-runtime](https://github.com/ku
 
 ## Quick Start
 
-The following example builds a component that manages a single `Deployment`, with an optional tracing feature applied as a mutation.
+The following example builds a component that manages a single `Deployment`, with an optional tracing feature applied as
+a mutation.
 
 ```go
 import (
@@ -135,7 +143,8 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (re
 
 ## Feature Mutations
 
-Mutations decouple version-specific or feature-gated logic from the baseline resource definition. A mutation declares a condition under which it applies and a function that modifies the resource.
+Mutations decouple version-specific or feature-gated logic from the baseline resource definition. A mutation declares a
+condition under which it applies and a function that modifies the resource.
 
 ```go
 import (
@@ -161,14 +170,15 @@ func TracingFeature(version string, enabled bool) deployment.Mutation {
 }
 ```
 
-Mutations are applied in registration order. Each mutation is independent — multiple mutations can target the same resource without interfering with each other, and the framework guarantees a consistent application sequence.
+Mutations are applied in registration order. Each mutation is independent — multiple mutations can target the same
+resource without interfering with each other, and the framework guarantees a consistent application sequence.
 
 ## Resource Lifecycle Interfaces
 
 Resource primitives implement behavioral interfaces that the component layer uses for status aggregation:
 
 | Interface         | Behavior                                          | Example resources                       |
-|-------------------|---------------------------------------------------|-----------------------------------------|
+| ----------------- | ------------------------------------------------- | --------------------------------------- |
 | `Alive`           | Observable health with rolling-update awareness   | Deployments, StatefulSets, DaemonSets   |
 | `Graceful`        | Time-bounded convergence with degradation         | Workloads with slow rollouts            |
 | `Suspendable`     | Controlled deactivation (scale to zero or delete) | Workloads, task primitives              |
@@ -193,14 +203,15 @@ type Resource interface {
 }
 ```
 
-Optionally implement any of the lifecycle interfaces (`Alive`, `Suspendable`, etc.) to participate in condition aggregation.
+Optionally implement any of the lifecycle interfaces (`Alive`, `Suspendable`, etc.) to participate in condition
+aggregation.
 
 See the [examples directory](examples/) for complete implementations.
 
 ## Documentation
 
 | Document                                              | Description                                                          |
-|-------------------------------------------------------|----------------------------------------------------------------------|
+| ----------------------------------------------------- | -------------------------------------------------------------------- |
 | [Component Framework](docs/component.md)              | Reconciliation lifecycle, condition model, grace periods, suspension |
 | [Resource Primitives](docs/primitives.md)             | Primitive categories, field application pipeline, mutation system    |
 | [Deployment Primitive](docs/primitives/deployment.md) | Deployment-specific mutation ordering and editors                    |
@@ -210,7 +221,7 @@ See the [examples directory](examples/) for complete implementations.
 The [examples directory](examples/) contains runnable, end-to-end implementations:
 
 | Example                                                                      | Description                                                                                |
-|------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | [`deployment-primitive`](examples/deployment-primitive/)                     | Core Deployment primitive: mutations, flavors, suspension, data extraction                 |
 | [`custom-resource-implementation`](examples/custom-resource-implementation/) | Full custom resource wrapper implementing lifecycle interfaces and version-gated mutations |
 
@@ -254,7 +265,8 @@ Contributions are welcome. Please open an issue to discuss significant changes b
 3. Commit your changes
 4. Open a pull request against `main`
 
-All new code should include tests. The project uses [Ginkgo](https://github.com/onsi/ginkgo) and [Gomega](https://github.com/onsi/gomega) for testing.
+All new code should include tests. The project uses [Ginkgo](https://github.com/onsi/ginkgo) and
+[Gomega](https://github.com/onsi/gomega) for testing.
 
 ```bash
 go test ./...

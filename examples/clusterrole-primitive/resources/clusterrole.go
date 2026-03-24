@@ -31,7 +31,7 @@ func NewClusterRoleResource(owner *sharedapp.ExampleApp) (component.Resource, er
 	// 3. Register mutations in dependency order.
 	// CoreRulesMutation and VersionLabelMutation always run first.
 	// SecretAccess and DeploymentAccess are feature-gated.
-	builder.WithMutation(features.CoreRulesMutation(owner.Spec.Version))
+	builder.WithMutation(features.CoreRulesMutation())
 	builder.WithMutation(features.VersionLabelMutation(owner.Spec.Version))
 	builder.WithMutation(features.SecretAccessMutation(owner.Spec.Version, owner.Spec.EnableTracing))
 	builder.WithMutation(features.DeploymentAccessMutation(owner.Spec.Version, owner.Spec.EnableMetrics))

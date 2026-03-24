@@ -16,13 +16,13 @@ empty — setting a namespace on a cluster-scoped resource is rejected.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                    |
-| --------------------- | --------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state            |
-| **Mutation pipeline** | Typed editors for `.rules` and object metadata, with aggregation rule support and a raw escape hatch      |
-| **Cluster-scoped**    | No namespace required — identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`              |
-| **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.rules` entries not owned by the operator |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRole after each sync cycle              |
+| Capability            | Detail                                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state                             |
+| **Mutation pipeline** | Typed editors (`PolicyRulesEditor`) for `.rules` and object metadata, with aggregation rule support and a raw escape hatch |
+| **Cluster-scoped**    | No namespace required — identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`                               |
+| **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.rules` entries not owned by the operator                  |
+| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRole after each sync cycle                               |
 
 ## Building a ClusterRole Primitive
 
@@ -302,10 +302,9 @@ Multiple flavors can be registered and run in registration order.
 ## Full Example: Feature-Composed RBAC
 
 ```go
-func CoreRulesMutation(version string) clusterrole.Mutation {
+func CoreRulesMutation() clusterrole.Mutation {
     return clusterrole.Mutation{
-        Name:    "core-rules",
-        Feature: feature.NewResourceFeature(version, nil),
+        Name: "core-rules",
         Mutate: func(m *clusterrole.Mutator) error {
             m.AddRule(rbacv1.PolicyRule{
                 APIGroups: []string{""},
@@ -333,7 +332,7 @@ func CRDAccessMutation(version string, manageCRDs bool) clusterrole.Mutation {
 }
 
 resource, err := clusterrole.NewBuilder(base).
-    WithMutation(CoreRulesMutation(owner.Spec.Version)).
+    WithMutation(CoreRulesMutation()).
     WithMutation(CRDAccessMutation(owner.Spec.Version, owner.Spec.ManageCRDs)).
     Build()
 ```

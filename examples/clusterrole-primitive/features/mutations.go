@@ -9,11 +9,10 @@ import (
 )
 
 // CoreRulesMutation grants read access to core resources (pods, services, configmaps).
-// It is always enabled.
-func CoreRulesMutation(version string) clusterrole.Mutation {
+// It is always enabled — Feature is nil so it applies unconditionally.
+func CoreRulesMutation() clusterrole.Mutation {
 	return clusterrole.Mutation{
-		Name:    "core-rules",
-		Feature: feature.NewResourceFeature(version, nil),
+		Name: "core-rules",
 		Mutate: func(m *clusterrole.Mutator) error {
 			m.AddRule(rbacv1.PolicyRule{
 				APIGroups: []string{""},
@@ -26,11 +25,10 @@ func CoreRulesMutation(version string) clusterrole.Mutation {
 }
 
 // VersionLabelMutation sets the app.kubernetes.io/version label on the ClusterRole.
-// It is always enabled.
+// It is always enabled — Feature is nil so it applies unconditionally.
 func VersionLabelMutation(version string) clusterrole.Mutation {
 	return clusterrole.Mutation{
-		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Name: "version-label",
 		Mutate: func(m *clusterrole.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)

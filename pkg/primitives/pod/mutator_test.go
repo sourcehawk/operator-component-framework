@@ -17,6 +17,8 @@ func TestNewMutator(t *testing.T) {
 	m := NewMutator(pod)
 	assert.NotNil(t, m)
 	assert.Equal(t, pod, m.current)
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
 }
 
 func TestMutator_EnvVars(t *testing.T) {
@@ -36,6 +38,7 @@ func TestMutator_EnvVars(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CHANGE", Value: "new"})
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ADD", Value: "added"})
 	m.RemoveContainerEnvVars([]string{"REMOVE", "NONEXISTENT"})
@@ -75,6 +78,7 @@ func TestMutator_Args(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EnsureContainerArg("--change=new")
 	m.EnsureContainerArg("--add")
 	m.RemoveContainerArgs([]string{"--remove", "--nonexistent"})
@@ -101,6 +105,7 @@ func TestMutator_EditContainers(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("c1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "c1-image"
 		return nil
@@ -122,6 +127,7 @@ func TestMutator_EditContainers(t *testing.T) {
 func TestMutator_EditPodSpec(t *testing.T) {
 	pod := &corev1.Pod{}
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 		e.Raw().ServiceAccountName = "my-sa"
 		return nil
@@ -135,6 +141,7 @@ func TestMutator_EditPodSpec(t *testing.T) {
 func TestMutator_EditMetadata(t *testing.T) {
 	pod := &corev1.Pod{}
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"pod": "label"}
 		return nil
@@ -148,6 +155,7 @@ func TestMutator_EditMetadata(t *testing.T) {
 func TestMutator_Errors(t *testing.T) {
 	pod := &corev1.Pod{}
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		return errors.New("boom")
 	})
@@ -167,6 +175,7 @@ func TestMutator_Order(t *testing.T) {
 	var order []string
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 	// Register in reverse order of expected execution
 	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		order = append(order, "container")
@@ -199,6 +208,7 @@ func TestMutator_InitContainers(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = newImage
 		return nil
@@ -222,6 +232,7 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 	// Replace
 	m.EnsureContainer(corev1.Container{Name: "app", Image: "app-new-image"})
 	// Remove
@@ -251,6 +262,7 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
@@ -273,6 +285,7 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 
 	// First edit renames the container
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
@@ -307,6 +320,7 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 
 	// Register edit first
 	m.EditContainers(selectors.ContainerNamed("new-app"), func(e *editors.ContainerEditor) error {
@@ -333,6 +347,7 @@ func TestMutator_NilSafety(t *testing.T) {
 		},
 	}
 	m := NewMutator(pod)
+	m.BeginFeature()
 
 	// These should all be no-ops and not panic
 	m.EditContainers(nil, func(_ *editors.ContainerEditor) error { return nil })
@@ -383,6 +398,7 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 
 	var executionOrder []string
 
@@ -449,6 +465,7 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	}
 
 	m := NewMutator(pod)
+	m.BeginFeature()
 
 	// 1. Add init-1
 	m.EnsureInitContainer(corev1.Container{Name: "init-1", Image: "v1"})

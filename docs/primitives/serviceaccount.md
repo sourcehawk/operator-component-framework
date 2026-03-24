@@ -1,15 +1,17 @@
 # ServiceAccount Primitive
 
-The `serviceaccount` primitive is the framework's built-in static abstraction for managing Kubernetes `ServiceAccount` resources. It integrates with the component lifecycle and provides a structured mutation API for managing image pull secrets, the automount token flag, and object metadata.
+The `serviceaccount` primitive is the framework's built-in static abstraction for managing Kubernetes `ServiceAccount`
+resources. It integrates with the component lifecycle and provides a structured mutation API for managing image pull
+secrets, the automount token flag, and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                   |
-|-----------------------|----------------------------------------------------------------------------------------------------------|
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state           |
+| Capability            | Detail                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state            |
 | **Mutation pipeline** | Direct mutator methods for `.imagePullSecrets` and `.automountServiceAccountToken`, plus metadata editors |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                   |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ServiceAccount after each sync cycle          |
+| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                    |
+| **Data extraction**   | Reads generated or updated values back from the reconciled ServiceAccount after each sync cycle           |
 
 ## Building a ServiceAccount Primitive
 
@@ -31,7 +33,9 @@ resource, err := serviceaccount.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current ServiceAccount with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the original live object. ServiceAccount has no Status subresource, so no status preservation is needed.
+`DefaultFieldApplicator` replaces the current ServiceAccount with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
+original live object. ServiceAccount has no Status subresource, so no status preservation is needed.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 
@@ -47,9 +51,11 @@ resource, err := serviceaccount.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `ServiceAccount` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through direct methods.
+Mutations are the primary mechanism for modifying a `ServiceAccount` beyond its baseline. Each mutation is a named
+function that receives a `*Mutator` and records edit intent through direct methods.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) serviceaccount.Mutation {
@@ -64,7 +70,8 @@ func MyFeatureMutation(version string) serviceaccount.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -106,21 +113,24 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are recorded:
+Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
+recorded:
 
-| Step | Category                  | What it affects                                      |
-|------|---------------------------|------------------------------------------------------|
-| 1    | Metadata edits            | Labels and annotations on the `ServiceAccount`       |
-| 2    | Image pull secret edits   | `.imagePullSecrets` — EnsureImagePullSecret, RemoveImagePullSecret |
-| 3    | Automount edits           | `.automountServiceAccountToken` — SetAutomountServiceAccountToken  |
+| Step | Category                | What it affects                                                    |
+| ---- | ----------------------- | ------------------------------------------------------------------ |
+| 1    | Metadata edits          | Labels and annotations on the `ServiceAccount`                     |
+| 2    | Image pull secret edits | `.imagePullSecrets` — EnsureImagePullSecret, RemoveImagePullSecret |
+| 3    | Automount edits         | `.automountServiceAccountToken` — SetAutomountServiceAccountToken  |
 
-Within each category, edits are applied in their registration order. Later features observe the ServiceAccount as modified by all previous features.
+Within each category, edits are applied in their registration order. Later features observe the ServiceAccount as
+modified by all previous features.
 
 ## Mutator Methods
 
 ### EnsureImagePullSecret
 
-Adds a named image pull secret to `.imagePullSecrets` if not already present. Idempotent — calling it with an already-present name is a no-op.
+Adds a named image pull secret to `.imagePullSecrets` if not already present. Idempotent — calling it with an
+already-present name is a no-op.
 
 ```go
 m.EnsureImagePullSecret("my-registry-creds")
@@ -159,7 +169,8 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -173,7 +184,8 @@ resource, err := serviceaccount.NewBuilder(base).
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ```go
 resource, err := serviceaccount.NewBuilder(base).
@@ -216,12 +228,16 @@ resource, err := serviceaccount.NewBuilder(base).
     Build()
 ```
 
-When `DisableAutomount` is true, `.automountServiceAccountToken` is set to `false`. When the condition is not met, the field is left at its baseline value. Neither mutation needs to know about the other.
+When `DisableAutomount` is true, `.automountServiceAccountToken` is set to `false`. When the condition is not met, the
+field is left at its baseline value. Neither mutation needs to know about the other.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**Use `EnsureImagePullSecret` for idempotent secret registration.** Multiple features can independently ensure their required pull secrets without conflicting with each other.
+**Use `EnsureImagePullSecret` for idempotent secret registration.** Multiple features can independently ensure their
+required pull secrets without conflicting with each other.
 
 **Register mutations in dependency order.** If mutation B relies on a secret added by mutation A, register A first.

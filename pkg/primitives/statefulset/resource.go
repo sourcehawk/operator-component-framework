@@ -19,13 +19,12 @@ import (
 func DefaultFieldApplicator(current, desired *appsv1.StatefulSet) error {
 	original := current.DeepCopy()
 
-	vcts := current.Spec.VolumeClaimTemplates
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
 	generic.PreserveStatus(current, original)
 
 	if original.ResourceVersion != "" {
-		current.Spec.VolumeClaimTemplates = vcts
+		current.Spec.VolumeClaimTemplates = original.Spec.VolumeClaimTemplates
 	}
 	return nil
 }

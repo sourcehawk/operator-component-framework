@@ -24,13 +24,21 @@ func DefaultFieldApplicator(current, desired *corev1.Service) error {
 		current.Spec.ClusterIP = clusterIP
 		current.Spec.ClusterIPs = clusterIPs
 	}
-	preserveNodePorts(current, original)
+	// Only preserve nodePorts when the resulting Service type supports them.
+	effectiveType := current.Spec.Type
+	if effectiveType == "" {
+		effectiveType = corev1.ServiceTypeClusterIP
+	}
+	if effectiveType == corev1.ServiceTypeNodePort || effectiveType == corev1.ServiceTypeLoadBalancer {
+		preserveNodePorts(current, original)
+	}
 	return nil
 }
 
 // preserveNodePorts restores auto-allocated nodePort values from the original
-// object when the desired port's NodePort is 0. Ports are matched by Name, or
-// by Port+Protocol (treating empty protocol as TCP) when unnamed.
+// object when the desired port's NodePort is 0. Ports are matched by Name when
+// both ports have a non-empty Name; otherwise they are matched by Port+Protocol
+// (treating empty protocol as TCP).
 func preserveNodePorts(current, original *corev1.Service) {
 	if len(original.Spec.Ports) == 0 {
 		return

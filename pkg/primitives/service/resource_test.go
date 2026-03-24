@@ -217,6 +217,112 @@ func TestDefaultFieldApplicator_PreservesNodePorts(t *testing.T) {
 	assert.Equal(t, int32(30443), current.Spec.Ports[1].NodePort)
 }
 
+func TestDefaultFieldApplicator_DoesNotPreserveNodePortsForClusterIP(t *testing.T) {
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeNodePort,
+			ClusterIP: "10.0.0.1",
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080, Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: map[string]string{"app": "test"},
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// NodePort should NOT be preserved when switching to ClusterIP
+	assert.Equal(t, int32(0), current.Spec.Ports[0].NodePort)
+	assert.Equal(t, corev1.ServiceTypeClusterIP, current.Spec.Type)
+}
+
+func TestDefaultFieldApplicator_DoesNotPreserveNodePortsForEmptyType(t *testing.T) {
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeNodePort,
+			ClusterIP: "10.0.0.1",
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080, Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			// Empty type defaults to ClusterIP
+			Selector: map[string]string{"app": "test"},
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// NodePort should NOT be preserved when desired type is empty (defaults to ClusterIP)
+	assert.Equal(t, int32(0), current.Spec.Ports[0].NodePort)
+}
+
+func TestDefaultFieldApplicator_PreservesNodePortsForLoadBalancer(t *testing.T) {
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeLoadBalancer,
+			ClusterIP: "10.0.0.1",
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080, Protocol: corev1.ProtocolTCP},
+			},
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeLoadBalancer,
+			Selector: map[string]string{"app": "test"},
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// NodePort SHOULD be preserved for LoadBalancer type
+	assert.Equal(t, int32(30080), current.Spec.Ports[0].NodePort)
+}
+
 func TestResource_Mutate_WithMutation(t *testing.T) {
 	desired := newValidService()
 	res, err := NewBuilder(desired).

@@ -149,7 +149,8 @@ Manages pod-level configuration via `m.EditPodSpec`.
 
 Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`,
 `EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`,
-`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
+`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`. `RemoveTolerations` accepts a predicate
+function (`match func(corev1.Toleration) bool`) and removes all tolerations for which `match` returns `true`.
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {

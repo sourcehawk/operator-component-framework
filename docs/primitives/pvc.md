@@ -141,9 +141,9 @@ recorded:
 | 1    | Metadata edits | Labels and annotations on the `PersistentVolumeClaim` |
 | 2    | Spec edits     | PVC spec — storage requests, access modes, etc.       |
 
-Within each category, edits are applied in their registration order. The PVC primitive does not currently group
-mutations by feature boundary; all applicable edits are applied in a single deterministic sequence rather than
-guaranteeing that later features observe only fully-applied state from earlier features.
+Within each category, edits are applied in their registration order. The PVC primitive groups mutations by feature
+boundary: for each applicable feature (after evaluating version constraints and any `When()` conditions), all of its
+planned edits are applied in order, and later features and mutations observe the fully-applied state from earlier ones.
 
 ## Editors
 

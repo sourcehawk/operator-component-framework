@@ -7,7 +7,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-// Mutation defines a mutation that is applied to a clusterrole Mutator
+// Mutation defines a mutation that is applied to a ClusterRole Mutator
 // only if its associated feature gate is enabled.
 type Mutation feature.Mutation[*Mutator]
 

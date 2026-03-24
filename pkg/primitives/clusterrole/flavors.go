@@ -32,7 +32,8 @@ func PreserveCurrentAnnotations(applied, current, desired *rbacv1.ClusterRole) e
 //
 // This is useful when other controllers or admission webhooks inject rules into
 // the ClusterRole that your operator does not own. Rules present in both are
-// determined by equality of the entire PolicyRule struct.
+// determined by comparing all PolicyRule fields with slice fields treated as
+// unordered sets, so different orderings of the same elements are considered equal.
 func PreserveExternalRules(applied, current, _ *rbacv1.ClusterRole) error {
 	for _, currentRule := range current.Rules {
 		if !containsRule(applied.Rules, currentRule) {

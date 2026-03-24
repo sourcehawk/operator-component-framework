@@ -35,6 +35,7 @@ func TestMutator_EnvVars(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CHANGE", Value: "new"})
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ADD", Value: "added"})
 	m.RemoveContainerEnvVars([]string{"REMOVE", "NONEXISTENT"})
@@ -78,6 +79,7 @@ func TestMutator_Args(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EnsureContainerArg("--change=new")
 	m.EnsureContainerArg("--add")
 	m.RemoveContainerArgs([]string{"--remove", "--nonexistent"})
@@ -101,6 +103,7 @@ func TestMutator_Replicas(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EnsureReplicas(5)
 
 	err := m.Apply()
@@ -114,6 +117,63 @@ func TestNewMutator(t *testing.T) {
 	m := NewMutator(rs)
 	assert.NotNil(t, m)
 	assert.Equal(t, rs, m.current)
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	rs := &appsv1.ReplicaSet{}
+	m := NewMutator(rs)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
+}
+
+func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+	rs := &appsv1.ReplicaSet{
+		Spec: appsv1.ReplicaSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "app"}},
+				},
+			},
+		},
+	}
+	m := NewMutator(rs)
+
+	// Record mutations in the first feature plan
+	m.BeginFeature()
+	m.EnsureReplicas(3)
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v1"
+		return nil
+	})
+
+	// Start a new feature and record different mutations
+	m.BeginFeature()
+	m.EnsureReplicas(5)
+
+	// First plan should have its edits, second plan should have its own
+	assert.Len(t, m.plans[0].replicaSetSpecEdits, 1, "first plan should have one spec edit")
+	assert.Len(t, m.plans[0].containerEdits, 1, "first plan should have one container edit")
+	assert.Len(t, m.plans[1].replicaSetSpecEdits, 1, "second plan should have one spec edit")
+	assert.Empty(t, m.plans[1].containerEdits, "second plan should have no container edits")
+}
+
+func TestMutator_SingleFeature_PlanCount(t *testing.T) {
+	rs := &appsv1.ReplicaSet{}
+	m := NewMutator(rs)
+	m.BeginFeature()
+	m.EnsureReplicas(3)
+
+	require.NoError(t, m.Apply())
+	assert.Len(t, m.plans, 1, "no extra plans should be created during Apply")
+	assert.Equal(t, int32(3), *rs.Spec.Replicas)
 }
 
 func TestMutator_EditContainers(t *testing.T) {
@@ -131,6 +191,7 @@ func TestMutator_EditContainers(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("c1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "c1-image"
 		return nil
@@ -152,6 +213,7 @@ func TestMutator_EditContainers(t *testing.T) {
 func TestMutator_EditPodSpec(t *testing.T) {
 	rs := &appsv1.ReplicaSet{}
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 		e.Raw().ServiceAccountName = "my-sa"
 		return nil
@@ -165,6 +227,7 @@ func TestMutator_EditPodSpec(t *testing.T) {
 func TestMutator_EditReplicaSetSpec(t *testing.T) {
 	rs := &appsv1.ReplicaSet{}
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EditReplicaSetSpec(func(e *editors.ReplicaSetSpecEditor) error {
 		e.SetMinReadySeconds(10)
 		return nil
@@ -178,6 +241,7 @@ func TestMutator_EditReplicaSetSpec(t *testing.T) {
 func TestMutator_EditMetadata(t *testing.T) {
 	rs := &appsv1.ReplicaSet{}
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"rs": "label"}
 		return nil
@@ -196,6 +260,7 @@ func TestMutator_EditMetadata(t *testing.T) {
 func TestMutator_Errors(t *testing.T) {
 	rs := &appsv1.ReplicaSet{}
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		return errors.New("boom")
 	})
@@ -222,6 +287,7 @@ func TestMutator_Order(t *testing.T) {
 	var order []string
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		order = append(order, "container")
 		return nil
@@ -267,6 +333,7 @@ func TestMutator_InitContainers(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = newImage
 		return nil
@@ -294,15 +361,18 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
+	// Replace
 	m.EnsureContainer(corev1.Container{Name: "app", Image: "app-new-image"})
+	// Remove
 	m.RemoveContainer("sidecar")
+	// Append
 	m.EnsureContainer(corev1.Container{Name: "new-container", Image: newImage})
 
 	err := m.Apply()
 	require.NoError(t, err)
 
 	require.Len(t, rs.Spec.Template.Spec.Containers, 2)
-
 	assert.Equal(t, "app", rs.Spec.Template.Spec.Containers[0].Name)
 	assert.Equal(t, "app-new-image", rs.Spec.Template.Spec.Containers[0].Image)
 	assert.Equal(t, "new-container", rs.Spec.Template.Spec.Containers[1].Name)
@@ -323,6 +393,7 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
@@ -348,17 +419,21 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 
+	// First edit renames the container
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = appV2
 		return nil
 	})
 
+	// Second edit should still match using "app" selector because of snapshot
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "app-image-updated"
 		return nil
 	})
 
+	// Third edit targeting "app-v2" should NOT match in this apply pass
 	m.EditContainers(selectors.ContainerNamed(appV2), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "should-not-be-set"
 		return nil
@@ -383,17 +458,21 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 
+	// Register edit first
 	m.EditContainers(selectors.ContainerNamed("new-app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "edited-image"
 		return nil
 	})
 
+	// Register presence later
 	m.EnsureContainer(corev1.Container{Name: "new-app", Image: "original-image"})
 
 	err := m.Apply()
 	require.NoError(t, err)
 
+	// It should work because presence happens before edits in Apply()
 	require.Len(t, rs.Spec.Template.Spec.Containers, 1)
 	assert.Equal(t, "edited-image", rs.Spec.Template.Spec.Containers[0].Image)
 }
@@ -409,7 +488,9 @@ func TestMutator_NilSafety(t *testing.T) {
 		},
 	}
 	m := NewMutator(rs)
+	m.BeginFeature()
 
+	// These should all be no-ops and not panic
 	m.EditContainers(nil, func(_ *editors.ContainerEditor) error { return nil })
 	m.EditContainers(selectors.AllContainers(), nil)
 	m.EditPodSpec(nil)
@@ -435,7 +516,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 
 	m := NewMutator(rs)
 
-	// Feature A
+	// Feature A: sets replicas to 2, image to v2
 	m.BeginFeature()
 	m.EnsureReplicas(2)
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
@@ -443,7 +524,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 		return nil
 	})
 
-	// Feature B
+	// Feature B: sets replicas to 3, image to v3
 	m.BeginFeature()
 	m.EnsureReplicas(3)
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
@@ -454,6 +535,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	err := m.Apply()
 	require.NoError(t, err)
 
+	// Feature B should win
 	assert.Equal(t, int32(3), *rs.Spec.Replicas)
 	assert.Equal(t, "v3", rs.Spec.Template.Spec.Containers[0].Image)
 }
@@ -471,9 +553,11 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 
 	var executionOrder []string
 
+	// We register them in reverse order of expected execution
 	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		executionOrder = append(executionOrder, "container")
 		return nil
@@ -528,7 +612,7 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 		return nil
 	})
 
-	// Feature B selects by the new name
+	// Feature B selects by the new name - this should work!
 	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2-image"
@@ -554,19 +638,24 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	}
 
 	m := NewMutator(rs)
+	m.BeginFeature()
 
+	// 1. Add init-1
 	m.EnsureInitContainer(corev1.Container{Name: "init-1", Image: "v1"})
 
+	// 2. Edit init-1 (it's present in the same feature's phase)
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v1-edited"
 		return nil
 	})
 
+	// 3. Rename it inside the edit phase
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "init-1-renamed"
 		return nil
 	})
 
+	// 4. Selector targeting "init-1" should still match because of snapshot in same phase
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v1-final"
 		return nil

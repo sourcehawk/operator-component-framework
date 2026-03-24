@@ -1,19 +1,24 @@
 # CronJob Primitive
 
-The `cronjob` primitive is the framework's built-in integration abstraction for managing Kubernetes `CronJob` resources. It integrates with the component lifecycle through the Operational and Suspendable concepts, and provides a rich mutation API for managing the CronJob schedule, job template, pod spec, and containers.
+The `cronjob` primitive is the framework's built-in integration abstraction for managing Kubernetes `CronJob` resources.
+It integrates with the component lifecycle through the Operational and Suspendable concepts, and provides a rich
+mutation API for managing the CronJob schedule, job template, pod spec, and containers.
 
 ## Capabilities
 
-| Capability               | Detail                                                                                       |
-|--------------------------|----------------------------------------------------------------------------------------------|
-| **Operational tracking** | Reports `OperationPending` (never scheduled) or `Operational` (has scheduled at least once)  |
-| **Suspension**           | Sets `spec.suspend = true`; reports `Suspending` (active jobs running) / `Suspended`         |
-| **Mutation pipeline**    | Typed editors for metadata, CronJob spec, Job spec, pod spec, and containers                 |
-| **Flavors**              | Preserves externally-managed fields (labels, annotations, pod template metadata)             |
+| Capability               | Detail                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| **Operational tracking** | Reports `OperationPending` (never scheduled) or `Operational` (has scheduled at least once) |
+| **Suspension**           | Sets `spec.suspend = true`; reports `Suspending` (active jobs running) / `Suspended`        |
+| **Mutation pipeline**    | Typed editors for metadata, CronJob spec, Job spec, pod spec, and containers                |
+| **Flavors**              | Preserves externally-managed fields (labels, annotations, pod template metadata)            |
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current CronJob with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+`DefaultFieldApplicator` replaces the current CronJob with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
+Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
+written by the API server or other controllers.
 
 Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten.
 
@@ -52,7 +57,8 @@ resource, err := cronjob.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `CronJob` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `CronJob` beyond its baseline. Each mutation is a named function
+that receives a `*Mutator` and records edit intent through typed editors.
 
 ```go
 func MyScheduleMutation(version string) cronjob.Mutation {
@@ -93,21 +99,23 @@ func TimeZoneMutation(version string, enabled bool) cronjob.Mutation {
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the order they are recorded.
+Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
+order they are recorded.
 
-| Step | Category | What it affects |
-|---|---|---|
-| 1 | CronJob metadata edits | Labels and annotations on the `CronJob` object |
-| 2 | CronJobSpec edits | Schedule, concurrency policy, time zone, history limits |
-| 3 | JobSpec edits | Completions, parallelism, backoff limit, TTL |
-| 4 | Pod template metadata edits | Labels and annotations on the pod template |
-| 5 | Pod spec edits | Volumes, tolerations, node selectors, service account, security context |
-| 6 | Regular container presence | Adding or removing containers from `spec.jobTemplate.spec.template.spec.containers` |
-| 7 | Regular container edits | Env vars, args, resources (snapshot taken after step 6) |
-| 8 | Init container presence | Adding or removing containers from `spec.jobTemplate.spec.template.spec.initContainers` |
-| 9 | Init container edits | Env vars, args, resources (snapshot taken after step 8) |
+| Step | Category                    | What it affects                                                                         |
+| ---- | --------------------------- | --------------------------------------------------------------------------------------- |
+| 1    | CronJob metadata edits      | Labels and annotations on the `CronJob` object                                          |
+| 2    | CronJobSpec edits           | Schedule, concurrency policy, time zone, history limits                                 |
+| 3    | JobSpec edits               | Completions, parallelism, backoff limit, TTL                                            |
+| 4    | Pod template metadata edits | Labels and annotations on the pod template                                              |
+| 5    | Pod spec edits              | Volumes, tolerations, node selectors, service account, security context                 |
+| 6    | Regular container presence  | Adding or removing containers from `spec.jobTemplate.spec.template.spec.containers`     |
+| 7    | Regular container edits     | Env vars, args, resources (snapshot taken after step 6)                                 |
+| 8    | Init container presence     | Adding or removing containers from `spec.jobTemplate.spec.template.spec.initContainers` |
+| 9    | Init container edits        | Env vars, args, resources (snapshot taken after step 8)                                 |
 
-Container edits (steps 7 and 9) are evaluated against a snapshot taken *after* presence operations in the same mutation. This means a single mutation can add a container and then configure it without selector resolution issues.
+Container edits (steps 7 and 9) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
+This means a single mutation can add a container and then configure it without selector resolution issues.
 
 ## Editors
 
@@ -115,7 +123,8 @@ Container edits (steps 7 and 9) are evaluated against a snapshot taken *after* p
 
 Controls CronJob-level settings via `m.EditCronJobSpec`.
 
-Available methods: `SetSchedule`, `SetConcurrencyPolicy`, `SetStartingDeadlineSeconds`, `SetSuccessfulJobsHistoryLimit`, `SetFailedJobsHistoryLimit`, `SetTimeZone`, `Raw`.
+Available methods: `SetSchedule`, `SetConcurrencyPolicy`, `SetStartingDeadlineSeconds`, `SetSuccessfulJobsHistoryLimit`,
+`SetFailedJobsHistoryLimit`, `SetTimeZone`, `Raw`.
 
 ```go
 m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
@@ -132,7 +141,8 @@ Note: `spec.suspend` is not exposed through the editor — it is managed by the 
 
 Controls the embedded job template spec via `m.EditJobSpec`.
 
-Available methods: `SetCompletions`, `SetParallelism`, `SetBackoffLimit`, `SetActiveDeadlineSeconds`, `SetTTLSecondsAfterFinished`, `SetCompletionMode`, `Raw`.
+Available methods: `SetCompletions`, `SetParallelism`, `SetBackoffLimit`, `SetActiveDeadlineSeconds`,
+`SetTTLSecondsAfterFinished`, `SetCompletionMode`, `Raw`.
 
 ```go
 m.EditJobSpec(func(e *editors.JobSpecEditor) error {
@@ -146,7 +156,9 @@ m.EditJobSpec(func(e *editors.JobSpecEditor) error {
 
 Manages pod-level configuration via `m.EditPodSpec`.
 
-Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`, `EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`, `SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
+Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`,
+`EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`,
+`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
@@ -158,9 +170,11 @@ m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a [selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
+[selector](../primitives.md#container-selectors).
 
-Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`, `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
+Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
+`RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
 m.EditContainers(selectors.ContainerNamed("cleanup"), func(e *editors.ContainerEditor) error {
@@ -172,7 +186,8 @@ m.EditContainers(selectors.ContainerNamed("cleanup"), func(e *editors.ContainerE
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `CronJob` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `CronJob` object itself, or
+`m.EditPodTemplateMetadata` to target the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
@@ -188,7 +203,7 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 The `Mutator` also exposes convenience wrappers that target all containers at once:
 
 | Method                        | Equivalent to                                                 |
-|-------------------------------|---------------------------------------------------------------|
+| ----------------------------- | ------------------------------------------------------------- |
 | `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
 | `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
 | `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
@@ -198,24 +213,26 @@ The `Mutator` also exposes convenience wrappers that target all containers at on
 
 The CronJob primitive reports operational status based on the CronJob's scheduling history:
 
-| Status        | Condition                          |
-|---------------|------------------------------------|
-| `OperationPending` | `Status.LastScheduleTime == nil`   |
-| `Operational`      | `Status.LastScheduleTime != nil`   |
+| Status             | Condition                        |
+| ------------------ | -------------------------------- |
+| `OperationPending` | `Status.LastScheduleTime == nil` |
+| `Operational`      | `Status.LastScheduleTime != nil` |
 
 Failures are reported on the spawned Job resources, not on the CronJob itself.
 
 ## Suspension
 
-When the component is suspended, the CronJob primitive sets `spec.suspend = true`. This prevents the CronJob controller from creating new Job objects. Existing active jobs continue to run.
+When the component is suspended, the CronJob primitive sets `spec.suspend = true`. This prevents the CronJob controller
+from creating new Job objects. Existing active jobs continue to run.
 
-| Status       | Condition                                                |
-|--------------|----------------------------------------------------------|
-| `Suspended`  | `spec.suspend == true` and no active jobs                |
-| `Suspending` | `spec.suspend == true` but active jobs still running     |
-| `Suspending` | Waiting for suspend flag to be applied                   |
+| Status       | Condition                                            |
+| ------------ | ---------------------------------------------------- |
+| `Suspended`  | `spec.suspend == true` and no active jobs            |
+| `Suspending` | `spec.suspend == true` but active jobs still running |
+| `Suspending` | Waiting for suspend flag to be applied               |
 
-On unsuspend, the `DefaultFieldApplicator` restores the desired state (without `spec.suspend = true`), allowing the CronJob to resume scheduling.
+On unsuspend, the `DefaultFieldApplicator` restores the desired state (without `spec.suspend = true`), allowing the
+CronJob to resume scheduling.
 
 The CronJob is never deleted on suspend (`DeleteOnSuspend = false`).
 
@@ -225,6 +242,8 @@ The CronJob is never deleted on suspend (`DeleteOnSuspend = false`).
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
 
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in the same mutation resolve correctly.
+**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
+the same mutation resolve correctly.
 
-**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can cause unexpected behavior if sidecar containers are present.
+**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
+cause unexpected behavior if sidecar containers are present.

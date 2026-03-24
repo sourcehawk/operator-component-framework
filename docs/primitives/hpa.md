@@ -294,7 +294,8 @@ scale target (e.g. a Deployment scaled to zero) because the Kubernetes HPA contr
 recreates the HPA with the desired spec.
 
 The default suspension status handler reports `Suspended` immediately with the reason
-`"HorizontalPodAutoscaler deleted to prevent scaling interference during suspension"`.
+`"HorizontalPodAutoscaler suspended to prevent scaling interference"`.
+Override this handler with `WithCustomSuspendStatus` if you need a reason that reflects custom deletion behaviour.
 
 Override with `WithCustomSuspendDeletionDecision` if you want to retain the HPA during suspension (e.g. when the scale
 target is managed externally and will not be present during suspension):

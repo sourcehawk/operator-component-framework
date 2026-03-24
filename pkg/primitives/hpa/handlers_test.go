@@ -163,5 +163,5 @@ func TestDefaultSuspensionStatusHandler(t *testing.T) {
 	got, err := DefaultSuspensionStatusHandler(hpa)
 	require.NoError(t, err)
 	assert.Equal(t, concepts.SuspensionStatusSuspended, got.Status)
-	assert.Equal(t, "HorizontalPodAutoscaler deleted to prevent scaling interference during suspension", got.Reason)
+	assert.Equal(t, "HorizontalPodAutoscaler suspended to prevent scaling interference", got.Reason)
 }

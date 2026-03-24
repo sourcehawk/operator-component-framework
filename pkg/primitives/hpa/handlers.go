@@ -103,6 +103,11 @@ func DefaultSuspendMutationHandler(_ *Mutator) error {
 // deletion is handled by the framework after this status is reported, no additional
 // work is required and the status is always Suspended.
 //
+// The reason string is intentionally deletion-agnostic so that this handler remains
+// accurate even when the deletion decision is overridden via
+// Builder.WithCustomSuspendDeletionDecision. If you need a reason that reflects your
+// custom deletion behaviour, override this handler via Builder.WithCustomSuspendStatus.
+//
 // This function is used as the default handler by the Resource if no custom handler is registered
 // via Builder.WithCustomSuspendStatus. It can be reused within custom handlers.
 func DefaultSuspensionStatusHandler(
@@ -110,7 +115,7 @@ func DefaultSuspensionStatusHandler(
 ) (concepts.SuspensionStatusWithReason, error) {
 	return concepts.SuspensionStatusWithReason{
 		Status: concepts.SuspensionStatusSuspended,
-		Reason: "HorizontalPodAutoscaler deleted to prevent scaling interference during suspension",
+		Reason: "HorizontalPodAutoscaler suspended to prevent scaling interference",
 	}, nil
 }
 

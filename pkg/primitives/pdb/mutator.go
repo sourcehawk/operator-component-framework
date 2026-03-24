@@ -32,13 +32,14 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given PodDisruptionBudget.
+//
+// It is typically used within a Feature's Mutation logic to express desired
+// changes to the PodDisruptionBudget. BeginFeature must be called before
+// registering any mutations.
 func NewMutator(pdb *policyv1.PodDisruptionBudget) *Mutator {
-	m := &Mutator{
-		pdb:   pdb,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		pdb: pdb,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

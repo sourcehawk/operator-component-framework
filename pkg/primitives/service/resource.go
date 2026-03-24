@@ -12,11 +12,13 @@ import (
 // preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
 // shared-controller fields (OwnerReferences, Finalizers), the immutable
 // spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns after creation,
-// the server-populated Status (including LoadBalancer.Ingress), and auto-allocated
-// NodePort values for NodePort and LoadBalancer Services. NodePorts are only
-// preserved when the resulting Service type is NodePort or LoadBalancer and the
-// desired port's NodePort is 0 (unset); explicitly specified NodePort values in
-// the desired object are always applied.
+// the server-populated Status (including LoadBalancer.Ingress), server-defaulted
+// IP family configuration (spec.ipFamilies, spec.ipFamilyPolicy), the
+// server-allocated spec.healthCheckNodePort, and auto-allocated NodePort values
+// for NodePort and LoadBalancer Services. NodePorts are only preserved when the
+// resulting Service type is NodePort or LoadBalancer and the desired port's
+// NodePort is 0 (unset); explicitly specified NodePort values in the desired
+// object are always applied.
 func DefaultFieldApplicator(current, desired *corev1.Service) error {
 	original := current.DeepCopy()
 	clusterIP := current.Spec.ClusterIP
@@ -27,6 +29,20 @@ func DefaultFieldApplicator(current, desired *corev1.Service) error {
 	if clusterIP != "" {
 		current.Spec.ClusterIP = clusterIP
 		current.Spec.ClusterIPs = clusterIPs
+	}
+	// Preserve server-defaulted IP family configuration when the desired
+	// object leaves them unset, avoiding perpetual reconcile diffs.
+	if len(current.Spec.IPFamilies) == 0 && len(original.Spec.IPFamilies) > 0 {
+		current.Spec.IPFamilies = original.Spec.IPFamilies
+	}
+	if current.Spec.IPFamilyPolicy == nil && original.Spec.IPFamilyPolicy != nil {
+		current.Spec.IPFamilyPolicy = original.Spec.IPFamilyPolicy
+	}
+	// Preserve the server-allocated HealthCheckNodePort when the desired
+	// object does not explicitly set one. The API server assigns this field
+	// for LoadBalancer Services with externalTrafficPolicy: Local.
+	if current.Spec.HealthCheckNodePort == 0 && original.Spec.HealthCheckNodePort != 0 {
+		current.Spec.HealthCheckNodePort = original.Spec.HealthCheckNodePort
 	}
 	// Only preserve nodePorts when the resulting Service type supports them.
 	effectiveType := current.Spec.Type

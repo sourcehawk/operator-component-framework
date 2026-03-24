@@ -42,13 +42,14 @@ resource, err := service.NewBuilder(base).
 
 `DefaultFieldApplicator` replaces the current Service with a deep copy of the desired object while preserving
 server-managed metadata, the Status subresource (including `LoadBalancer.Ingress`), the immutable `spec.clusterIP` and
-`spec.clusterIPs` fields that Kubernetes assigns after creation, and auto-allocated NodePort values for `NodePort` and
-`LoadBalancer` Services.
+`spec.clusterIPs` fields that Kubernetes assigns after creation, server-defaulted IP family configuration
+(`spec.ipFamilies` and `spec.ipFamilyPolicy`), the server-allocated `spec.healthCheckNodePort`, and auto-allocated
+NodePort values for `NodePort` and `LoadBalancer` Services.
 
-This prevents the operator from clearing the cluster-assigned IP, load balancer ingress assignments, or
-automatically-assigned NodePort numbers on every reconciliation cycle while ensuring all other fields converge to the
-desired state. Explicitly specified `spec.ports[].nodePort` values in the desired object are still applied, so fixed
-NodePort assignments can be managed by the operator when needed.
+This prevents the operator from clearing the cluster-assigned IP, load balancer ingress assignments, IP family
+defaults, health check node ports, or automatically-assigned NodePort numbers on every reconciliation cycle while
+ensuring all other fields converge to the desired state. Explicitly specified values in the desired object always take
+precedence, so these fields can still be managed by the operator when needed.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

@@ -323,6 +323,152 @@ func TestDefaultFieldApplicator_PreservesNodePortsForLoadBalancer(t *testing.T) 
 	assert.Equal(t, int32(30080), current.Spec.Ports[0].NodePort)
 }
 
+func TestDefaultFieldApplicator_PreservesIPFamilyFields(t *testing.T) {
+	singleStack := corev1.IPFamilyPolicySingleStack
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP:      "10.0.0.1",
+			IPFamilies:     []corev1.IPFamily{corev1.IPv4Protocol},
+			IPFamilyPolicy: &singleStack,
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": "test"},
+			Ports:    []corev1.ServicePort{{Name: "http", Port: 80}},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Server-defaulted IP family fields are preserved
+	assert.Equal(t, []corev1.IPFamily{corev1.IPv4Protocol}, current.Spec.IPFamilies)
+	require.NotNil(t, current.Spec.IPFamilyPolicy)
+	assert.Equal(t, corev1.IPFamilyPolicySingleStack, *current.Spec.IPFamilyPolicy)
+}
+
+func TestDefaultFieldApplicator_ExplicitIPFamilyOverridesPreservation(t *testing.T) {
+	singleStack := corev1.IPFamilyPolicySingleStack
+	preferDualStack := corev1.IPFamilyPolicyPreferDualStack
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP:      "10.0.0.1",
+			IPFamilies:     []corev1.IPFamily{corev1.IPv4Protocol},
+			IPFamilyPolicy: &singleStack,
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Selector:       map[string]string{"app": "test"},
+			Ports:          []corev1.ServicePort{{Name: "http", Port: 80}},
+			IPFamilies:     []corev1.IPFamily{corev1.IPv4Protocol, corev1.IPv6Protocol},
+			IPFamilyPolicy: &preferDualStack,
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Explicitly set IP family fields in desired take precedence
+	assert.Equal(t, []corev1.IPFamily{corev1.IPv4Protocol, corev1.IPv6Protocol}, current.Spec.IPFamilies)
+	require.NotNil(t, current.Spec.IPFamilyPolicy)
+	assert.Equal(t, corev1.IPFamilyPolicyPreferDualStack, *current.Spec.IPFamilyPolicy)
+}
+
+func TestDefaultFieldApplicator_PreservesHealthCheckNodePort(t *testing.T) {
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ClusterIP:             "10.0.0.1",
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+			HealthCheckNodePort:   31234,
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080},
+			},
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+			Selector:              map[string]string{"app": "test"},
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Server-allocated HealthCheckNodePort is preserved
+	assert.Equal(t, int32(31234), current.Spec.HealthCheckNodePort)
+}
+
+func TestDefaultFieldApplicator_ExplicitHealthCheckNodePortOverridesPreservation(t *testing.T) {
+	current := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ClusterIP:             "10.0.0.1",
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+			HealthCheckNodePort:   31234,
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080},
+			},
+		},
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-svc",
+			Namespace: "test-ns",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+			HealthCheckNodePort:   32000,
+			Selector:              map[string]string{"app": "test"},
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80},
+			},
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Explicitly set HealthCheckNodePort in desired takes precedence
+	assert.Equal(t, int32(32000), current.Spec.HealthCheckNodePort)
+}
+
 func TestResource_Mutate_WithMutation(t *testing.T) {
 	desired := newValidService()
 	res, err := NewBuilder(desired).

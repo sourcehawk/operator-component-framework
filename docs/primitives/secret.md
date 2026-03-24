@@ -1,15 +1,17 @@
 # Secret Primitive
 
-The `secret` primitive is the framework's built-in static abstraction for managing Kubernetes `Secret` resources. It integrates with the component lifecycle and provides a structured mutation API for managing `.data` and `.stringData` entries and object metadata.
+The `secret` primitive is the framework's built-in static abstraction for managing Kubernetes `Secret` resources. It
+integrates with the component lifecycle and provides a structured mutation API for managing `.data` and `.stringData`
+entries and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                  |
-|-----------------------|---------------------------------------------------------------------------------------------------------|
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state          |
-| **Mutation pipeline** | Typed editors for `.data` and `.stringData` entries and object metadata, with a raw escape hatch        |
+| Capability            | Detail                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state           |
+| **Mutation pipeline** | Typed editors for `.data` and `.stringData` entries and object metadata, with a raw escape hatch         |
 | **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.data` entries not owned by the operator |
-| **Data extraction**   | Reads generated or updated values back from the reconciled Secret after each sync cycle                 |
+| **Data extraction**   | Reads generated or updated values back from the reconciled Secret after each sync cycle                  |
 
 ## Building a Secret Primitive
 
@@ -34,7 +36,10 @@ resource, err := secret.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current Secret with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the original live object. This ensures every reconciliation cycle produces a clean, predictable state without losing server-managed data.
+`DefaultFieldApplicator` replaces the current Secret with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
+original live object. This ensures every reconciliation cycle produces a clean, predictable state without losing
+server-managed data.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 
@@ -53,9 +58,11 @@ resource, err := secret.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `Secret` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `Secret` beyond its baseline. Each mutation is a named function that
+receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) secret.Mutation {
@@ -70,7 +77,8 @@ func MyFeatureMutation(version string) secret.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -112,14 +120,16 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are recorded:
+Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
+recorded:
 
-| Step | Category          | What it affects                                  |
-|------|-------------------|--------------------------------------------------|
-| 1    | Metadata edits    | Labels and annotations on the `Secret`           |
-| 2    | Data edits        | `.data` and `.stringData` entries — Set, Remove, Raw |
+| Step | Category       | What it affects                                      |
+| ---- | -------------- | ---------------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `Secret`               |
+| 2    | Data edits     | `.data` and `.stringData` entries — Set, Remove, Raw |
 
-Within each category, edits are applied in their registration order. Later edits in the same mutation observe the Secret as modified by all earlier edits.
+Within each category, edits are applied in their registration order. Later edits in the same mutation observe the Secret
+as modified by all earlier edits.
 
 ## Editors
 
@@ -138,7 +148,8 @@ m.EditData(func(e *editors.SecretDataEditor) error {
 
 #### Set and Remove (.data)
 
-`Set` adds or overwrites a `.data` key with a byte slice value. `Remove` deletes a `.data` key; it is a no-op if the key is absent.
+`Set` adds or overwrites a `.data` key with a byte slice value. `Remove` deletes a `.data` key; it is a no-op if the key
+is absent.
 
 ```go
 m.EditData(func(e *editors.SecretDataEditor) error {
@@ -150,7 +161,8 @@ m.EditData(func(e *editors.SecretDataEditor) error {
 
 #### SetString and RemoveString (.stringData)
 
-`SetString` adds or overwrites a `.stringData` key with a plaintext value. The API server merges `.stringData` into `.data` on write. `RemoveString` deletes a `.stringData` key; it is a no-op if the key is absent.
+`SetString` adds or overwrites a `.stringData` key with a plaintext value. The API server merges `.stringData` into
+`.data` on write. `RemoveString` deletes a `.stringData` key; it is a no-op if the key is absent.
 
 ```go
 m.EditData(func(e *editors.SecretDataEditor) error {
@@ -162,7 +174,9 @@ m.EditData(func(e *editors.SecretDataEditor) error {
 
 #### Raw Escape Hatches
 
-`Raw()` returns the underlying `map[string][]byte` for `.data`. `RawStringData()` returns the underlying `map[string]string` for `.stringData`. Both give direct access for free-form editing when none of the structured methods are sufficient:
+`Raw()` returns the underlying `map[string][]byte` for `.data`. `RawStringData()` returns the underlying
+`map[string]string` for `.stringData`. Both give direct access for free-form editing when none of the structured methods
+are sufficient:
 
 ```go
 m.EditData(func(e *editors.SecretDataEditor) error {
@@ -194,18 +208,20 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 The `Mutator` exposes convenience wrappers for the most common `.data` and `.stringData` operations:
 
-| Method                         | Equivalent to                                      |
-|--------------------------------|----------------------------------------------------|
-| `SetData(key, value)`          | `EditData` → `e.Set(key, value)`                   |
-| `RemoveData(key)`              | `EditData` → `e.Remove(key)`                       |
-| `SetStringData(key, value)`    | `EditData` → `e.SetString(key, value)`             |
-| `RemoveStringData(key)`        | `EditData` → `e.RemoveString(key)`                 |
+| Method                      | Equivalent to                          |
+| --------------------------- | -------------------------------------- |
+| `SetData(key, value)`       | `EditData` → `e.Set(key, value)`       |
+| `RemoveData(key)`           | `EditData` → `e.Remove(key)`           |
+| `SetStringData(key, value)` | `EditData` → `e.SetString(key, value)` |
+| `RemoveStringData(key)`     | `EditData` → `e.RemoveString(key)`     |
 
-Use these for simple, single-operation mutations. Use `EditData` when you need multiple operations or raw access in a single edit block.
+Use these for simple, single-operation mutations. Use `EditData` when you need multiple operations or raw access in a
+single edit block.
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -219,7 +235,8 @@ resource, err := secret.NewBuilder(base).
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ```go
 resource, err := secret.NewBuilder(base).
@@ -229,7 +246,8 @@ resource, err := secret.NewBuilder(base).
 
 ### PreserveExternalEntries
 
-Preserves `.data` keys present on the live object but absent from the applied desired state. Applied values win on overlap.
+Preserves `.data` keys present on the live object but absent from the applied desired state. Applied values win on
+overlap.
 
 Use this when other controllers or admission webhooks inject entries into the Secret that your operator does not own:
 
@@ -243,7 +261,8 @@ Multiple flavors can be registered and run in registration order.
 
 ## Data Hash
 
-Two utilities are provided for computing a stable SHA-256 hash of a Secret's `.data` field. A common use is to annotate a Deployment's pod template with this hash so that a secret change triggers a rolling restart.
+Two utilities are provided for computing a stable SHA-256 hash of a Secret's `.data` field. A common use is to annotate
+a Deployment's pod template with this hash so that a secret change triggers a rolling restart.
 
 ### DataHash
 
@@ -253,11 +272,16 @@ Two utilities are provided for computing a stable SHA-256 hash of a Secret's `.d
 hash, err := secret.DataHash(s)
 ```
 
-The hash is derived from the canonical JSON encoding of the effective data map with keys sorted alphabetically, so it is deterministic regardless of insertion order. Both `.data` and `.stringData` are included: `.stringData` entries are merged into a copy of `.data` (with `.stringData` keys taking precedence) before hashing, matching Kubernetes API-server write semantics. This ensures the hash is consistent whether called on a desired object (which may use `.stringData`) or a cluster-read object (where `.stringData` has already been merged into `.data`).
+The hash is derived from the canonical JSON encoding of the effective data map with keys sorted alphabetically, so it is
+deterministic regardless of insertion order. Both `.data` and `.stringData` are included: `.stringData` entries are
+merged into a copy of `.data` (with `.stringData` keys taking precedence) before hashing, matching Kubernetes API-server
+write semantics. This ensures the hash is consistent whether called on a desired object (which may use `.stringData`) or
+a cluster-read object (where `.stringData` has already been merged into `.data`).
 
 ### Resource.DesiredHash
 
-`DesiredHash` computes the hash of what the operator *will write* — that is, the base object with all registered mutations applied — without performing a cluster read and without a second reconcile cycle:
+`DesiredHash` computes the hash of what the operator _will write_ — that is, the base object with all registered
+mutations applied — without performing a cluster read and without a second reconcile cycle:
 
 ```go
 secretResource, err := secret.NewBuilder(base).
@@ -268,13 +292,17 @@ secretResource, err := secret.NewBuilder(base).
 hash, err := secretResource.DesiredHash()
 ```
 
-The hash covers only operator-controlled fields. Entries preserved by flavors from the live cluster (e.g. `PreserveExternalEntries`) are excluded — only changes to operator-owned content will change the hash.
+The hash covers only operator-controlled fields. Entries preserved by flavors from the live cluster (e.g.
+`PreserveExternalEntries`) are excluded — only changes to operator-owned content will change the hash.
 
 ### Annotating a Deployment pod template (single-pass pattern)
 
-Build the secret resource first, compute the hash, then pass it into the deployment resource factory. Both resources are registered with the same component, so the secret is reconciled first and the deployment sees the correct hash on every cycle.
+Build the secret resource first, compute the hash, then pass it into the deployment resource factory. Both resources are
+registered with the same component, so the secret is reconciled first and the deployment sees the correct hash on every
+cycle.
 
-`DesiredHash` is defined on `*secret.Resource`, not on the `component.Resource` interface, so keep the concrete type when you need to call it:
+`DesiredHash` is defined on `*secret.Resource`, not on the `component.Resource` interface, so keep the concrete type
+when you need to call it:
 
 ```go
 secretResource, err := secret.NewBuilder(base).
@@ -318,14 +346,20 @@ func ChecksumAnnotationMutation(version, secretHash string) deployment.Mutation 
 }
 ```
 
-When the secret mutations change (version upgrade, feature toggle), `DesiredHash` returns a different value on the same reconcile cycle, the pod template annotation changes, and Kubernetes triggers a rolling restart.
+When the secret mutations change (version upgrade, feature toggle), `DesiredHash` returns a different value on the same
+reconcile cycle, the pod template annotation changes, and Kubernetes triggers a rolling restart.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**Use `PreserveExternalEntries` when sharing a Secret.** If admission webhooks, external controllers, or manual operations add entries to a Secret your operator manages, this flavor prevents your operator from silently deleting those entries each reconcile cycle.
+**Use `PreserveExternalEntries` when sharing a Secret.** If admission webhooks, external controllers, or manual
+operations add entries to a Secret your operator manages, this flavor prevents your operator from silently deleting
+those entries each reconcile cycle.
 
 **Register mutations in dependency order.** If mutation B relies on an entry set by mutation A, register A first.
 
-**Prefer `.stringData` for human-readable values.** The API server handles base64 encoding; using `SetStringData` avoids manual encoding in mutation code.
+**Prefer `.stringData` for human-readable values.** The API server handles base64 encoding; using `SetStringData` avoids
+manual encoding in mutation code.

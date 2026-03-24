@@ -1,16 +1,18 @@
 # StatefulSet Primitive
 
-The `statefulset` primitive is the framework's built-in workload abstraction for managing Kubernetes `StatefulSet` resources. It integrates fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, metadata, and volume claim templates.
+The `statefulset` primitive is the framework's built-in workload abstraction for managing Kubernetes `StatefulSet`
+resources. It integrates fully with the component lifecycle and provides a rich mutation API for managing containers,
+pod specs, metadata, and volume claim templates.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                            |
-|-----------------------|-------------------------------------------------------------------------------------------------------------------|
-| **Health tracking**   | Monitors `ReadyReplicas` and reports `Healthy`, `Creating`, `Updating`, or `Scaling`; grace handler can mark Down/Degraded |
-| **Rollout health**    | Surfaces stalled or failing rollouts by transitioning the resource to `Degraded` or `Down` (no grace-period timing)       |
-| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                       |
-| **Mutation pipeline** | Typed editors for metadata, statefulset spec, pod spec, containers, and volume claim templates                    |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                  |
+| Capability            | Detail                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Health tracking**   | Verifies `ObservedGeneration` matches `Generation` before evaluating `ReadyReplicas`; reports `Healthy`, `Creating`, `Updating`, or `Scaling`; grace handler can mark Down/Degraded |
+| **Rollout health**    | Surfaces stalled or failing rollouts by transitioning the resource to `Degraded` or `Down` (no grace-period timing)                                                                 |
+| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                                                         |
+| **Mutation pipeline** | Typed editors for metadata, statefulset spec, pod spec, containers, and volume claim templates                                                                                      |
+| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                                                                                    |
 
 ## Building a StatefulSet Primitive
 
@@ -48,9 +50,14 @@ resource, err := statefulset.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current StatefulSet with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+`DefaultFieldApplicator` replaces the current StatefulSet with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
+Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
+written by the API server or other controllers.
 
-It also preserves `spec.volumeClaimTemplates` from the live object when the resource already exists (i.e., has a non-empty `ResourceVersion`). This is necessary because `spec.volumeClaimTemplates` is immutable after creation in Kubernetes — the API server rejects any update that changes it.
+It also preserves `spec.volumeClaimTemplates` from the live object when the resource already exists (i.e., has a
+non-empty `ResourceVersion`). This is necessary because `spec.volumeClaimTemplates` is immutable after creation in
+Kubernetes — the API server rejects any update that changes it.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 
@@ -66,9 +73,11 @@ resource, err := statefulset.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `StatefulSet` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `StatefulSet` beyond its baseline. Each mutation is a named function
+that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) statefulset.Mutation {
@@ -83,7 +92,8 @@ func MyFeatureMutation(version string) statefulset.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -134,21 +144,23 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the order they are recorded. This ensures structural consistency across mutations.
+Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
+order they are recorded. This ensures structural consistency across mutations.
 
-| Step | Category | What it affects |
-|---|---|---|
-| 1 | StatefulSet metadata edits | Labels and annotations on the `StatefulSet` object |
-| 2 | StatefulSetSpec edits | Replicas, service name, update strategy, etc. |
-| 3 | Pod template metadata edits | Labels and annotations on the pod template |
-| 4 | Pod spec edits | Volumes, tolerations, node selectors, service account, security context |
-| 5 | Regular container presence | Adding or removing containers from `spec.template.spec.containers` |
-| 6 | Regular container edits | Env vars, args, resources (snapshot taken after step 5) |
-| 7 | Init container presence | Adding or removing containers from `spec.template.spec.initContainers` |
-| 8 | Init container edits | Env vars, args, resources (snapshot taken after step 7) |
-| 9 | Volume claim template operations | Adding or removing entries from `spec.volumeClaimTemplates` |
+| Step | Category                         | What it affects                                                         |
+| ---- | -------------------------------- | ----------------------------------------------------------------------- |
+| 1    | StatefulSet metadata edits       | Labels and annotations on the `StatefulSet` object                      |
+| 2    | StatefulSetSpec edits            | Replicas, service name, update strategy, etc.                           |
+| 3    | Pod template metadata edits      | Labels and annotations on the pod template                              |
+| 4    | Pod spec edits                   | Volumes, tolerations, node selectors, service account, security context |
+| 5    | Regular container presence       | Adding or removing containers from `spec.template.spec.containers`      |
+| 6    | Regular container edits          | Env vars, args, resources (snapshot taken after step 5)                 |
+| 7    | Init container presence          | Adding or removing containers from `spec.template.spec.initContainers`  |
+| 8    | Init container edits             | Env vars, args, resources (snapshot taken after step 7)                 |
+| 9    | Volume claim template operations | Adding or removing entries from `spec.volumeClaimTemplates`             |
 
-Container edits (steps 6 and 8) are evaluated against a snapshot taken *after* presence operations in the same mutation. This means a single mutation can add a container and then configure it without selector resolution issues.
+Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
+This means a single mutation can add a container and then configure it without selector resolution issues.
 
 ## Editors
 
@@ -156,7 +168,8 @@ Container edits (steps 6 and 8) are evaluated against a snapshot taken *after* p
 
 Controls statefulset-level settings via `m.EditStatefulSetSpec`.
 
-Available methods: `SetReplicas`, `SetServiceName`, `SetPodManagementPolicy`, `SetUpdateStrategy`, `SetRevisionHistoryLimit`, `SetMinReadySeconds`, `SetPersistentVolumeClaimRetentionPolicy`, `Raw`.
+Available methods: `SetReplicas`, `SetServiceName`, `SetPodManagementPolicy`, `SetUpdateStrategy`,
+`SetRevisionHistoryLimit`, `SetMinReadySeconds`, `SetPersistentVolumeClaimRetentionPolicy`, `Raw`.
 
 ```go
 m.EditStatefulSetSpec(func(e *editors.StatefulSetSpecEditor) error {
@@ -182,7 +195,9 @@ m.EditStatefulSetSpec(func(e *editors.StatefulSetSpecEditor) error {
 
 Manages pod-level configuration via `m.EditPodSpec`.
 
-Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`, `EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`, `SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
+Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`,
+`EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`,
+`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
@@ -201,9 +216,11 @@ m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a [selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
+[selector](../primitives.md#container-selectors).
 
-Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`, `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
+Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
+`RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
 m.EditContainers(selectors.ContainerNamed("db"), func(e *editors.ContainerEditor) error {
@@ -215,7 +232,8 @@ m.EditContainers(selectors.ContainerNamed("db"), func(e *editors.ContainerEditor
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `StatefulSet` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `StatefulSet` object itself, or
+`m.EditPodTemplateMetadata` to target the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
@@ -251,23 +269,26 @@ m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
 })
 ```
 
-**Important:** `spec.volumeClaimTemplates` is immutable after creation in Kubernetes. The `DefaultFieldApplicator` preserves the live VolumeClaimTemplates to avoid API server rejections. These mutation methods are primarily useful for constructing the initial desired state or when recreating a StatefulSet.
+**Important:** `spec.volumeClaimTemplates` is immutable after creation in Kubernetes. The `DefaultFieldApplicator`
+preserves the live VolumeClaimTemplates to avoid API server rejections. These mutation methods are primarily useful for
+constructing the initial desired state or when recreating a StatefulSet.
 
 ## Convenience Methods
 
 The `Mutator` also exposes convenience wrappers:
 
-| Method                        | Equivalent to                                                    |
-|-------------------------------|------------------------------------------------------------------|
-| `EnsureReplicas(n)`           | `EditStatefulSetSpec` → `SetReplicas(n)`                         |
-| `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`      |
-| `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)`    |
-| `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`        |
-| `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`        |
+| Method                        | Equivalent to                                                 |
+| ----------------------------- | ------------------------------------------------------------- |
+| `EnsureReplicas(n)`           | `EditStatefulSetSpec` → `SetReplicas(n)`                      |
+| `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
+| `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
+| `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
+| `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -275,15 +296,18 @@ Preserves labels present on the live object but absent from the applied desired 
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ### PreserveCurrentPodTemplateLabels
 
-Preserves labels present on the live object's pod template but absent from the applied desired state's pod template. Applied labels win on overlap.
+Preserves labels present on the live object's pod template but absent from the applied desired state's pod template.
+Applied labels win on overlap.
 
 ### PreserveCurrentPodTemplateAnnotations
 
-Preserves annotations present on the live object's pod template but absent from the applied desired state's pod template. Applied annotations win on overlap.
+Preserves annotations present on the live object's pod template but absent from the applied desired state's pod
+template. Applied annotations win on overlap.
 
 ```go
 resource, err := statefulset.NewBuilder(base).
@@ -341,12 +365,18 @@ func DatabaseMutation(version string) statefulset.Mutation {
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first. The internal ordering within each mutation handles intra-mutation dependencies automatically.
+**Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
+The internal ordering within each mutation handles intra-mutation dependencies automatically.
 
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in the same mutation resolve correctly and reconciliation remains idempotent.
+**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
+the same mutation resolve correctly and reconciliation remains idempotent.
 
-**VolumeClaimTemplates are immutable.** Plan your storage layout before the first creation. The `DefaultFieldApplicator` preserves live VolumeClaimTemplates to prevent API server rejections on updates.
+**VolumeClaimTemplates are immutable.** Plan your storage layout before the first creation. The `DefaultFieldApplicator`
+preserves live VolumeClaimTemplates to prevent API server rejections on updates.
 
-**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can cause unexpected behavior if sidecar containers are present.
+**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
+cause unexpected behavior if sidecar containers are present.

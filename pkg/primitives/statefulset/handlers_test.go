@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -85,6 +86,54 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			},
 			wantStatus: concepts.AliveConvergingStatusScaling,
 			wantReason: "Waiting for replicas: 1/3 ready",
+		},
+		{
+			name: "stale observed generation after create",
+			op:   concepts.ConvergingOperationCreated,
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(1)),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 1,
+					ReadyReplicas:      1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusCreating,
+			wantReason: "Waiting for statefulset controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation after update",
+			op:   concepts.ConvergingOperationUpdated,
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 3},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(1)),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					ReadyReplicas:      1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusUpdating,
+			wantReason: "Waiting for statefulset controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation with no operation",
+			op:   concepts.ConvergingOperationNone,
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(1)),
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 1,
+					ReadyReplicas:      1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusUpdating,
+			wantReason: "Waiting for statefulset controller to observe latest spec",
 		},
 	}
 

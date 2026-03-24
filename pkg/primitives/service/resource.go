@@ -14,7 +14,8 @@ import (
 // spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns after creation,
 // the server-populated Status (including LoadBalancer.Ingress), server-defaulted
 // IP family configuration (spec.ipFamilies, spec.ipFamilyPolicy), the
-// server-allocated spec.healthCheckNodePort, and auto-allocated NodePort values
+// server-allocated spec.healthCheckNodePort (only when the desired Service is a
+// LoadBalancer with externalTrafficPolicy: Local), and auto-allocated NodePort values
 // for NodePort and LoadBalancer Services. NodePorts are only preserved when the
 // resulting Service type is NodePort or LoadBalancer and the desired port's
 // NodePort is 0 (unset); explicitly specified NodePort values in the desired
@@ -38,17 +39,25 @@ func DefaultFieldApplicator(current, desired *corev1.Service) error {
 	if current.Spec.IPFamilyPolicy == nil && original.Spec.IPFamilyPolicy != nil {
 		current.Spec.IPFamilyPolicy = original.Spec.IPFamilyPolicy
 	}
-	// Preserve the server-allocated HealthCheckNodePort when the desired
-	// object does not explicitly set one. The API server assigns this field
-	// for LoadBalancer Services with externalTrafficPolicy: Local.
-	if current.Spec.HealthCheckNodePort == 0 && original.Spec.HealthCheckNodePort != 0 {
-		current.Spec.HealthCheckNodePort = original.Spec.HealthCheckNodePort
-	}
-	// Only preserve nodePorts when the resulting Service type supports them.
+	// Determine the effective Service type for fields that are only meaningful
+	// on specific Service kinds. When type is empty, the API server defaults it
+	// to ClusterIP.
 	effectiveType := current.Spec.Type
 	if effectiveType == "" {
 		effectiveType = corev1.ServiceTypeClusterIP
 	}
+	// Preserve the server-allocated HealthCheckNodePort only when the desired
+	// configuration represents a LoadBalancer Service with
+	// externalTrafficPolicy: Local and the desired spec leaves the field unset.
+	// In all other cases, leaving the field as-is (typically 0) clears any
+	// previously allocated value when the Service moves away from that shape.
+	if effectiveType == corev1.ServiceTypeLoadBalancer &&
+		current.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyLocal &&
+		current.Spec.HealthCheckNodePort == 0 &&
+		original.Spec.HealthCheckNodePort != 0 {
+		current.Spec.HealthCheckNodePort = original.Spec.HealthCheckNodePort
+	}
+	// Only preserve nodePorts when the resulting Service type supports them.
 	if effectiveType == corev1.ServiceTypeNodePort || effectiveType == corev1.ServiceTypeLoadBalancer {
 		preserveNodePorts(current, original)
 	}

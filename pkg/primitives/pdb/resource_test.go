@@ -61,10 +61,10 @@ func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
 			Namespace: "default",
 		},
 		Status: policyv1.PodDisruptionBudgetStatus{
-			CurrentHealthy:   3,
-			DesiredHealthy:   2,
+			CurrentHealthy:     3,
+			DesiredHealthy:     2,
 			DisruptionsAllowed: 1,
-			ExpectedPods:     3,
+			ExpectedPods:       3,
 		},
 	}
 	desired := &policyv1.PodDisruptionBudget{

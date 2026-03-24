@@ -357,8 +357,8 @@ resource, err := service.NewBuilder(base).
     Build()
 ```
 
-When `EnableMetrics` is true, the Service will expose both the HTTP port and the metrics port. When false, only the
-HTTP port is configured. Neither mutation needs to know about the other.
+When `EnableMetrics` is true, the Service will expose both the HTTP port and the metrics port. When false, only the HTTP
+port is configured. Neither mutation needs to know about the other.
 
 ## Guidance
 

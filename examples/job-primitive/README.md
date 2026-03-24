@@ -8,7 +8,8 @@ manage a Kubernetes Job as a component of a larger application, utilizing featur
   the `Mutator`.
 - **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., ArgoCD, manual
   edits).
-- **Custom Status Handlers**: Overriding the default logic for determining completion status (`ConvergeStatus`).
+- **Custom Status Handlers**: Overriding the default `ConvergingStatus` interface using the `WithCustomConvergeStatus`
+  builder option.
 - **Suspension**: Demonstrating how Jobs are suspended (deleted by default) when the component is suspended.
 - **Data Extraction**: Harvesting information from the reconciled resource.
 

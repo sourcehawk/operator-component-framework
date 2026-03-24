@@ -1,20 +1,28 @@
 # ClusterRole Primitive
 
-The `clusterrole` primitive is the framework's built-in static abstraction for managing Kubernetes `ClusterRole` resources. It integrates with the component lifecycle and provides a structured mutation API for managing `.rules`, `.aggregationRule`, and object metadata.
+The `clusterrole` primitive is the framework's built-in static abstraction for managing Kubernetes `ClusterRole`
+resources. It integrates with the component lifecycle and provides a structured mutation API for managing `.rules`,
+`.aggregationRule`, and object metadata.
 
-ClusterRole is cluster-scoped: it has no namespace. The builder validates that the Name is set and that Namespace is empty — setting a namespace on a cluster-scoped resource is rejected.
+ClusterRole is cluster-scoped: it has no namespace. The builder validates that the Name is set and that Namespace is
+empty — setting a namespace on a cluster-scoped resource is rejected.
 
-> **Ownership limitation:** During reconciliation, the framework attempts to set a controller reference on managed objects, but only when the owner and dependent scopes are compatible. When a namespaced owner manages a cluster-scoped resource such as a `ClusterRole`, the owner reference is skipped (and this is logged) instead of causing the reconcile to fail. In this case, the `ClusterRole` is **not** owned by the custom resource for Kubernetes garbage-collection or ownership semantics, so it will not be automatically deleted when the owner is removed; you must handle its lifecycle explicitly or use a cluster-scoped owner if automatic cleanup is required.
+> **Ownership limitation:** During reconciliation, the framework attempts to set a controller reference on managed
+> objects, but only when the owner and dependent scopes are compatible. When a namespaced owner manages a cluster-scoped
+> resource such as a `ClusterRole`, the owner reference is skipped (and this is logged) instead of causing the reconcile
+> to fail. In this case, the `ClusterRole` is **not** owned by the custom resource for Kubernetes garbage-collection or
+> ownership semantics, so it will not be automatically deleted when the owner is removed; you must handle its lifecycle
+> explicitly or use a cluster-scoped owner if automatic cleanup is required.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                        |
-|-----------------------|---------------------------------------------------------------------------------------------------------------|
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state                |
-| **Mutation pipeline** | Typed editors for `.rules` and object metadata, with aggregation rule support and a raw escape hatch           |
-| **Cluster-scoped**    | No namespace required — identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`                  |
-| **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.rules` entries not owned by the operator      |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRole after each sync cycle                   |
+| Capability            | Detail                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state            |
+| **Mutation pipeline** | Typed editors for `.rules` and object metadata, with aggregation rule support and a raw escape hatch      |
+| **Cluster-scoped**    | No namespace required — identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`              |
+| **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.rules` entries not owned by the operator |
+| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRole after each sync cycle              |
 
 ## Building a ClusterRole Primitive
 
@@ -42,7 +50,9 @@ resource, err := clusterrole.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current ClusterRole with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the original live object. ClusterRole has no Status subresource, so no status preservation is needed.
+`DefaultFieldApplicator` replaces the current ClusterRole with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
+original live object. ClusterRole has no Status subresource, so no status preservation is needed.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 
@@ -58,7 +68,8 @@ resource, err := clusterrole.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `ClusterRole` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `ClusterRole` beyond its baseline. Each mutation is a named function
+that receives a `*Mutator` and records edit intent through typed editors.
 
 The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally:
 
@@ -127,15 +138,18 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-The Mutator maintains feature boundaries: each feature's mutations are planned together and applied in the order the features were registered. Within each feature, edits are applied in a fixed category order:
+The Mutator maintains feature boundaries: each feature's mutations are planned together and applied in the order the
+features were registered. Within each feature, edits are applied in a fixed category order:
 
-| Step | Category          | What it affects                                 |
-|------|-------------------|-------------------------------------------------|
-| 1    | Metadata edits    | Labels and annotations on the `ClusterRole`     |
-| 2    | Rules edits       | `.rules` entries — EditRules, AddRule            |
-| 3    | Aggregation rule  | `.aggregationRule` — SetAggregationRule          |
+| Step | Category         | What it affects                             |
+| ---- | ---------------- | ------------------------------------------- |
+| 1    | Metadata edits   | Labels and annotations on the `ClusterRole` |
+| 2    | Rules edits      | `.rules` entries — EditRules, AddRule       |
+| 3    | Aggregation rule | `.aggregationRule` — SetAggregationRule     |
 
-Within each category, edits are applied in their registration order. For aggregation rules, the last `SetAggregationRule` call wins within each feature. Later features observe the ClusterRole as modified by all previous features.
+Within each category, edits are applied in their registration order. For aggregation rules, the last
+`SetAggregationRule` call wins within each feature. Later features observe the ClusterRole as modified by all previous
+features.
 
 ## Editors
 
@@ -221,15 +235,17 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 The `Mutator` exposes a convenience wrapper for the most common `.rules` operation:
 
-| Method          | Equivalent to                        |
-|-----------------|--------------------------------------|
-| `AddRule(rule)` | `EditRules` → `e.AddRule(rule)`      |
+| Method          | Equivalent to                   |
+| --------------- | ------------------------------- |
+| `AddRule(rule)` | `EditRules` → `e.AddRule(rule)` |
 
-Use `AddRule` for simple, single-rule mutations. Use `EditRules` when you need multiple operations or raw access in a single edit block.
+Use `AddRule` for simple, single-rule mutations. Use `EditRules` when you need multiple operations or raw access in a
+single edit block.
 
 ## SetAggregationRule
 
-`SetAggregationRule` sets the ClusterRole's `.aggregationRule` field. An aggregation rule causes the API server to combine rules from ClusterRoles whose labels match the provided selectors, instead of using `.rules` directly:
+`SetAggregationRule` sets the ClusterRole's `.aggregationRule` field. An aggregation rule causes the API server to
+combine rules from ClusterRoles whose labels match the provided selectors, instead of using `.rules` directly:
 
 ```go
 m.SetAggregationRule(&rbacv1.AggregationRule{
@@ -243,7 +259,8 @@ Setting the aggregation rule to nil clears it. Within a single feature, the last
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -257,7 +274,8 @@ resource, err := clusterrole.NewBuilder(base).
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ```go
 resource, err := clusterrole.NewBuilder(base).
@@ -267,7 +285,8 @@ resource, err := clusterrole.NewBuilder(base).
 
 ### PreserveExternalRules
 
-Preserves `.rules` entries present on the live object but absent from the applied desired state. Rules are compared by full PolicyRule equality (all fields: APIGroups, Resources, Verbs, ResourceNames, NonResourceURLs).
+Preserves `.rules` entries present on the live object but absent from the applied desired state. Rules are compared by
+full PolicyRule equality (all fields: APIGroups, Resources, Verbs, ResourceNames, NonResourceURLs).
 
 Use this when other controllers or admission webhooks inject rules into the ClusterRole that your operator does not own:
 
@@ -318,16 +337,28 @@ resource, err := clusterrole.NewBuilder(base).
     Build()
 ```
 
-When `ManageCRDs` is true, the final rules include both core and CRD access rules. When false, only the core rules are written. Neither mutation needs to know about the other.
+When `ManageCRDs` is true, the final rules include both core and CRD access rules. When false, only the core rules are
+written. Neither mutation needs to know about the other.
 
-> **Note:** Do not combine `PreserveExternalRules` with feature-gated mutations that add and remove rules. Because flavors run before mutations and preserve rules from the live object, previously-added rules will be retained even after a feature gate is disabled, and rules can be duplicated if a mutation re-adds a rule already present on the live object. Use `PreserveExternalRules` only when external controllers or admission webhooks manage rules that your operator does not own.
+> **Note:** Do not combine `PreserveExternalRules` with feature-gated mutations that add and remove rules. Because
+> flavors run before mutations and preserve rules from the live object, previously-added rules will be retained even
+> after a feature gate is disabled, and rules can be duplicated if a mutation re-adds a rule already present on the live
+> object. Use `PreserveExternalRules` only when external controllers or admission webhooks manage rules that your
+> operator does not own.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**Use `PreserveExternalRules` when sharing a ClusterRole.** If admission webhooks, external controllers, or manual operations add rules to a ClusterRole your operator manages, this flavor prevents your operator from silently deleting those rules each reconcile cycle.
+**Use `PreserveExternalRules` when sharing a ClusterRole.** If admission webhooks, external controllers, or manual
+operations add rules to a ClusterRole your operator manages, this flavor prevents your operator from silently deleting
+those rules each reconcile cycle.
 
-**Use `SetAggregationRule` for composite roles.** When you want the API server to aggregate rules from multiple ClusterRoles based on label selectors, use `SetAggregationRule` instead of managing `.rules` directly. The two approaches are mutually exclusive in the Kubernetes API — the API server ignores `.rules` when `.aggregationRule` is set.
+**Use `SetAggregationRule` for composite roles.** When you want the API server to aggregate rules from multiple
+ClusterRoles based on label selectors, use `SetAggregationRule` instead of managing `.rules` directly. The two
+approaches are mutually exclusive in the Kubernetes API — the API server ignores `.rules` when `.aggregationRule` is
+set.
 
 **Register mutations in dependency order.** If mutation B relies on a rule added by mutation A, register A first.

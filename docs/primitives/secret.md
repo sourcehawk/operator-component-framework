@@ -261,8 +261,7 @@ Multiple flavors can be registered and run in registration order.
 
 ## Data Hash
 
-Two utilities are provided for computing a stable SHA-256 hash of a Secret's `.data` field. A common use is to annotate
-a Deployment's pod template with this hash so that a secret change triggers a rolling restart.
+Two utilities are provided for computing a stable SHA-256 hash of a Secret's effective data content (`.data` plus `.stringData` merged using Kubernetes API-server semantics). A common use is to annotate a Deployment's pod template with this hash so that a secret change triggers a rolling restart.
 
 ### DataHash
 

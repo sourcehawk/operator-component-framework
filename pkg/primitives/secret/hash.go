@@ -59,10 +59,12 @@ func DataHash(s corev1.Secret) (string, error) {
 // DesiredHash computes the SHA-256 hash of the Secret as it will be written to
 // the cluster, based on the base object and all registered mutations.
 //
-// The hash covers only operator-controlled fields (.data after applying the
-// baseline and mutations). Fields preserved by flavors from the live cluster
-// state (e.g. PreserveExternalEntries) are intentionally excluded — only
-// changes to operator-owned content will change the hash.
+// The hash covers only operator-controlled data content: the effective Secret
+// data after applying the baseline and mutations, with .stringData merged into
+// .data (and .stringData keys taking precedence), matching DataHash semantics.
+// Fields preserved by flavors from the live cluster state (e.g.
+// PreserveExternalEntries) are intentionally excluded — only changes to
+// operator-owned content will change the hash.
 //
 // This enables a single-pass checksum pattern: compute the hash before
 // reconciliation and pass it directly to the deployment resource factory,

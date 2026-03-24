@@ -1,17 +1,19 @@
 # PersistentVolume Primitive
 
-The `pv` primitive is the framework's built-in integration abstraction for managing Kubernetes `PersistentVolume` resources. It integrates with the component lifecycle and provides a structured mutation API for managing PV spec fields and object metadata.
+The `pv` primitive is the framework's built-in integration abstraction for managing Kubernetes `PersistentVolume`
+resources. It integrates with the component lifecycle and provides a structured mutation API for managing PV spec fields
+and object metadata.
 
 ## Capabilities
 
-| Capability                | Detail                                                                                                          |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------|
-| **Integration lifecycle** | Reports `Operational`, `OperationPending`, or `OperationFailing` based on the PV's phase                        |
-| **Cluster-scoped**        | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources                        |
-| **Immutable preservation**| Default field applicator preserves immutable fields (volume source, volume mode, claim ref) on existing PVs     |
-| **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access              |
-| **Flavors**               | Preserves externally-managed labels and annotations not owned by the operator                                   |
-| **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle                |
+| Capability                 | Detail                                                                                                      |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Integration lifecycle**  | Reports `Operational`, `OperationPending`, or `OperationFailing` based on the PV's phase                    |
+| **Cluster-scoped**         | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources                    |
+| **Immutable preservation** | Default field applicator preserves immutable fields (volume source, volume mode, claim ref) on existing PVs |
+| **Mutation pipeline**      | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access          |
+| **Flavors**                | Preserves externally-managed labels and annotations not owned by the operator                               |
+| **Data extraction**        | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle           |
 
 ## Building a PersistentVolume Primitive
 
@@ -42,11 +44,15 @@ resource, err := pv.NewBuilder(base).
     Build()
 ```
 
-PersistentVolumes are cluster-scoped. The builder validates that Name is set and that Namespace is empty. Setting a namespace on the PV object will cause `Build()` to return an error.
+PersistentVolumes are cluster-scoped. The builder validates that Name is set and that Namespace is empty. Setting a
+namespace on the PV object will cause `Build()` to return an error.
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current PersistentVolume with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), the Status subresource, and PV-specific immutable fields from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+`DefaultFieldApplicator` replaces the current PersistentVolume with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), the Status
+subresource, and PV-specific immutable fields from the original live object. This prevents spec-level reconciliation
+from clearing status data written by the API server or other controllers.
 
 Preserved immutable fields:
 
@@ -71,9 +77,11 @@ resource, err := pv.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `PersistentVolume` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `PersistentVolume` beyond its baseline. Each mutation is a named
+function that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) pv.Mutation {
@@ -88,7 +96,8 @@ func MyFeatureMutation(version string) pv.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -129,14 +138,16 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are recorded:
+Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
+recorded:
 
-| Step | Category       | What it affects                                              |
-|------|----------------|--------------------------------------------------------------|
-| 1    | Metadata edits | Labels and annotations on the `PersistentVolume`             |
+| Step | Category       | What it affects                                                     |
+| ---- | -------------- | ------------------------------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `PersistentVolume`                    |
 | 2    | Spec edits     | PV spec fields — storage class, reclaim policy, mount options, etc. |
 
-Within each category, edits are applied in their registration order. Later features observe the PersistentVolume as modified by all previous features.
+Within each category, edits are applied in their registration order. Later features observe the PersistentVolume as
+modified by all previous features.
 
 ## Editors
 
@@ -155,20 +166,21 @@ m.EditPVSpec(func(e *editors.PVSpecEditor) error {
 
 #### Available methods
 
-| Method                               | What it sets                               |
-|--------------------------------------|--------------------------------------------|
-| `SetCapacity(resource.Quantity)`     | `.spec.capacity[storage]`                  |
-| `SetAccessModes([]AccessMode)`      | `.spec.accessModes`                        |
-| `SetPersistentVolumeReclaimPolicy`   | `.spec.persistentVolumeReclaimPolicy`      |
-| `SetStorageClassName(string)`        | `.spec.storageClassName`                   |
-| `SetMountOptions([]string)`          | `.spec.mountOptions`                       |
-| `SetVolumeMode(PersistentVolumeMode)`| `.spec.volumeMode`                         |
-| `SetNodeAffinity(*VolumeNodeAffinity)` | `.spec.nodeAffinity`                     |
-| `Raw()`                              | Returns `*corev1.PersistentVolumeSpec`     |
+| Method                                 | What it sets                           |
+| -------------------------------------- | -------------------------------------- |
+| `SetCapacity(resource.Quantity)`       | `.spec.capacity[storage]`              |
+| `SetAccessModes([]AccessMode)`         | `.spec.accessModes`                    |
+| `SetPersistentVolumeReclaimPolicy`     | `.spec.persistentVolumeReclaimPolicy`  |
+| `SetStorageClassName(string)`          | `.spec.storageClassName`               |
+| `SetMountOptions([]string)`            | `.spec.mountOptions`                   |
+| `SetVolumeMode(PersistentVolumeMode)`  | `.spec.volumeMode`                     |
+| `SetNodeAffinity(*VolumeNodeAffinity)` | `.spec.nodeAffinity`                   |
+| `Raw()`                                | Returns `*corev1.PersistentVolumeSpec` |
 
 #### Raw escape hatch
 
-`Raw()` returns the underlying `*corev1.PersistentVolumeSpec` for free-form editing when none of the structured methods are sufficient:
+`Raw()` returns the underlying `*corev1.PersistentVolumeSpec` for free-form editing when none of the structured methods
+are sufficient:
 
 ```go
 m.EditPVSpec(func(e *editors.PVSpecEditor) error {
@@ -195,31 +207,34 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 The `Mutator` exposes convenience wrappers for the most common PV spec operations:
 
-| Method                       | Equivalent to                                          |
-|------------------------------|--------------------------------------------------------|
-| `SetStorageClassName(name)`  | `EditPVSpec` → `e.SetStorageClassName(name)`           |
-| `SetReclaimPolicy(policy)`   | `EditPVSpec` → `e.SetPersistentVolumeReclaimPolicy(p)` |
-| `SetMountOptions(opts)`      | `EditPVSpec` → `e.SetMountOptions(opts)`               |
+| Method                      | Equivalent to                                          |
+| --------------------------- | ------------------------------------------------------ |
+| `SetStorageClassName(name)` | `EditPVSpec` → `e.SetStorageClassName(name)`           |
+| `SetReclaimPolicy(policy)`  | `EditPVSpec` → `e.SetPersistentVolumeReclaimPolicy(p)` |
+| `SetMountOptions(opts)`     | `EditPVSpec` → `e.SetMountOptions(opts)`               |
 
-Use these for simple, single-operation mutations. Use `EditPVSpec` when you need multiple operations or raw access in a single edit block.
+Use these for simple, single-operation mutations. Use `EditPVSpec` when you need multiple operations or raw access in a
+single edit block.
 
 ## Operational Status
 
-The PV primitive uses the Integration lifecycle. The default operational status handler maps PV phases to framework status:
+The PV primitive uses the Integration lifecycle. The default operational status handler maps PV phases to framework
+status:
 
-| PV Phase    | Operational Status   | Meaning                               |
-|-------------|----------------------|---------------------------------------|
-| Available   | Operational          | PV is ready for binding               |
-| Bound       | Operational          | PV is bound to a PersistentVolumeClaim|
-| Pending     | OperationPending     | PV is waiting to become available     |
-| Released    | OperationFailing     | PV was released, not yet reclaimed    |
-| Failed      | OperationFailing     | PV reclamation has failed             |
+| PV Phase  | Operational Status | Meaning                                |
+| --------- | ------------------ | -------------------------------------- |
+| Available | Operational        | PV is ready for binding                |
+| Bound     | Operational        | PV is bound to a PersistentVolumeClaim |
+| Pending   | OperationPending   | PV is waiting to become available      |
+| Released  | OperationFailing   | PV was released, not yet reclaimed     |
+| Failed    | OperationFailing   | PV reclamation has failed              |
 
 Override with `WithCustomOperationalStatus` when your PV requires different readiness logic.
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -233,7 +248,8 @@ resource, err := pv.NewBuilder(base).
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ```go
 resource, err := pv.NewBuilder(base).
@@ -281,15 +297,26 @@ resource, err := pv.NewBuilder(base).
 
 ## Guidance
 
-**PersistentVolumes are cluster-scoped.** Do not set a namespace on the PV object. The builder rejects namespaced PVs with a clear error.
+**PersistentVolumes are cluster-scoped.** Do not set a namespace on the PV object. The builder rejects namespaced PVs
+with a clear error.
 
-**Immutable fields are preserved automatically.** The default field applicator detects existing PVs (by `ResourceVersion`) and preserves the volume source, volume mode, and claim ref. You do not need a custom applicator unless you require different preservation semantics.
+**Immutable fields are preserved automatically.** The default field applicator detects existing PVs (by
+`ResourceVersion`) and preserves the volume source, volume mode, and claim ref. You do not need a custom applicator
+unless you require different preservation semantics.
 
-**Use the Integration lifecycle for status.** PVs report `Operational`, `OperationPending`, or `OperationFailing` based on their phase. Override with `WithCustomOperationalStatus` only when phase-based readiness is insufficient.
+**Use the Integration lifecycle for status.** PVs report `Operational`, `OperationPending`, or `OperationFailing` based
+on their phase. Override with `WithCustomOperationalStatus` only when phase-based readiness is insufficient.
 
-**Controller references and garbage collection.** The component reconciliation pipeline attempts to set a controller reference on created/updated resources. Because `PersistentVolume` is cluster-scoped, its controller owner must also be cluster-scoped. When the owner is namespace-scoped and the PV is cluster-scoped, the framework detects this mismatch and **skips setting `ownerReferences`** (logging an informational message) instead of letting the API server reject the request. As a result, such PVs will **not** be garbage collected automatically when the owning component is deleted. If you need garbage collection for PVs, either:
+**Controller references and garbage collection.** The component reconciliation pipeline attempts to set a controller
+reference on created/updated resources. Because `PersistentVolume` is cluster-scoped, its controller owner must also be
+cluster-scoped. When the owner is namespace-scoped and the PV is cluster-scoped, the framework detects this mismatch and
+**skips setting `ownerReferences`** (logging an informational message) instead of letting the API server reject the
+request. As a result, such PVs will **not** be garbage collected automatically when the owning component is deleted. If
+you need garbage collection for PVs, either:
 
-- Model the PV as owned by a dedicated **cluster-scoped** controller/component so a valid controller reference can be set, or
-- Accept that PVs managed from a **namespace-scoped** component will not have `ownerReferences` and handle their lifecycle explicitly (for example, by deleting them in custom logic when appropriate).
+- Model the PV as owned by a dedicated **cluster-scoped** controller/component so a valid controller reference can be
+  set, or
+- Accept that PVs managed from a **namespace-scoped** component will not have `ownerReferences` and handle their
+  lifecycle explicitly (for example, by deleting them in custom logic when appropriate).
 
 **Register mutations in dependency order.** If mutation B relies on a field set by mutation A, register A first.

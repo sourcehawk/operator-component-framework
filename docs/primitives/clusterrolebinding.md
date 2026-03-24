@@ -1,17 +1,19 @@
 # ClusterRoleBinding Primitive
 
-The `clusterrolebinding` primitive is the framework's built-in static abstraction for managing Kubernetes `ClusterRoleBinding` resources. It integrates with the component lifecycle and provides a structured mutation API for managing `.subjects` entries and object metadata.
+The `clusterrolebinding` primitive is the framework's built-in static abstraction for managing Kubernetes
+`ClusterRoleBinding` resources. It integrates with the component lifecycle and provides a structured mutation API for
+managing `.subjects` entries and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                               |
-|-----------------------|------------------------------------------------------------------------------------------------------|
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state       |
+| Capability            | Detail                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state               |
 | **Cluster-scoped**    | Cluster-scoped resource — Build() validates Name and requires metadata.namespace to be empty (errors if set) |
-| **Immutable roleRef** | `DefaultFieldApplicator` preserves `roleRef` on updates since it is immutable after creation         |
-| **Mutation pipeline** | Typed editors for `.subjects` entries and object metadata, with a raw escape hatch for free-form access |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator               |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRoleBinding after each sync cycle  |
+| **Immutable roleRef** | `DefaultFieldApplicator` preserves `roleRef` on updates since it is immutable after creation                 |
+| **Mutation pipeline** | Typed editors for `.subjects` entries and object metadata, with a raw escape hatch for free-form access      |
+| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                       |
+| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRoleBinding after each sync cycle          |
 
 ## Building a ClusterRoleBinding Primitive
 
@@ -44,9 +46,14 @@ resource, err := clusterrolebinding.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current ClusterRoleBinding with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and `roleRef` from the original live object. ClusterRoleBinding does not have a Status subresource, so no status preservation is needed.
+`DefaultFieldApplicator` replaces the current ClusterRoleBinding with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and
+`roleRef` from the original live object. ClusterRoleBinding does not have a Status subresource, so no status
+preservation is needed.
 
-The `roleRef` field is immutable after creation in the Kubernetes RBAC API — attempting to change it results in an API error. When the current object already exists in the cluster (has a non-empty `ResourceVersion`), the applicator restores the original `roleRef` after copying. On initial creation, the desired `roleRef` is used as-is.
+The `roleRef` field is immutable after creation in the Kubernetes RBAC API — attempting to change it results in an API
+error. When the current object already exists in the cluster (has a non-empty `ResourceVersion`), the applicator
+restores the original `roleRef` after copying. On initial creation, the desired `roleRef` is used as-is.
 
 Use `WithCustomFieldApplicator` when you need different field application behaviour:
 
@@ -62,9 +69,11 @@ resource, err := clusterrolebinding.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `ClusterRoleBinding` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `ClusterRoleBinding` beyond its baseline. Each mutation is a named
+function that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MySubjectMutation(version string) clusterrolebinding.Mutation {
@@ -82,7 +91,8 @@ func MySubjectMutation(version string) clusterrolebinding.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -106,14 +116,16 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are recorded:
+Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
+recorded:
 
-| Step | Category        | What it affects                                         |
-|------|-----------------|---------------------------------------------------------|
-| 1    | Metadata edits  | Labels and annotations on the `ClusterRoleBinding`      |
-| 2    | Subject edits   | `.subjects` entries — Add, Remove, EnsureServiceAccount |
+| Step | Category       | What it affects                                         |
+| ---- | -------------- | ------------------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `ClusterRoleBinding`      |
+| 2    | Subject edits  | `.subjects` entries — Add, Remove, EnsureServiceAccount |
 
-Within each category, edits are applied in their registration order. Later features observe the ClusterRoleBinding as modified by all previous features.
+Within each category, edits are applied in their registration order. Later features observe the ClusterRoleBinding as
+modified by all previous features.
 
 ## Editors
 
@@ -131,7 +143,8 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 
 #### EnsureServiceAccount
 
-Ensures a `ServiceAccount` subject with the given name and namespace exists. If an identical subject already exists, this is a no-op:
+Ensures a `ServiceAccount` subject with the given name and namespace exists. If an identical subject already exists,
+this is a no-op:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
@@ -157,7 +170,8 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 
 #### Remove and RemoveServiceAccount
 
-`Remove` removes all subjects matching the given kind, name, and namespace. `RemoveServiceAccount` is a convenience wrapper for removing `ServiceAccount` subjects:
+`Remove` removes all subjects matching the given kind, name, and namespace. `RemoveServiceAccount` is a convenience
+wrapper for removing `ServiceAccount` subjects:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
@@ -199,7 +213,8 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -213,7 +228,8 @@ resource, err := clusterrolebinding.NewBuilder(base).
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ```go
 resource, err := clusterrolebinding.NewBuilder(base).
@@ -225,10 +241,15 @@ Multiple flavors can be registered and run in registration order.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**`roleRef` is immutable.** The default field applicator preserves the existing `roleRef` on updates. To change a `roleRef`, delete the ClusterRoleBinding and recreate it — the Kubernetes API does not support in-place updates to this field.
+**`roleRef` is immutable.** The default field applicator preserves the existing `roleRef` on updates. To change a
+`roleRef`, delete the ClusterRoleBinding and recreate it — the Kubernetes API does not support in-place updates to this
+field.
 
-**Cluster-scoped resources have no namespace.** Unlike namespaced primitives, ClusterRoleBinding does not require or validate a namespace. The identity format is `rbac.authorization.k8s.io/v1/ClusterRoleBinding/<name>`.
+**Cluster-scoped resources have no namespace.** Unlike namespaced primitives, ClusterRoleBinding does not require or
+validate a namespace. The identity format is `rbac.authorization.k8s.io/v1/ClusterRoleBinding/<name>`.
 
 **Register mutations in dependency order.** If mutation B relies on a subject added by mutation A, register A first.

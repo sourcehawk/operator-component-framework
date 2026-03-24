@@ -47,9 +47,9 @@ func DefaultFieldApplicator(current, desired *corev1.PersistentVolumeClaim) erro
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for tracking whether the PVC is bound and operational.
-//   - component.Suspendable: for controlled suspension (e.g. retaining the PVC while suspending consumers).
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Operational: for tracking whether the PVC is bound and operational.
+//   - concepts.Suspendable: for controlled suspension (e.g. retaining the PVC while suspending consumers).
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // PVC resources follow the Integration lifecycle: they are operationally significant
 // (a PVC must be Bound to be useful) and support suspension semantics.

@@ -8,7 +8,7 @@ requests and object metadata.
 
 | Capability                 | Detail                                                                                         |
 | -------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Operational tracking**   | Monitors PVC phase — reports `Operational` (Bound), `Pending`, or `Failing` (Lost)             |
+| **Operational tracking**   | Monitors PVC phase — reports `Operational` (Bound), `OperationPending`, or `OperationFailing` (Lost) |
 | **Immutable field safety** | DefaultFieldApplicator preserves `accessModes`, `storageClassName`, `volumeMode`, `volumeName` |
 | **Suspension**             | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default   |
 | **Mutation pipeline**      | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access   |

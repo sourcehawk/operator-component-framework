@@ -12,8 +12,8 @@ import (
 //
 // It considers a PVC operational when its Status.Phase is Bound:
 //   - Bound → Operational
-//   - Pending → Pending
-//   - Lost → Failing
+//   - Pending → OperationPending
+//   - Lost → OperationFailing
 //
 // This function is used as the default handler by the Resource if no custom handler
 // is registered via Builder.WithCustomOperationalStatus. It can be reused within

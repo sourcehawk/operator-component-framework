@@ -1,5 +1,5 @@
 .PHONY: all
-all: fmt lint test build-examples
+all: fmt fmt-md lint test build-examples
 
 ##@ General
 
@@ -25,7 +25,9 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
+PRETTIER ?= $(LOCALBIN)/prettier
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+PRETTIER_VERSION ?= 3.8.1
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
@@ -66,11 +68,39 @@ ai-instructions: ## Generate all AI instruction files from source templates in .
 ##@ Development
 
 .PHONY: fmt
-fmt:
-	go fmt $(shell go list ./... | grep -v /examples/)
+fmt: fmt-go fmt-md ## Run all formatting in the project
 
-.PHONY: lint
-lint:
+
+.PHONY: fmt-go
+fmt-go: ## Format Go source files.
+	go fmt ./...
+
+
+.PHONY: fmt-md
+fmt-md: prettier ## Format Markdown files.
+	$(PRETTIER) --write '**/*.md' --ignore-path .gitignore
+
+.PHONY: prettier
+prettier: $(PRETTIER) ## Download prettier locally if necessary.
+$(PRETTIER): $(LOCALBIN)
+	@[ -f $(PRETTIER) ] || { \
+		set -e ; \
+		echo "Installing prettier@$(PRETTIER_VERSION)..." ; \
+		npm install --prefix $(LOCALBIN)/prettier-pkg prettier@$(PRETTIER_VERSION) && \
+		printf '#!/bin/sh\nexec node "$(LOCALBIN)/prettier-pkg/node_modules/.bin/prettier" "$$@"\n' > $(PRETTIER) && \
+		chmod +x $(PRETTIER) ; \
+	}
+
+.PHONY: lint ## Run all linters
+lint: lint-go lint-md
+
+.PHONY: lint-md
+lint-md: prettier ## Check Markdown files are formatted.
+	$(PRETTIER) --check '**/*.md' --ignore-path .gitignore
+
+
+.PHONY: lint-go ## Lint go files.
+lint-go:
 	golangci-lint run
 
 .PHONY: test

@@ -25,6 +25,7 @@ jobs:
         with:
           only: |
             golangci-lint
+            nodejs
 
       - name: Run linter
-        run: golangci-lint run
+        run: make lint

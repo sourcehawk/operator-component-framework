@@ -31,6 +31,7 @@ go.work.sum
 
 # Common local tools
 bin/
+node_modules/
 dist/
 tmp/
 

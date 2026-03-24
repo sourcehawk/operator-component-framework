@@ -28,9 +28,10 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 			},
 		}
 
-		res, _ := NewBuilder(desired).
+		res, buildErr := NewBuilder(desired).
 			WithFieldApplicationFlavor(PreserveCurrentLabels).
 			Build()
+		require.NoError(t, buildErr)
 
 		err := res.Mutate(current)
 		require.NoError(t, err)
@@ -57,10 +58,11 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 			return nil
 		}
 
-		res, _ := NewBuilder(desired).
+		res, buildErr := NewBuilder(desired).
 			WithFieldApplicationFlavor(flavor1).
 			WithFieldApplicationFlavor(flavor2).
 			Build()
+		require.NoError(t, buildErr)
 
 		err := res.Mutate(current)
 		require.NoError(t, err)
@@ -74,9 +76,10 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 			return flavorErr
 		}
 
-		res, _ := NewBuilder(desired).
+		res, buildErr := NewBuilder(desired).
 			WithFieldApplicationFlavor(flavor).
 			Build()
+		require.NoError(t, buildErr)
 
 		err := res.Mutate(current)
 		require.Error(t, err)

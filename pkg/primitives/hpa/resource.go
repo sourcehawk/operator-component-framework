@@ -25,7 +25,8 @@ func DefaultFieldApplicator(current, desired *autoscalingv2.HorizontalPodAutosca
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - component.Operational: for reporting operational status based on HPA conditions.
-//   - component.Suspendable: for no-op suspend behaviour (idle HPA has no cluster impact).
+//   - component.Suspendable: for default no-op suspend behaviour that leaves the HPA in place
+//     (the HPA may still scale if its target remains present).
 //   - component.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]

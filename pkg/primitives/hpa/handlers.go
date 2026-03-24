@@ -70,7 +70,9 @@ func DefaultOperationalStatusHandler(
 //
 // It always returns false. An idle HPA has no effect on a cluster when its scale target is
 // absent or suspended, so there is no reason to delete it. Keeping it in place avoids
-// unnecessary churn and simplifies resumption.
+// unnecessary churn and simplifies resumption. Note that a retained HPA may still attempt
+// to scale its target if the target remains present; override with
+// Builder.WithCustomSuspendDeletionDecision if this is a concern.
 //
 // Override this via Builder.WithCustomSuspendDeletionDecision if your use case requires
 // the HPA to be removed during suspension.

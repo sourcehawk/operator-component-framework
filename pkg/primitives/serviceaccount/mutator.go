@@ -93,9 +93,18 @@ func (m *Mutator) RemoveImagePullSecret(name string) {
 
 // SetAutomountServiceAccountToken records that .automountServiceAccountToken should
 // be set to the provided value. Pass nil to unset the field.
+//
+// The pointed-to value is snapshotted at registration time so that Apply()
+// is deterministic regardless of later caller-side mutations.
 func (m *Mutator) SetAutomountServiceAccountToken(v *bool) {
+	var snapshot *bool
+	if v != nil {
+		val := *v
+		snapshot = &val
+	}
+
 	m.active.automountEdits = append(m.active.automountEdits, func(sa *corev1.ServiceAccount) {
-		sa.AutomountServiceAccountToken = v
+		sa.AutomountServiceAccountToken = snapshot
 	})
 }
 

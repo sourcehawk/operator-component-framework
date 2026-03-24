@@ -30,6 +30,7 @@ func newTestPV() *corev1.PersistentVolume {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -41,6 +42,7 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -50,6 +52,7 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditPVSpec(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.EditPVSpec(func(e *editors.PVSpecEditor) error {
 		e.SetStorageClassName("fast-ssd")
 		return nil
@@ -61,6 +64,7 @@ func TestMutator_EditPVSpec(t *testing.T) {
 func TestMutator_EditPVSpec_Nil(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.EditPVSpec(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -68,6 +72,7 @@ func TestMutator_EditPVSpec_Nil(t *testing.T) {
 func TestMutator_EditPVSpec_RawAccess(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.EditPVSpec(func(e *editors.PVSpecEditor) error {
 		e.Raw().PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimRetain
 		return nil
@@ -81,6 +86,7 @@ func TestMutator_EditPVSpec_RawAccess(t *testing.T) {
 func TestMutator_SetStorageClassName(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.SetStorageClassName("premium")
 	require.NoError(t, m.Apply())
 	assert.Equal(t, "premium", pv.Spec.StorageClassName)
@@ -89,6 +95,7 @@ func TestMutator_SetStorageClassName(t *testing.T) {
 func TestMutator_SetReclaimPolicy(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.SetReclaimPolicy(corev1.PersistentVolumeReclaimDelete)
 	require.NoError(t, m.Apply())
 	assert.Equal(t, corev1.PersistentVolumeReclaimDelete, pv.Spec.PersistentVolumeReclaimPolicy)
@@ -97,6 +104,7 @@ func TestMutator_SetReclaimPolicy(t *testing.T) {
 func TestMutator_SetMountOptions(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	opts := []string{"hard", "nfsvers=4.1"}
 	m.SetMountOptions(opts)
 	require.NoError(t, m.Apply())
@@ -109,6 +117,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 	// Within a feature: metadata edits run before spec edits.
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.SetStorageClassName("standard")
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
@@ -124,6 +133,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.SetStorageClassName("feature1-class")
 	m.BeginFeature()
 	m.SetReclaimPolicy(corev1.PersistentVolumeReclaimRetain)
@@ -136,6 +146,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 func TestMutator_LaterFeatureObservesPrior(t *testing.T) {
 	pv := newTestPV()
 	m := NewMutator(pv)
+	m.BeginFeature()
 	m.SetStorageClassName("first")
 	m.BeginFeature()
 	// Second feature should see the storage class set by the first.
@@ -148,6 +159,58 @@ func TestMutator_LaterFeatureObservesPrior(t *testing.T) {
 	require.NoError(t, m.Apply())
 
 	assert.Equal(t, "first-seen", pv.Spec.StorageClassName)
+}
+
+// --- Constructor and feature plan invariants ---
+
+func TestNewMutator_InitializesNoPlan(t *testing.T) {
+	pv := newTestPV()
+	m := NewMutator(pv)
+
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	pv := newTestPV()
+	m := NewMutator(pv)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
+}
+
+func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+	pv := newTestPV()
+	m := NewMutator(pv)
+
+	// Record a mutation in the first feature plan
+	m.BeginFeature()
+	m.SetStorageClassName("class0")
+
+	// Start a new feature and record a different mutation
+	m.BeginFeature()
+	m.SetReclaimPolicy(corev1.PersistentVolumeReclaimRetain)
+
+	// The initial plan should have exactly one spec edit
+	assert.Len(t, m.plans[0].specEdits, 1, "initial plan should have one edit")
+	// The second plan should also have exactly one spec edit
+	assert.Len(t, m.plans[1].specEdits, 1, "second plan should have one edit")
+}
+
+func TestMutator_SingleFeature_PlanCount(t *testing.T) {
+	pv := newTestPV()
+	m := NewMutator(pv)
+	m.BeginFeature()
+	m.SetStorageClassName("standard")
+
+	require.NoError(t, m.Apply())
+	assert.Len(t, m.plans, 1, "no extra plans should be created during Apply")
+	assert.Equal(t, "standard", pv.Spec.StorageClassName)
 }
 
 // --- ObjectMutator interface ---

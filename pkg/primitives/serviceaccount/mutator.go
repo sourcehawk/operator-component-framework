@@ -34,13 +34,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given ServiceAccount.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(sa *corev1.ServiceAccount) *Mutator {
-	m := &Mutator{
-		sa:    sa,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		sa: sa,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

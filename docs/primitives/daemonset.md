@@ -9,7 +9,7 @@ pod specs, and metadata.
 | Capability            | Detail                                                                                                                                      |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Health tracking**   | Verifies `ObservedGeneration` matches `Generation` before evaluating `NumberReady`; reports `Healthy`, `Creating`, `Updating`, or `Scaling` |
-| **Graceful rollouts** | Reports rollout progress via `GraceStatus` for use with component-level grace periods (for example, configured with `WithGracePeriod`)     |
+| **Graceful rollouts** | Reports rollout progress via `GraceStatus` for use with component-level grace periods (for example, configured with `WithGracePeriod`)      |
 | **Suspension**        | Deletes the DaemonSet on suspend; reports `Suspended`                                                                                       |
 | **Mutation pipeline** | Typed editors for metadata, DaemonSet spec, pod spec, and containers                                                                        |
 | **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                                            |

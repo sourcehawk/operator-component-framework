@@ -33,6 +33,7 @@ func parseYAML(t *testing.T, s string) map[string]interface{} {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -44,6 +45,7 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -53,6 +55,7 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditData_RawAccess(t *testing.T) {
 	cm := newTestCM(map[string]string{"existing": "keep"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.EditData(func(e *editors.ConfigMapDataEditor) error {
 		raw := e.Raw()
 		raw["new"] = "added"
@@ -66,6 +69,7 @@ func TestMutator_EditData_RawAccess(t *testing.T) {
 func TestMutator_EditData_Nil(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.EditData(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -75,6 +79,7 @@ func TestMutator_EditData_Nil(t *testing.T) {
 func TestMutator_SetEntry(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.SetEntry("key", "value")
 	require.NoError(t, m.Apply())
 	assert.Equal(t, "value", cm.Data["key"])
@@ -83,6 +88,7 @@ func TestMutator_SetEntry(t *testing.T) {
 func TestMutator_SetEntry_Overwrites(t *testing.T) {
 	cm := newTestCM(map[string]string{"key": "old"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.SetEntry("key", "new")
 	require.NoError(t, m.Apply())
 	assert.Equal(t, "new", cm.Data["key"])
@@ -93,6 +99,7 @@ func TestMutator_SetEntry_Overwrites(t *testing.T) {
 func TestMutator_RemoveEntry(t *testing.T) {
 	cm := newTestCM(map[string]string{"key": "value", "other": "keep"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.RemoveEntry("key")
 	require.NoError(t, m.Apply())
 	assert.NotContains(t, cm.Data, "key")
@@ -102,6 +109,7 @@ func TestMutator_RemoveEntry(t *testing.T) {
 func TestMutator_RemoveEntry_NotPresent(t *testing.T) {
 	cm := newTestCM(map[string]string{"other": "keep"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.RemoveEntry("missing")
 	require.NoError(t, m.Apply())
 	assert.Equal(t, "keep", cm.Data["other"])
@@ -112,6 +120,7 @@ func TestMutator_RemoveEntry_NotPresent(t *testing.T) {
 func TestMutator_MergeYAML_NewKey(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.MergeYAML("config.yaml", "key: value\n")
 	require.NoError(t, m.Apply())
 	assert.NotEmpty(t, cm.Data["config.yaml"])
@@ -120,6 +129,7 @@ func TestMutator_MergeYAML_NewKey(t *testing.T) {
 func TestMutator_MergeYAML_MergesKeys(t *testing.T) {
 	cm := newTestCM(map[string]string{"config.yaml": "a: 1\nb: 2\n"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.MergeYAML("config.yaml", "b: 99\nc: 3\n")
 	require.NoError(t, m.Apply())
 
@@ -132,6 +142,7 @@ func TestMutator_MergeYAML_MergesKeys(t *testing.T) {
 func TestMutator_MergeYAML_RecursiveMerge(t *testing.T) {
 	cm := newTestCM(map[string]string{"config.yaml": "parent:\n  a: 1\n  b: 2\n"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.MergeYAML("config.yaml", "parent:\n  b: 99\n  c: 3\n")
 	require.NoError(t, m.Apply())
 
@@ -146,6 +157,7 @@ func TestMutator_MergeYAML_RecursiveMerge(t *testing.T) {
 func TestMutator_MergeYAML_PatchWinsForNonMap(t *testing.T) {
 	cm := newTestCM(map[string]string{"key": "scalar-value\n"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.MergeYAML("key", "new-value\n")
 	require.NoError(t, m.Apply())
 	assert.NotEqual(t, "scalar-value\n", cm.Data["key"])
@@ -155,6 +167,7 @@ func TestMutator_MergeYAML_Composable(t *testing.T) {
 	// Two separate features both contribute to the same key.
 	cm := newTestCM(map[string]string{"config.yaml": "a: 1\n"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.MergeYAML("config.yaml", "b: 2\n")
 	m.BeginFeature()
 	m.MergeYAML("config.yaml", "c: 3\n")
@@ -169,6 +182,7 @@ func TestMutator_MergeYAML_Composable(t *testing.T) {
 func TestMutator_MergeYAML_InvalidBase(t *testing.T) {
 	cm := newTestCM(map[string]string{"key": "{"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.MergeYAML("key", "a: 1\n")
 	assert.Error(t, m.Apply())
 }
@@ -176,6 +190,7 @@ func TestMutator_MergeYAML_InvalidBase(t *testing.T) {
 func TestMutator_MergeYAML_InvalidPatch(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.MergeYAML("key", "{")
 	assert.Error(t, m.Apply())
 }
@@ -186,6 +201,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 	// Within a feature: metadata edits run before data edits.
 	cm := newTestCM(map[string]string{"cfg": "base: 0\n"})
 	m := NewMutator(cm)
+	m.BeginFeature()
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.MergeYAML("cfg", "merged: 1\n")
 	m.SetEntry("direct", "yes")
@@ -206,6 +222,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.SetEntry("feature1", "on")
 	m.BeginFeature()
 	m.SetEntry("feature2", "on")
@@ -220,6 +237,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 func TestMutator_SetBinary(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.EditData(func(e *editors.ConfigMapDataEditor) error {
 		e.SetBinary("cert.pem", []byte("binary-content"))
 		return nil
@@ -232,6 +250,7 @@ func TestMutator_RemoveBinary(t *testing.T) {
 	cm := newTestCM(nil)
 	cm.BinaryData = map[string][]byte{"cert.pem": []byte("data"), "other": []byte("keep")}
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.EditData(func(e *editors.ConfigMapDataEditor) error {
 		e.RemoveBinary("cert.pem")
 		return nil
@@ -243,13 +262,12 @@ func TestMutator_RemoveBinary(t *testing.T) {
 
 // --- Constructor and feature plan invariants ---
 
-func TestNewMutator_InitializesExactlyOnePlan(t *testing.T) {
+func TestNewMutator_InitializesNoPlan(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
 
-	require.Len(t, m.plans, 1, "NewMutator must create exactly one initial plan")
-	require.NotNil(t, m.active, "active plan must be set")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the first plan")
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
 }
 
 func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
@@ -257,19 +275,20 @@ func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
 	m := NewMutator(cm)
 
 	m.BeginFeature()
-	require.Len(t, m.plans, 2, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
 
 	m.BeginFeature()
-	require.Len(t, m.plans, 3)
-	assert.Equal(t, &m.plans[2], m.active)
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
 }
 
 func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
 
-	// Record a mutation in the initial plan
+	// Record a mutation in the first feature plan
+	m.BeginFeature()
 	m.SetEntry("f0", "val0")
 
 	// Start a new feature and record a different mutation
@@ -283,9 +302,9 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 }
 
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
-	// When no BeginFeature is called, Apply should process exactly one plan
 	cm := newTestCM(nil)
 	m := NewMutator(cm)
+	m.BeginFeature()
 	m.SetEntry("key", "value")
 
 	require.NoError(t, m.Apply())

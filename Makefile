@@ -27,6 +27,7 @@ $(LOCALBIN):
 
 PRETTIER ?= $(LOCALBIN)/prettier
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+PRETTIER_VERSION ?= 3.8.1
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
@@ -78,9 +79,10 @@ fmt-md: prettier ## Format Markdown files.
 prettier: $(PRETTIER) ## Download prettier locally if necessary.
 $(PRETTIER): $(LOCALBIN)
 	@[ -f $(PRETTIER) ] || { \
-		echo "Installing prettier..." ; \
-		npm install --prefix $(LOCALBIN)/prettier-pkg prettier ; \
-		printf '#!/bin/sh\nexec node "$(LOCALBIN)/prettier-pkg/node_modules/.bin/prettier" "$$@"\n' > $(PRETTIER) ; \
+		set -e ; \
+		echo "Installing prettier@$(PRETTIER_VERSION)..." ; \
+		npm install --prefix $(LOCALBIN)/prettier-pkg prettier@$(PRETTIER_VERSION) && \
+		printf '#!/bin/sh\nexec node "$(LOCALBIN)/prettier-pkg/node_modules/.bin/prettier" "$$@"\n' > $(PRETTIER) && \
 		chmod +x $(PRETTIER) ; \
 	}
 

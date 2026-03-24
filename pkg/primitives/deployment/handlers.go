@@ -10,9 +10,10 @@ import (
 // DefaultConvergingStatusHandler is the default logic for determining if a Deployment has reached its desired state.
 //
 // It considers a Deployment ready when the deployment controller has observed the current generation
-// (Status.ObservedGeneration matches ObjectMeta.Generation) and Status.ReadyReplicas matches the
+// (Status.ObservedGeneration >= ObjectMeta.Generation) and Status.ReadyReplicas matches the
 // Spec.Replicas (defaulting to 1 if nil). If the controller has not yet observed the latest spec,
-// the handler reports Updating to avoid falsely reporting health based on stale status fields.
+// the handler reports Creating (when the resource was just created) or Updating (otherwise) to avoid
+// falsely reporting health based on stale status fields.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.

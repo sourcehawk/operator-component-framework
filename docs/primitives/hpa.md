@@ -48,19 +48,22 @@ metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences
 subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by
 the API server or other controllers.
 
-Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten:
+Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten. The
+example below restores only the fields needed for API server updates and shared-controller coordination; for full
+server-managed field preservation, use `DefaultFieldApplicator` as a starting point:
 
 ```go
 resource, err := hpa.NewBuilder(base).
     WithCustomFieldApplicator(func(current, desired *autoscalingv2.HorizontalPodAutoscaler) error {
-        // Preserve the current status and server-managed/shared-controller metadata
+        // Preserve specific fields from the live object
         savedStatus := current.Status
         savedMeta := current.ObjectMeta
 
         // Update spec and other desired fields
         desired.DeepCopyInto(current)
 
-        // Restore server-managed and shared-controller metadata from the live object
+        // Restore ResourceVersion, UID, Generation (required for updates),
+        // plus OwnerReferences and Finalizers (shared-controller fields)
         current.ObjectMeta.ResourceVersion = savedMeta.ResourceVersion
         current.ObjectMeta.UID = savedMeta.UID
         current.ObjectMeta.Generation = savedMeta.Generation

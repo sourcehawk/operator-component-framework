@@ -409,6 +409,40 @@ func TestResource_CustomFieldApplicator_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "applicator error")
 }
 
+func TestDefaultFieldApplicator_CreatePath_DoesNotLeakStatus(t *testing.T) {
+	desired := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-ns",
+			Labels:    map[string]string{"app": "test"},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "app", Image: "nginx:latest"},
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			PodIP: "10.0.0.1",
+			ContainerStatuses: []corev1.ContainerStatus{
+				{Name: "app", Ready: true, RestartCount: 5},
+			},
+		},
+	}
+
+	// Empty ResourceVersion simulates the create path.
+	current := &corev1.Pod{}
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Spec and metadata from desired are applied.
+	assert.Equal(t, "test", current.Labels["app"])
+	assert.Equal(t, "nginx:latest", current.Spec.Containers[0].Image)
+
+	// Status must not leak from the desired object.
+	assert.Equal(t, corev1.PodStatus{}, current.Status)
+}
+
 func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	current := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

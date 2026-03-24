@@ -18,6 +18,8 @@ import (
 func DefaultFieldApplicator(current, desired *corev1.Pod) error {
 	if current.ResourceVersion == "" {
 		*current = *desired.DeepCopy()
+		// Status is server-managed and must not leak from the desired object.
+		current.Status = corev1.PodStatus{}
 		return nil
 	}
 	original := current.DeepCopy()

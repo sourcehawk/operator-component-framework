@@ -10,7 +10,7 @@ ingress rules, egress rules, and policy types.
 | --------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state              |
 | **Mutation pipeline** | Typed editors for NetworkPolicy spec and object metadata, with a raw escape hatch for free-form access      |
-| **Append semantics**  | Ingress and egress rules have no unique key — `EnsureIngressRule`/`EnsureEgressRule` append unconditionally |
+| **Append semantics**  | Ingress and egress rules have no unique key — `AppendIngressRule`/`AppendEgressRule` append unconditionally |
 | **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                      |
 | **Data extraction**   | Reads generated or updated values back from the reconciled NetworkPolicy after each sync cycle              |
 
@@ -76,7 +76,7 @@ func HTTPIngressMutation() networkpolicy.Mutation {
             m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
                 port := intstr.FromInt32(8080)
                 tcp := corev1.ProtocolTCP
-                e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+                e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
                     Ports: []networkingv1.NetworkPolicyPort{
                         {Protocol: &tcp, Port: &port},
                     },
@@ -103,7 +103,7 @@ func MetricsIngressMutation(version string, enableMetrics bool) networkpolicy.Mu
             m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
                 port := intstr.FromInt32(9090)
                 tcp := corev1.ProtocolTCP
-                e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+                e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
                     Ports: []networkingv1.NetworkPolicyPort{
                         {Protocol: &tcp, Port: &port},
                     },
@@ -169,7 +169,7 @@ m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
     })
     port := intstr.FromInt32(80)
     tcp := corev1.ProtocolTCP
-    e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+    e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
         Ports: []networkingv1.NetworkPolicyPort{
             {Protocol: &tcp, Port: &port},
         },
@@ -183,7 +183,7 @@ m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 Sets the pod selector that determines which pods the policy applies to within the namespace. An empty `LabelSelector`
 matches all pods.
 
-#### EnsureIngressRule and EnsureEgressRule
+#### AppendIngressRule and AppendEgressRule
 
 Append a rule unconditionally. Ingress and egress rules have no unique key, so these methods always append. To replace
 the full set of rules atomically, call `RemoveIngressRules` or `RemoveEgressRules` first:
@@ -192,15 +192,15 @@ the full set of rules atomically, call `RemoveIngressRules` or `RemoveEgressRule
 m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
     // Replace all ingress rules atomically.
     e.RemoveIngressRules()
-    e.EnsureIngressRule(newRule1)
-    e.EnsureIngressRule(newRule2)
+    e.AppendIngressRule(newRule1)
+    e.AppendIngressRule(newRule2)
     return nil
 })
 ```
 
 #### RemoveIngressRules and RemoveEgressRules
 
-Clear all ingress or egress rules respectively. Use before `EnsureIngressRule`/`EnsureEgressRule` to replace the full
+Clear all ingress or egress rules respectively. Use before `AppendIngressRule`/`AppendEgressRule` to replace the full
 set atomically.
 
 #### SetPolicyTypes
@@ -276,7 +276,7 @@ func HTTPIngressMutation() networkpolicy.Mutation {
             m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
                 port := intstr.FromInt32(8080)
                 tcp := corev1.ProtocolTCP
-                e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+                e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
                     Ports: []networkingv1.NetworkPolicyPort{
                         {Protocol: &tcp, Port: &port},
                     },
@@ -296,7 +296,7 @@ func MetricsIngressMutation(version string, enabled bool) networkpolicy.Mutation
             m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
                 port := intstr.FromInt32(9090)
                 tcp := corev1.ProtocolTCP
-                e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+                e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
                     Ports: []networkingv1.NetworkPolicyPort{
                         {Protocol: &tcp, Port: &port},
                     },
@@ -329,5 +329,5 @@ upsert-by-key operation. To replace the full set of rules, call `Remove*Rules` f
 Alternatively, use `Raw()` for fine-grained manipulation.
 
 **Register mutations in dependency order.** If mutation B relies on a rule added by mutation A, register A first. Since
-`EnsureIngressRule`/`EnsureEgressRule` append unconditionally, the order of registration determines the order of rules
+`AppendIngressRule`/`AppendEgressRule` append unconditionally, the order of registration determines the order of rules
 in the resulting spec.

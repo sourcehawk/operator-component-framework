@@ -73,7 +73,7 @@ func TestMutator_EditNetworkPolicySpec_IngressRules(t *testing.T) {
 	tcp := corev1.ProtocolTCP
 
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-		e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+		e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port80}},
 		})
 		return nil
@@ -90,7 +90,7 @@ func TestMutator_EditNetworkPolicySpec_EgressRules(t *testing.T) {
 	tcp := corev1.ProtocolTCP
 
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-		e.EnsureEgressRule(networkingv1.NetworkPolicyEgressRule{
+		e.AppendEgressRule(networkingv1.NetworkPolicyEgressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port443}},
 		})
 		return nil
@@ -112,7 +112,7 @@ func TestMutator_EditNetworkPolicySpec_ReplaceIngressAtomically(t *testing.T) {
 	m := NewMutator(np)
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 		e.RemoveIngressRules()
-		e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+		e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port8080}},
 		})
 		return nil
@@ -161,7 +161,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-		e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+		e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port80}},
 		})
 		return nil
@@ -185,14 +185,14 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	tcp := corev1.ProtocolTCP
 
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-		e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+		e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port80}},
 		})
 		return nil
 	})
 	m.BeginFeature()
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-		e.EnsureEgressRule(networkingv1.NetworkPolicyEgressRule{
+		e.AppendEgressRule(networkingv1.NetworkPolicyEgressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port443}},
 		})
 		return nil

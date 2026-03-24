@@ -73,7 +73,7 @@ func TestResource_Mutate(t *testing.T) {
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-					e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+					e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 						Ports: []networkingv1.NetworkPolicyPort{
 							{Protocol: &tcp, Port: &port},
 						},
@@ -183,7 +183,7 @@ func TestResource_Mutate_MutationOrdering(t *testing.T) {
 			Name: "http",
 			Mutate: func(m *Mutator) error {
 				m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-					e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+					e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 						Ports: []networkingv1.NetworkPolicyPort{
 							{Protocol: &tcp, Port: &port80},
 						},
@@ -197,7 +197,7 @@ func TestResource_Mutate_MutationOrdering(t *testing.T) {
 			Name: "https",
 			Mutate: func(m *Mutator) error {
 				m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-					e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+					e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 						Ports: []networkingv1.NetworkPolicyPort{
 							{Protocol: &tcp, Port: &port443},
 						},

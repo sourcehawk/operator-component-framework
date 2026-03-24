@@ -67,8 +67,8 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // EditNetworkPolicySpec records a mutation for the NetworkPolicy's spec via a
 // NetworkPolicySpecEditor.
 //
-// The editor provides structured operations (SetPodSelector, EnsureIngressRule,
-// RemoveIngressRules, EnsureEgressRule, RemoveEgressRules, SetPolicyTypes) as
+// The editor provides structured operations (SetPodSelector, AppendIngressRule,
+// RemoveIngressRules, AppendEgressRule, RemoveEgressRules, SetPolicyTypes) as
 // well as Raw() for free-form access. Spec edits are applied after metadata
 // edits within the same feature, in registration order.
 //

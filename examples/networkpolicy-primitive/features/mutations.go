@@ -35,7 +35,7 @@ func HTTPIngressMutation() networkpolicy.Mutation {
 			m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 				port := intstr.FromInt32(8080)
 				tcp := corev1.ProtocolTCP
-				e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+				e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 					Ports: []networkingv1.NetworkPolicyPort{
 						{Protocol: &tcp, Port: &port},
 					},
@@ -57,7 +57,7 @@ func MetricsIngressMutation(version string, enableMetrics bool) networkpolicy.Mu
 			m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 				port := intstr.FromInt32(9090)
 				tcp := corev1.ProtocolTCP
-				e.EnsureIngressRule(networkingv1.NetworkPolicyIngressRule{
+				e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
 					Ports: []networkingv1.NetworkPolicyPort{
 						{Protocol: &tcp, Port: &port},
 					},
@@ -78,7 +78,7 @@ func DNSEgressMutation() networkpolicy.Mutation {
 			m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 				port := intstr.FromInt32(53)
 				udp := corev1.ProtocolUDP
-				e.EnsureEgressRule(networkingv1.NetworkPolicyEgressRule{
+				e.AppendEgressRule(networkingv1.NetworkPolicyEgressRule{
 					Ports: []networkingv1.NetworkPolicyPort{
 						{Protocol: &udp, Port: &port},
 					},

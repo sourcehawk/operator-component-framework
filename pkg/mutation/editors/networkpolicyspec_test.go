@@ -26,7 +26,7 @@ func TestNetworkPolicySpecEditor_SetPodSelector(t *testing.T) {
 	assert.Equal(t, selector, spec.PodSelector)
 }
 
-func TestNetworkPolicySpecEditor_EnsureIngressRule_Appends(t *testing.T) {
+func TestNetworkPolicySpecEditor_AppendIngressRule_Appends(t *testing.T) {
 	spec := &networkingv1.NetworkPolicySpec{}
 	e := NewNetworkPolicySpecEditor(spec)
 
@@ -41,8 +41,8 @@ func TestNetworkPolicySpecEditor_EnsureIngressRule_Appends(t *testing.T) {
 		Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port443}},
 	}
 
-	e.EnsureIngressRule(rule1)
-	e.EnsureIngressRule(rule2)
+	e.AppendIngressRule(rule1)
+	e.AppendIngressRule(rule2)
 
 	assert.Len(t, spec.Ingress, 2)
 	assert.Equal(t, rule1, spec.Ingress[0])
@@ -63,7 +63,7 @@ func TestNetworkPolicySpecEditor_RemoveIngressRules(t *testing.T) {
 	assert.Nil(t, spec.Ingress)
 }
 
-func TestNetworkPolicySpecEditor_EnsureEgressRule_Appends(t *testing.T) {
+func TestNetworkPolicySpecEditor_AppendEgressRule_Appends(t *testing.T) {
 	spec := &networkingv1.NetworkPolicySpec{}
 	e := NewNetworkPolicySpecEditor(spec)
 
@@ -79,8 +79,8 @@ func TestNetworkPolicySpecEditor_EnsureEgressRule_Appends(t *testing.T) {
 		Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port443}},
 	}
 
-	e.EnsureEgressRule(rule1)
-	e.EnsureEgressRule(rule2)
+	e.AppendEgressRule(rule1)
+	e.AppendEgressRule(rule2)
 
 	assert.Len(t, spec.Egress, 2)
 	assert.Equal(t, rule1, spec.Egress[0])
@@ -130,7 +130,7 @@ func TestNetworkPolicySpecEditor_ReplaceIngressAtomically(t *testing.T) {
 	newRule := networkingv1.NetworkPolicyIngressRule{
 		Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port8080}},
 	}
-	e.EnsureIngressRule(newRule)
+	e.AppendIngressRule(newRule)
 
 	assert.Len(t, spec.Ingress, 1)
 	assert.Equal(t, newRule, spec.Ingress[0])

@@ -86,7 +86,16 @@ func (m *Mutator) EditServiceSpec(edit func(*editors.ServiceSpecEditor) error) {
 //
 // Features are applied in the order they were registered. Later features observe
 // the Service as modified by all previous features.
+//
+// After all edits are applied, auto-allocated NodePort values that were present
+// before mutations are restored for NodePort and LoadBalancer Services when the
+// resulting port's NodePort is 0 (unset). This prevents mutations that replace
+// ports via EnsurePort from unintentionally clearing server-assigned NodePorts.
 func (m *Mutator) Apply() error {
+	// Snapshot ports before mutations so we can restore auto-allocated
+	// NodePorts that mutations may inadvertently clear.
+	snapshot := m.svc.DeepCopy()
+
 	for _, plan := range m.plans {
 		// 1. Metadata edits
 		if len(plan.metadataEdits) > 0 {
@@ -107,6 +116,15 @@ func (m *Mutator) Apply() error {
 				}
 			}
 		}
+	}
+
+	// Restore auto-allocated NodePorts for types that support them.
+	effectiveType := m.svc.Spec.Type
+	if effectiveType == "" {
+		effectiveType = corev1.ServiceTypeClusterIP
+	}
+	if effectiveType == corev1.ServiceTypeNodePort || effectiveType == corev1.ServiceTypeLoadBalancer {
+		preserveNodePorts(m.svc, snapshot)
 	}
 
 	return nil

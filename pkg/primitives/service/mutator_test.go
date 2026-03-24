@@ -174,6 +174,92 @@ func TestMutator_MultipleFeatures_LaterSeesEarlier(t *testing.T) {
 	assert.Equal(t, "prod", svc.Spec.Selector["env"])
 }
 
+// --- NodePort preservation across mutations ---
+
+func TestMutator_Apply_PreservesNodePortsAfterEnsurePort(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeNodePort,
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080},
+				{Name: "https", Port: 443, NodePort: 30443},
+			},
+		},
+	}
+	m := NewMutator(svc)
+	// EnsurePort replaces the entire ServicePort, which zeroes NodePort.
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Equal(t, int32(30080), svc.Spec.Ports[0].NodePort, "auto-allocated NodePort should be restored")
+	assert.Equal(t, int32(30443), svc.Spec.Ports[1].NodePort, "untouched port should keep its NodePort")
+}
+
+func TestMutator_Apply_PreservesNodePortsForLoadBalancer(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeLoadBalancer,
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 31080},
+			},
+		},
+	}
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Equal(t, int32(31080), svc.Spec.Ports[0].NodePort)
+}
+
+func TestMutator_Apply_ExplicitNodePortNotOverridden(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeNodePort,
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080},
+			},
+		},
+	}
+	m := NewMutator(svc)
+	// Explicitly set a different NodePort — should not be reverted to the snapshot.
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80, NodePort: 32000})
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Equal(t, int32(32000), svc.Spec.Ports[0].NodePort, "explicitly set NodePort should not be overridden")
+}
+
+func TestMutator_Apply_NoNodePortPreservationForClusterIP(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeClusterIP,
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 80, NodePort: 30080},
+			},
+		},
+	}
+	m := NewMutator(svc)
+	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
+		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
+		return nil
+	})
+	require.NoError(t, m.Apply())
+
+	assert.Equal(t, int32(0), svc.Spec.Ports[0].NodePort, "ClusterIP services should not preserve NodePorts")
+}
+
 // --- ObjectMutator interface ---
 
 func TestMutator_ImplementsObjectMutator(_ *testing.T) {

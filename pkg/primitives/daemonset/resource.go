@@ -15,6 +15,7 @@ func DefaultFieldApplicator(current, desired *appsv1.DaemonSet) error {
 	original := current.DeepCopy()
 	*current = *desired.DeepCopy()
 	generic.PreserveServerManagedFields(current, original)
+	generic.PreserveStatus(current, original)
 	return nil
 }
 

@@ -410,6 +410,44 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
 
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Status: appsv1.DaemonSetStatus{
+			CurrentNumberScheduled: 3,
+			DesiredNumberScheduled: 3,
+			NumberReady:            3,
+			NumberAvailable:        3,
+			UpdatedNumberScheduled: 3,
+		},
+	}
+	desired := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Spec: appsv1.DaemonSetSpec{
+			MinReadySeconds: 30,
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, int32(30), current.Spec.MinReadySeconds)
+
+	// Status from the live object is preserved
+	assert.Equal(t, int32(3), current.Status.CurrentNumberScheduled)
+	assert.Equal(t, int32(3), current.Status.DesiredNumberScheduled)
+	assert.Equal(t, int32(3), current.Status.NumberReady)
+	assert.Equal(t, int32(3), current.Status.NumberAvailable)
+	assert.Equal(t, int32(3), current.Status.UpdatedNumberScheduled)
+}
+
 func TestResource_CustomFieldApplicator(t *testing.T) {
 	desired := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{

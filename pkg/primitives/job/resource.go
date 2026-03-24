@@ -61,9 +61,12 @@ func (r *Resource) Object() (client.Object, error) {
 // The mutation process follows a specific order:
 //  1. Core State: The current object is reset to the desired base state, or
 //     modified via a custom field applicator if one is configured.
-//  2. Feature Mutations: All registered feature-based mutations are applied,
+//  2. Field-Application Flavors: Any configured field-application flavors are
+//     applied on top of the baseline field application to adjust how fields are
+//     merged or preserved.
+//  3. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the Job.
-//  3. Suspension: If the resource is in a suspending state, the suspension
+//  4. Suspension: If the resource is in a suspending state, the suspension
 //     logic (e.g., setting suspend=true) is applied.
 //
 // This method is invoked by the framework during the "Update" phase of

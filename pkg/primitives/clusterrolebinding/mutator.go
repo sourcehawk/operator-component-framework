@@ -33,13 +33,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given ClusterRoleBinding.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(crb *rbacv1.ClusterRoleBinding) *Mutator {
-	m := &Mutator{
-		crb:   crb,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		crb: crb,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

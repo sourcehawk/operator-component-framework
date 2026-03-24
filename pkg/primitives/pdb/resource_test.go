@@ -53,3 +53,39 @@ func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
 	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
 	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }
+
+func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
+	current := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Status: policyv1.PodDisruptionBudgetStatus{
+			CurrentHealthy:   3,
+			DesiredHealthy:   2,
+			DisruptionsAllowed: 1,
+			ExpectedPods:     3,
+		},
+	}
+	desired := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MinAvailable: ptr.To(intstr.FromInt32(2)),
+		},
+	}
+
+	err := DefaultFieldApplicator(current, desired)
+	require.NoError(t, err)
+
+	// Desired spec is applied
+	assert.Equal(t, intstr.FromInt32(2), *current.Spec.MinAvailable)
+
+	// Status from the live object is preserved
+	assert.Equal(t, int32(3), current.Status.CurrentHealthy)
+	assert.Equal(t, int32(2), current.Status.DesiredHealthy)
+	assert.Equal(t, int32(1), current.Status.DisruptionsAllowed)
+	assert.Equal(t, int32(3), current.Status.ExpectedPods)
+}

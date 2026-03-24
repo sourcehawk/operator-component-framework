@@ -117,21 +117,30 @@ func TestMutator_EditSpec_Nil(t *testing.T) {
 
 func TestMutator_OperationOrder(t *testing.T) {
 	// Within a feature: metadata edits run before spec edits.
+	// The spec edit reads a label set by the metadata edit to prove ordering.
 	p := newTestPDB()
 	m := NewMutator(p)
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
-		e.SetMinAvailable(intstr.FromInt32(1))
+		// Branch on the label set by the metadata edit: if metadata ran first
+		// the label exists and we set MinAvailable to 1; otherwise we set it to 99.
+		if p.Labels["order"] == "metadata-first" {
+			e.SetMinAvailable(intstr.FromInt32(1))
+		} else {
+			e.SetMinAvailable(intstr.FromInt32(99))
+		}
 		return nil
 	})
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
-		e.EnsureLabel("order", "tested")
+		e.EnsureLabel("order", "metadata-first")
 		return nil
 	})
 	require.NoError(t, m.Apply())
 
-	assert.Equal(t, "tested", p.Labels["order"])
+	assert.Equal(t, "metadata-first", p.Labels["order"])
 	require.NotNil(t, p.Spec.MinAvailable)
+	// MinAvailable == 1 proves metadata edits ran before spec edits.
+	// If ordering regressed, MinAvailable would be 99.
 	assert.Equal(t, intstr.FromInt32(1), *p.Spec.MinAvailable)
 }
 

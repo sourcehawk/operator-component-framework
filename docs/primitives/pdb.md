@@ -1,15 +1,17 @@
 # PodDisruptionBudget Primitive
 
-The `pdb` primitive is the framework's built-in static abstraction for managing Kubernetes `PodDisruptionBudget` resources. It integrates with the component lifecycle and provides a structured mutation API for managing disruption policies and object metadata.
+The `pdb` primitive is the framework's built-in static abstraction for managing Kubernetes `PodDisruptionBudget`
+resources. It integrates with the component lifecycle and provides a structured mutation API for managing disruption
+policies and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                          |
-|-----------------------|-------------------------------------------------------------------------------------------------|
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state  |
-| **Mutation pipeline** | Typed editors for PDB spec and object metadata, with a raw escape hatch for free-form access    |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator          |
-| **Data extraction**   | Reads generated or updated values back from the reconciled PDB after each sync cycle            |
+| Capability            | Detail                                                                                         |
+| --------------------- | ---------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state |
+| **Mutation pipeline** | Typed editors for PDB spec and object metadata, with a raw escape hatch for free-form access   |
+| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator         |
+| **Data extraction**   | Reads generated or updated values back from the reconciled PDB after each sync cycle           |
 
 ## Building a PDB Primitive
 
@@ -38,7 +40,10 @@ resource, err := pdb.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current PodDisruptionBudget with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+`DefaultFieldApplicator` replaces the current PodDisruptionBudget with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
+Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
+written by the API server or other controllers.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 
@@ -54,9 +59,11 @@ resource, err := pdb.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `PodDisruptionBudget` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `PodDisruptionBudget` beyond its baseline. Each mutation is a named
+function that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) pdb.Mutation {
@@ -71,7 +78,8 @@ func MyFeatureMutation(version string) pdb.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -119,14 +127,16 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are recorded:
+Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
+recorded:
 
-| Step | Category       | What it affects                                    |
-|------|----------------|----------------------------------------------------|
-| 1    | Metadata edits | Labels and annotations on the `PodDisruptionBudget` |
+| Step | Category       | What it affects                                         |
+| ---- | -------------- | ------------------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `PodDisruptionBudget`     |
 | 2    | Spec edits     | MinAvailable, MaxUnavailable, selector, eviction policy |
 
-Within each category, edits are applied in their registration order. Later features observe the PodDisruptionBudget as modified by all previous features.
+Within each category, edits are applied in their registration order. Later features observe the PodDisruptionBudget as
+modified by all previous features.
 
 ## Editors
 
@@ -146,9 +156,12 @@ m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 
 #### SetMinAvailable and SetMaxUnavailable
 
-`SetMinAvailable` sets the minimum number of pods that must remain available during a disruption. `SetMaxUnavailable` sets the maximum number of pods that can be unavailable. Both accept `intstr.IntOrString` — either an integer count or a percentage string (e.g. `"50%"`).
+`SetMinAvailable` sets the minimum number of pods that must remain available during a disruption. `SetMaxUnavailable`
+sets the maximum number of pods that can be unavailable. Both accept `intstr.IntOrString` — either an integer count or a
+percentage string (e.g. `"50%"`).
 
-These fields are mutually exclusive in the Kubernetes API. Use `ClearMinAvailable` or `ClearMaxUnavailable` to remove the opposing constraint when switching between them:
+These fields are mutually exclusive in the Kubernetes API. Use `ClearMinAvailable` or `ClearMaxUnavailable` to remove
+the opposing constraint when switching between them:
 
 ```go
 m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
@@ -173,7 +186,9 @@ m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 
 #### SetUnhealthyPodEvictionPolicy
 
-`SetUnhealthyPodEvictionPolicy` controls how unhealthy pods are handled during eviction. Valid values are `policyv1.IfHealthyBudget` and `policyv1.AlwaysAllow`. Use `ClearUnhealthyPodEvictionPolicy` to revert to the cluster default:
+`SetUnhealthyPodEvictionPolicy` controls how unhealthy pods are handled during eviction. Valid values are
+`policyv1.IfHealthyBudget` and `policyv1.AlwaysAllow`. Use `ClearUnhealthyPodEvictionPolicy` to revert to the cluster
+default:
 
 ```go
 m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
@@ -209,7 +224,8 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -223,7 +239,8 @@ resource, err := pdb.NewBuilder(base).
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ```go
 resource, err := pdb.NewBuilder(base).
@@ -272,12 +289,17 @@ resource, err := pdb.NewBuilder(base).
     Build()
 ```
 
-When `StrictMode` is true, the PDB switches from percentage-based `MinAvailable` to an absolute `MaxUnavailable` of 1. When false, only the base mutation runs and the original `MinAvailable` from the baseline is preserved. Neither mutation needs to know about the other.
+When `StrictMode` is true, the PDB switches from percentage-based `MinAvailable` to an absolute `MaxUnavailable` of 1.
+When false, only the base mutation runs and the original `MinAvailable` from the baseline is preserved. Neither mutation
+needs to know about the other.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**`MinAvailable` and `MaxUnavailable` are mutually exclusive.** When switching between them, always clear the opposing field first. The typed API makes this explicit with `ClearMinAvailable` and `ClearMaxUnavailable`.
+**`MinAvailable` and `MaxUnavailable` are mutually exclusive.** When switching between them, always clear the opposing
+field first. The typed API makes this explicit with `ClearMinAvailable` and `ClearMaxUnavailable`.
 
 **Register mutations in dependency order.** If mutation B relies on state set by mutation A, register A first.

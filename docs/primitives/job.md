@@ -1,19 +1,24 @@
 # Job Primitive
 
-The `job` primitive is the framework's built-in task abstraction for managing Kubernetes `Job` resources. It integrates fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and metadata — following the same pod-template mutation pattern as the Deployment primitive.
+The `job` primitive is the framework's built-in task abstraction for managing Kubernetes `Job` resources. It integrates
+fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and metadata —
+following the same pod-template mutation pattern as the Deployment primitive.
 
 ## Capabilities
 
-| Capability              | Detail                                                                                            |
-|-------------------------|---------------------------------------------------------------------------------------------------|
-| **Completion tracking** | Monitors Job conditions and reports `Completed`, `TaskRunning`, `TaskPending`, or `TaskFailing`   |
-| **Suspension**          | Sets `spec.suspend=true` or deletes the Job (default); reports `Suspending` / `Suspended`         |
-| **Mutation pipeline**   | Typed editors for metadata, job spec, pod spec, and containers                                    |
-| **Flavors**             | Preserves externally-managed fields (labels, annotations, pod template metadata)                  |
+| Capability              | Detail                                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| **Completion tracking** | Monitors Job conditions and reports `Completed`, `TaskRunning`, `TaskPending`, or `TaskFailing` |
+| **Suspension**          | Sets `spec.suspend=true` or deletes the Job (default); reports `Suspending` / `Suspended`       |
+| **Mutation pipeline**   | Typed editors for metadata, job spec, pod spec, and containers                                  |
+| **Flavors**             | Preserves externally-managed fields (labels, annotations, pod template metadata)                |
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current Job with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+`DefaultFieldApplicator` replaces the current Job with a deep copy of the desired object, then restores server-managed
+metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status
+subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by
+the API server or other controllers.
 
 Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten.
 
@@ -47,9 +52,11 @@ resource, err := job.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `Job` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `Job` beyond its baseline. Each mutation is a named function that
+receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) job.Mutation {
@@ -64,7 +71,8 @@ func MyFeatureMutation(version string) job.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -115,20 +123,22 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the order they are recorded. This ensures structural consistency across mutations.
+Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
+order they are recorded. This ensures structural consistency across mutations.
 
-| Step | Category | What it affects |
-|---|---|---|
-| 1 | Job metadata edits | Labels and annotations on the `Job` object |
-| 2 | JobSpec edits | Completions, parallelism, backoff limit, deadline, etc. |
-| 3 | Pod template metadata edits | Labels and annotations on the pod template |
-| 4 | Pod spec edits | Volumes, tolerations, node selectors, service account, security context |
-| 5 | Regular container presence | Adding or removing containers from `spec.template.spec.containers` |
-| 6 | Regular container edits | Env vars, args, resources (snapshot taken after step 5) |
-| 7 | Init container presence | Adding or removing containers from `spec.template.spec.initContainers` |
-| 8 | Init container edits | Env vars, args, resources (snapshot taken after step 7) |
+| Step | Category                    | What it affects                                                         |
+| ---- | --------------------------- | ----------------------------------------------------------------------- |
+| 1    | Job metadata edits          | Labels and annotations on the `Job` object                              |
+| 2    | JobSpec edits               | Completions, parallelism, backoff limit, deadline, etc.                 |
+| 3    | Pod template metadata edits | Labels and annotations on the pod template                              |
+| 4    | Pod spec edits              | Volumes, tolerations, node selectors, service account, security context |
+| 5    | Regular container presence  | Adding or removing containers from `spec.template.spec.containers`      |
+| 6    | Regular container edits     | Env vars, args, resources (snapshot taken after step 5)                 |
+| 7    | Init container presence     | Adding or removing containers from `spec.template.spec.initContainers`  |
+| 8    | Init container edits        | Env vars, args, resources (snapshot taken after step 7)                 |
 
-Container edits (steps 6 and 8) are evaluated against a snapshot taken *after* presence operations in the same mutation. This means a single mutation can add a container and then configure it without selector resolution issues.
+Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
+This means a single mutation can add a container and then configure it without selector resolution issues.
 
 ## Editors
 
@@ -136,7 +146,8 @@ Container edits (steps 6 and 8) are evaluated against a snapshot taken *after* p
 
 Controls job-level settings via `m.EditJobSpec`.
 
-Available methods: `SetCompletions`, `SetParallelism`, `SetBackoffLimit`, `SetActiveDeadlineSeconds`, `SetTTLSecondsAfterFinished`, `SetCompletionMode`, `Raw`.
+Available methods: `SetCompletions`, `SetParallelism`, `SetBackoffLimit`, `SetActiveDeadlineSeconds`,
+`SetTTLSecondsAfterFinished`, `SetCompletionMode`, `Raw`.
 
 ```go
 m.EditJobSpec(func(e *editors.JobSpecEditor) error {
@@ -159,7 +170,9 @@ m.EditJobSpec(func(e *editors.JobSpecEditor) error {
 
 Manages pod-level configuration via `m.EditPodSpec`.
 
-Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`, `EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`, `SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
+Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`,
+`EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`,
+`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
@@ -178,9 +191,11 @@ m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a [selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
+[selector](../primitives.md#container-selectors).
 
-Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`, `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
+Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
+`RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
 m.EditContainers(selectors.ContainerNamed("migrate"), func(e *editors.ContainerEditor) error {
@@ -192,7 +207,8 @@ m.EditContainers(selectors.ContainerNamed("migrate"), func(e *editors.ContainerE
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `Job` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `Job` object itself, or
+`m.EditPodTemplateMetadata` to target the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
@@ -208,7 +224,7 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 The `Mutator` exposes convenience wrappers that target all containers at once:
 
 | Method                        | Equivalent to                                                 |
-|-------------------------------|---------------------------------------------------------------|
+| ----------------------------- | ------------------------------------------------------------- |
 | `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
 | `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
 
@@ -216,8 +232,10 @@ The `Mutator` exposes convenience wrappers that target all containers at once:
 
 Jobs use the Task lifecycle for suspension, which differs from Workloads:
 
-- **Default behavior**: `DefaultDeleteOnSuspendHandler` returns `true`, meaning the Job is deleted from the cluster during suspension.
-- **Suspend mutation**: `DefaultSuspendMutationHandler` sets `spec.suspend=true`, which prevents the Job controller from creating new pods while allowing existing pods to complete.
+- **Default behavior**: `DefaultDeleteOnSuspendHandler` returns `true`, meaning the Job is deleted from the cluster
+  during suspension.
+- **Suspend mutation**: `DefaultSuspendMutationHandler` sets `spec.suspend=true`, which prevents the Job controller from
+  creating new pods while allowing existing pods to complete.
 - **Suspension status**: `DefaultSuspensionStatusHandler` checks if `spec.suspend=true` and `status.active=0`.
 
 Override any of these via the Builder:
@@ -232,7 +250,8 @@ resource, err := job.NewBuilder(base).
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -240,7 +259,8 @@ Preserves labels present on the live object but absent from the applied desired 
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ### PreserveCurrentPodTemplateLabels
 
@@ -252,12 +272,18 @@ Preserves annotations on the live object's pod template that are absent from the
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first. The internal ordering within each mutation handles intra-mutation dependencies automatically.
+**Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
+The internal ordering within each mutation handles intra-mutation dependencies automatically.
 
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in the same mutation resolve correctly and reconciliation remains idempotent.
+**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
+the same mutation resolve correctly and reconciliation remains idempotent.
 
-**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can cause unexpected behavior if init containers or sidecar containers are present.
+**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
+cause unexpected behavior if init containers or sidecar containers are present.
 
-**Jobs are deleted on suspend by default.** Unlike Deployments which scale to zero, Jobs are deleted during suspension. Override `WithCustomSuspendDeletionDecision` if you need to keep the Job resource in the cluster.
+**Jobs are deleted on suspend by default.** Unlike Deployments which scale to zero, Jobs are deleted during suspension.
+Override `WithCustomSuspendDeletionDecision` if you need to keep the Job resource in the cluster.

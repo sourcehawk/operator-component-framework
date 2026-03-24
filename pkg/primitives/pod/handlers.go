@@ -92,9 +92,13 @@ func DefaultConvergingStatusHandler(
 				Reason: "Pod running but not all containers ready",
 			}, nil
 		}
+		reason := "Pod phase is " + string(pod.Status.Phase)
+		if pod.Status.Phase == corev1.PodPending {
+			reason = "Pod is pending"
+		}
 		return concepts.AliveStatusWithReason{
 			Status: concepts.AliveConvergingStatusCreating,
-			Reason: "Pod is pending",
+			Reason: reason,
 		}, nil
 	}
 }

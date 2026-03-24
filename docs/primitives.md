@@ -155,6 +155,7 @@ have been applied. This means a single mutation can safely add a container and t
 | --------------------------- | -------- | ----------------------------------------- |
 | `pkg/primitives/deployment` | Workload | [deployment.md](primitives/deployment.md) |
 | `pkg/primitives/configmap`  | Static   | [configmap.md](primitives/configmap.md)   |
+| `pkg/primitives/pod`        | Workload | [pod.md](primitives/pod.md)               |
 
 ## Usage Examples
 

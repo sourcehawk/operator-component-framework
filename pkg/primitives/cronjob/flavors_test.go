@@ -32,11 +32,12 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 			},
 		}
 
-		res, _ := NewBuilder(desired).
+		res, err := NewBuilder(desired).
 			WithFieldApplicationFlavor(PreserveCurrentLabels).
 			Build()
+		require.NoError(t, err)
 
-		err := res.Mutate(current)
+		err = res.Mutate(current)
 		require.NoError(t, err)
 
 		assert.Equal(t, "desired", current.Labels["app"])
@@ -61,12 +62,13 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 			return nil
 		}
 
-		res, _ := NewBuilder(desired).
+		res, err := NewBuilder(desired).
 			WithFieldApplicationFlavor(flavor1).
 			WithFieldApplicationFlavor(flavor2).
 			Build()
+		require.NoError(t, err)
 
-		err := res.Mutate(current)
+		err = res.Mutate(current)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"flavor1", "flavor2"}, order)
 	})
@@ -78,11 +80,12 @@ func TestMutate_OrderingAndFlavors(t *testing.T) {
 			return flavorErr
 		}
 
-		res, _ := NewBuilder(desired).
+		res, err := NewBuilder(desired).
 			WithFieldApplicationFlavor(flavor).
 			Build()
+		require.NoError(t, err)
 
-		err := res.Mutate(current)
+		err = res.Mutate(current)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to apply field application flavor")
 		assert.True(t, errors.Is(err, flavorErr))

@@ -25,6 +25,7 @@ func newTestIngress() *networkingv1.Ingress {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -36,6 +37,7 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -43,6 +45,7 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditObjectMetadata_Error(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 		return errors.New("metadata error")
 	})
@@ -56,6 +59,7 @@ func TestMutator_EditObjectMetadata_Error(t *testing.T) {
 func TestMutator_EditIngressSpec(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
 		e.SetIngressClassName("nginx")
 		return nil
@@ -68,6 +72,7 @@ func TestMutator_EditIngressSpec(t *testing.T) {
 func TestMutator_EditIngressSpec_Nil(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditIngressSpec(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -75,6 +80,7 @@ func TestMutator_EditIngressSpec_Nil(t *testing.T) {
 func TestMutator_EditIngressSpec_Error(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditIngressSpec(func(_ *editors.IngressSpecEditor) error {
 		return errors.New("spec error")
 	})
@@ -86,6 +92,7 @@ func TestMutator_EditIngressSpec_Error(t *testing.T) {
 func TestMutator_EditIngressSpec_EnsureRule(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
 		e.EnsureRule(networkingv1.IngressRule{Host: "example.com"})
 		return nil
@@ -98,6 +105,7 @@ func TestMutator_EditIngressSpec_EnsureRule(t *testing.T) {
 func TestMutator_EditIngressSpec_EnsureTLS(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
 		e.EnsureTLS(networkingv1.IngressTLS{
 			Hosts:      []string{"example.com"},
@@ -116,6 +124,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 	// Within a feature: metadata edits run before spec edits.
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
@@ -136,6 +145,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
 		e.EnsureRule(networkingv1.IngressRule{Host: "feature1.com"})
 		return nil
@@ -155,6 +165,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 func TestMutator_CombinedMutations(t *testing.T) {
 	ing := newTestIngress()
 	m := NewMutator(ing)
+	m.BeginFeature()
 
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "web")
@@ -179,6 +190,64 @@ func TestMutator_CombinedMutations(t *testing.T) {
 	assert.Equal(t, "nginx", *ing.Spec.IngressClassName)
 	require.Len(t, ing.Spec.Rules, 1)
 	require.Len(t, ing.Spec.TLS, 1)
+}
+
+// --- Constructor and feature plan invariants ---
+
+func TestNewMutator_InitializesNoPlan(t *testing.T) {
+	ing := newTestIngress()
+	m := NewMutator(ing)
+
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	ing := newTestIngress()
+	m := NewMutator(ing)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
+}
+
+func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+	ing := newTestIngress()
+	m := NewMutator(ing)
+
+	// Record a mutation in the first feature plan
+	m.BeginFeature()
+	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
+		e.EnsureRule(networkingv1.IngressRule{Host: "f0.com"})
+		return nil
+	})
+
+	// Start a new feature and record a different mutation
+	m.BeginFeature()
+	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
+		e.EnsureRule(networkingv1.IngressRule{Host: "f1.com"})
+		return nil
+	})
+
+	assert.Len(t, m.plans[0].ingressSpecEdits, 1, "first plan should have one spec edit")
+	assert.Len(t, m.plans[1].ingressSpecEdits, 1, "second plan should have one spec edit")
+}
+
+func TestMutator_SingleFeature_PlanCount(t *testing.T) {
+	ing := newTestIngress()
+	m := NewMutator(ing)
+	m.BeginFeature()
+	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
+		e.SetIngressClassName("nginx")
+		return nil
+	})
+
+	require.NoError(t, m.Apply())
+	require.Len(t, m.plans, 1, "single feature should have exactly one plan")
 }
 
 // --- ObjectMutator interface ---

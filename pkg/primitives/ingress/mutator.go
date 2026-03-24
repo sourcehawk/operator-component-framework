@@ -36,13 +36,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given Ingress.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(ing *networkingv1.Ingress) *Mutator {
-	m := &Mutator{
-		ing:   ing,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		ing: ing,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

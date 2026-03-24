@@ -86,7 +86,9 @@ func (m *Mutator) BeginFeature() {
 // Selection:
 //   - The selector determines which containers the edit function will be called for.
 //   - If either selector or edit function is nil, the registration is ignored.
+//   - Selectors are intended to target containers defined by the baseline resource structure or added by earlier presence operations.
 //   - Selector matching is evaluated against a snapshot taken after the current feature's container presence operations are applied.
+//   - Mutations should not rely on earlier edits in the SAME feature phase changing which selectors match.
 func (m *Mutator) EditContainers(selector selectors.ContainerSelector, edit func(*editors.ContainerEditor) error) {
 	if selector == nil || edit == nil {
 		return

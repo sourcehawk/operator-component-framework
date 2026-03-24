@@ -33,13 +33,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given ConfigMap.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(cm *corev1.ConfigMap) *Mutator {
-	m := &Mutator{
-		cm:    cm,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		cm: cm,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

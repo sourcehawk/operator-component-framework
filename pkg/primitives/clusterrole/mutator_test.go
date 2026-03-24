@@ -24,6 +24,7 @@ func newTestCR(rules []rbacv1.PolicyRule) *rbacv1.ClusterRole {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -35,6 +36,7 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -44,6 +46,7 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditRules(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
@@ -58,6 +61,7 @@ func TestMutator_EditRules(t *testing.T) {
 func TestMutator_EditRules_Nil(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.EditRules(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -67,6 +71,7 @@ func TestMutator_EditRules_Nil(t *testing.T) {
 func TestMutator_AddRule(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"get", "list"},
 	})
@@ -81,6 +86,7 @@ func TestMutator_AddRule_Appends(t *testing.T) {
 	}
 	cr := newTestCR(existing)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"list"},
 	})
@@ -93,6 +99,7 @@ func TestMutator_AddRule_Appends(t *testing.T) {
 func TestMutator_SetAggregationRule(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	aggRule := &rbacv1.AggregationRule{
 		ClusterRoleSelectors: []metav1.LabelSelector{
 			{MatchLabels: map[string]string{"aggregate": "true"}},
@@ -113,6 +120,7 @@ func TestMutator_SetAggregationRule_Nil(t *testing.T) {
 		},
 	}
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.SetAggregationRule(nil)
 	require.NoError(t, m.Apply())
 	assert.Nil(t, cr.AggregationRule)
@@ -121,6 +129,7 @@ func TestMutator_SetAggregationRule_Nil(t *testing.T) {
 func TestMutator_SetAggregationRule_LastWins(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.SetAggregationRule(&rbacv1.AggregationRule{
 		ClusterRoleSelectors: []metav1.LabelSelector{
 			{MatchLabels: map[string]string{"first": "true"}},
@@ -139,6 +148,7 @@ func TestMutator_SetAggregationRule_LastWins(t *testing.T) {
 func TestMutator_SetAggregationRule_Immutable(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	aggRule := &rbacv1.AggregationRule{
 		ClusterRoleSelectors: []metav1.LabelSelector{
 			{MatchLabels: map[string]string{"aggregate": "true"}},
@@ -160,6 +170,7 @@ func TestMutator_SetAggregationRule_Immutable(t *testing.T) {
 func TestMutator_MixedOperationTypes(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	// Register both metadata and rules mutations to verify they are all applied.
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
@@ -178,6 +189,7 @@ func TestMutator_MixedOperationTypes(t *testing.T) {
 func TestMutator_MultipleMutations(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
 	})
@@ -198,6 +210,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	m := NewMutator(cr)
 
 	// Feature A: add a rule and a label
+	m.BeginFeature()
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
 	})
@@ -230,6 +243,7 @@ func TestMutator_FeatureMixedEdits(t *testing.T) {
 	// Within a single feature, both metadata and rules edits are applied.
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
+	m.BeginFeature()
 
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
@@ -248,4 +262,59 @@ func TestMutator_FeatureMixedEdits(t *testing.T) {
 
 func TestMutator_ImplementsObjectMutator(_ *testing.T) {
 	var _ editors.ObjectMutator = (*Mutator)(nil)
+}
+
+// --- Constructor and feature plan invariants ---
+
+func TestNewMutator_InitializesNoPlan(t *testing.T) {
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
+}
+
+func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+
+	// Record a mutation in the first feature plan
+	m.BeginFeature()
+	m.AddRule(rbacv1.PolicyRule{
+		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
+	})
+
+	// Start a new feature and record a different mutation
+	m.BeginFeature()
+	m.AddRule(rbacv1.PolicyRule{
+		APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"list"},
+	})
+
+	assert.Len(t, m.plans[0].rulesEdits, 1, "first plan should have one rules edit")
+	assert.Len(t, m.plans[1].rulesEdits, 1, "second plan should have one rules edit")
+}
+
+func TestMutator_SingleFeature_PlanCount(t *testing.T) {
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+	m.BeginFeature()
+	m.AddRule(rbacv1.PolicyRule{
+		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
+	})
+
+	require.NoError(t, m.Apply())
+	assert.Len(t, m.plans, 1)
 }

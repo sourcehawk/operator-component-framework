@@ -90,6 +90,7 @@ func TestApplyMutationsOrder(t *testing.T) {
 		"defaultApplicator",
 		"flavor1",
 		"newMutator",
+		"mutator.BeginFeature",
 		"mutation1",
 		"mutator.Apply",
 		"mutator.BeginFeature",
@@ -164,12 +165,11 @@ func TestApplyMutationsOrder_MultipleMutations(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// First mutation uses the initial plan from NewMutator.
-	// Subsequent mutations get a new plan via BeginFeature.
-	// This yields exactly N plans for N mutations (no unused empty plan).
+	// Each mutation gets its own plan via BeginFeature.
 	expectedOrder := []string{
 		"defaultApplicator",
 		"newMutator",
+		"mutator.BeginFeature",
 		"mutation1",
 		"mutator.BeginFeature",
 		"mutation2",

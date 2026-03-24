@@ -49,13 +49,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given CronJob.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(current *batchv1.CronJob) *Mutator {
-	m := &Mutator{
+	return &Mutator{
 		current: current,
-		plans:   []featurePlan{{}},
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope.

@@ -42,10 +42,9 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	mutator := newMutator(applied)
 	fm, isFeatureMutator := any(mutator).(FeatureMutator)
 
-	// BeginFeature is called before the second and subsequent mutations to create a new
-	// planning scope. The first mutation uses the initial scope created by newMutator.
-	for i, mutation := range mutations {
-		if isFeatureMutator && i > 0 {
+	// BeginFeature is called before each mutation to create a new planning scope.
+	for _, mutation := range mutations {
+		if isFeatureMutator {
 			fm.BeginFeature()
 		}
 

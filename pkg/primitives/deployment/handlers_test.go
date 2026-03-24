@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -34,11 +35,13 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			name: "ready with custom replicas",
 			op:   concepts.ConvergingOperationUpdated,
 			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To(int32(3)),
 				},
 				Status: appsv1.DeploymentStatus{
-					ReadyReplicas: 3,
+					ObservedGeneration: 2,
+					ReadyReplicas:      3,
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusHealthy,
@@ -85,6 +88,54 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			},
 			wantStatus: concepts.AliveConvergingStatusScaling,
 			wantReason: "Waiting for replicas: 1/3 ready",
+		},
+		{
+			name: "stale observed generation after create",
+			op:   concepts.ConvergingOperationCreated,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To(int32(1)),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 1,
+					ReadyReplicas:      1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusCreating,
+			wantReason: "Waiting for deployment controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation after update",
+			op:   concepts.ConvergingOperationUpdated,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 3},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To(int32(1)),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					ReadyReplicas:      1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusUpdating,
+			wantReason: "Waiting for deployment controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation with no operation",
+			op:   concepts.ConvergingOperationNone,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To(int32(1)),
+				},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 1,
+					ReadyReplicas:      1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusUpdating,
+			wantReason: "Waiting for deployment controller to observe latest spec",
 		},
 	}
 

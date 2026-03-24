@@ -65,7 +65,7 @@ Mutations are the primary mechanism for modifying a `NetworkPolicy` beyond its b
 function that receives a `*Mutator` and records edit intent through typed editors.
 
 The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally — prefer this
-for mutations that should always run, as it avoids unnecessary version parsing:
+for mutations that should always run and do not need feature-gate evaluation:
 
 ```go
 func HTTPIngressMutation() networkpolicy.Mutation {

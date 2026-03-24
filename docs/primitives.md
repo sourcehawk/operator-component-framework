@@ -129,6 +129,7 @@ Editors provide scoped, typed APIs for modifying specific parts of a resource:
 | `ContainerEditor`      | Environment variables, arguments, resource limits, ports                |
 | `PodSpecEditor`        | Volumes, tolerations, node selectors, service account, security context |
 | `DeploymentSpecEditor` | Replicas, update strategy, label selectors                              |
+| `DaemonSetSpecEditor`  | Update strategy, min ready seconds, revision history limit              |
 | `ConfigMapDataEditor`  | `.data` entries — set, remove, deep-merge YAML patches, raw access      |
 | `ObjectMetaEditor`     | Labels and annotations on any Kubernetes object                         |
 
@@ -154,6 +155,7 @@ have been applied. This means a single mutation can safely add a container and t
 | Primitive                   | Category | Documentation                             |
 | --------------------------- | -------- | ----------------------------------------- |
 | `pkg/primitives/deployment` | Workload | [deployment.md](primitives/deployment.md) |
+| `pkg/primitives/daemonset`  | Workload | [daemonset.md](primitives/daemonset.md)   |
 | `pkg/primitives/configmap`  | Static   | [configmap.md](primitives/configmap.md)   |
 
 ## Usage Examples

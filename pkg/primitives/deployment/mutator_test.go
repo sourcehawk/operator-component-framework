@@ -35,6 +35,7 @@ func TestMutator_EnvVars(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CHANGE", Value: "new"})
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ADD", Value: "added"})
 	m.RemoveContainerEnvVars([]string{"REMOVE", "NONEXISTENT"})
@@ -78,6 +79,7 @@ func TestMutator_Args(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EnsureContainerArg("--change=new")
 	m.EnsureContainerArg("--add")
 	m.RemoveContainerArgs([]string{"--remove", "--nonexistent"})
@@ -101,6 +103,7 @@ func TestMutator_Replicas(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EnsureReplicas(5)
 
 	err := m.Apply()
@@ -114,9 +117,8 @@ func TestNewMutator(t *testing.T) {
 	m := NewMutator(deploy)
 	assert.NotNil(t, m)
 	assert.Equal(t, deploy, m.current)
-	require.Len(t, m.plans, 1, "NewMutator must create exactly one initial plan")
-	require.NotNil(t, m.active, "active plan must be set")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the first plan")
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
 }
 
 func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
@@ -124,12 +126,12 @@ func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
 	m := NewMutator(deploy)
 
 	m.BeginFeature()
-	require.Len(t, m.plans, 2, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
 
 	m.BeginFeature()
-	require.Len(t, m.plans, 3)
-	assert.Equal(t, &m.plans[2], m.active)
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
 }
 
 func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
@@ -144,7 +146,8 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	}
 	m := NewMutator(deploy)
 
-	// Record mutations in the initial plan
+	// Record mutations in the first feature plan
+	m.BeginFeature()
 	m.EnsureReplicas(3)
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v1"
@@ -155,9 +158,9 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	m.BeginFeature()
 	m.EnsureReplicas(5)
 
-	// Initial plan should have its edits, second plan should have its own
-	assert.Len(t, m.plans[0].deploymentSpecEdits, 1, "initial plan should have one spec edit")
-	assert.Len(t, m.plans[0].containerEdits, 1, "initial plan should have one container edit")
+	// First plan should have its edits, second plan should have its own
+	assert.Len(t, m.plans[0].deploymentSpecEdits, 1, "first plan should have one spec edit")
+	assert.Len(t, m.plans[0].containerEdits, 1, "first plan should have one container edit")
 	assert.Len(t, m.plans[1].deploymentSpecEdits, 1, "second plan should have one spec edit")
 	assert.Empty(t, m.plans[1].containerEdits, "second plan should have no container edits")
 }
@@ -165,6 +168,7 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EnsureReplicas(3)
 
 	require.NoError(t, m.Apply())
@@ -187,6 +191,7 @@ func TestMutator_EditContainers(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("c1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "c1-image"
 		return nil
@@ -208,6 +213,7 @@ func TestMutator_EditContainers(t *testing.T) {
 func TestMutator_EditPodSpec(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 		e.Raw().ServiceAccountName = "my-sa"
 		return nil
@@ -221,6 +227,7 @@ func TestMutator_EditPodSpec(t *testing.T) {
 func TestMutator_EditDeploymentSpec(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EditDeploymentSpec(func(e *editors.DeploymentSpecEditor) error {
 		e.SetPaused(true)
 		e.SetMinReadySeconds(10)
@@ -236,6 +243,7 @@ func TestMutator_EditDeploymentSpec(t *testing.T) {
 func TestMutator_EditMetadata(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"deploy": "label"}
 		return nil
@@ -254,6 +262,7 @@ func TestMutator_EditMetadata(t *testing.T) {
 func TestMutator_Errors(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		return errors.New("boom")
 	})
@@ -280,6 +289,7 @@ func TestMutator_Order(t *testing.T) {
 	var order []string
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	// 6. Container edits
 	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		order = append(order, "container")
@@ -334,6 +344,7 @@ func TestMutator_InitContainers(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = newImage
 		return nil
@@ -361,6 +372,7 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	// Replace
 	m.EnsureContainer(corev1.Container{Name: "app", Image: "app-new-image"})
 	// Remove
@@ -392,6 +404,7 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
@@ -417,6 +430,7 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 
 	// First edit renames the container
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
@@ -455,6 +469,7 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 
 	// Register edit first
 	m.EditContainers(selectors.ContainerNamed("new-app"), func(e *editors.ContainerEditor) error {
@@ -484,6 +499,7 @@ func TestMutator_NilSafety(t *testing.T) {
 		},
 	}
 	m := NewMutator(deploy)
+	m.BeginFeature()
 
 	// These should all be no-ops and not panic
 	m.EditContainers(nil, func(_ *editors.ContainerEditor) error { return nil })
@@ -548,6 +564,7 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 
 	var executionOrder []string
 
@@ -632,6 +649,7 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	}
 
 	m := NewMutator(deploy)
+	m.BeginFeature()
 
 	// 1. Add init-1
 	m.EnsureInitContainer(corev1.Container{Name: "init-1", Image: "v1"})

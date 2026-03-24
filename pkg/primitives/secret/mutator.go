@@ -152,5 +152,20 @@ func (m *Mutator) Apply() error {
 		}
 	}
 
+	// Normalize: merge .stringData into .data and clear .stringData.
+	// The API server performs this same merge on write and never returns
+	// .stringData on reads. Doing it here ensures the mutated object matches
+	// the server-persisted form, preventing spurious Updates from
+	// controllerutil.CreateOrUpdate on every reconcile.
+	if len(m.secret.StringData) > 0 {
+		if m.secret.Data == nil {
+			m.secret.Data = make(map[string][]byte, len(m.secret.StringData))
+		}
+		for k, v := range m.secret.StringData {
+			m.secret.Data[k] = []byte(v)
+		}
+		m.secret.StringData = nil
+	}
+
 	return nil
 }

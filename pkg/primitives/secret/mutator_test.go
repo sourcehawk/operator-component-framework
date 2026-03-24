@@ -106,7 +106,9 @@ func TestMutator_SetStringData(t *testing.T) {
 	m := NewMutator(s)
 	m.SetStringData("key", "value")
 	require.NoError(t, m.Apply())
-	assert.Equal(t, "value", s.StringData["key"])
+	// After Apply, stringData is normalized into data and cleared.
+	assert.Equal(t, []byte("value"), s.Data["key"])
+	assert.Nil(t, s.StringData)
 }
 
 // --- RemoveStringData ---
@@ -117,8 +119,10 @@ func TestMutator_RemoveStringData(t *testing.T) {
 	m := NewMutator(s)
 	m.RemoveStringData("key")
 	require.NoError(t, m.Apply())
-	assert.NotContains(t, s.StringData, "key")
-	assert.Equal(t, "keep", s.StringData["other"])
+	// After Apply, remaining stringData is normalized into data and cleared.
+	assert.NotContains(t, s.Data, "key")
+	assert.Equal(t, []byte("keep"), s.Data["other"])
+	assert.Nil(t, s.StringData)
 }
 
 // --- Execution order ---

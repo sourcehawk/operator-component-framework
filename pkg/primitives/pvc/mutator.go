@@ -34,13 +34,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given PersistentVolumeClaim.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(pvc *corev1.PersistentVolumeClaim) *Mutator {
-	m := &Mutator{
-		pvc:   pvc,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		pvc: pvc,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

@@ -53,9 +53,21 @@ Use `WithCustomFieldApplicator` when other controllers manage spec-level fields 
 ```go
 resource, err := hpa.NewBuilder(base).
     WithCustomFieldApplicator(func(current, desired *autoscalingv2.HorizontalPodAutoscaler) error {
-        // Preserve the current status while updating spec and metadata from desired
+        // Preserve the current status and server-managed/shared-controller metadata
         savedStatus := current.Status
+        savedMeta := current.ObjectMeta
+
+        // Update spec and other desired fields
         desired.DeepCopyInto(current)
+
+        // Restore server-managed and shared-controller metadata from the live object
+        current.ObjectMeta.ResourceVersion = savedMeta.ResourceVersion
+        current.ObjectMeta.UID = savedMeta.UID
+        current.ObjectMeta.Generation = savedMeta.Generation
+        current.ObjectMeta.OwnerReferences = savedMeta.OwnerReferences
+        current.ObjectMeta.Finalizers = savedMeta.Finalizers
+
+        // Restore status from the live object
         current.Status = savedStatus
         return nil
     }).

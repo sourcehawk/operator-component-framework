@@ -82,7 +82,8 @@ func TestBuilder(t *testing.T) {
 			},
 		}
 		m := Mutation{
-			Name: "test-mutation",
+			Name:   "test-mutation",
+			Mutate: func(_ *Mutator) error { return nil },
 		}
 		res, err := NewBuilder(sts).
 			WithMutation(m).

@@ -119,6 +119,7 @@ func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 func TestDefaultSuspendMutationHandler(t *testing.T) {
 	job := &batchv1.Job{}
 	mutator := NewMutator(job)
+	mutator.BeginFeature()
 	err := DefaultSuspendMutationHandler(mutator)
 	require.NoError(t, err)
 	err = mutator.Apply()

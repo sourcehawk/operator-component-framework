@@ -315,7 +315,7 @@ resource, err := networkpolicy.NewBuilder(base).
     Build()
 ```
 
-When `MetricsEnabled` is true, the final NetworkPolicy will have both HTTP and metrics ingress rules. When false, only
+When `EnableMetrics` is true, the final NetworkPolicy will have both HTTP and metrics ingress rules. When false, only
 the HTTP rule is present. Neither mutation needs to know about the other.
 
 ## Guidance

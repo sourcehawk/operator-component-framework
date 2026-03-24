@@ -34,8 +34,10 @@ resource, err := serviceaccount.NewBuilder(base).
 ## Default Field Application
 
 `DefaultFieldApplicator` replaces the current ServiceAccount with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
-original live object. ServiceAccount has no Status subresource, so no status preservation is needed.
+server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
+live `.secrets` field from the original object. The `.secrets` field is populated by the token controller and is not
+owned by the primitive — any `.secrets` value on the desired object is discarded. ServiceAccount has no Status
+subresource, so no status preservation is needed.
 
 Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
 

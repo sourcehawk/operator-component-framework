@@ -68,8 +68,13 @@ ai-instructions: ## Generate all AI instruction files from source templates in .
 ##@ Development
 
 .PHONY: fmt
-fmt: ## Format Go source files.
-	go fmt $(shell go list ./... | grep -v /examples/)
+fmt: fmt-go fmt-md ## Run all formatting in the project
+
+
+.PHONY: fmt-go
+fmt-go: ## Format Go source files.
+	go fmt ./...
+
 
 .PHONY: fmt-md
 fmt-md: prettier ## Format Markdown files.
@@ -86,8 +91,16 @@ $(PRETTIER): $(LOCALBIN)
 		chmod +x $(PRETTIER) ; \
 	}
 
-.PHONY: lint
-lint:
+.PHONY: lint ## Run all linters
+lint: lint-go lint-md
+
+.PHONY: lint-md
+lint-md: prettier ## Check Markdown files are formatted.
+	$(PRETTIER) --check '**/*.md' --ignore-path .gitignore
+
+
+.PHONY: lint-go ## Lint go files.
+lint-go:
 	golangci-lint run
 
 .PHONY: test

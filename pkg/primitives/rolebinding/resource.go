@@ -56,7 +56,10 @@ func (r *Resource) Object() (client.Object, error) {
 // The mutation process follows this order:
 //  1. Field application: the current object is updated to reflect the desired
 //     base state, using either DefaultFieldApplicator or a custom applicator
-//     if one is configured. roleRef is preserved from the live object.
+//     if one is configured. DefaultFieldApplicator preserves the live roleRef
+//     on updates because roleRef is immutable after creation in Kubernetes.
+//     Custom field applicators must also preserve the existing roleRef value
+//     if they replace or merge that field to avoid update failures.
 //  2. Field application flavors: any registered flavors are applied in
 //     registration order.
 //  3. Feature mutations: all registered feature-gated mutations are applied

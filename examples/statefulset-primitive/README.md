@@ -8,8 +8,8 @@ to manage a Kubernetes StatefulSet as a component of a larger application, utili
   `Mutator`.
 - **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., ArgoCD, manual
   edits).
-- **Custom Status Handlers**: Overriding the default logic for determining readiness (`ConvergeStatus`) and health
-  assessment during rollouts (`GraceStatus`).
+- **Custom Status Handlers**: Overriding the default logic for determining readiness (via `ConvergingStatus` and the
+  `WithCustomConvergeStatus` builder hook) and health assessment during rollouts (`GraceStatus`).
 - **Custom Suspension**: Extending the default suspension logic (scaling to 0) with additional mutations.
 - **Data Extraction**: Harvesting information from the reconciled resource.
 

@@ -56,14 +56,12 @@ type Mutator struct {
 // NewMutator creates a new Mutator for the given StatefulSet.
 //
 // It is typically used within a Feature's Mutation logic to express desired
-// changes to the StatefulSet.
+// changes to the StatefulSet. BeginFeature must be called before registering
+// any mutations.
 func NewMutator(current *appsv1.StatefulSet) *Mutator {
-	m := &Mutator{
+	return &Mutator{
 		current: current,
-		plans:   []featurePlan{{}},
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

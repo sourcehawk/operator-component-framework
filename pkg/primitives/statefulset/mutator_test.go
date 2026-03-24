@@ -36,6 +36,7 @@ func TestMutator_EnvVars(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CHANGE", Value: "new"})
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ADD", Value: "added"})
 	m.RemoveContainerEnvVars([]string{"REMOVE", "NONEXISTENT"})
@@ -79,6 +80,7 @@ func TestMutator_Args(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EnsureContainerArg("--change=new")
 	m.EnsureContainerArg("--add")
 	m.RemoveContainerArgs([]string{"--remove", "--nonexistent"})
@@ -102,6 +104,7 @@ func TestMutator_Replicas(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EnsureReplicas(5)
 
 	err := m.Apply()
@@ -115,6 +118,62 @@ func TestNewMutator(t *testing.T) {
 	m := NewMutator(sts)
 	assert.NotNil(t, m)
 	assert.Equal(t, sts, m.current)
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	sts := &appsv1.StatefulSet{}
+	m := NewMutator(sts)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
+}
+
+func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+	sts := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "app"}},
+				},
+			},
+		},
+	}
+	m := NewMutator(sts)
+
+	// Record mutations in the first feature plan
+	m.BeginFeature()
+	m.EnsureReplicas(3)
+	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+		e.Raw().Image = "v1"
+		return nil
+	})
+
+	// Start a new feature and record a different mutation
+	m.BeginFeature()
+	m.EnsureReplicas(5)
+
+	// First plan should have its edits, second plan should have its own
+	assert.Len(t, m.plans[0].statefulsetSpecEdits, 1, "first plan should have one spec edit")
+	assert.Len(t, m.plans[0].containerEdits, 1, "first plan should have one container edit")
+	assert.Len(t, m.plans[1].statefulsetSpecEdits, 1, "second plan should have one spec edit")
+	assert.Empty(t, m.plans[1].containerEdits, "second plan should have no container edits")
+}
+
+func TestMutator_SingleFeature_PlanCount(t *testing.T) {
+	sts := &appsv1.StatefulSet{}
+	m := NewMutator(sts)
+	m.BeginFeature()
+	m.EnsureReplicas(3)
+
+	require.NoError(t, m.Apply())
+	assert.Len(t, m.plans, 1)
 }
 
 func TestMutator_EditContainers(t *testing.T) {
@@ -132,6 +191,7 @@ func TestMutator_EditContainers(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("c1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "c1-image"
 		return nil
@@ -153,6 +213,7 @@ func TestMutator_EditContainers(t *testing.T) {
 func TestMutator_EditPodSpec(t *testing.T) {
 	sts := &appsv1.StatefulSet{}
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 		e.Raw().ServiceAccountName = "my-sa"
 		return nil
@@ -166,6 +227,7 @@ func TestMutator_EditPodSpec(t *testing.T) {
 func TestMutator_EditStatefulSetSpec(t *testing.T) {
 	sts := &appsv1.StatefulSet{}
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EditStatefulSetSpec(func(e *editors.StatefulSetSpecEditor) error {
 		e.SetServiceName("my-service")
 		e.SetMinReadySeconds(10)
@@ -181,6 +243,7 @@ func TestMutator_EditStatefulSetSpec(t *testing.T) {
 func TestMutator_EditMetadata(t *testing.T) {
 	sts := &appsv1.StatefulSet{}
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"sts": "label"}
 		return nil
@@ -199,6 +262,7 @@ func TestMutator_EditMetadata(t *testing.T) {
 func TestMutator_Errors(t *testing.T) {
 	sts := &appsv1.StatefulSet{}
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		return errors.New("boom")
 	})
@@ -225,6 +289,7 @@ func TestMutator_Order(t *testing.T) {
 	var order []string
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		order = append(order, "container")
 		return nil
@@ -270,6 +335,7 @@ func TestMutator_InitContainers(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = newImage
 		return nil
@@ -296,6 +362,7 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EnsureContainer(corev1.Container{Name: "app", Image: "app-new-image"})
 	m.RemoveContainer("sidecar")
 	m.EnsureContainer(corev1.Container{Name: "new-container", Image: newImage})
@@ -324,6 +391,7 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
@@ -349,6 +417,7 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = appV2
@@ -384,6 +453,7 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 
 	m.EditContainers(selectors.ContainerNamed("new-app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "edited-image"
@@ -410,6 +480,7 @@ func TestMutator_NilSafety(t *testing.T) {
 		},
 	}
 	m := NewMutator(sts)
+	m.BeginFeature()
 
 	m.EditContainers(nil, func(_ *editors.ContainerEditor) error { return nil })
 	m.EditContainers(selectors.AllContainers(), nil)
@@ -472,6 +543,7 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 
 	var executionOrder []string
 
@@ -553,6 +625,7 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	}
 
 	m := NewMutator(sts)
+	m.BeginFeature()
 
 	m.EnsureInitContainer(corev1.Container{Name: "init-1", Image: "v1"})
 
@@ -583,6 +656,7 @@ func TestMutator_VolumeClaimTemplates(t *testing.T) {
 	t.Run("ensure adds new VCT", func(t *testing.T) {
 		sts := &appsv1.StatefulSet{}
 		m := NewMutator(sts)
+		m.BeginFeature()
 
 		m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "data"},
@@ -610,6 +684,7 @@ func TestMutator_VolumeClaimTemplates(t *testing.T) {
 			},
 		}
 		m := NewMutator(sts)
+		m.BeginFeature()
 
 		m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "data"},
@@ -639,6 +714,7 @@ func TestMutator_VolumeClaimTemplates(t *testing.T) {
 			},
 		}
 		m := NewMutator(sts)
+		m.BeginFeature()
 
 		m.RemoveVolumeClaimTemplate("data")
 
@@ -657,6 +733,7 @@ func TestMutator_VolumeClaimTemplates(t *testing.T) {
 			},
 		}
 		m := NewMutator(sts)
+		m.BeginFeature()
 
 		m.RemoveVolumeClaimTemplate("nonexistent")
 
@@ -677,6 +754,7 @@ func TestMutator_VolumeClaimTemplates(t *testing.T) {
 			},
 		}
 		m := NewMutator(sts)
+		m.BeginFeature()
 
 		m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "new-volume"},
@@ -704,6 +782,7 @@ func TestMutator_VolumeClaimTemplates(t *testing.T) {
 
 		var order []string
 		m := NewMutator(sts)
+		m.BeginFeature()
 
 		m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: "data"},

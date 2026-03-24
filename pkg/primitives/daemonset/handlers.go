@@ -9,30 +9,39 @@ import (
 
 // DefaultConvergingStatusHandler is the default logic for determining if a DaemonSet has reached its desired state.
 //
-// It considers a DaemonSet ready when:
-//   - Status.ObservedGeneration >= Generation and Status.NumberReady >= Status.DesiredNumberScheduled
-//     and DesiredNumberScheduled > 0, or
-//   - DesiredNumberScheduled is zero and the controller has observed the current generation
-//     (no matching nodes is a valid converged state).
+// It considers a DaemonSet ready when the DaemonSet controller has observed the current generation
+// (Status.ObservedGeneration >= ObjectMeta.Generation) and either:
+//   - Status.NumberReady >= Status.DesiredNumberScheduled and DesiredNumberScheduled > 0, or
+//   - DesiredNumberScheduled is zero (no matching nodes is a valid converged state).
+//
+// If the controller has not yet observed the latest spec, the handler reports Creating (when the
+// resource was just created) or Updating (otherwise) to avoid falsely reporting health based on
+// stale status fields.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultConvergingStatusHandler(
 	op concepts.ConvergingOperation, ds *appsv1.DaemonSet,
 ) (concepts.AliveStatusWithReason, error) {
-	desired := ds.Status.DesiredNumberScheduled
-
-	if desired > 0 && ds.Status.ObservedGeneration >= ds.Generation && ds.Status.NumberReady >= desired {
-		return concepts.AliveStatusWithReason{
-			Status: concepts.AliveConvergingStatusHealthy,
-			Reason: "All pods are ready",
-		}, nil
+	if status := concepts.StaleGenerationStatus(
+		op, ds.Status.ObservedGeneration, ds.Generation, "daemonset",
+	); status != nil {
+		return *status, nil
 	}
 
-	if desired == 0 && ds.Status.ObservedGeneration >= ds.Generation {
+	desired := ds.Status.DesiredNumberScheduled
+
+	if desired == 0 {
 		return concepts.AliveStatusWithReason{
 			Status: concepts.AliveConvergingStatusHealthy,
 			Reason: "No nodes match the DaemonSet node selector",
+		}, nil
+	}
+
+	if ds.Status.NumberReady >= desired {
+		return concepts.AliveStatusWithReason{
+			Status: concepts.AliveConvergingStatusHealthy,
+			Reason: "All pods are ready",
 		}, nil
 	}
 
@@ -46,16 +55,9 @@ func DefaultConvergingStatusHandler(
 		status = concepts.AliveConvergingStatusScaling
 	}
 
-	var reason string
-	if ds.Status.ObservedGeneration < ds.Generation {
-		reason = "Waiting for controller to observe latest generation"
-	} else {
-		reason = fmt.Sprintf("Waiting for pods: %d/%d ready", ds.Status.NumberReady, desired)
-	}
-
 	return concepts.AliveStatusWithReason{
 		Status: status,
-		Reason: reason,
+		Reason: fmt.Sprintf("Waiting for pods: %d/%d ready", ds.Status.NumberReady, desired),
 	}, nil
 }
 

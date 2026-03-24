@@ -58,7 +58,35 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusUpdating,
-			wantReason: "Waiting for controller to observe latest generation",
+			wantReason: "Waiting for daemonset controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation after create",
+			op:   concepts.ConvergingOperationCreated,
+			daemonset: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Status: appsv1.DaemonSetStatus{
+					DesiredNumberScheduled: 3,
+					NumberReady:            3,
+					ObservedGeneration:     1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusCreating,
+			wantReason: "Waiting for daemonset controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation with no operation",
+			op:   concepts.ConvergingOperationNone,
+			daemonset: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Status: appsv1.DaemonSetStatus{
+					DesiredNumberScheduled: 3,
+					NumberReady:            3,
+					ObservedGeneration:     1,
+				},
+			},
+			wantStatus: concepts.AliveConvergingStatusUpdating,
+			wantReason: "Waiting for daemonset controller to observe latest spec",
 		},
 		{
 			name: "creating",
@@ -122,7 +150,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusCreating,
-			wantReason: "Waiting for controller to observe latest generation",
+			wantReason: "Waiting for daemonset controller to observe latest spec",
 		},
 	}
 

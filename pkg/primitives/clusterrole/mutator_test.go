@@ -157,20 +157,20 @@ func TestMutator_SetAggregationRule_Immutable(t *testing.T) {
 
 // --- Execution order ---
 
-func TestMutator_OperationOrder(t *testing.T) {
+func TestMutator_MixedOperationTypes(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
-	// Register in reverse logical order to confirm Apply() enforces category ordering.
+	// Register both metadata and rules mutations to verify they are all applied.
 	m.AddRule(rbacv1.PolicyRule{
 		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
 	})
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
-		e.EnsureLabel("order", "tested")
+		e.EnsureLabel("mixed", "tested")
 		return nil
 	})
 	require.NoError(t, m.Apply())
 
-	assert.Equal(t, "tested", cr.Labels["order"])
+	assert.Equal(t, "tested", cr.Labels["mixed"])
 	require.Len(t, cr.Rules, 1)
 	assert.Equal(t, "pods", cr.Rules[0].Resources[0])
 }
@@ -226,9 +226,8 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	assert.Equal(t, "deployments", cr.Rules[1].Resources[0])
 }
 
-func TestMutator_FeatureOrder_MetadataBeforeRules(t *testing.T) {
-	// Within a single feature, metadata edits apply before rules edits,
-	// even when registered in the opposite order.
+func TestMutator_FeatureMixedEdits(t *testing.T) {
+	// Within a single feature, both metadata and rules edits are applied.
 	cr := newTestCR(nil)
 	m := NewMutator(cr)
 
@@ -236,12 +235,12 @@ func TestMutator_FeatureOrder_MetadataBeforeRules(t *testing.T) {
 		APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
 	})
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
-		e.EnsureLabel("order", "correct")
+		e.EnsureLabel("feature", "complete")
 		return nil
 	})
 
 	require.NoError(t, m.Apply())
-	assert.Equal(t, "correct", cr.Labels["order"])
+	assert.Equal(t, "complete", cr.Labels["feature"])
 	require.Len(t, cr.Rules, 1)
 }
 

@@ -353,11 +353,11 @@ func MetricsPortMutation(version string, enabled bool) service.Mutation {
 resource, err := service.NewBuilder(base).
     WithFieldApplicationFlavor(service.PreserveCurrentAnnotations).
     WithMutation(BaseServiceMutation(owner.Spec.Version)).
-    WithMutation(MetricsPortMutation(owner.Spec.Version, owner.Spec.MetricsEnabled)).
+    WithMutation(MetricsPortMutation(owner.Spec.Version, owner.Spec.EnableMetrics)).
     Build()
 ```
 
-When `MetricsEnabled` is true, the Service will expose both the HTTP port and the metrics port. When false, only the
+When `EnableMetrics` is true, the Service will expose both the HTTP port and the metrics port. When false, only the
 HTTP port is configured. Neither mutation needs to know about the other.
 
 ## Guidance

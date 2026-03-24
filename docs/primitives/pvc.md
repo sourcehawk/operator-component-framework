@@ -6,14 +6,14 @@ requests and object metadata.
 
 ## Capabilities
 
-| Capability                 | Detail                                                                                         |
-| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| Capability                 | Detail                                                                                               |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
 | **Operational tracking**   | Monitors PVC phase — reports `Operational` (Bound), `OperationPending`, or `OperationFailing` (Lost) |
-| **Immutable field safety** | DefaultFieldApplicator preserves `accessModes`, `storageClassName`, `volumeMode`, `volumeName` |
-| **Suspension**             | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default   |
-| **Mutation pipeline**      | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access   |
-| **Flavors**                | Preserves externally-managed fields — labels and annotations not owned by the operator         |
-| **Data extraction**        | Reads bound volume name, capacity, or other status fields after each sync cycle                |
+| **Immutable field safety** | DefaultFieldApplicator preserves `accessModes`, `storageClassName`, `volumeMode`, `volumeName`       |
+| **Suspension**             | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default         |
+| **Mutation pipeline**      | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access         |
+| **Flavors**                | Preserves externally-managed fields — labels and annotations not owned by the operator               |
+| **Data extraction**        | Reads bound volume name, capacity, or other status fields after each sync cycle                      |
 
 ## Building a PVC Primitive
 

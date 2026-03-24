@@ -8,8 +8,8 @@ manage a Kubernetes HorizontalPodAutoscaler as a component of a larger applicati
   using the `Mutator`.
 - **Field Flavors**: Preserving labels and annotations that might be managed by external tools.
 - **Operational Status**: Reporting HPA health based on `ScalingActive` and `AbleToScale` conditions.
-- **Suspension (No-op)**: Demonstrating no-op suspend behavior — the HPA is left in place since an idle HPA has no
-  cluster impact.
+- **Suspension (Delete)**: Demonstrating delete-on-suspend behavior — the HPA is removed during suspension to prevent it
+  from scaling the target back up.
 - **Data Extraction**: Harvesting information from the reconciled resource.
 
 ## Directory Structure

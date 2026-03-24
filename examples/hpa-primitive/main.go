@@ -84,7 +84,7 @@ func main() {
 		{
 			Version:       "1.2.4",
 			EnableMetrics: false,
-			Suspended:     true, // Suspend the app (HPA is not deleted by default)
+			Suspended:     true, // Suspend the app (HPA is deleted to prevent scaling interference)
 		},
 	}
 

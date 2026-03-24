@@ -25,8 +25,8 @@ func DefaultFieldApplicator(current, desired *autoscalingv2.HorizontalPodAutosca
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - component.Operational: for reporting operational status based on HPA conditions.
-//   - component.Suspendable: for default no-op suspend behaviour that leaves the HPA in place
-//     (the HPA may still scale if its target remains present).
+//   - component.Suspendable: for default delete-on-suspend behaviour that removes the HPA to
+//     prevent it from scaling the target back up during suspension.
 //   - component.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]
@@ -70,18 +70,17 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.O
 // DeleteOnSuspend determines whether the HPA should be deleted from the cluster
 // when the parent component is suspended.
 //
-// By default, it uses DefaultDeleteOnSuspendHandler, which returns false. The HPA
-// is left in place to avoid unnecessary churn and simplify resumption. Note that
-// a retained HPA may attempt to scale its target if the target still exists and is
-// scaled to zero; override with WithCustomSuspendDeletionDecision if this is a concern.
+// By default, it uses DefaultDeleteOnSuspendHandler, which returns true. The HPA is
+// deleted to prevent the Kubernetes HPA controller from scaling the target back up
+// while it is suspended. On resume the framework recreates the HPA with the desired spec.
 func (r *Resource) DeleteOnSuspend() bool {
 	return r.base.DeleteOnSuspend()
 }
 
 // Suspend registers the configured suspension mutation for the next mutate cycle.
 //
-// For HPA, the default suspension mutation is a no-op since an idle HPA has no
-// impact on the cluster.
+// For HPA, the default suspension mutation is a no-op since the HPA is deleted on
+// suspend (no spec mutations are needed before deletion).
 func (r *Resource) Suspend() error {
 	return r.base.Suspend()
 }
@@ -89,7 +88,7 @@ func (r *Resource) Suspend() error {
 // SuspensionStatus reports the suspension status of the HPA.
 //
 // By default, it uses DefaultSuspensionStatusHandler, which reports Suspended
-// immediately because the default suspend is a no-op.
+// immediately because deletion is handled by the framework after this status is reported.
 func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
 	return r.base.SuspensionStatus()
 }

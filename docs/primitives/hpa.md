@@ -6,13 +6,13 @@ Suspendable resource and provides a structured mutation API for configuring auto
 
 ## Capabilities
 
-| Capability             | Detail                                                                                                      |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Operational status** | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`      |
-| **Suspension (no-op)** | Leaves the HPA in place on suspend — an idle HPA has no cluster impact when its scale target is absent      |
-| **Mutation pipeline**  | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                            |
-| **Flavors**            | Preserves externally-managed labels and annotations                                                         |
-| **Data extraction**    | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
+| Capability              | Detail                                                                                                      |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Operational status**  | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`      |
+| **Suspension (delete)** | Deletes the HPA on suspend to prevent it from scaling the target back up; recreated on resume               |
+| **Mutation pipeline**   | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                            |
+| **Flavors**             | Preserves externally-managed labels and annotations                                                         |
+| **Data extraction**     | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
 
 ## Building an HPA Primitive
 
@@ -284,25 +284,24 @@ hpa.NewBuilder(base).
 
 ## Suspension
 
-HPA has no native suspend field. The default behavior is a **no-op**: the HPA is left in place when the component is
-suspended (`DefaultDeleteOnSuspendHandler` returns `false`). An idle HPA has no effect on the cluster when its scale
-target is absent or suspended, so there is no reason to delete it. Keeping it avoids unnecessary churn and simplifies
-resumption.
+HPA has no native suspend field. The default behavior is **delete on suspend**: the HPA is removed when the component is
+suspended (`DefaultDeleteOnSuspendHandler` returns `true`). A retained HPA would conflict with the suspension of its
+scale target (e.g. a Deployment scaled to zero) because the Kubernetes HPA controller continuously enforces
+`minReplicas` and would scale the target back up. Deleting the HPA prevents this interference. On resume the framework
+recreates the HPA with the desired spec.
 
 The default suspension status handler reports `Suspended` immediately with the reason
-`"HorizontalPodAutoscaler left in place; no-op suspend"`.
+`"HorizontalPodAutoscaler deleted to prevent scaling interference during suspension"`.
 
-Override with `WithCustomSuspendDeletionDecision` if you want to delete the HPA during suspension:
+Override with `WithCustomSuspendDeletionDecision` if you want to retain the HPA during suspension (e.g. when the scale
+target is managed externally and will not be present during suspension):
 
 ```go
 hpa.NewBuilder(base).
     WithCustomSuspendDeletionDecision(func(_ *autoscalingv2.HorizontalPodAutoscaler) bool {
-        return true // delete HPA during suspension
+        return false // keep HPA during suspension
     })
 ```
-
-If you choose to delete the HPA during suspension, consider providing a custom suspend status handler via
-`WithCustomSuspendStatus` to report an accurate reason.
 
 ## Flavors
 
@@ -388,8 +387,8 @@ boolean conditions.
 **Use `EnsureMetric` for idempotent metric management.** The editor matches by full metric identity (type, name,
 selector, and described object where applicable), so repeated calls with the same identity update rather than duplicate.
 
-**HPA retention on suspend is the default.** The primitive's default `DeleteOnSuspend` decision leaves the HPA in place
-during component suspension (matching the "Suspension (no-op)" capability). This avoids unnecessary churn and simplifies
-resumption. Note that a retained HPA may attempt to scale its target if the target still exists and is scaled to zero.
-If you need the HPA to be removed during suspension — for example, to guarantee that no scaling can interfere — override
-`WithCustomSuspendDeletionDecision` to return `true`.
+**HPA deletion on suspend is the default.** The primitive's default `DeleteOnSuspend` decision removes the HPA during
+component suspension (matching the "Suspension (delete)" capability). This prevents the Kubernetes HPA controller from
+scaling the target back up while it is suspended. On resume the framework recreates the HPA with the desired spec. If
+you need the HPA to be retained during suspension — for example, when the scale target is managed externally and will
+not be present — override `WithCustomSuspendDeletionDecision` to return `false`.

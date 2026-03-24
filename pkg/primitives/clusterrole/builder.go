@@ -14,11 +14,7 @@ import (
 // and data extractors. Build() validates the configuration and returns an
 // initialized Resource ready for use in a reconciliation loop.
 type Builder struct {
-	obj        *rbacv1.ClusterRole
-	mutations  []feature.Mutation[*Mutator]
-	applicator func(current, desired *rbacv1.ClusterRole) error
-	flavors    []generic.FieldApplicationFlavor[*rbacv1.ClusterRole]
-	extractors []func(*rbacv1.ClusterRole) error
+	base *generic.StaticBuilder[*rbacv1.ClusterRole, *Mutator]
 }
 
 // NewBuilder initializes a new Builder with the provided ClusterRole object.
@@ -30,7 +26,19 @@ type Builder struct {
 // The provided ClusterRole must have Name set (ClusterRole is cluster-scoped and
 // does not use a namespace), which is validated during the Build() call.
 func NewBuilder(cr *rbacv1.ClusterRole) *Builder {
-	return &Builder{obj: cr}
+	identityFunc := func(cr *rbacv1.ClusterRole) string {
+		return fmt.Sprintf("rbac.authorization.k8s.io/v1/ClusterRole/%s", cr.Name)
+	}
+
+	sb := generic.NewStaticBuilder[*rbacv1.ClusterRole, *Mutator](
+		cr,
+		identityFunc,
+		DefaultFieldApplicator,
+		NewMutator,
+	)
+	sb.MarkClusterScoped()
+
+	return &Builder{base: sb}
 }
 
 // WithMutation registers a mutation for the ClusterRole.
@@ -40,7 +48,7 @@ func NewBuilder(cr *rbacv1.ClusterRole) *Builder {
 // A mutation with a nil Feature is applied unconditionally; one with a non-nil
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
-	b.mutations = append(b.mutations, feature.Mutation[*Mutator](m))
+	b.base.WithMutation(feature.Mutation[*Mutator](m))
 	return b
 }
 
@@ -57,7 +65,7 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 func (b *Builder) WithCustomFieldApplicator(
 	applicator func(current, desired *rbacv1.ClusterRole) error,
 ) *Builder {
-	b.applicator = applicator
+	b.base.WithCustomFieldApplicator(applicator)
 	return b
 }
 
@@ -70,7 +78,7 @@ func (b *Builder) WithCustomFieldApplicator(
 // A nil flavor is ignored.
 func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
 	if flavor != nil {
-		b.flavors = append(b.flavors, generic.FieldApplicationFlavor[*rbacv1.ClusterRole](flavor))
+		b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*rbacv1.ClusterRole](flavor))
 	}
 	return b
 }
@@ -84,7 +92,7 @@ func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Bui
 // A nil extractor is ignored.
 func (b *Builder) WithDataExtractor(extractor func(rbacv1.ClusterRole) error) *Builder {
 	if extractor != nil {
-		b.extractors = append(b.extractors, func(cr *rbacv1.ClusterRole) error {
+		b.base.WithDataExtractor(func(cr *rbacv1.ClusterRole) error {
 			return extractor(*cr)
 		})
 	}
@@ -97,38 +105,9 @@ func (b *Builder) WithDataExtractor(extractor func(rbacv1.ClusterRole) error) *B
 //   - No ClusterRole object was provided.
 //   - The ClusterRole is missing a Name.
 func (b *Builder) Build() (*Resource, error) {
-	identityFunc := func(cr *rbacv1.ClusterRole) string {
-		return fmt.Sprintf("rbac.authorization.k8s.io/v1/ClusterRole/%s", cr.Name)
-	}
-
-	sb := generic.NewStaticBuilder[*rbacv1.ClusterRole, *Mutator](
-		b.obj,
-		identityFunc,
-		DefaultFieldApplicator,
-		NewMutator,
-	)
-	sb.MarkClusterScoped()
-
-	for _, m := range b.mutations {
-		sb.WithMutation(m)
-	}
-
-	if b.applicator != nil {
-		sb.WithCustomFieldApplicator(b.applicator)
-	}
-
-	for _, f := range b.flavors {
-		sb.WithFieldApplicationFlavor(f)
-	}
-
-	for _, e := range b.extractors {
-		sb.WithDataExtractor(e)
-	}
-
-	res, err := sb.Build()
+	res, err := b.base.Build()
 	if err != nil {
 		return nil, err
 	}
-
 	return &Resource{base: res}, nil
 }

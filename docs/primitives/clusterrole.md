@@ -285,9 +285,9 @@ resource, err := clusterrole.NewBuilder(base).
 
 ### PreserveExternalRules
 
-Preserves `.rules` entries present on the live object but absent from the applied desired state. Rules are compared using
-all `PolicyRule` fields (APIGroups, Resources, Verbs, ResourceNames, NonResourceURLs), treating these slice fields as
-sets so that order differences are ignored.
+Preserves `.rules` entries present on the live object but absent from the applied desired state. Rules are compared
+using all `PolicyRule` fields (APIGroups, Resources, Verbs, ResourceNames, NonResourceURLs), treating these slice fields
+as sets so that order differences are ignored.
 
 Use this when other controllers or admission webhooks inject rules into the ClusterRole that your operator does not own:
 

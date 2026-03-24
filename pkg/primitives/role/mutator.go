@@ -32,13 +32,11 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given Role.
+// BeginFeature must be called before registering any mutations.
 func NewMutator(role *rbacv1.Role) *Mutator {
-	m := &Mutator{
-		role:  role,
-		plans: []featurePlan{{}},
+	return &Mutator{
+		role: role,
 	}
-	m.active = &m.plans[0]
-	return m
 }
 
 // BeginFeature starts a new feature planning scope. All subsequent mutation

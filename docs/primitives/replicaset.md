@@ -1,17 +1,20 @@
 # ReplicaSet Primitive
 
-The `replicaset` primitive is the framework's workload abstraction for managing Kubernetes `ReplicaSet` resources. It integrates fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and metadata.
+The `replicaset` primitive is the framework's workload abstraction for managing Kubernetes `ReplicaSet` resources. It
+integrates fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and
+metadata.
 
-ReplicaSets are rarely managed directly — operators typically use Deployments. This primitive is provided for operators that own ReplicaSets explicitly (e.g. custom rollout controllers).
+ReplicaSets are rarely managed directly — operators typically use Deployments. This primitive is provided for operators
+that own ReplicaSets explicitly (e.g. custom rollout controllers).
 
 ## Capabilities
 
-| Capability            | Detail                                                                                          |
-|-----------------------|-------------------------------------------------------------------------------------------------|
-| **Health tracking**   | Monitors `ReadyReplicas` and reports `Healthy`, `Creating`, `Updating`, or `Scaling`            |
-| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                     |
-| **Mutation pipeline** | Typed editors for metadata, replicaset spec, pod spec, and containers                           |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                |
+| Capability            | Detail                                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Health tracking**   | Verifies `ObservedGeneration` matches `Generation` before evaluating `ReadyReplicas`; reports `Healthy`, `Creating`, `Updating`, or `Scaling` |
+| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                   |
+| **Mutation pipeline** | Typed editors for metadata, replicaset spec, pod spec, and containers                                                                         |
+| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                                              |
 
 ## Building a ReplicaSet Primitive
 
@@ -39,13 +42,17 @@ resource, err := replicaset.NewBuilder(base).
 
 ## Immutable Selector
 
-A ReplicaSet's `spec.selector` is immutable after creation in Kubernetes. The `DefaultFieldApplicator` preserves the selector from the live object when updating an existing ReplicaSet. Set the selector via the desired object passed to `NewBuilder` — it is applied on creation and preserved on subsequent updates.
+A ReplicaSet's `spec.selector` is immutable after creation in Kubernetes. The `DefaultFieldApplicator` preserves the
+selector from the live object when updating an existing ReplicaSet. Set the selector via the desired object passed to
+`NewBuilder` — it is applied on creation and preserved on subsequent updates.
 
-If you supply a custom field applicator via `WithCustomFieldApplicator`, you are responsible for preserving the selector yourself.
+If you supply a custom field applicator via `WithCustomFieldApplicator`, you are responsible for preserving the selector
+yourself.
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `ReplicaSet` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `ReplicaSet` beyond its baseline. Each mutation is a named function
+that receives a `*Mutator` and records edit intent through typed editors.
 
 The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally:
 
@@ -86,20 +93,21 @@ func TracingMutation(version string, enabled bool) replicaset.Mutation {
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the order they are recorded:
+Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
+order they are recorded:
 
-| Step | Category | What it affects |
-|---|---|---|
-| 1 | Object metadata edits | Labels and annotations on the `ReplicaSet` object |
-| 2 | ReplicaSetSpec edits | Replicas, min ready seconds |
-| 3 | Pod template metadata edits | Labels and annotations on the pod template |
-| 4 | Pod spec edits | Volumes, tolerations, node selectors, service account, security context |
-| 5 | Regular container presence | Adding or removing containers from `spec.containers` |
-| 6 | Regular container edits | Env vars, args, resources (snapshot taken after step 5) |
-| 7 | Init container presence | Adding or removing containers from `spec.initContainers` |
-| 8 | Init container edits | Env vars, args, resources (snapshot taken after step 7) |
+| Step | Category                    | What it affects                                                         |
+| ---- | --------------------------- | ----------------------------------------------------------------------- |
+| 1    | Object metadata edits       | Labels and annotations on the `ReplicaSet` object                       |
+| 2    | ReplicaSetSpec edits        | Replicas, min ready seconds                                             |
+| 3    | Pod template metadata edits | Labels and annotations on the pod template                              |
+| 4    | Pod spec edits              | Volumes, tolerations, node selectors, service account, security context |
+| 5    | Regular container presence  | Adding or removing containers from `spec.containers`                    |
+| 6    | Regular container edits     | Env vars, args, resources (snapshot taken after step 5)                 |
+| 7    | Init container presence     | Adding or removing containers from `spec.initContainers`                |
+| 8    | Init container edits        | Env vars, args, resources (snapshot taken after step 7)                 |
 
-Container edits (steps 6 and 8) are evaluated against a snapshot taken *after* presence operations in the same mutation.
+Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
 
 ## Editors
 
@@ -117,13 +125,16 @@ m.EditReplicaSetSpec(func(e *editors.ReplicaSetSpecEditor) error {
 })
 ```
 
-Note: `spec.selector` is immutable after creation and is not exposed by this editor. Set it via the desired object passed to `NewBuilder`.
+Note: `spec.selector` is immutable after creation and is not exposed by this editor. Set it via the desired object
+passed to `NewBuilder`.
 
 ### PodSpecEditor
 
 Manages pod-level configuration via `m.EditPodSpec`.
 
-Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`, `EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`, `SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
+Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`,
+`EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`,
+`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
@@ -134,9 +145,11 @@ m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a [selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
+[selector](../primitives.md#container-selectors).
 
-Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`, `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
+Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
+`RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
 m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
@@ -147,19 +160,20 @@ m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEdito
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `ReplicaSet` object itself, or `m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `ReplicaSet` object itself, or
+`m.EditPodTemplateMetadata` to target the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
 ## Convenience Methods
 
-| Method                        | Equivalent to                                                     |
-|-------------------------------|-------------------------------------------------------------------|
-| `EnsureReplicas(n)`           | `EditReplicaSetSpec` → `SetReplicas(n)`                           |
-| `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`       |
-| `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)`     |
-| `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`         |
-| `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`         |
+| Method                        | Equivalent to                                                 |
+| ----------------------------- | ------------------------------------------------------------- |
+| `EnsureReplicas(n)`           | `EditReplicaSetSpec` → `SetReplicas(n)`                       |
+| `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
+| `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
+| `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
+| `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
 ## Guidance
 
@@ -167,6 +181,8 @@ Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnno
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
 
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in the same mutation resolve correctly and reconciliation remains idempotent.
+**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
+the same mutation resolve correctly and reconciliation remains idempotent.
 
-**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can cause unexpected behavior if sidecar containers are present.
+**Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
+cause unexpected behavior if sidecar containers are present.

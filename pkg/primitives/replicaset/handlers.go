@@ -9,13 +9,23 @@ import (
 
 // DefaultConvergingStatusHandler is the default logic for determining if a ReplicaSet has reached its desired state.
 //
-// It considers a ReplicaSet ready when its Status.ReadyReplicas matches the Spec.Replicas (defaulting to 1 if nil).
+// It considers a ReplicaSet ready when the replicaset controller has observed the current generation
+// (Status.ObservedGeneration >= ObjectMeta.Generation) and Status.ReadyReplicas matches the
+// Spec.Replicas (defaulting to 1 if nil). If the controller has not yet observed the latest spec,
+// the handler reports Creating (when the resource was just created) or Updating (otherwise) to avoid
+// falsely reporting health based on stale status fields.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultConvergingStatusHandler(
 	op concepts.ConvergingOperation, rs *appsv1.ReplicaSet,
 ) (concepts.AliveStatusWithReason, error) {
+	if status := concepts.StaleGenerationStatus(
+		op, rs.Status.ObservedGeneration, rs.Generation, "replicaset",
+	); status != nil {
+		return *status, nil
+	}
+
 	desiredReplicas := int32(1)
 	if rs.Spec.Replicas != nil {
 		desiredReplicas = *rs.Spec.Replicas

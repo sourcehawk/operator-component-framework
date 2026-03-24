@@ -25,9 +25,32 @@ func newTestNP() *networkingv1.NetworkPolicy {
 
 // --- EditObjectMetadata ---
 
+func TestNewMutator(t *testing.T) {
+	np := newTestNP()
+	m := NewMutator(np)
+	assert.NotNil(t, m)
+	assert.Equal(t, np, m.np)
+	assert.Empty(t, m.plans, "NewMutator must not create any plans")
+	assert.Nil(t, m.active, "active plan must not be set")
+}
+
+func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+	np := newTestNP()
+	m := NewMutator(np)
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+
+	m.BeginFeature()
+	require.Len(t, m.plans, 2)
+	assert.Equal(t, &m.plans[1], m.active)
+}
+
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -39,6 +62,7 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -48,6 +72,7 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditNetworkPolicySpec_SetPodSelector(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 		e.SetPodSelector(metav1.LabelSelector{
 			MatchLabels: map[string]string{"app": "web"},
@@ -61,6 +86,7 @@ func TestMutator_EditNetworkPolicySpec_SetPodSelector(t *testing.T) {
 func TestMutator_EditNetworkPolicySpec_Nil(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditNetworkPolicySpec(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -68,6 +94,7 @@ func TestMutator_EditNetworkPolicySpec_Nil(t *testing.T) {
 func TestMutator_EditNetworkPolicySpec_IngressRules(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 
 	port80 := intstr.FromInt32(80)
 	tcp := corev1.ProtocolTCP
@@ -85,6 +112,7 @@ func TestMutator_EditNetworkPolicySpec_IngressRules(t *testing.T) {
 func TestMutator_EditNetworkPolicySpec_EgressRules(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 
 	port443 := intstr.FromInt32(443)
 	tcp := corev1.ProtocolTCP
@@ -110,6 +138,7 @@ func TestMutator_EditNetworkPolicySpec_ReplaceIngressAtomically(t *testing.T) {
 	}
 
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 		e.RemoveIngressRules()
 		e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
@@ -125,6 +154,7 @@ func TestMutator_EditNetworkPolicySpec_ReplaceIngressAtomically(t *testing.T) {
 func TestMutator_EditNetworkPolicySpec_SetPolicyTypes(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 		e.SetPolicyTypes([]networkingv1.PolicyType{
 			networkingv1.PolicyTypeIngress,
@@ -139,6 +169,7 @@ func TestMutator_EditNetworkPolicySpec_SetPolicyTypes(t *testing.T) {
 func TestMutator_EditNetworkPolicySpec_Raw(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 		raw := e.Raw()
 		raw.PodSelector = metav1.LabelSelector{
@@ -155,6 +186,7 @@ func TestMutator_EditNetworkPolicySpec_Raw(t *testing.T) {
 func TestMutator_OperationOrder(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 
 	port80 := intstr.FromInt32(80)
 	tcp := corev1.ProtocolTCP
@@ -179,6 +211,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 
 	port80 := intstr.FromInt32(80)
 	port443 := intstr.FromInt32(443)
@@ -208,6 +241,7 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 func TestMutator_MetadataEditError(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 		return errors.New("metadata error")
 	})
@@ -217,6 +251,7 @@ func TestMutator_MetadataEditError(t *testing.T) {
 func TestMutator_SpecEditError(t *testing.T) {
 	np := newTestNP()
 	m := NewMutator(np)
+	m.BeginFeature()
 	m.EditNetworkPolicySpec(func(_ *editors.NetworkPolicySpecEditor) error {
 		return errors.New("spec error")
 	})

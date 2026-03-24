@@ -1,16 +1,18 @@
 # HorizontalPodAutoscaler (HPA) Primitive
 
-The `hpa` primitive is the framework's built-in integration abstraction for managing Kubernetes `HorizontalPodAutoscaler` resources (`autoscaling/v2`). It integrates with the component lifecycle as an Operational, Suspendable resource and provides a structured mutation API for configuring autoscaling behavior.
+The `hpa` primitive is the framework's built-in integration abstraction for managing Kubernetes
+`HorizontalPodAutoscaler` resources (`autoscaling/v2`). It integrates with the component lifecycle as an Operational,
+Suspendable resource and provides a structured mutation API for configuring autoscaling behavior.
 
 ## Capabilities
 
-| Capability                 | Detail                                                                                                    |
-|----------------------------|-----------------------------------------------------------------------------------------------------------|
-| **Operational status**     | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`    |
-| **Suspension (no-op)**     | Leaves the HPA in place on suspend — an idle HPA has no cluster impact when its scale target is absent    |
-| **Mutation pipeline**      | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                          |
-| **Flavors**                | Preserves externally-managed labels and annotations                                                       |
-| **Data extraction**        | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
+| Capability             | Detail                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Operational status** | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`      |
+| **Suspension (no-op)** | Leaves the HPA in place on suspend — an idle HPA has no cluster impact when its scale target is absent      |
+| **Mutation pipeline**  | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                            |
+| **Flavors**            | Preserves externally-managed labels and annotations                                                         |
+| **Data extraction**    | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
 
 ## Building an HPA Primitive
 
@@ -41,7 +43,10 @@ resource, err := hpa.NewBuilder(base).
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current HPA with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by the API server or other controllers.
+`DefaultFieldApplicator` replaces the current HPA with a deep copy of the desired object, then restores server-managed
+metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status
+subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by
+the API server or other controllers.
 
 Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten:
 
@@ -59,9 +64,11 @@ resource, err := hpa.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying an HPA beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying an HPA beyond its baseline. Each mutation is a named function that
+receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func CPUMetricMutation(version string) hpa.Mutation {
@@ -76,7 +83,8 @@ func CPUMetricMutation(version string) hpa.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by another, register the dependency first.
+Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
+another, register the dependency first.
 
 ### Boolean-gated mutations
 
@@ -136,12 +144,13 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the order they are recorded:
+Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
+order they are recorded:
 
-| Step | Category | What it affects |
-|---|---|---|
-| 1 | Metadata edits | Labels and annotations on the `HorizontalPodAutoscaler` object |
-| 2 | HPA spec edits | Scale target ref, min/max replicas, metrics, behavior |
+| Step | Category       | What it affects                                                |
+| ---- | -------------- | -------------------------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `HorizontalPodAutoscaler` object |
+| 2    | HPA spec edits | Scale target ref, min/max replicas, metrics, behavior          |
 
 ## Editors
 
@@ -149,7 +158,8 @@ Within a single mutation, edit operations are grouped into categories and applie
 
 Controls HPA-level settings via `m.EditHPASpec`.
 
-Available methods: `SetScaleTargetRef`, `SetMinReplicas`, `SetMaxReplicas`, `EnsureMetric`, `RemoveMetric`, `SetBehavior`, `Raw`.
+Available methods: `SetScaleTargetRef`, `SetMinReplicas`, `SetMaxReplicas`, `EnsureMetric`, `RemoveMetric`,
+`SetBehavior`, `Raw`.
 
 ```go
 m.EditHPASpec(func(e *editors.HPASpecEditor) error {
@@ -173,23 +183,26 @@ m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 
 `EnsureMetric` upserts a metric based on its full metric identity, not just type and name. Matching rules:
 
-| Metric type | Match key |
-|---|---|
-| Resource | `Resource.Name` (e.g. `cpu`, `memory`) |
-| Pods | `Pods.Metric.Name` + `Pods.Metric.Selector` (label selector; `nil` is a distinct identity) |
-| Object | `Object.DescribedObject` (`APIVersion`, `Kind`, `Name`) + `Object.Metric.Name` + `Object.Metric.Selector` |
-| ContainerResource | `ContainerResource.Name` + `ContainerResource.Container` |
-| External | `External.Metric.Name` + `External.Metric.Selector` (label selector; `nil` is a distinct identity) |
+| Metric type       | Match key                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------- |
+| Resource          | `Resource.Name` (e.g. `cpu`, `memory`)                                                                    |
+| Pods              | `Pods.Metric.Name` + `Pods.Metric.Selector` (label selector; `nil` is a distinct identity)                |
+| Object            | `Object.DescribedObject` (`APIVersion`, `Kind`, `Name`) + `Object.Metric.Name` + `Object.Metric.Selector` |
+| ContainerResource | `ContainerResource.Name` + `ContainerResource.Container`                                                  |
+| External          | `External.Metric.Name` + `External.Metric.Selector` (label selector; `nil` is a distinct identity)        |
 
-If a matching entry exists it is replaced; otherwise the metric is appended. Be aware that different selectors or described objects result in different metric identities, even if the metric names are the same.
+If a matching entry exists it is replaced; otherwise the metric is appended. Be aware that different selectors or
+described objects result in different metric identities, even if the metric names are the same.
 
 #### RemoveMetric
 
-`RemoveMetric(type, name)` removes all metrics matching the given type and name. For ContainerResource metrics, all container variants of the named resource are removed.
+`RemoveMetric(type, name)` removes all metrics matching the given type and name. For ContainerResource metrics, all
+container variants of the named resource are removed.
 
 #### SetBehavior
 
-`SetBehavior` sets the autoscaling behavior (stabilization windows, scaling policies). Pass `nil` to remove custom behavior and use Kubernetes defaults.
+`SetBehavior` sets the autoscaling behavior (stabilization windows, scaling policies). Pass `nil` to remove custom
+behavior and use Kubernetes defaults.
 
 ```go
 m.EditHPASpec(func(e *editors.HPASpecEditor) error {
@@ -227,19 +240,21 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ### Raw Escape Hatch
 
-All editors provide a `.Raw()` method for direct access to the underlying Kubernetes struct when the typed API is insufficient.
+All editors provide a `.Raw()` method for direct access to the underlying Kubernetes struct when the typed API is
+insufficient.
 
 ## Operational Status
 
 The default operational status handler inspects `Status.Conditions`:
 
-| Status | Condition |
-|---|---|
-| `Operational` | `ScalingActive` is `True` |
-| `Pending` | Conditions absent, or `ScalingActive` is `Unknown` |
-| `Failing` | `ScalingActive` is `False`, or `AbleToScale` is `False` |
+| Status        | Condition                                               |
+| ------------- | ------------------------------------------------------- |
+| `Operational` | `ScalingActive` is `True`                               |
+| `Pending`     | Conditions absent, or `ScalingActive` is `Unknown`      |
+| `Failing`     | `ScalingActive` is `False`, or `AbleToScale` is `False` |
 
-`AbleToScale = False` takes precedence over `ScalingActive = True` because an HPA that cannot actually scale is not operationally healthy regardless of what the scaling-active condition reports.
+`AbleToScale = False` takes precedence over `ScalingActive = True` because an HPA that cannot actually scale is not
+operationally healthy regardless of what the scaling-active condition reports.
 
 Override with `WithCustomOperationalStatus`:
 
@@ -257,9 +272,13 @@ hpa.NewBuilder(base).
 
 ## Suspension
 
-HPA has no native suspend field. The default behavior is a **no-op**: the HPA is left in place when the component is suspended (`DefaultDeleteOnSuspendHandler` returns `false`). An idle HPA has no effect on the cluster when its scale target is absent or suspended, so there is no reason to delete it. Keeping it avoids unnecessary churn and simplifies resumption.
+HPA has no native suspend field. The default behavior is a **no-op**: the HPA is left in place when the component is
+suspended (`DefaultDeleteOnSuspendHandler` returns `false`). An idle HPA has no effect on the cluster when its scale
+target is absent or suspended, so there is no reason to delete it. Keeping it avoids unnecessary churn and simplifies
+resumption.
 
-The default suspension status handler reports `Suspended` immediately with the reason `"HorizontalPodAutoscaler left in place; no-op suspend"`.
+The default suspension status handler reports `Suspended` immediately with the reason
+`"HorizontalPodAutoscaler left in place; no-op suspend"`.
 
 Override with `WithCustomSuspendDeletionDecision` if you want to delete the HPA during suspension:
 
@@ -270,13 +289,14 @@ hpa.NewBuilder(base).
     })
 ```
 
-If you choose to delete the HPA during suspension, consider providing a custom suspend status handler via `WithCustomSuspendStatus` to report an accurate reason.
+If you choose to delete the HPA during suspension, consider providing a custom suspend status handler via
+`WithCustomSuspendStatus` to report an accurate reason.
 
 ## Flavors
 
-| Flavor | Effect |
-|---|---|
-| `PreserveCurrentLabels` | Keeps labels from the live object that the desired state does not declare |
+| Flavor                       | Effect                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| `PreserveCurrentLabels`      | Keeps labels from the live object that the desired state does not declare      |
 | `PreserveCurrentAnnotations` | Keeps annotations from the live object that the desired state does not declare |
 
 ```go
@@ -342,14 +362,22 @@ func AutoscalingMutation(version string) hpa.Mutation {
 }
 ```
 
-Note: although `EditObjectMetadata` is called after `EditHPASpec` in the source, metadata edits are applied first per the internal ordering. Order your source calls for readability — the framework handles execution order.
+Note: although `EditObjectMetadata` is called after `EditHPASpec` in the source, metadata edits are applied first per
+the internal ordering. Order your source calls for readability — the framework handles execution order.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a metric added by mutation A, register A first.
 
-**Use `EnsureMetric` for idempotent metric management.** The editor matches by full metric identity (type, name, selector, and described object where applicable), so repeated calls with the same identity update rather than duplicate.
+**Use `EnsureMetric` for idempotent metric management.** The editor matches by full metric identity (type, name,
+selector, and described object where applicable), so repeated calls with the same identity update rather than duplicate.
 
-**HPA retention on suspend is the default.** The primitive's default `DeleteOnSuspend` decision leaves the HPA in place during component suspension (matching the "Suspension (no-op)" capability). This avoids unnecessary churn and simplifies resumption. Note that a retained HPA may attempt to scale its target if the target still exists and is scaled to zero. If you need the HPA to be removed during suspension — for example, to guarantee that no scaling can interfere — override `WithCustomSuspendDeletionDecision` to return `true`.
+**HPA retention on suspend is the default.** The primitive's default `DeleteOnSuspend` decision leaves the HPA in place
+during component suspension (matching the "Suspension (no-op)" capability). This avoids unnecessary churn and simplifies
+resumption. Note that a retained HPA may attempt to scale its target if the target still exists and is scaled to zero.
+If you need the HPA to be removed during suspension — for example, to guarantee that no scaling can interfere — override
+`WithCustomSuspendDeletionDecision` to return `true`.

@@ -1,16 +1,18 @@
 # RoleBinding Primitive
 
-The `rolebinding` primitive is the framework's built-in static abstraction for managing Kubernetes `RoleBinding` resources. It integrates with the component lifecycle and provides a structured mutation API for managing subjects and object metadata.
+The `rolebinding` primitive is the framework's built-in static abstraction for managing Kubernetes `RoleBinding`
+resources. It integrates with the component lifecycle and provides a structured mutation API for managing subjects and
+object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                      |
-|-----------------------|-------------------------------------------------------------------------------------------------------------|
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state              |
-| **Mutation pipeline** | Typed editors for subjects and object metadata, with a raw escape hatch for free-form access                |
-| **Immutable roleRef** | `roleRef` is set on the desired object and preserved from the live cluster object after initial creation     |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                      |
-| **Data extraction**   | Reads generated or updated values back from the reconciled RoleBinding after each sync cycle                |
+| Capability            | Detail                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state           |
+| **Mutation pipeline** | Typed editors for subjects and object metadata, with a raw escape hatch for free-form access             |
+| **Immutable roleRef** | `roleRef` is set on the desired object and preserved from the live cluster object after initial creation |
+| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                   |
+| **Data extraction**   | Reads generated or updated values back from the reconciled RoleBinding after each sync cycle             |
 
 ## Building a RoleBinding Primitive
 
@@ -38,13 +40,18 @@ resource, err := rolebinding.NewBuilder(base).
     Build()
 ```
 
-`roleRef` must be set on the base object passed to `NewBuilder`. It is immutable after creation in Kubernetes and is not modifiable via the mutation API.
+`roleRef` must be set on the base object passed to `NewBuilder`. It is immutable after creation in Kubernetes and is not
+modifiable via the mutation API.
 
 ## Default Field Application
 
-`DefaultFieldApplicator` replaces the current RoleBinding with a deep copy of the desired object, then restores server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the immutable `roleRef` from the original live object. RoleBinding has no Status subresource, so no status preservation is needed.
+`DefaultFieldApplicator` replaces the current RoleBinding with a deep copy of the desired object, then restores
+server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
+immutable `roleRef` from the original live object. RoleBinding has no Status subresource, so no status preservation is
+needed.
 
 This ensures that:
+
 - Every reconciliation cycle produces a clean, predictable state.
 - Server-managed metadata and shared-controller fields are not lost.
 - The immutable `roleRef` from the API server is never overwritten.
@@ -63,9 +70,11 @@ resource, err := rolebinding.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `RoleBinding` beyond its baseline. Each mutation is a named function that receives a `*Mutator` and records edit intent through typed editors.
+Mutations are the primary mechanism for modifying a `RoleBinding` beyond its baseline. Each mutation is a named function
+that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature with no version constraints and no `When()` conditions is also always enabled:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func AddServiceAccountMutation(version, saName, saNamespace string) rolebinding.Mutation {
@@ -139,14 +148,16 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are recorded:
+Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
+recorded:
 
-| Step | Category        | What it affects                            |
-|------|-----------------|--------------------------------------------|
-| 1    | Metadata edits  | Labels and annotations on the RoleBinding  |
-| 2    | Subject edits   | `.subjects` entries via BindingSubjectsEditor |
+| Step | Category       | What it affects                               |
+| ---- | -------------- | --------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the RoleBinding     |
+| 2    | Subject edits  | `.subjects` entries via BindingSubjectsEditor |
 
-Within each category, edits are applied in their registration order. Later features observe the RoleBinding as modified by all previous features.
+Within each category, edits are applied in their registration order. Later features observe the RoleBinding as modified
+by all previous features.
 
 ## Editors
 
@@ -168,7 +179,8 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 
 #### EnsureSubject
 
-`EnsureSubject` upserts a subject by the combination of `Kind`, `Name`, and `Namespace`. If a matching subject already exists, it is replaced; otherwise the new subject is appended.
+`EnsureSubject` upserts a subject by the combination of `Kind`, `Name`, and `Namespace`. If a matching subject already
+exists, it is replaced; otherwise the new subject is appended.
 
 #### RemoveSubject
 
@@ -176,7 +188,8 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 
 #### Raw
 
-`Raw()` returns a pointer to the underlying `[]rbacv1.Subject` slice for free-form access when the structured methods are insufficient:
+`Raw()` returns a pointer to the underlying `[]rbacv1.Subject` slice for free-form access when the structured methods
+are insufficient:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
@@ -205,7 +218,8 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Flavors
 
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external controllers or other tools.
+Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
+controllers or other tools.
 
 ### PreserveCurrentLabels
 
@@ -219,7 +233,8 @@ resource, err := rolebinding.NewBuilder(base).
 
 ### PreserveCurrentAnnotations
 
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on overlap.
+Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
+overlap.
 
 ```go
 resource, err := rolebinding.NewBuilder(base).
@@ -231,10 +246,15 @@ Multiple flavors can be registered and run in registration order.
 
 ## Guidance
 
-**Set `roleRef` on the base object, not via mutations.** Kubernetes makes `roleRef` immutable after creation. The `DefaultFieldApplicator` preserves the live `roleRef` to avoid update conflicts. To change a `roleRef`, delete and recreate the RoleBinding.
+**Set `roleRef` on the base object, not via mutations.** Kubernetes makes `roleRef` immutable after creation. The
+`DefaultFieldApplicator` preserves the live `roleRef` to avoid update conflicts. To change a `roleRef`, delete and
+recreate the RoleBinding.
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
+`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
+boolean conditions.
 
-**Use `EnsureSubject` for idempotent subject management.** `EnsureSubject` upserts by Kind+Name+Namespace, making it safe to call on every reconciliation without creating duplicates.
+**Use `EnsureSubject` for idempotent subject management.** `EnsureSubject` upserts by Kind+Name+Namespace, making it
+safe to call on every reconciliation without creating duplicates.
 
 **Register mutations in dependency order.** If mutation B relies on a subject added by mutation A, register A first.

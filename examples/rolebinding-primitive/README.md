@@ -1,7 +1,7 @@
 # RoleBinding Primitive Example
 
-This example demonstrates the usage of the `rolebinding` primitive within the operator component framework.
-It shows how to manage a Kubernetes RoleBinding as a component of a larger application, utilising features like:
+This example demonstrates the usage of the `rolebinding` primitive within the operator component framework. It shows how
+to manage a Kubernetes RoleBinding as a component of a larger application, utilising features like:
 
 - **Base Construction**: Initializing a RoleBinding with an immutable `roleRef` and basic metadata.
 - **Feature Mutations**: Composing subjects from independent, feature-gated mutations using `EditSubjects`.
@@ -11,10 +11,12 @@ It shows how to manage a Kubernetes RoleBinding as a component of a larger appli
 
 ## Directory Structure
 
-- `app/`: Defines the controller that uses the component framework. The `ExampleApp` CRD is shared from `examples/shared/app`.
+- `app/`: Defines the controller that uses the component framework. The `ExampleApp` CRD is shared from
+  `examples/shared/app`.
 - `features/`: Contains modular feature definitions:
-    - `mutations.go`: base subject binding, version labelling, and feature-gated monitoring subject.
-- `resources/`: Contains the central `NewRoleBindingResource` factory that assembles all features using `rolebinding.Builder`.
+  - `mutations.go`: base subject binding, version labelling, and feature-gated monitoring subject.
+- `resources/`: Contains the central `NewRoleBindingResource` factory that assembles all features using
+  `rolebinding.Builder`.
 - `main.go`: A standalone entry point that demonstrates multiple reconciliation cycles with a fake client.
 
 ## Running the Example
@@ -24,6 +26,7 @@ go run examples/rolebinding-primitive/main.go
 ```
 
 This will:
+
 1. Initialize a fake Kubernetes client.
 2. Create an `ExampleApp` owner object.
 3. Reconcile through three spec variations, printing the subjects after each cycle.

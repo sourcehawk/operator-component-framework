@@ -21,7 +21,8 @@ func TestResource_Identity(t *testing.T) {
 			Namespace: "test-ns",
 		},
 	}
-	res, _ := NewBuilder(np).Build()
+	res, err := NewBuilder(np).Build()
+	require.NoError(t, err)
 
 	assert.Equal(t, "networking.k8s.io/v1/NetworkPolicy/test-ns/test-netpol", res.Identity())
 }
@@ -33,7 +34,8 @@ func TestResource_Object(t *testing.T) {
 			Namespace: "test-ns",
 		},
 	}
-	res, _ := NewBuilder(np).Build()
+	res, err := NewBuilder(np).Build()
+	require.NoError(t, err)
 
 	obj, err := res.Object()
 	require.NoError(t, err)
@@ -65,7 +67,7 @@ func TestResource_Mutate(t *testing.T) {
 	port := intstr.FromInt32(8080)
 	tcp := corev1.ProtocolTCP
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "test-mutation",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
@@ -82,9 +84,10 @@ func TestResource_Mutate(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &networkingv1.NetworkPolicy{}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.Equal(t, "test", current.Labels["app"])
@@ -107,7 +110,7 @@ func TestResource_Mutate_DisabledFeature(t *testing.T) {
 		},
 	}
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "disabled-mutation",
 			Feature: feature.NewResourceFeature("v1", nil).When(false),
@@ -120,9 +123,10 @@ func TestResource_Mutate_DisabledFeature(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &networkingv1.NetworkPolicy{}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.NotContains(t, current.Labels, "should-not")
@@ -136,7 +140,7 @@ func TestResource_Mutate_NilFeatureIsUnconditional(t *testing.T) {
 		},
 	}
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name: "unconditional",
 			Mutate: func(m *Mutator) error {
@@ -148,9 +152,10 @@ func TestResource_Mutate_NilFeatureIsUnconditional(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &networkingv1.NetworkPolicy{}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.Equal(t, "present", current.Labels["always"])
@@ -173,7 +178,7 @@ func TestResource_Mutate_MutationOrdering(t *testing.T) {
 	port443 := intstr.FromInt32(443)
 	tcp := corev1.ProtocolTCP
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name: "http",
 			Mutate: func(m *Mutator) error {
@@ -203,9 +208,10 @@ func TestResource_Mutate_MutationOrdering(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &networkingv1.NetworkPolicy{}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	require.Len(t, current.Spec.Ingress, 2)
@@ -222,16 +228,17 @@ func TestResource_Mutate_WithFlavor(t *testing.T) {
 		},
 	}
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithFieldApplicationFlavor(PreserveCurrentLabels).
 		Build()
+	require.NoError(t, err)
 
 	current := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{"external": "label"},
 		},
 	}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.Equal(t, "test", current.Labels["app"])
@@ -253,7 +260,7 @@ func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
 	}
 
 	applicatorCalled := false
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithCustomFieldApplicator(func(current, desired *networkingv1.NetworkPolicy) error {
 			applicatorCalled = true
 			current.Name = desired.Name
@@ -262,13 +269,14 @@ func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
 			return nil
 		}).
 		Build()
+	require.NoError(t, err)
 
 	current := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{"external": "label"},
 		},
 	}
-	err := res.Mutate(current)
+	err = res.Mutate(current)
 	require.NoError(t, err)
 
 	assert.True(t, applicatorCalled)
@@ -277,13 +285,14 @@ func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
 	assert.NotContains(t, current.Labels, "app")
 
 	t.Run("returns error", func(t *testing.T) {
-		res, _ := NewBuilder(desired).
+		res, err := NewBuilder(desired).
 			WithCustomFieldApplicator(func(_, _ *networkingv1.NetworkPolicy) error {
 				return errors.New("applicator error")
 			}).
 			Build()
+		require.NoError(t, err)
 
-		err := res.Mutate(&networkingv1.NetworkPolicy{})
+		err = res.Mutate(&networkingv1.NetworkPolicy{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "applicator error")
 	})

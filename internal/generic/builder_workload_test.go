@@ -18,11 +18,10 @@ func TestWorkloadBuilder(t *testing.T) {
 		},
 	}
 	identityFunc := func(d *appsv1.Deployment) string { return d.Name }
-	defaultApp := func(_, _ *appsv1.Deployment) error { return nil }
 	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
 
 	t.Run("successful build", func(t *testing.T) {
-		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator)
+		builder := NewWorkloadBuilder(obj, identityFunc, newMutator)
 		res, err := builder.Build()
 		require.NoError(t, err)
 		assert.Equal(t, obj, res.DesiredObject)
@@ -36,13 +35,13 @@ func TestWorkloadBuilder(t *testing.T) {
 				return nil
 			},
 		}
-		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator).WithMutation(mut)
+		builder := NewWorkloadBuilder(obj, identityFunc, newMutator).WithMutation(mut)
 		res, _ := builder.Build()
 		assert.Len(t, res.Mutations, 1)
 	})
 
 	t.Run("with handlers", func(t *testing.T) {
-		builder := NewWorkloadBuilder(obj, identityFunc, defaultApp, newMutator).
+		builder := NewWorkloadBuilder(obj, identityFunc, newMutator).
 			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
 				return concepts.AliveStatusWithReason{}, nil
 			}).
@@ -71,7 +70,7 @@ func TestWorkloadBuilder(t *testing.T) {
 		clusterObj := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
 		}
-		builder := NewWorkloadBuilder(clusterObj, identityFunc, defaultApp, newMutator)
+		builder := NewWorkloadBuilder(clusterObj, identityFunc, newMutator)
 		builder.MarkClusterScoped()
 		res, err := builder.Build()
 		require.NoError(t, err)
@@ -82,7 +81,7 @@ func TestWorkloadBuilder(t *testing.T) {
 		nsObj := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj", Namespace: "oops"},
 		}
-		builder := NewWorkloadBuilder(nsObj, identityFunc, defaultApp, newMutator)
+		builder := NewWorkloadBuilder(nsObj, identityFunc, newMutator)
 		builder.MarkClusterScoped()
 		_, err := builder.Build()
 		require.EqualError(t, err, errClusterScopedNamespace)
@@ -90,9 +89,9 @@ func TestWorkloadBuilder(t *testing.T) {
 
 	t.Run("validation errors", func(t *testing.T) {
 		runBuilderValidationTests[*WorkloadResource[*appsv1.Deployment, *mockMutator]](
-			t, obj, identityFunc, defaultApp, newMutator,
-			func(o *appsv1.Deployment, id func(*appsv1.Deployment) string, app FieldApplicator[*appsv1.Deployment], mut func(*appsv1.Deployment) *mockMutator) genericBuilder[*WorkloadResource[*appsv1.Deployment, *mockMutator]] {
-				return NewWorkloadBuilder(o, id, app, mut)
+			t, obj, identityFunc, newMutator,
+			func(o *appsv1.Deployment, id func(*appsv1.Deployment) string, mut func(*appsv1.Deployment) *mockMutator) genericBuilder[*WorkloadResource[*appsv1.Deployment, *mockMutator]] {
+				return NewWorkloadBuilder(o, id, mut)
 			},
 		)
 	})

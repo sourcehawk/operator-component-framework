@@ -25,7 +25,6 @@ type FeatureMutator interface {
 //
 // It provides shared behavior for:
 //   - baseline field application
-//   - field application flavors
 //   - feature mutations
 //   - suspension mutations
 //   - data extraction

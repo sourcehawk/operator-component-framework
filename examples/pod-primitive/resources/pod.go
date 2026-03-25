@@ -41,11 +41,7 @@ func NewPodResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.VersionFeature(owner.Spec.Version))
 	builder.WithMutation(features.TracingFeature(owner.Spec.EnableTracing))
 
-	// 4. Configure flavors (e.g., preserve labels/annotations if they were modified externally).
-	builder.WithFieldApplicationFlavor(pod.PreserveCurrentLabels)
-	builder.WithFieldApplicationFlavor(pod.PreserveCurrentAnnotations)
-
-	// 5. Data extraction (optional).
+	// 4. Data extraction (optional).
 	builder.WithDataExtractor(func(p corev1.Pod) error {
 		fmt.Printf("Reconciling pod: %s, phase: %s\n", p.Name, p.Status.Phase)
 
@@ -59,6 +55,6 @@ func NewPodResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

@@ -6,12 +6,12 @@ and object metadata.
 
 ## Capabilities
 
-| Capability                | Detail                                                                                                   |
-| ------------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Integration lifecycle** | Reports `Operational`, `OperationPending`, or `OperationFailing` based on the PV's phase                 |
-| **Cluster-scoped**        | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources                 |
-| **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access       |
-| **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle        |
+| Capability                | Detail                                                                                             |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Integration lifecycle** | Reports `Operational`, `OperationPending`, or `OperationFailing` based on the PV's phase           |
+| **Cluster-scoped**        | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources           |
+| **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access |
+| **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle  |
 
 ## Building a PersistentVolume Primitive
 

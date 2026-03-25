@@ -53,30 +53,22 @@ type Mutator struct {
 // NewMutator creates a new Mutator for the given DaemonSet.
 //
 // It is typically used within a Feature's Mutation logic to express desired
-// changes to the DaemonSet. BeginFeature must be called before registering
-// any mutations.
+// changes to the DaemonSet. The constructor creates the initial feature scope,
+// so mutations can be registered immediately.
 func NewMutator(current *appsv1.DaemonSet) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		current: current,
 	}
+	m.NextFeature()
+	return m
 }
 
-// requireActivePlan panics with a clear message if no feature plan is active.
-// This catches programming errors where mutations are registered before calling BeginFeature.
-func (m *Mutator) requireActivePlan() {
-	if m.active == nil {
-		panic("daemonset.Mutator: BeginFeature() must be called before registering mutations")
-	}
-}
-
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan until another
-// BeginFeature is called.
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
 //
-// This is used to ensure that mutations from different features are applied
-// in registration order while maintaining internal category ordering within
-// each feature.
-func (m *Mutator) BeginFeature() {
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }
@@ -100,7 +92,6 @@ func (m *Mutator) EditContainers(selector selectors.ContainerSelector, edit func
 	if selector == nil || edit == nil {
 		return
 	}
-	m.requireActivePlan()
 	m.active.containerEdits = append(m.active.containerEdits, containerEdit{
 		selector: selector,
 		edit:     edit,
@@ -125,7 +116,6 @@ func (m *Mutator) EditInitContainers(selector selectors.ContainerSelector, edit 
 	if selector == nil || edit == nil {
 		return
 	}
-	m.requireActivePlan()
 	m.active.initContainerEdits = append(m.active.initContainerEdits, containerEdit{
 		selector: selector,
 		edit:     edit,
@@ -135,7 +125,6 @@ func (m *Mutator) EditInitContainers(selector selectors.ContainerSelector, edit 
 // EnsureContainer records that a regular container must be present in the DaemonSet.
 // If a container with the same name exists, it is replaced; otherwise, it is appended.
 func (m *Mutator) EnsureContainer(container corev1.Container) {
-	m.requireActivePlan()
 	m.active.containerPresence = append(m.active.containerPresence, containerPresenceOp{
 		name:      container.Name,
 		container: &container,
@@ -144,7 +133,6 @@ func (m *Mutator) EnsureContainer(container corev1.Container) {
 
 // RemoveContainer records that a regular container should be removed by name.
 func (m *Mutator) RemoveContainer(name string) {
-	m.requireActivePlan()
 	m.active.containerPresence = append(m.active.containerPresence, containerPresenceOp{
 		name:      name,
 		container: nil,
@@ -161,7 +149,6 @@ func (m *Mutator) RemoveContainers(names []string) {
 // EnsureInitContainer records that an init container must be present in the DaemonSet.
 // If an init container with the same name exists, it is replaced; otherwise, it is appended.
 func (m *Mutator) EnsureInitContainer(container corev1.Container) {
-	m.requireActivePlan()
 	m.active.initContainerPresence = append(m.active.initContainerPresence, containerPresenceOp{
 		name:      container.Name,
 		container: &container,
@@ -170,7 +157,6 @@ func (m *Mutator) EnsureInitContainer(container corev1.Container) {
 
 // RemoveInitContainer records that an init container should be removed by name.
 func (m *Mutator) RemoveInitContainer(name string) {
-	m.requireActivePlan()
 	m.active.initContainerPresence = append(m.active.initContainerPresence, containerPresenceOp{
 		name:      name,
 		container: nil,
@@ -198,7 +184,6 @@ func (m *Mutator) EditDaemonSetSpec(edit func(*editors.DaemonSetSpecEditor) erro
 	if edit == nil {
 		return
 	}
-	m.requireActivePlan()
 	m.active.daemonsetSpecEdits = append(m.active.daemonsetSpecEdits, edit)
 }
 
@@ -216,7 +201,6 @@ func (m *Mutator) EditPodSpec(edit func(*editors.PodSpecEditor) error) {
 	if edit == nil {
 		return
 	}
-	m.requireActivePlan()
 	m.active.podSpecEdits = append(m.active.podSpecEdits, edit)
 }
 
@@ -234,7 +218,6 @@ func (m *Mutator) EditPodTemplateMetadata(edit func(*editors.ObjectMetaEditor) e
 	if edit == nil {
 		return
 	}
-	m.requireActivePlan()
 	m.active.podTemplateMetadataEdits = append(m.active.podTemplateMetadataEdits, edit)
 }
 
@@ -252,7 +235,6 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
-	m.requireActivePlan()
 	m.active.daemonsetMetadataEdits = append(m.active.daemonsetMetadataEdits, edit)
 }
 

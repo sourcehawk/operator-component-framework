@@ -1,16 +1,10 @@
 package pdb
 
 import (
-	"errors"
-
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	policyv1 "k8s.io/api/policy/v1"
 )
-
-// ErrNoActiveFeature is returned when EditObjectMetadata or EditSpec is called
-// before BeginFeature has started a feature scope.
-var ErrNoActiveFeature = errors.New("pdb mutator: no active feature scope; call BeginFeature first")
 
 // Mutation defines a mutation that is applied to a pdb Mutator
 // only if its associated feature gate is enabled.
@@ -29,10 +23,7 @@ type featurePlan struct {
 // The Mutator maintains feature boundaries: each feature's mutations are planned
 // together and applied in the order the features were registered.
 //
-// Unlike other primitive mutators, EditObjectMetadata and EditSpec return an
-// error when a non-nil edit function is provided without an active feature
-// scope (i.e. before BeginFeature is called). Nil edit functions are always
-// ignored and return nil. This means Mutator does not satisfy editors.ObjectMutator.
+// Mutator implements editors.ObjectMutator.
 type Mutator struct {
 	pdb *policyv1.PodDisruptionBudget
 
@@ -43,17 +34,22 @@ type Mutator struct {
 // NewMutator creates a new Mutator for the given PodDisruptionBudget.
 //
 // It is typically used within a Feature's Mutation logic to express desired
-// changes to the PodDisruptionBudget. BeginFeature must be called before
-// registering any mutations.
+// changes to the PodDisruptionBudget. The constructor creates the initial
+// feature scope automatically.
 func NewMutator(pdb *policyv1.PodDisruptionBudget) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		pdb: pdb,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) BeginFeature() {
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }
@@ -62,15 +58,11 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before spec edits within the same feature.
 // A nil edit function is ignored.
-func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) error {
+func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
-		return nil
-	}
-	if m.active == nil {
-		return ErrNoActiveFeature
+		return
 	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
-	return nil
 }
 
 // EditSpec records a mutation for the PodDisruptionBudget's spec via a
@@ -81,15 +73,11 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // after metadata edits within the same feature, in registration order.
 //
 // A nil edit function is ignored.
-func (m *Mutator) EditSpec(edit func(*editors.PodDisruptionBudgetSpecEditor) error) error {
+func (m *Mutator) EditSpec(edit func(*editors.PodDisruptionBudgetSpecEditor) error) {
 	if edit == nil {
-		return nil
-	}
-	if m.active == nil {
-		return ErrNoActiveFeature
+		return
 	}
 	m.active.specEdits = append(m.active.specEdits, edit)
-	return nil
 }
 
 // Apply executes all recorded mutation intents on the underlying PodDisruptionBudget.

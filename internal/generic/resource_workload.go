@@ -13,11 +13,11 @@ type MutatorApplier interface {
 	Apply() error
 }
 
-// FeatureMutator is implemented by workload mutators that support defining feature boundaries.
+// FeatureMutator is implemented by workload mutators that support feature-scoped mutation planning.
 // The interface is exported so that primitive mutators in external packages can satisfy it.
 type FeatureMutator interface {
 	MutatorApplier
-	BeginFeature()
+	NextFeature()
 }
 
 // WorkloadResource is a generic internal resource implementation for long-running Kubernetes

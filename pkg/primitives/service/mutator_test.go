@@ -25,7 +25,6 @@ func newTestService() *corev1.Service {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -37,7 +36,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -45,7 +43,6 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditObjectMetadata_Error(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 		return errors.New("metadata error")
 	})
@@ -59,7 +56,6 @@ func TestMutator_EditObjectMetadata_Error(t *testing.T) {
 func TestMutator_EditServiceSpec(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.SetType(corev1.ServiceTypeNodePort)
 		return nil
@@ -71,7 +67,6 @@ func TestMutator_EditServiceSpec(t *testing.T) {
 func TestMutator_EditServiceSpec_Nil(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -79,7 +74,6 @@ func TestMutator_EditServiceSpec_Nil(t *testing.T) {
 func TestMutator_EditServiceSpec_Error(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(_ *editors.ServiceSpecEditor) error {
 		return errors.New("spec error")
 	})
@@ -91,7 +85,6 @@ func TestMutator_EditServiceSpec_Error(t *testing.T) {
 func TestMutator_EditServiceSpec_Ports(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
 		e.EnsurePort(corev1.ServicePort{Name: "https", Port: 443})
@@ -104,7 +97,6 @@ func TestMutator_EditServiceSpec_Ports(t *testing.T) {
 func TestMutator_EditServiceSpec_Selector(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsureSelector("app", "myapp")
 		return nil
@@ -116,7 +108,6 @@ func TestMutator_EditServiceSpec_Selector(t *testing.T) {
 func TestMutator_EditServiceSpec_RawAccess(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.Raw().ExternalName = "external.example.com"
 		return nil
@@ -131,7 +122,6 @@ func TestMutator_OperationOrder(t *testing.T) {
 	// Within a feature: metadata edits run before service spec edits.
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
@@ -151,12 +141,11 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
 		return nil
 	})
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "https", Port: 443})
 		return nil
@@ -169,12 +158,11 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 func TestMutator_MultipleFeatures_LaterSeesEarlier(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsureSelector("app", "myapp")
 		return nil
 	})
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		// Later feature should see the selector set by the earlier feature.
 		e.EnsureSelector("env", "prod")
@@ -200,7 +188,6 @@ func TestMutator_Apply_PreservesNodePortsAfterEnsurePort(t *testing.T) {
 		},
 	}
 	m := NewMutator(svc)
-	m.BeginFeature()
 	// EnsurePort replaces the entire ServicePort, which zeroes NodePort.
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
@@ -223,7 +210,6 @@ func TestMutator_Apply_PreservesNodePortsForLoadBalancer(t *testing.T) {
 		},
 	}
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
 		return nil
@@ -244,7 +230,6 @@ func TestMutator_Apply_ExplicitNodePortNotOverridden(t *testing.T) {
 		},
 	}
 	m := NewMutator(svc)
-	m.BeginFeature()
 	// Explicitly set a different NodePort — should not be reverted to the snapshot.
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80, NodePort: 32000})
@@ -266,7 +251,6 @@ func TestMutator_Apply_NoNodePortPreservationForClusterIP(t *testing.T) {
 		},
 	}
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
 		return nil
@@ -278,40 +262,38 @@ func TestMutator_Apply_NoNodePortPreservationForClusterIP(t *testing.T) {
 
 // --- Constructor and feature plan invariants ---
 
-func TestNewMutator_InitializesNoPlan(t *testing.T) {
+func TestNewMutator_InitializesWithOnePlan(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
 
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsOnePlan(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	require.Len(t, m.plans, 1, "constructor must create the initial plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 
-	m.BeginFeature()
+	m.NextFeature()
 	require.Len(t, m.plans, 2)
 	assert.Equal(t, &m.plans[1], m.active)
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
 
-	// Record a mutation in the first feature plan
-	m.BeginFeature()
+	// Record a mutation in the first feature plan (auto-created by constructor)
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
 		return nil
 	})
 
 	// Start a new feature and record a different mutation
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "https", Port: 443})
 		return nil
@@ -324,7 +306,6 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	svc := newTestService()
 	m := NewMutator(svc)
-	m.BeginFeature()
 	m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 		e.EnsurePort(corev1.ServicePort{Name: "http", Port: 80})
 		return nil

@@ -107,7 +107,7 @@ recorded:
 Within each category, edits are applied in their registration order. Later edits in the same mutation observe the Secret
 as modified by all earlier edits.
 
-## Editors
+## Relevant Editors
 
 ### SecretDataEditor
 

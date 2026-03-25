@@ -34,27 +34,24 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given ServiceAccount.
-// BeginFeature must be called before registering any mutations.
+// The constructor creates the initial feature scope, so mutations can be
+// registered immediately without an explicit call to NextFeature.
 func NewMutator(sa *corev1.ServiceAccount) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		sa: sa,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
 //
-// This method satisfies the generic.FeatureMutator interface, allowing the
-// generic builder to maintain per-feature ordering semantics for external mutators.
-func (m *Mutator) BeginFeature() {
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
-}
-
-func (m *Mutator) ensureActive() {
-	if m.active == nil {
-		m.BeginFeature()
-	}
 }
 
 // EditObjectMetadata records a mutation for the ServiceAccount's own metadata.
@@ -65,14 +62,12 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
 // EnsureImagePullSecret records that the named image pull secret should be present
 // in .imagePullSecrets. If a secret with the same name already exists, it is a no-op.
 func (m *Mutator) EnsureImagePullSecret(name string) {
-	m.ensureActive()
 	m.active.imagePullSecretEdits = append(m.active.imagePullSecretEdits, func(sa *corev1.ServiceAccount) {
 		for _, ref := range sa.ImagePullSecrets {
 			if ref.Name == name {
@@ -86,7 +81,6 @@ func (m *Mutator) EnsureImagePullSecret(name string) {
 // RemoveImagePullSecret records that the named image pull secret should be removed
 // from .imagePullSecrets. It is a no-op if the secret is not present.
 func (m *Mutator) RemoveImagePullSecret(name string) {
-	m.ensureActive()
 	m.active.imagePullSecretEdits = append(m.active.imagePullSecretEdits, func(sa *corev1.ServiceAccount) {
 		filtered := sa.ImagePullSecrets[:0]
 		for _, ref := range sa.ImagePullSecrets {
@@ -110,7 +104,6 @@ func (m *Mutator) SetAutomountServiceAccountToken(v *bool) {
 		snapshot = &val
 	}
 
-	m.ensureActive()
 	m.active.automountEdits = append(m.active.automountEdits, func(sa *corev1.ServiceAccount) {
 		sa.AutomountServiceAccountToken = snapshot
 	})

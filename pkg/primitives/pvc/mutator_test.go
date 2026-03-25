@@ -23,7 +23,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 			},
 		}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 			e.EnsureLabel("app", "myapp")
 			return nil
@@ -35,7 +34,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 	t.Run("nil edit ignored", func(t *testing.T) {
 		pvc := &corev1.PersistentVolumeClaim{}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditObjectMetadata(nil)
 		require.NoError(t, m.Apply())
 	})
@@ -43,7 +41,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 	t.Run("error propagated", func(t *testing.T) {
 		pvc := &corev1.PersistentVolumeClaim{}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 			return errors.New("metadata error")
 		})
@@ -59,7 +56,6 @@ func TestMutator_EditPVCSpec(t *testing.T) {
 	t.Run("sets storage request", func(t *testing.T) {
 		pvc := &corev1.PersistentVolumeClaim{}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditPVCSpec(func(e *editors.PVCSpecEditor) error {
 			e.SetStorageRequest(resource.MustParse("10Gi"))
 			return nil
@@ -72,7 +68,6 @@ func TestMutator_EditPVCSpec(t *testing.T) {
 	t.Run("nil edit ignored", func(t *testing.T) {
 		pvc := &corev1.PersistentVolumeClaim{}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditPVCSpec(nil)
 		require.NoError(t, m.Apply())
 	})
@@ -80,7 +75,6 @@ func TestMutator_EditPVCSpec(t *testing.T) {
 	t.Run("error propagated", func(t *testing.T) {
 		pvc := &corev1.PersistentVolumeClaim{}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditPVCSpec(func(_ *editors.PVCSpecEditor) error {
 			return errors.New("spec error")
 		})
@@ -94,7 +88,6 @@ func TestMutator_SetStorageRequest(t *testing.T) {
 	t.Parallel()
 	pvc := &corev1.PersistentVolumeClaim{}
 	m := NewMutator(pvc)
-	m.BeginFeature()
 	m.SetStorageRequest(resource.MustParse("20Gi"))
 	require.NoError(t, m.Apply())
 	qty := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
@@ -113,7 +106,6 @@ func TestMutator_ExecutionOrder(t *testing.T) {
 			},
 		}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditPVCSpec(func(_ *editors.PVCSpecEditor) error {
 			order = append(order, "spec")
 			return nil
@@ -134,14 +126,13 @@ func TestMutator_ExecutionOrder(t *testing.T) {
 			},
 		}
 		m := NewMutator(pvc)
-		m.BeginFeature()
 		m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 			e.EnsureLabel("feature", "one")
 			return nil
 		})
 
 		// Simulate second feature
-		m.BeginFeature()
+		m.NextFeature()
 		m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 			// Later feature sees earlier mutation
 			e.EnsureLabel("feature", "two")
@@ -162,7 +153,6 @@ func TestMutator_MultiFeature(t *testing.T) {
 		},
 	}
 	m := NewMutator(pvc)
-	m.BeginFeature()
 
 	// Feature 1: set label and storage
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
@@ -175,7 +165,7 @@ func TestMutator_MultiFeature(t *testing.T) {
 	})
 
 	// Feature 2: override storage
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditPVCSpec(func(e *editors.PVCSpecEditor) error {
 		e.SetStorageRequest(resource.MustParse("10Gi"))
 		return nil
@@ -187,62 +177,40 @@ func TestMutator_MultiFeature(t *testing.T) {
 	assert.True(t, qty.Equal(resource.MustParse("10Gi")))
 }
 
-// --- Panic guards ---
-
-func TestMutator_EditObjectMetadata_PanicsWithoutBeginFeature(t *testing.T) {
-	t.Parallel()
-	pvc := &corev1.PersistentVolumeClaim{}
-	m := NewMutator(pvc)
-	assert.PanicsWithValue(t, "pvc.Mutator: EditObjectMetadata called before BeginFeature", func() {
-		m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error { return nil })
-	})
-}
-
-func TestMutator_EditPVCSpec_PanicsWithoutBeginFeature(t *testing.T) {
-	t.Parallel()
-	pvc := &corev1.PersistentVolumeClaim{}
-	m := NewMutator(pvc)
-	assert.PanicsWithValue(t, "pvc.Mutator: EditPVCSpec called before BeginFeature", func() {
-		m.EditPVCSpec(func(_ *editors.PVCSpecEditor) error { return nil })
-	})
-}
-
 // --- Constructor and feature plan invariants ---
 
-func TestNewMutator_InitializesNoPlan(t *testing.T) {
+func TestNewMutator_InitializesOnePlan(t *testing.T) {
 	pvc := &corev1.PersistentVolumeClaim{}
 	m := NewMutator(pvc)
 
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsExactlyOnePlan(t *testing.T) {
 	pvc := &corev1.PersistentVolumeClaim{}
 	m := NewMutator(pvc)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	// Constructor already created one plan.
+	require.Len(t, m.plans, 1)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 2)
-	assert.Equal(t, &m.plans[1], m.active)
+	m.NextFeature()
+	require.Len(t, m.plans, 2, "NextFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	pvc := &corev1.PersistentVolumeClaim{}
 	m := NewMutator(pvc)
 
-	// Record a mutation in the first feature plan
-	m.BeginFeature()
+	// Record a mutation in the initial feature plan (created by constructor)
 	m.EditPVCSpec(func(e *editors.PVCSpecEditor) error {
 		e.SetStorageRequest(resource.MustParse("5Gi"))
 		return nil
 	})
 
 	// Start a new feature and record a different mutation
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "test")
 		return nil
@@ -257,7 +225,6 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	pvc := &corev1.PersistentVolumeClaim{}
 	m := NewMutator(pvc)
-	m.BeginFeature()
 	m.SetStorageRequest(resource.MustParse("1Gi"))
 
 	require.NoError(t, m.Apply())

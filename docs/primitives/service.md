@@ -120,7 +120,7 @@ order they are recorded:
 Within each category, edits are applied in their registration order. Later features observe the Service as modified by
 all previous features.
 
-## Editors
+## Relevant Editors
 
 ### ServiceSpecEditor
 

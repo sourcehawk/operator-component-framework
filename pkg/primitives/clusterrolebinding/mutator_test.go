@@ -28,7 +28,6 @@ func newTestCRB() *rbacv1.ClusterRoleBinding {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -40,7 +39,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -50,7 +48,6 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditSubjects(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("my-sa", "default")
 		return nil
@@ -65,7 +62,6 @@ func TestMutator_EditSubjects(t *testing.T) {
 func TestMutator_EditSubjects_Nil(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditSubjects(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -73,7 +69,6 @@ func TestMutator_EditSubjects_Nil(t *testing.T) {
 func TestMutator_EditSubjects_Add(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureSubject(rbacv1.Subject{Kind: "User", Name: "alice", APIGroup: "rbac.authorization.k8s.io"})
 		return nil
@@ -90,7 +85,6 @@ func TestMutator_EditSubjects_Remove(t *testing.T) {
 		{Kind: "User", Name: "bob"},
 	}
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.RemoveSubject("User", "alice", "")
 		return nil
@@ -103,7 +97,6 @@ func TestMutator_EditSubjects_Remove(t *testing.T) {
 func TestMutator_EditSubjects_Error(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditSubjects(func(_ *editors.BindingSubjectsEditor) error {
 		return assert.AnError
 	})
@@ -116,7 +109,6 @@ func TestMutator_OperationOrder(t *testing.T) {
 	// Within a feature: metadata edits run before subject edits.
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("sa1", "ns1")
@@ -136,12 +128,11 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("sa1", "ns1")
 		return nil
 	})
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("sa2", "ns2")
 		return nil
@@ -155,40 +146,38 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 
 // --- Constructor and feature plan invariants ---
 
-func TestNewMutator_InitializesNoPlan(t *testing.T) {
+func TestNewMutator_InitializesOnePlan(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
 
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsExactlyOnePlan(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	// Constructor already created one plan.
+	require.Len(t, m.plans, 1)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 2)
-	assert.Equal(t, &m.plans[1], m.active)
+	m.NextFeature()
+	require.Len(t, m.plans, 2, "NextFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
 
-	// Record a mutation in the first feature plan
-	m.BeginFeature()
+	// Record a mutation in the initial feature plan (created by constructor)
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("sa0", "ns0")
 		return nil
 	})
 
 	// Start a new feature and record a different mutation
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("sa1", "ns1")
 		return nil
@@ -202,14 +191,13 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	crb := newTestCRB()
 	m := NewMutator(crb)
-	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 		e.EnsureServiceAccount("sa1", "ns1")
 		return nil
 	})
 
 	require.NoError(t, m.Apply())
-	require.Len(t, m.plans, 1, "only one plan must exist when no additional BeginFeature is called")
+	require.Len(t, m.plans, 1, "only one plan must exist when no additional NextFeature is called")
 }
 
 // --- ObjectMutator interface ---

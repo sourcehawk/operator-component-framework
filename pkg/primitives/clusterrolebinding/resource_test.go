@@ -89,18 +89,3 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	require.True(t, ok)
 	assert.Len(t, got.Subjects, 2)
 }
-
-func TestMutator_EditSubjects_WithoutBeginFeature(t *testing.T) {
-	crb := newValidCRB()
-	m := NewMutator(crb)
-
-	// EditSubjects should not panic even without a prior BeginFeature call.
-	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-		e.EnsureServiceAccount("lazy-sa", "default")
-		return nil
-	})
-
-	require.NoError(t, m.Apply())
-	assert.Len(t, crb.Subjects, 2)
-	assert.Equal(t, "lazy-sa", crb.Subjects[1].Name)
-}

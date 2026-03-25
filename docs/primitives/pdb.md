@@ -68,11 +68,12 @@ func StrictAvailabilityMutation(version string, enabled bool) pdb.Mutation {
         Name:    "strict-availability",
         Feature: feature.NewResourceFeature(version, nil).When(enabled),
         Mutate: func(m *pdb.Mutator) error {
-            return m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+            m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.ClearMinAvailable()
                 e.SetMaxUnavailable(intstr.FromInt32(1))
                 return nil
             })
+            return nil
         },
     }
 }
@@ -91,10 +92,11 @@ func LegacyPDBMutation(version string) pdb.Mutation {
             []feature.VersionConstraint{legacyConstraint},
         ),
         Mutate: func(m *pdb.Mutator) error {
-            return m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+            m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.SetMinAvailable(intstr.FromInt32(1))
                 return nil
             })
+            return nil
         },
     }
 }
@@ -115,7 +117,7 @@ recorded:
 Within each category, edits are applied in their registration order. Later features observe the PodDisruptionBudget as
 modified by all previous features.
 
-## Editors
+## Relevant Editors
 
 ### PodDisruptionBudgetSpecEditor
 
@@ -207,10 +209,11 @@ func BasePDBMutation(version string) pdb.Mutation {
         Name:    "base-pdb",
         Feature: feature.NewResourceFeature(version, nil),
         Mutate: func(m *pdb.Mutator) error {
-            return m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+            m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
                 e.EnsureLabel("app.kubernetes.io/version", version)
                 return nil
             })
+            return nil
         },
     }
 }
@@ -220,11 +223,12 @@ func StrictAvailabilityMutation(version string, enabled bool) pdb.Mutation {
         Name:    "strict-availability",
         Feature: feature.NewResourceFeature(version, nil).When(enabled),
         Mutate: func(m *pdb.Mutator) error {
-            return m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+            m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.ClearMinAvailable()
                 e.SetMaxUnavailable(intstr.FromInt32(1))
                 return nil
             })
+            return nil
         },
     }
 }

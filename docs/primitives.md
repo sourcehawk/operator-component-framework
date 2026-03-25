@@ -112,29 +112,11 @@ This design:
 
 ## Mutation Editors
 
-Editors provide scoped, typed APIs for modifying specific parts of a resource:
+Editors provide scoped, typed APIs for modifying specific parts of a resource. Every editor exposes a `.Raw()` method
+for cases where the typed API is insufficient, giving direct access to the underlying Kubernetes struct while keeping
+the mutation scoped to that editor's target.
 
-| Editor                          | Scope                                                                                               |
-| ------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `ContainerEditor`               | Environment variables, arguments, resource limits, ports                                            |
-| `PodSpecEditor`                 | Volumes, tolerations, node selectors, service account, security context                             |
-| `DeploymentSpecEditor`          | Replicas, update strategy, label selectors                                                          |
-| `StatefulSetSpecEditor`         | Replicas, service name, pod management policy, update strategy                                      |
-| `ReplicaSetSpecEditor`          | Replicas, min ready seconds                                                                         |
-| `DaemonSetSpecEditor`           | Update strategy, min ready seconds, revision history limit                                          |
-| `PodDisruptionBudgetSpecEditor` | MinAvailable, MaxUnavailable, selector, eviction policy                                             |
-| `ConfigMapDataEditor`           | `.data` entries — set, remove, deep-merge YAML patches, raw access                                  |
-| `SecretDataEditor`              | `.data` and `.stringData` — set/remove bytes, `SetString`/`RemoveString`, `Raw()`/`RawStringData()` |
-| `PolicyRulesEditor`             | `.rules` entries on Role and ClusterRole objects — add, remove, clear, raw access                   |
-| `BindingSubjectsEditor`         | Subjects on RoleBinding or ClusterRoleBinding — ensure, remove, raw                                 |
-| `PVSpecEditor`                  | PV spec fields — capacity, access modes, reclaim policy, storage class                              |
-| `PVCSpecEditor`                 | Access modes, storage class, volume mode, storage requests                                          |
-| `IngressSpecEditor`             | Ingress class, default backend, rules, TLS configuration                                            |
-| `NetworkPolicySpecEditor`       | Pod selector, ingress/egress rules, policy types                                                    |
-| `ObjectMetaEditor`              | Labels and annotations on any Kubernetes object                                                     |
-
-Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the
-underlying Kubernetes struct while keeping the mutation scoped to that editor's target.
+Each primitive documents its available editors in its own [Relevant Editors](#built-in-primitives) section.
 
 ## Container Selectors
 
@@ -164,6 +146,7 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/configmap`          | Static      | [configmap.md](primitives/configmap.md)                   |
 | `pkg/primitives/secret`             | Static      | [secret.md](primitives/secret.md)                         |
 | `pkg/primitives/role`               | Static      | [role.md](primitives/role.md)                             |
+| `pkg/primitives/rolebinding`        | Static      | [rolebinding.md](primitives/rolebinding.md)               |
 | `pkg/primitives/pdb`                | Static      | [pdb.md](primitives/pdb.md)                               |
 | `pkg/primitives/clusterrole`        | Static      | [clusterrole.md](primitives/clusterrole.md)               |
 | `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |

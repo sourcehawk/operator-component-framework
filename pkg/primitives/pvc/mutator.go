@@ -34,16 +34,21 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given PersistentVolumeClaim.
-// BeginFeature must be called before registering any mutations.
+// The constructor creates the initial feature scope automatically.
 func NewMutator(pvc *corev1.PersistentVolumeClaim) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		pvc: pvc,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) BeginFeature() {
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }
@@ -52,14 +57,9 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before spec edits within the same feature.
 // A nil edit function is ignored.
-//
-// Panics if BeginFeature has not been called.
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
-	}
-	if m.active == nil {
-		panic("pvc.Mutator: EditObjectMetadata called before BeginFeature")
 	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
@@ -71,14 +71,9 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // within the same feature, in registration order.
 //
 // A nil edit function is ignored.
-//
-// Panics if BeginFeature has not been called.
 func (m *Mutator) EditPVCSpec(edit func(*editors.PVCSpecEditor) error) {
 	if edit == nil {
 		return
-	}
-	if m.active == nil {
-		panic("pvc.Mutator: EditPVCSpec called before BeginFeature")
 	}
 	m.active.specEdits = append(m.active.specEdits, edit)
 }

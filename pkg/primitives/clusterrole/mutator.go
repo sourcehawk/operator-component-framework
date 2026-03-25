@@ -36,24 +36,24 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given ClusterRole.
-// BeginFeature must be called before registering any mutations.
+// The constructor creates the initial feature scope, so mutations can be
+// registered immediately without an explicit call to NextFeature.
 func NewMutator(cr *rbacv1.ClusterRole) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		cr: cr,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) BeginFeature() {
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
-}
-
-func (m *Mutator) requireActive() {
-	if m.active == nil {
-		panic("clusterrole.Mutator: BeginFeature must be called before registering mutations")
-	}
 }
 
 // EditObjectMetadata records a mutation for the ClusterRole's own metadata.
@@ -64,7 +64,6 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
-	m.requireActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -80,7 +79,6 @@ func (m *Mutator) EditRules(edit func(*editors.PolicyRulesEditor) error) {
 	if edit == nil {
 		return
 	}
-	m.requireActive()
 	m.active.rulesEdits = append(m.active.rulesEdits, edit)
 }
 
@@ -107,7 +105,6 @@ func (m *Mutator) SetAggregationRule(rule *rbacv1.AggregationRule) {
 	if rule != nil {
 		copied = rule.DeepCopy()
 	}
-	m.requireActive()
 	m.active.aggregationRuleSets = append(m.active.aggregationRuleSets, copied)
 }
 

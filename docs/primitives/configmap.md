@@ -107,7 +107,7 @@ recorded:
 Within each category, edits are applied in their registration order. Later features observe the ConfigMap as modified by
 all previous features.
 
-## Editors
+## Relevant Editors
 
 ### ConfigMapDataEditor
 
@@ -311,13 +311,14 @@ func BaseConfigMutation(version string) configmap.Mutation {
         Name:    "base-config",
         Feature: feature.NewResourceFeature(version, nil),
         Mutate: func(m *configmap.Mutator) error {
-            return m.EditData(func(e *editors.ConfigMapDataEditor) error {
+            m.EditData(func(e *editors.ConfigMapDataEditor) error {
                 return e.MergeYAML("app.yaml", `
 server:
   port: 8080
   timeout: 30s
 `)
             })
+            return nil
         },
     }
 }
@@ -327,13 +328,14 @@ func MetricsFeatureMutation(version string, enabled bool) configmap.Mutation {
         Name:    "metrics-feature",
         Feature: feature.NewResourceFeature(version, nil).When(enabled),
         Mutate: func(m *configmap.Mutator) error {
-            return m.EditData(func(e *editors.ConfigMapDataEditor) error {
+            m.EditData(func(e *editors.ConfigMapDataEditor) error {
                 return e.MergeYAML("app.yaml", `
 metrics:
   enabled: true
   port: 9090
 `)
             })
+            return nil
         },
     }
 }

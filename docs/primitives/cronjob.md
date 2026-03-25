@@ -112,7 +112,7 @@ order they are recorded.
 Container edits (steps 7 and 9) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
 This means a single mutation can add a container and then configure it without selector resolution issues.
 
-## Editors
+## Relevant Editors
 
 ### CronJobSpecEditor
 

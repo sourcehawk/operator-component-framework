@@ -132,7 +132,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 			Name:    "feature-b",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
-				// This should see image "v2" if BeginFeature() is working correctly between mutations
+				// This should see image "v2" if NextFeature() is working correctly between mutations
 				m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 					if e.Raw().Image == "v2" {
 						e.Raw().Image = "v3"

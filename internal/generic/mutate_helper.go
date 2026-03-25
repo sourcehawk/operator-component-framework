@@ -25,15 +25,16 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	mutator := newMutator(currentTyped)
 	fm, isFeatureMutator := any(mutator).(FeatureMutator)
 
-	// BeginFeature is called before each mutation to create a new planning scope.
+	// The constructor creates the initial feature scope. After each mutation,
+	// advance to the next scope so the following mutation gets its own boundary.
 	for _, mutation := range mutations {
-		if isFeatureMutator {
-			fm.BeginFeature()
-		}
-
 		if err := mutation.ApplyIntent(mutator); err != nil {
 			var zero T
 			return zero, fmt.Errorf("failed to apply mutation intent for %s: %w", mutation.Name, err)
+		}
+
+		if isFeatureMutator {
+			fm.NextFeature()
 		}
 	}
 
@@ -43,10 +44,7 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	}
 
 	if suspender != nil {
-		if isFeatureMutator {
-			fm.BeginFeature()
-		}
-
+		// The trailing NextFeature() from the loop above already created a fresh scope.
 		if err := suspender(mutator); err != nil {
 			var zero T
 			return zero, err

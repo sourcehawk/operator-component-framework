@@ -32,7 +32,6 @@ func newTestHPA() *autoscalingv2.HorizontalPodAutoscaler {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -44,7 +43,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -52,7 +50,6 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditObjectMetadata_Error(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 		return errors.New("metadata error")
 	})
@@ -64,7 +61,6 @@ func TestMutator_EditObjectMetadata_Error(t *testing.T) {
 func TestMutator_EditHPASpec(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 		e.SetMaxReplicas(20)
 		return nil
@@ -76,7 +72,6 @@ func TestMutator_EditHPASpec(t *testing.T) {
 func TestMutator_EditHPASpec_Nil(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditHPASpec(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -84,7 +79,6 @@ func TestMutator_EditHPASpec_Nil(t *testing.T) {
 func TestMutator_EditHPASpec_Error(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditHPASpec(func(_ *editors.HPASpecEditor) error {
 		return errors.New("spec error")
 	})
@@ -94,7 +88,6 @@ func TestMutator_EditHPASpec_Error(t *testing.T) {
 func TestMutator_EditHPASpec_EnsureMetric(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 		e.EnsureMetric(autoscalingv2.MetricSpec{
 			Type: autoscalingv2.ResourceMetricSourceType,
@@ -118,7 +111,6 @@ func TestMutator_EditHPASpec_EnsureMetric(t *testing.T) {
 func TestMutator_ExecutionOrder(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 
 	var order []string
 
@@ -144,13 +136,12 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
 
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("feature", "one")
 		return nil
 	})
 
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		// Second feature overwrites the label
 		e.EnsureLabel("feature", "two")
@@ -168,40 +159,38 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 
 // --- Constructor and feature plan invariants ---
 
-func TestNewMutator_InitializesNoPlan(t *testing.T) {
+func TestNewMutator_InitializesWithOnePlan(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
 
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsOnePlan(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	require.Len(t, m.plans, 1, "constructor must create the initial plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 
-	m.BeginFeature()
+	m.NextFeature()
 	require.Len(t, m.plans, 2)
 	assert.Equal(t, &m.plans[1], m.active)
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
 
-	// Record a mutation in the first feature plan
-	m.BeginFeature()
+	// Record a mutation in the first feature plan (auto-created by constructor)
 	m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 		e.SetMaxReplicas(5)
 		return nil
 	})
 
 	// Start a new feature and record a different mutation
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 		e.SetMaxReplicas(10)
 		return nil
@@ -216,7 +205,6 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	hpa := newTestHPA()
 	m := NewMutator(hpa)
-	m.BeginFeature()
 	m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 		e.SetMaxReplicas(5)
 		return nil

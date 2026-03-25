@@ -105,6 +105,22 @@ recorded:
 Within each category, edits are applied in their registration order. Later features observe the ServiceAccount as
 modified by all previous features.
 
+## Relevant Editors
+
+### ObjectMetaEditor
+
+Modifies labels and annotations via `m.EditObjectMetadata`.
+
+Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
+
+```go
+m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+    e.EnsureLabel("app.kubernetes.io/version", version)
+    e.EnsureAnnotation("managed-by", "my-operator")
+    return nil
+})
+```
+
 ## Mutator Methods
 
 ### EnsureImagePullSecret
@@ -131,20 +147,6 @@ Sets `.automountServiceAccountToken` to the provided value. Pass `nil` to unset 
 ```go
 v := false
 m.SetAutomountServiceAccountToken(&v)
-```
-
-### EditObjectMetadata
-
-Modifies labels and annotations via `editors.ObjectMetaEditor`.
-
-Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
-
-```go
-m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
-    e.EnsureLabel("app.kubernetes.io/version", version)
-    e.EnsureAnnotation("managed-by", "my-operator")
-    return nil
-})
 ```
 
 ## Full Example: Feature-Composed ServiceAccount

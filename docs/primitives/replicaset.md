@@ -99,7 +99,7 @@ order they are recorded:
 
 Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
 
-## Editors
+## Relevant Editors
 
 ### ReplicaSetSpecEditor
 

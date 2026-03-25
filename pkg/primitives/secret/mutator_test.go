@@ -25,7 +25,6 @@ func newTestSecret(data map[string][]byte) *corev1.Secret {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -37,7 +36,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -47,7 +45,6 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditData_RawAccess(t *testing.T) {
 	s := newTestSecret(map[string][]byte{"existing": []byte("keep")})
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.EditData(func(e *editors.SecretDataEditor) error {
 		raw := e.Raw()
 		raw["new"] = []byte("added")
@@ -61,7 +58,6 @@ func TestMutator_EditData_RawAccess(t *testing.T) {
 func TestMutator_EditData_Nil(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.EditData(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -71,7 +67,6 @@ func TestMutator_EditData_Nil(t *testing.T) {
 func TestMutator_SetData(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.SetData("key", []byte("value"))
 	require.NoError(t, m.Apply())
 	assert.Equal(t, []byte("value"), s.Data["key"])
@@ -80,7 +75,6 @@ func TestMutator_SetData(t *testing.T) {
 func TestMutator_SetData_Overwrites(t *testing.T) {
 	s := newTestSecret(map[string][]byte{"key": []byte("old")})
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.SetData("key", []byte("new"))
 	require.NoError(t, m.Apply())
 	assert.Equal(t, []byte("new"), s.Data["key"])
@@ -91,7 +85,6 @@ func TestMutator_SetData_Overwrites(t *testing.T) {
 func TestMutator_RemoveData(t *testing.T) {
 	s := newTestSecret(map[string][]byte{"key": []byte("value"), "other": []byte("keep")})
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.RemoveData("key")
 	require.NoError(t, m.Apply())
 	assert.NotContains(t, s.Data, "key")
@@ -101,7 +94,6 @@ func TestMutator_RemoveData(t *testing.T) {
 func TestMutator_RemoveData_NotPresent(t *testing.T) {
 	s := newTestSecret(map[string][]byte{"other": []byte("keep")})
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.RemoveData("missing")
 	require.NoError(t, m.Apply())
 	assert.Equal(t, []byte("keep"), s.Data["other"])
@@ -112,7 +104,6 @@ func TestMutator_RemoveData_NotPresent(t *testing.T) {
 func TestMutator_SetStringData(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.SetStringData("key", "value")
 	require.NoError(t, m.Apply())
 	// After Apply, stringData is normalized into data and cleared.
@@ -126,7 +117,6 @@ func TestMutator_RemoveStringData(t *testing.T) {
 	s := newTestSecret(nil)
 	s.StringData = map[string]string{"key": "value", "other": "keep"}
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.RemoveStringData("key")
 	require.NoError(t, m.Apply())
 	// After Apply, remaining stringData is normalized into data and cleared.
@@ -141,7 +131,6 @@ func TestMutator_OperationOrder(t *testing.T) {
 	// Both metadata and data edits are applied regardless of registration order.
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	// Register data edit before metadata edit; both should be applied.
 	m.SetData("direct", []byte("yes"))
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
@@ -157,9 +146,8 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.SetData("feature1", []byte("on"))
-	m.BeginFeature()
+	m.NextFeature()
 	m.SetData("feature2", []byte("on"))
 	require.NoError(t, m.Apply())
 
@@ -169,37 +157,35 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 
 // --- Constructor and feature plan invariants ---
 
-func TestNewMutator_InitializesNoPlan(t *testing.T) {
+func TestNewMutator_InitializesOnePlan(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
 
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsExactlyOnePlan(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	// Constructor already created one plan.
+	require.Len(t, m.plans, 1)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 2)
-	assert.Equal(t, &m.plans[1], m.active)
+	m.NextFeature()
+	require.Len(t, m.plans, 2, "NextFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
 
-	// Record a mutation in the first feature plan
-	m.BeginFeature()
+	// Record a mutation in the initial feature plan (created by constructor)
 	m.SetData("f0", []byte("val0"))
 
 	// Start a new feature and record a different mutation
-	m.BeginFeature()
+	m.NextFeature()
 	m.SetData("f1", []byte("val1"))
 
 	// The initial plan should have exactly one data edit
@@ -211,36 +197,11 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	s := newTestSecret(nil)
 	m := NewMutator(s)
-	m.BeginFeature()
 	m.SetData("key", []byte("value"))
 
 	require.NoError(t, m.Apply())
 	assert.Len(t, m.plans, 1, "no extra plans should be created during Apply")
 	assert.Equal(t, []byte("value"), s.Data["key"])
-}
-
-// --- BeginFeature guard ---
-
-func TestMutator_EditObjectMetadata_PanicsWithoutBeginFeature(t *testing.T) {
-	s := newTestSecret(nil)
-	m := NewMutator(s)
-	assert.PanicsWithValue(t, "BeginFeature must be called before registering mutations", func() {
-		m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
-			e.EnsureLabel("app", "myapp")
-			return nil
-		})
-	})
-}
-
-func TestMutator_EditData_PanicsWithoutBeginFeature(t *testing.T) {
-	s := newTestSecret(nil)
-	m := NewMutator(s)
-	assert.PanicsWithValue(t, "BeginFeature must be called before registering mutations", func() {
-		m.EditData(func(e *editors.SecretDataEditor) error {
-			e.Set("key", []byte("value"))
-			return nil
-		})
-	})
 }
 
 // --- ObjectMutator interface ---

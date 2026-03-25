@@ -10,7 +10,7 @@ object metadata.
 | --------------------- | -------------------------------------------------------------------------------------------------------- |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state           |
 | **Mutation pipeline** | Typed editors for subjects and object metadata, with a raw escape hatch for free-form access             |
-| **Immutable roleRef** | `roleRef` is set on the desired object and preserved from the live cluster object after initial creation |
+| **Immutable roleRef** | `roleRef` must be set on the base object and cannot be changed after creation (requires delete/recreate) |
 | **Data extraction**   | Reads generated or updated values back from the reconciled RoleBinding after each sync cycle             |
 
 ## Building a RoleBinding Primitive

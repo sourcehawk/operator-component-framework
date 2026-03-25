@@ -42,10 +42,7 @@ func NewPDBResource(owner *sharedapp.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.VersionLabelMutation(owner.Spec.Version))
 	builder.WithMutation(features.StrictAvailabilityMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve labels added by external controllers.
-	builder.WithFieldApplicationFlavor(pdb.PreserveCurrentLabels)
-
-	// 5. Extract data from the reconciled PDB.
+	// 4. Extract data from the reconciled PDB.
 	builder.WithDataExtractor(func(p policyv1.PodDisruptionBudget) error {
 		fmt.Printf("Reconciled PDB: %s\n", p.Name)
 		if p.Spec.MinAvailable != nil {
@@ -57,6 +54,6 @@ func NewPDBResource(owner *sharedapp.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

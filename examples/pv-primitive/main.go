@@ -72,7 +72,7 @@ func main() {
 				Name:            owner.Name + "-data",
 				ResourceVersion: "12345", // non-empty to simulate existing object
 				Annotations: map[string]string{
-					"external-controller/managed": "true", // should be preserved by flavor
+					"external-controller/managed": "true", // preserved: mutations only touch fields they explicitly target
 				},
 			},
 			Spec: corev1.PersistentVolumeSpec{

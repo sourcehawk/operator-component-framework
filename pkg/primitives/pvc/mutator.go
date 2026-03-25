@@ -52,9 +52,14 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before spec edits within the same feature.
 // A nil edit function is ignored.
+//
+// Panics if BeginFeature has not been called.
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
+	}
+	if m.active == nil {
+		panic("pvc.Mutator: EditObjectMetadata called before BeginFeature")
 	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
@@ -66,9 +71,14 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // within the same feature, in registration order.
 //
 // A nil edit function is ignored.
+//
+// Panics if BeginFeature has not been called.
 func (m *Mutator) EditPVCSpec(edit func(*editors.PVCSpecEditor) error) {
 	if edit == nil {
 		return
+	}
+	if m.active == nil {
+		panic("pvc.Mutator: EditPVCSpec called before BeginFeature")
 	}
 	m.active.specEdits = append(m.active.specEdits, edit)
 }

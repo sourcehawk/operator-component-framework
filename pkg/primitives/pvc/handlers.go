@@ -23,9 +23,13 @@ func DefaultOperationalStatusHandler(
 ) (concepts.OperationalStatusWithReason, error) {
 	switch pvc.Status.Phase {
 	case corev1.ClaimBound:
+		reason := "PVC is bound"
+		if pvc.Spec.VolumeName != "" {
+			reason = fmt.Sprintf("PVC is bound to volume %s", pvc.Spec.VolumeName)
+		}
 		return concepts.OperationalStatusWithReason{
 			Status: concepts.OperationalStatusOperational,
-			Reason: fmt.Sprintf("PVC is bound to volume %s", pvc.Spec.VolumeName),
+			Reason: reason,
 		}, nil
 	case corev1.ClaimLost:
 		return concepts.OperationalStatusWithReason{

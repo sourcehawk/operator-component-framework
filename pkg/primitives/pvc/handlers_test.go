@@ -17,7 +17,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 		wantReason string
 	}{
 		{
-			name: "bound",
+			name: "bound with volume name",
 			pvc: &corev1.PersistentVolumeClaim{
 				Spec: corev1.PersistentVolumeClaimSpec{
 					VolumeName: "pv-001",
@@ -28,6 +28,16 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 			},
 			wantStatus: concepts.OperationalStatusOperational,
 			wantReason: "PVC is bound to volume pv-001",
+		},
+		{
+			name: "bound without volume name",
+			pvc: &corev1.PersistentVolumeClaim{
+				Status: corev1.PersistentVolumeClaimStatus{
+					Phase: corev1.ClaimBound,
+				},
+			},
+			wantStatus: concepts.OperationalStatusOperational,
+			wantReason: "PVC is bound",
 		},
 		{
 			name: "pending",

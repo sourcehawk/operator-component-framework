@@ -187,6 +187,26 @@ func TestMutator_MultiFeature(t *testing.T) {
 	assert.True(t, qty.Equal(resource.MustParse("10Gi")))
 }
 
+// --- Panic guards ---
+
+func TestMutator_EditObjectMetadata_PanicsWithoutBeginFeature(t *testing.T) {
+	t.Parallel()
+	pvc := &corev1.PersistentVolumeClaim{}
+	m := NewMutator(pvc)
+	assert.PanicsWithValue(t, "pvc.Mutator: EditObjectMetadata called before BeginFeature", func() {
+		m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error { return nil })
+	})
+}
+
+func TestMutator_EditPVCSpec_PanicsWithoutBeginFeature(t *testing.T) {
+	t.Parallel()
+	pvc := &corev1.PersistentVolumeClaim{}
+	m := NewMutator(pvc)
+	assert.PanicsWithValue(t, "pvc.Mutator: EditPVCSpec called before BeginFeature", func() {
+		m.EditPVCSpec(func(_ *editors.PVCSpecEditor) error { return nil })
+	})
+}
+
 // --- Constructor and feature plan invariants ---
 
 func TestNewMutator_InitializesNoPlan(t *testing.T) {

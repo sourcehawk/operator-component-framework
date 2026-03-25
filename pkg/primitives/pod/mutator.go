@@ -38,7 +38,7 @@ type featurePlan struct {
 // It uses a "plan-and-apply" pattern: mutations are recorded first, and then
 // applied to the Pod in a single controlled pass when Apply() is called.
 //
-// This approach ensures that mutations are applied consistently and minimises
+// This approach ensures that mutations are applied consistently and minimizes
 // repeated scans of the underlying Kubernetes structures.
 //
 // The Mutator maintains feature boundaries: each feature's mutations are planned

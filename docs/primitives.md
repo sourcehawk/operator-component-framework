@@ -130,6 +130,7 @@ Editors provide scoped, typed APIs for modifying specific parts of a resource:
 | `PVSpecEditor`                  | PV spec fields — capacity, access modes, reclaim policy, storage class                              |
 | `PVCSpecEditor`                 | Access modes, storage class, volume mode, storage requests                                          |
 | `IngressSpecEditor`             | Ingress class, default backend, rules, TLS configuration                                            |
+| `NetworkPolicySpecEditor`       | Pod selector, ingress/egress rules, policy types                                                    |
 | `ObjectMetaEditor`              | Labels and annotations on any Kubernetes object                                                     |
 
 Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the
@@ -170,6 +171,7 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/pvc`                | Integration | [pvc.md](primitives/pvc.md)                               |
 | `pkg/primitives/hpa`                | Integration | [hpa.md](primitives/hpa.md)                               |
 | `pkg/primitives/ingress`            | Integration | [ingress.md](primitives/ingress.md)                       |
+| `pkg/primitives/networkpolicy`      | Static      | [networkpolicy.md](primitives/networkpolicy.md)           |
 
 ## Usage Examples
 

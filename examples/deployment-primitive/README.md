@@ -6,8 +6,6 @@ to manage a Kubernetes Deployment as a component of a larger application, utiliz
 - **Base Construction**: Initializing a Deployment with basic metadata and spec.
 - **Feature Mutations**: Applying version-gated or conditional changes (sidecars, env vars, annotations) using the
   `Mutator`.
-- **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., ArgoCD, manual
-  edits).
 - **Custom Status Handlers**: Overriding the default logic for determining readiness (`ConvergeStatus`) and health
   assessment during rollouts (`GraceStatus`).
 - **Custom Suspension**: Extending the default suspension logic (scaling to 0) with additional mutations.
@@ -18,7 +16,6 @@ to manage a Kubernetes Deployment as a component of a larger application, utiliz
 - `app/`: Defines the mock `ExampleApp` CRD and the controller that uses the component framework.
 - `features/`: Contains modular feature definitions:
   - `mutations.go`: sidecar injection, env vars, and version-based image updates.
-  - `flavors.go`: usage of `FieldApplicationFlavor` to preserve fields.
   - `status.go`: implementation of custom handlers for convergence, grace, and suspension.
 - `resources/`: Contains the central `NewDeploymentResource` factory that assembles all features using the
   `deployment.Builder`.

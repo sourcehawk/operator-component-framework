@@ -23,14 +23,13 @@ type TaskBuilder[T client.Object, M MutatorApplier] struct {
 func NewTaskBuilder[T client.Object, M MutatorApplier](
 	obj T,
 	identityFunc func(T) string,
-	defaultApplicator FieldApplicator[T],
 	newMutator func(T) M,
 ) *TaskBuilder[T, M] {
 	res := &TaskResource[T, M]{}
 	b := &TaskBuilder[T, M]{
 		res: res,
 	}
-	b.InitBase(obj, identityFunc, defaultApplicator, newMutator)
+	b.InitBase(obj, identityFunc, newMutator)
 	b.res.BaseResource = *b.BaseRes
 	return b
 }
@@ -40,22 +39,6 @@ func (b *TaskBuilder[T, M]) WithMutation(
 	m Mutation[M],
 ) *TaskBuilder[T, M] {
 	b.BaseBuilder.WithMutation(m)
-	return b
-}
-
-// WithCustomFieldApplicator overrides the default baseline field applicator.
-func (b *TaskBuilder[T, M]) WithCustomFieldApplicator(
-	applicator FieldApplicator[T],
-) *TaskBuilder[T, M] {
-	b.BaseBuilder.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-func (b *TaskBuilder[T, M]) WithFieldApplicationFlavor(
-	flavor FieldApplicationFlavor[T],
-) *TaskBuilder[T, M] {
-	b.BaseBuilder.WithFieldApplicationFlavor(flavor)
 	return b
 }
 

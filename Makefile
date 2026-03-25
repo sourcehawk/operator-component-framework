@@ -27,7 +27,9 @@ $(LOCALBIN):
 
 PRETTIER ?= $(LOCALBIN)/prettier
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+GINKGO ?= $(LOCALBIN)/ginkgo
 PRETTIER_VERSION ?= 3.8.1
+GINKGO_VERSION ?= $(shell go list -m -f "{{ .Version }}" github.com/onsi/ginkgo/v2)
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
@@ -47,6 +49,11 @@ setup-envtest: envtest ## Download the binaries required for ENVTEST in the loca
 envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+
+.PHONY: ginkgo
+ginkgo: $(GINKGO) ## Download ginkgo CLI locally if necessary.
+$(GINKGO): $(LOCALBIN)
+	$(call go-install-tool,$(GINKGO),github.com/onsi/ginkgo/v2/ginkgo,$(GINKGO_VERSION))
 
 ##@ AI Instructions
 
@@ -117,6 +124,38 @@ run-examples: ## Run all examples to verify they execute without error.
 	go run ./examples/configmap-primitive/.
 	go run ./examples/custom-resource-implementation/.
 	go run ./examples/hpa-primitive/.
+
+##@ E2E Testing
+
+KIND_CLUSTER_NAME ?= ocf-e2e
+KIND_IMAGE ?= kindest/node:v1.31.0
+
+.PHONY: kind-create
+kind-create: ## Create a kind cluster for E2E tests.
+	kind create cluster --name $(KIND_CLUSTER_NAME) --image $(KIND_IMAGE) --wait 60s
+
+.PHONY: kind-delete
+kind-delete: ## Delete the kind E2E cluster.
+	kind delete cluster --name $(KIND_CLUSTER_NAME)
+
+.PHONY: kind-set-context
+kind-set-context: ## Set kubectl context to the E2E kind cluster.
+	kubectl config use-context kind-$(KIND_CLUSTER_NAME)
+
+.PHONY: e2e
+e2e: ginkgo ## Run E2E tests (requires active kind cluster).
+	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/...
+
+.PHONY: e2e-primitives
+e2e-primitives: ginkgo ## Run primitive E2E tests only.
+	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/primitives/...
+
+.PHONY: e2e-component
+e2e-component: ginkgo ## Run component E2E tests only.
+	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/component/...
+
+.PHONY: e2e-full
+e2e-full: kind-create kind-set-context e2e kind-delete ## Full E2E lifecycle: create cluster, test, teardown.
 
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist

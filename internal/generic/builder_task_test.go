@@ -19,11 +19,10 @@ func TestTaskBuilder(t *testing.T) {
 		},
 	}
 	identityFunc := func(j *batchv1.Job) string { return j.Name }
-	defaultApp := func(_, _ *batchv1.Job) error { return nil }
 	newMutator := func(j *batchv1.Job) *mockMutator { return &mockMutator{job: j} }
 
 	t.Run("successful build", func(t *testing.T) {
-		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator)
+		builder := NewTaskBuilder(obj, identityFunc, newMutator)
 		res, err := builder.Build()
 		require.NoError(t, err)
 		assert.Equal(t, obj, res.DesiredObject)
@@ -37,13 +36,13 @@ func TestTaskBuilder(t *testing.T) {
 				return nil
 			},
 		}
-		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator).WithMutation(mut)
+		builder := NewTaskBuilder(obj, identityFunc, newMutator).WithMutation(mut)
 		res, _ := builder.Build()
 		assert.Len(t, res.Mutations, 1)
 	})
 
 	t.Run("with handlers", func(t *testing.T) {
-		builder := NewTaskBuilder(obj, identityFunc, defaultApp, newMutator).
+		builder := NewTaskBuilder(obj, identityFunc, newMutator).
 			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *batchv1.Job) (concepts.CompletionStatusWithReason, error) {
 				return concepts.CompletionStatusWithReason{}, nil
 			}).
@@ -68,7 +67,7 @@ func TestTaskBuilder(t *testing.T) {
 		clusterObj := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
 		}
-		builder := NewTaskBuilder(clusterObj, identityFunc, defaultApp, newMutator)
+		builder := NewTaskBuilder(clusterObj, identityFunc, newMutator)
 		builder.MarkClusterScoped()
 		res, err := builder.Build()
 		require.NoError(t, err)
@@ -79,7 +78,7 @@ func TestTaskBuilder(t *testing.T) {
 		nsObj := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj", Namespace: "oops"},
 		}
-		builder := NewTaskBuilder(nsObj, identityFunc, defaultApp, newMutator)
+		builder := NewTaskBuilder(nsObj, identityFunc, newMutator)
 		builder.MarkClusterScoped()
 		_, err := builder.Build()
 		require.EqualError(t, err, errClusterScopedNamespace)
@@ -87,9 +86,9 @@ func TestTaskBuilder(t *testing.T) {
 
 	t.Run("validation errors", func(t *testing.T) {
 		runBuilderValidationTests[*TaskResource[*batchv1.Job, *mockMutator]](
-			t, obj, identityFunc, defaultApp, newMutator,
-			func(o *batchv1.Job, id func(*batchv1.Job) string, app FieldApplicator[*batchv1.Job], mut func(*batchv1.Job) *mockMutator) genericBuilder[*TaskResource[*batchv1.Job, *mockMutator]] {
-				return NewTaskBuilder(o, id, app, mut)
+			t, obj, identityFunc, newMutator,
+			func(o *batchv1.Job, id func(*batchv1.Job) string, mut func(*batchv1.Job) *mockMutator) genericBuilder[*TaskResource[*batchv1.Job, *mockMutator]] {
+				return NewTaskBuilder(o, id, mut)
 			},
 		)
 	})

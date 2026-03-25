@@ -38,10 +38,7 @@ func NewSecretResource(owner *sharedapp.ExampleApp) (component.Resource, error) 
 	builder.WithMutation(features.TracingTokenMutation(owner.Spec.Version, owner.Spec.EnableTracing))
 	builder.WithMutation(features.MetricsTokenMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve entries added by external controllers or admission webhooks.
-	builder.WithFieldApplicationFlavor(features.PreserveExternalEntriesFlavor())
-
-	// 5. Extract data from the reconciled Secret (only the persisted Data field is observable).
+	// 4. Extract data from the reconciled Secret (only the persisted Data field is observable).
 	//
 	// NOTE: Never log secret values in production controllers. This extractor
 	// prints only key names and value lengths to avoid leaking credentials.
@@ -53,6 +50,6 @@ func NewSecretResource(owner *sharedapp.ExampleApp) (component.Resource, error) 
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

@@ -5,8 +5,6 @@ manage a Kubernetes Pod as a component of a larger application, utilizing featur
 
 - **Base Construction**: Initializing a Pod with basic metadata and spec.
 - **Feature Mutations**: Applying version-gated or conditional metadata changes (labels) using the `Mutator`.
-- **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., ArgoCD, manual
-  edits).
 - **Suspension**: Deleting the pod when the component is suspended (pods cannot be paused).
 - **Data Extraction**: Harvesting information from the reconciled resource.
 

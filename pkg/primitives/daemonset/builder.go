@@ -151,7 +151,10 @@ func (b *Builder) WithDataExtractor(
 ) *Builder {
 	if extractor != nil {
 		b.base.WithDataExtractor(func(d *appsv1.DaemonSet) error {
-			return extractor(*d)
+			if d == nil {
+				return extractor(appsv1.DaemonSet{})
+			}
+			return extractor(*d.DeepCopy())
 		})
 	}
 	return b

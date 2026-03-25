@@ -119,6 +119,7 @@ Editors provide scoped, typed APIs for modifying specific parts of a resource:
 | `ContainerEditor`               | Environment variables, arguments, resource limits, ports                          |
 | `PodSpecEditor`                 | Volumes, tolerations, node selectors, service account, security context           |
 | `DeploymentSpecEditor`          | Replicas, update strategy, label selectors                                        |
+| `StatefulSetSpecEditor`         | Replicas, service name, pod management policy, update strategy                    |
 | `ReplicaSetSpecEditor`          | Replicas, min ready seconds                                                       |
 | `DaemonSetSpecEditor`           | Update strategy, min ready seconds, revision history limit                        |
 | `PodDisruptionBudgetSpecEditor` | MinAvailable, MaxUnavailable, selector, eviction policy                           |
@@ -151,6 +152,7 @@ have been applied. This means a single mutation can safely add a container and t
 | Primitive                           | Category    | Documentation                                             |
 | ----------------------------------- | ----------- | --------------------------------------------------------- |
 | `pkg/primitives/deployment`         | Workload    | [deployment.md](primitives/deployment.md)                 |
+| `pkg/primitives/statefulset`        | Workload    | [statefulset.md](primitives/statefulset.md)               |
 | `pkg/primitives/replicaset`         | Workload    | [replicaset.md](primitives/replicaset.md)                 |
 | `pkg/primitives/daemonset`          | Workload    | [daemonset.md](primitives/daemonset.md)                   |
 | `pkg/primitives/cronjob`            | Integration | [cronjob.md](primitives/cronjob.md)                       |

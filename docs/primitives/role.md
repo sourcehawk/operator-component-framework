@@ -10,7 +10,6 @@ metadata.
 | --------------------- | ---------------------------------------------------------------------------------------------- |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state |
 | **Mutation pipeline** | Typed editors for `.rules` and object metadata, with a raw escape hatch for free-form access   |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator         |
 | **Data extraction**   | Reads generated or updated values back from the reconciled Role after each sync cycle          |
 
 ## Building a Role Primitive
@@ -34,22 +33,6 @@ base := &rbacv1.Role{
 
 resource, err := role.NewBuilder(base).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current Role with a deep copy of the desired object. This ensures every
-reconciliation cycle produces a clean, predictable state and avoids any drift from the desired baseline.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := role.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *rbacv1.Role) error {
-        current.Rules = desired.Rules
-        return nil
-    }).
     Build()
 ```
 
@@ -224,34 +207,6 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
     return nil
 })
 ```
-
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := role.NewBuilder(base).
-    WithFieldApplicationFlavor(role.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := role.NewBuilder(base).
-    WithFieldApplicationFlavor(role.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
 
 ## Full Example: Feature-Composed Permissions
 

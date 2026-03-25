@@ -57,12 +57,14 @@ func TestResource_Mutate(t *testing.T) {
 	res, err := NewBuilder(desired).Build()
 	require.NoError(t, err)
 
-	current := &rbacv1.Role{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	require.Len(t, current.Rules, 1)
-	assert.Equal(t, []string{"pods"}, current.Rules[0].Resources)
-	assert.Equal(t, []string{"get", "list"}, current.Rules[0].Verbs)
+	got := obj.(*rbacv1.Role)
+	require.Len(t, got.Rules, 1)
+	assert.Equal(t, []string{"pods"}, got.Rules[0].Resources)
+	assert.Equal(t, []string{"get", "list"}, got.Rules[0].Verbs)
 }
 
 func TestResource_Mutate_WithMutation(t *testing.T) {
@@ -86,12 +88,14 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &rbacv1.Role{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	require.Len(t, current.Rules, 2)
-	assert.Equal(t, []string{"pods"}, current.Rules[0].Resources)
-	assert.Equal(t, []string{"deployments"}, current.Rules[1].Resources)
+	got := obj.(*rbacv1.Role)
+	require.Len(t, got.Rules, 2)
+	assert.Equal(t, []string{"pods"}, got.Rules[0].Resources)
+	assert.Equal(t, []string{"deployments"}, got.Rules[1].Resources)
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -126,97 +130,15 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &rbacv1.Role{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
+	got := obj.(*rbacv1.Role)
 	// feature-b appends to the rules set by feature-a.
-	require.Len(t, current.Rules, 2)
-	assert.Equal(t, []string{"secrets"}, current.Rules[0].Resources)
-	assert.Equal(t, []string{"configmaps"}, current.Rules[1].Resources)
-}
-
-func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
-	desired := newValidRole()
-
-	applicatorCalled := false
-	res, err := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current, d *rbacv1.Role) error {
-			applicatorCalled = true
-			// Only copy rules, preserve everything else on current.
-			current.Rules = d.DeepCopy().Rules
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	current := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{"external": "preserved"},
-		},
-	}
-	require.NoError(t, res.Mutate(current))
-
-	assert.True(t, applicatorCalled)
-	require.Len(t, current.Rules, 1)
-	assert.Equal(t, []string{"pods"}, current.Rules[0].Resources)
-	assert.Equal(t, "preserved", current.Labels["external"])
-}
-
-func TestResource_Mutate_CustomFieldApplicator_Error(t *testing.T) {
-	res, err := NewBuilder(newValidRole()).
-		WithCustomFieldApplicator(func(_, _ *rbacv1.Role) error {
-			return errors.New("applicator error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.Mutate(&rbacv1.Role{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "applicator error")
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-role",
-			Namespace:       "test-ns",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-	}
-	desired := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-role",
-			Namespace: "test-ns",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Rules: []rbacv1.PolicyRule{
-			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list"}},
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	require.Len(t, current.Rules, 1)
-	assert.Equal(t, []string{"pods"}, current.Rules[0].Resources)
-	assert.Equal(t, "test", current.Labels["app"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
+	require.Len(t, got.Rules, 2)
+	assert.Equal(t, []string{"secrets"}, got.Rules[0].Resources)
+	assert.Equal(t, []string{"configmaps"}, got.Rules[1].Resources)
 }
 
 func TestResource_ExtractData(t *testing.T) {

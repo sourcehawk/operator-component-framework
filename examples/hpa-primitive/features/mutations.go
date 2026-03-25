@@ -81,13 +81,3 @@ func ScaleBehaviorFeature() hpa.Mutation {
 		},
 	}
 }
-
-// PreserveLabelsFlavor demonstrates using a flavor to keep external labels.
-func PreserveLabelsFlavor() hpa.FieldApplicationFlavor {
-	return hpa.PreserveCurrentLabels
-}
-
-// PreserveAnnotationsFlavor demonstrates using a flavor to keep external annotations.
-func PreserveAnnotationsFlavor() hpa.FieldApplicationFlavor {
-	return hpa.PreserveCurrentAnnotations
-}

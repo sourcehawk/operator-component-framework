@@ -9,7 +9,6 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-
 // Builder is a configuration helper for creating and customizing an HPA Resource.
 //
 // It provides a fluent API for registering mutations, status handlers, and

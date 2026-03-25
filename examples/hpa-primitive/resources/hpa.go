@@ -44,11 +44,7 @@ func NewHPAResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.MemoryMetricFeature(owner.Spec.EnableMetrics, 80))
 	builder.WithMutation(features.ScaleBehaviorFeature())
 
-	// 4. Configure flavors.
-	builder.WithFieldApplicationFlavor(features.PreserveLabelsFlavor())
-	builder.WithFieldApplicationFlavor(features.PreserveAnnotationsFlavor())
-
-	// 5. Data extraction.
+	// 4. Configure data extraction.
 	builder.WithDataExtractor(func(h autoscalingv2.HorizontalPodAutoscaler) error {
 		fmt.Printf("HPA %s: min=%d, max=%d, metrics=%d\n",
 			h.Name,
@@ -66,7 +62,7 @@ func NewHPAResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }
 

@@ -51,10 +51,13 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before subject edits within the same feature.
 // A nil edit function is ignored.
+//
+// If BeginFeature has not been called, a new feature plan is started automatically.
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -66,11 +69,22 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // edits within the same feature, in registration order.
 //
 // A nil edit function is ignored.
+//
+// If BeginFeature has not been called, a new feature plan is started automatically.
 func (m *Mutator) EditSubjects(edit func(*editors.BindingSubjectsEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.subjectEdits = append(m.active.subjectEdits, edit)
+}
+
+// ensureActive lazily creates a feature plan if none is active, making the
+// Edit methods safe to call without a prior BeginFeature().
+func (m *Mutator) ensureActive() {
+	if m.active == nil {
+		m.BeginFeature()
+	}
 }
 
 // Apply executes all recorded mutation intents on the underlying ClusterRoleBinding.

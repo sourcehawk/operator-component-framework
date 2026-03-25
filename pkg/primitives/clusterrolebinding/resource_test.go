@@ -58,7 +58,8 @@ func TestResource_Mutate(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, res.Mutate(obj))
 
-	got := obj.(*rbacv1.ClusterRoleBinding)
+	got, ok := obj.(*rbacv1.ClusterRoleBinding)
+	require.True(t, ok)
 	assert.Equal(t, "test-role", got.RoleRef.Name)
 	assert.Len(t, got.Subjects, 1)
 	assert.Equal(t, "alice", got.Subjects[0].Name)
@@ -84,6 +85,22 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, res.Mutate(obj))
 
-	got := obj.(*rbacv1.ClusterRoleBinding)
+	got, ok := obj.(*rbacv1.ClusterRoleBinding)
+	require.True(t, ok)
 	assert.Len(t, got.Subjects, 2)
+}
+
+func TestMutator_EditSubjects_WithoutBeginFeature(t *testing.T) {
+	crb := newValidCRB()
+	m := NewMutator(crb)
+
+	// EditSubjects should not panic even without a prior BeginFeature call.
+	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
+		e.EnsureServiceAccount("lazy-sa", "default")
+		return nil
+	})
+
+	require.NoError(t, m.Apply())
+	assert.Len(t, crb.Subjects, 2)
+	assert.Equal(t, "lazy-sa", crb.Subjects[1].Name)
 }

@@ -5,7 +5,6 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/clusterrolebinding"
-	rbacv1 "k8s.io/api/rbac/v1"
 )
 
 // VersionLabelMutation sets the app.kubernetes.io/version label on the
@@ -32,11 +31,7 @@ func MonitoringSubjectMutation(version string, enableMetrics bool) clusterrolebi
 		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
 		Mutate: func(m *clusterrolebinding.Mutator) error {
 			m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-				e.Add(rbacv1.Subject{
-					Kind:      "ServiceAccount",
-					Name:      "monitoring-agent",
-					Namespace: "monitoring",
-				})
+				e.EnsureServiceAccount("monitoring-agent", "monitoring")
 				return nil
 			})
 			return nil

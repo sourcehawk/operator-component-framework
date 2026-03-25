@@ -18,15 +18,12 @@ func NewBindingSubjectsEditor(subjects *[]rbacv1.Subject) *BindingSubjectsEditor
 	return &BindingSubjectsEditor{subjects: subjects}
 }
 
-// Raw returns a pointer to the underlying subjects slice, initialising it if necessary.
+// Raw returns a pointer to the underlying subjects slice without modifying it.
 //
 // This is an escape hatch for free-form editing when none of the structured
 // methods are sufficient. A pointer is returned so that operations which change
 // the slice header (e.g., append, re-slicing) are reflected in the editor.
 func (e *BindingSubjectsEditor) Raw() *[]rbacv1.Subject {
-	if *e.subjects == nil {
-		*e.subjects = []rbacv1.Subject{}
-	}
 	return e.subjects
 }
 

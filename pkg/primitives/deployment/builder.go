@@ -35,7 +35,6 @@ func NewBuilder(deployment *appsv1.Deployment) *Builder {
 	base := generic.NewWorkloadBuilder[*appsv1.Deployment, *Mutator](
 		deployment,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -62,43 +61,6 @@ func NewBuilder(deployment *appsv1.Deployment) *Builder {
 // based on the component's current version or configuration.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing Deployment in the cluster.
-//
-// There is a default field applicator (DefaultFieldApplicator) that overwrites
-// the entire spec of the current object with the desired state. Using a custom
-// applicator is necessary when:
-//   - Other controllers (e.g., HPA) manage specific fields like 'replicas'.
-//   - Sidecar injectors add containers or volumes that should be preserved.
-//   - Defaulting webhooks add fields that would otherwise cause perpetual diffs.
-//
-// The applicator function receives both the 'current' object from the API
-// server and the 'desired' object from the Resource. It is responsible for
-// merging the desired changes into the current object.
-//
-// If a custom applicator is set, it overrides the default baseline application
-// logic. Post-application flavors and mutations are still applied afterward.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current *appsv1.Deployment, desired *appsv1.Deployment) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a reusable post-application "flavor" for
-// the Deployment.
-//
-// Flavors are applied in the order they are registered, after the baseline field
-// applicator (default or custom) has already run. They are typically used to
-// preserve selected live fields from the current object that should not be
-// overwritten by the desired state.
-//
-// If the provided flavor is nil, it is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*appsv1.Deployment](flavor))
 	return b
 }
 

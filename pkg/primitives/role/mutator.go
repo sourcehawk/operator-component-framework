@@ -1,6 +1,8 @@
 package role
 
 import (
+	"fmt"
+
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -50,10 +52,13 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before rules edits within the same feature.
 // A nil edit function is ignored.
+//
+// Panics if BeginFeature has not been called.
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.requireActive("EditObjectMetadata")
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -65,11 +70,21 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // within the same feature, in registration order.
 //
 // A nil edit function is ignored.
+//
+// Panics if BeginFeature has not been called.
 func (m *Mutator) EditRules(edit func(*editors.PolicyRulesEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.requireActive("EditRules")
 	m.active.rulesEdits = append(m.active.rulesEdits, edit)
+}
+
+// requireActive panics with a descriptive message if BeginFeature has not been called.
+func (m *Mutator) requireActive(method string) {
+	if m.active == nil {
+		panic(fmt.Sprintf("role.Mutator.%s called before BeginFeature", method))
+	}
 }
 
 // Apply executes all recorded mutation intents on the underlying Role.

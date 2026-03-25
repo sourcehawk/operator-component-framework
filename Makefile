@@ -134,6 +134,14 @@ run-examples: ## Run all examples to verify they execute without error.
 	go run ./examples/daemonset-primitive/.
 	go run ./examples/hpa-primitive/.
 	go run ./examples/clusterrolebinding-primitive/.
+	go run ./examples/clusterrole-primitive/.
+	go run ./examples/cronjob-primitive/.
+	go run ./examples/ingress-primitive/.
+	go run ./examples/job-primitive/.
+	go run ./examples/networkpolicy-primitive/.
+	go run ./examples/pod-primitive/.
+	go run ./examples/pvc-primitive/.
+	go run ./examples/pv-primitive/.
 
 ##@ E2E Testing
 

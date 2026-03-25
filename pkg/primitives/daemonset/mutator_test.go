@@ -34,7 +34,6 @@ func TestMutator_EnvVars(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CHANGE", Value: "new"})
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ADD", Value: "added"})
 	m.RemoveContainerEnvVars([]string{"REMOVE", "NONEXISTENT"})
@@ -78,7 +77,6 @@ func TestMutator_Args(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EnsureContainerArg("--change=new")
 	m.EnsureContainerArg("--add")
 	m.RemoveContainerArgs([]string{"--remove", "--nonexistent"})
@@ -99,24 +97,23 @@ func TestNewMutator(t *testing.T) {
 	m := NewMutator(ds)
 	assert.NotNil(t, m)
 	assert.Equal(t, ds, m.current)
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create the initial feature plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsExactlyOnePlan(t *testing.T) {
 	ds := &appsv1.DaemonSet{}
 	m := NewMutator(ds)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	require.Len(t, m.plans, 1, "NewMutator must create the initial plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 
-	m.BeginFeature()
+	m.NextFeature()
 	require.Len(t, m.plans, 2)
 	assert.Equal(t, &m.plans[1], m.active)
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	ds := &appsv1.DaemonSet{
 		Spec: appsv1.DaemonSetSpec{
 			Template: corev1.PodTemplateSpec{
@@ -128,8 +125,7 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	}
 	m := NewMutator(ds)
 
-	// Record mutations in the first feature plan
-	m.BeginFeature()
+	// Record mutations in the initial feature plan
 	m.EditDaemonSetSpec(func(e *editors.DaemonSetSpecEditor) error {
 		e.SetMinReadySeconds(10)
 		return nil
@@ -140,7 +136,7 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	})
 
 	// Start a new feature and record different mutations
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditDaemonSetSpec(func(e *editors.DaemonSetSpecEditor) error {
 		e.SetMinReadySeconds(20)
 		return nil
@@ -156,7 +152,6 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	ds := &appsv1.DaemonSet{}
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditDaemonSetSpec(func(e *editors.DaemonSetSpecEditor) error {
 		e.SetMinReadySeconds(10)
 		return nil
@@ -182,7 +177,6 @@ func TestMutator_EditContainers(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("c1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "c1-image"
 		return nil
@@ -204,7 +198,6 @@ func TestMutator_EditContainers(t *testing.T) {
 func TestMutator_EditPodSpec(t *testing.T) {
 	ds := &appsv1.DaemonSet{}
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 		e.Raw().ServiceAccountName = "my-sa"
 		return nil
@@ -218,7 +211,6 @@ func TestMutator_EditPodSpec(t *testing.T) {
 func TestMutator_EditDaemonSetSpec(t *testing.T) {
 	ds := &appsv1.DaemonSet{}
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditDaemonSetSpec(func(e *editors.DaemonSetSpecEditor) error {
 		e.SetMinReadySeconds(10)
 		e.SetRevisionHistoryLimit(5)
@@ -234,7 +226,6 @@ func TestMutator_EditDaemonSetSpec(t *testing.T) {
 func TestMutator_EditMetadata(t *testing.T) {
 	ds := &appsv1.DaemonSet{}
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"ds": "label"}
 		return nil
@@ -253,7 +244,6 @@ func TestMutator_EditMetadata(t *testing.T) {
 func TestMutator_Errors(t *testing.T) {
 	ds := &appsv1.DaemonSet{}
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		return errors.New("boom")
 	})
@@ -280,7 +270,6 @@ func TestMutator_Order(t *testing.T) {
 	var order []string
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		order = append(order, "container")
 		return nil
@@ -324,7 +313,6 @@ func TestMutator_InitContainers(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = newImage
 		return nil
@@ -352,7 +340,6 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EnsureContainer(corev1.Container{Name: "app", Image: "app-new-image"})
 	m.RemoveContainer("sidecar")
 	m.EnsureContainer(corev1.Container{Name: "new-container", Image: newImage})
@@ -381,7 +368,6 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
@@ -407,7 +393,6 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = appV2
@@ -443,7 +428,6 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 
 	m.EditContainers(selectors.ContainerNamed("new-app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "edited-image"
@@ -470,7 +454,6 @@ func TestMutator_NilSafety(t *testing.T) {
 		},
 	}
 	m := NewMutator(ds)
-	m.BeginFeature()
 
 	m.EditContainers(nil, func(_ *editors.ContainerEditor) error { return nil })
 	m.EditContainers(selectors.AllContainers(), nil)
@@ -497,7 +480,6 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	m := NewMutator(ds)
 
 	// Feature A: sets min ready seconds, image to v2
-	m.BeginFeature()
 	m.EditDaemonSetSpec(func(e *editors.DaemonSetSpecEditor) error {
 		e.SetMinReadySeconds(10)
 		return nil
@@ -508,7 +490,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	})
 
 	// Feature B: sets min ready seconds, image to v3
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditDaemonSetSpec(func(e *editors.DaemonSetSpecEditor) error {
 		e.SetMinReadySeconds(20)
 		return nil
@@ -538,7 +520,6 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 
 	var executionOrder []string
 
@@ -589,13 +570,12 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 
 	m := NewMutator(ds)
 
-	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "app-v2"
 		return nil
 	})
 
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2-image"
 		return nil
@@ -620,7 +600,6 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	}
 
 	m := NewMutator(ds)
-	m.BeginFeature()
 
 	m.EnsureInitContainer(corev1.Container{Name: "init-1", Image: "v1"})
 
@@ -645,24 +624,4 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	require.Len(t, ds.Spec.Template.Spec.InitContainers, 1)
 	assert.Equal(t, "init-1-renamed", ds.Spec.Template.Spec.InitContainers[0].Name)
 	assert.Equal(t, "v1-final", ds.Spec.Template.Spec.InitContainers[0].Image)
-}
-
-func TestMutator_PanicsWithoutBeginFeature(t *testing.T) {
-	ds := &appsv1.DaemonSet{
-		Spec: appsv1.DaemonSetSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{Name: "main", Image: "nginx"}},
-				},
-			},
-		},
-	}
-	m := NewMutator(ds)
-
-	assert.PanicsWithValue(t, "daemonset.Mutator: BeginFeature() must be called before registering mutations", func() {
-		m.EnsureContainer(corev1.Container{Name: "new"})
-	})
-	assert.PanicsWithValue(t, "daemonset.Mutator: BeginFeature() must be called before registering mutations", func() {
-		m.EditObjectMetadata(func(*editors.ObjectMetaEditor) error { return nil })
-	})
 }

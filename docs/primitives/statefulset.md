@@ -137,7 +137,7 @@ order they are recorded. This ensures structural consistency across mutations.
 Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
 This means a single mutation can add a container and then configure it without selector resolution issues.
 
-## Editors
+## Relevant Editors
 
 ### StatefulSetSpecEditor
 

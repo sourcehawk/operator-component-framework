@@ -18,24 +18,23 @@ func TestNewMutator(t *testing.T) {
 	m := NewMutator(cj)
 	assert.NotNil(t, m)
 	assert.Equal(t, cj, m.current)
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsOnePlan(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	require.Len(t, m.plans, 1, "constructor must create the initial plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 
-	m.BeginFeature()
+	m.NextFeature()
 	require.Len(t, m.plans, 2)
 	assert.Equal(t, &m.plans[1], m.active)
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	cj := &batchv1.CronJob{
 		Spec: batchv1.CronJobSpec{
 			JobTemplate: batchv1.JobTemplateSpec{
@@ -51,8 +50,7 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	}
 	m := NewMutator(cj)
 
-	// Record mutations in the first feature plan
-	m.BeginFeature()
+	// Record mutations in the first feature plan (auto-created by constructor)
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("*/5 * * * *")
 		return nil
@@ -63,7 +61,7 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	})
 
 	// Start a new feature
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("0 * * * *")
 		return nil
@@ -79,7 +77,6 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("*/5 * * * *")
 		return nil
@@ -92,7 +89,6 @@ func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"cronjob": "label"}
 		return nil
@@ -106,7 +102,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditCronJobSpec(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("*/5 * * * *")
 		e.SetConcurrencyPolicy(batchv1.ForbidConcurrent)
@@ -122,7 +117,6 @@ func TestMutator_EditCronJobSpec(t *testing.T) {
 func TestMutator_EditJobSpec(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditJobSpec(func(e *editors.JobSpecEditor) error {
 		e.SetBackoffLimit(3)
 		e.SetCompletions(1)
@@ -138,7 +132,6 @@ func TestMutator_EditJobSpec(t *testing.T) {
 func TestMutator_EditPodTemplateMetadata(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Annotations = map[string]string{"pod": "ann"}
 		return nil
@@ -152,7 +145,6 @@ func TestMutator_EditPodTemplateMetadata(t *testing.T) {
 func TestMutator_EditPodSpec(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 		e.Raw().ServiceAccountName = "my-sa"
 		return nil
@@ -182,7 +174,6 @@ func TestMutator_EditContainers(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("c1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "c1-image"
 		return nil
@@ -226,7 +217,6 @@ func TestMutator_EnvVars(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CHANGE", Value: "new"})
 	m.EnsureContainerEnvVar(corev1.EnvVar{Name: "ADD", Value: "added"})
 	m.RemoveContainerEnvVars([]string{"REMOVE", "NONEXISTENT"})
@@ -274,7 +264,6 @@ func TestMutator_Args(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EnsureContainerArg("--change=new")
 	m.EnsureContainerArg("--add")
 	m.RemoveContainerArgs([]string{"--remove", "--nonexistent"})
@@ -309,7 +298,6 @@ func TestMutator_ContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EnsureContainer(corev1.Container{Name: "app", Image: "app-new-image"})
 	m.RemoveContainer("sidecar")
 	m.EnsureContainer(corev1.Container{Name: "new-container", Image: "new-image"})
@@ -343,7 +331,6 @@ func TestMutator_InitContainers(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditInitContainers(selectors.ContainerNamed("init-1"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "new-image"
 		return nil
@@ -372,7 +359,6 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EnsureInitContainer(corev1.Container{Name: "init-2", Image: "init-2-image"})
 	m.RemoveInitContainers([]string{"init-1"})
 
@@ -387,7 +373,6 @@ func TestMutator_InitContainerPresence(t *testing.T) {
 func TestMutator_Errors(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditPodSpec(func(_ *editors.PodSpecEditor) error {
 		return errors.New("boom")
 	})
@@ -412,7 +397,6 @@ func TestMutator_NilSafety(t *testing.T) {
 		},
 	}
 	m := NewMutator(cj)
-	m.BeginFeature()
 
 	m.EditContainers(nil, func(_ *editors.ContainerEditor) error { return nil })
 	m.EditContainers(selectors.AllContainers(), nil)
@@ -446,7 +430,6 @@ func TestMutator_Order(t *testing.T) {
 	var order []string
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 	// Register in reverse order to verify execution order
 	m.EditContainers(selectors.AllContainers(), func(_ *editors.ContainerEditor) error {
 		order = append(order, "container")
@@ -498,7 +481,6 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 
 	m := NewMutator(cj)
 	// Feature A
-	m.BeginFeature()
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("*/10 * * * *")
 		return nil
@@ -509,7 +491,7 @@ func TestMutator_CrossFeatureOrdering(t *testing.T) {
 	})
 
 	// Feature B
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 		e.SetSchedule("0 * * * *")
 		return nil
@@ -544,7 +526,6 @@ func TestMutator_SelectorSnapshotSemantics(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "app-v2"
@@ -586,7 +567,6 @@ func TestMutator_Ordering_PresenceBeforeEdit(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 
 	// Register edit first
 	m.EditContainers(selectors.ContainerNamed("new-app"), func(e *editors.ContainerEditor) error {
@@ -623,14 +603,13 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 	m := NewMutator(cj)
 
 	// Feature A renames container
-	m.BeginFeature()
 	m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 		e.Raw().Name = "app-v2"
 		return nil
 	})
 
 	// Feature B selects by the new name
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditContainers(selectors.ContainerNamed("app-v2"), func(e *editors.ContainerEditor) error {
 		e.Raw().Image = "v2-image"
 		return nil
@@ -646,7 +625,6 @@ func TestMutator_CrossFeatureVisibility(t *testing.T) {
 func TestMutator_EditMetadata(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	m := NewMutator(cj)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.Raw().Labels = map[string]string{"cronjob": "label"}
 		return nil
@@ -679,7 +657,6 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	}
 
 	m := NewMutator(cj)
-	m.BeginFeature()
 
 	var executionOrder []string
 
@@ -721,17 +698,4 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 		"container",
 	}
 	assert.Equal(t, expectedOrder, executionOrder)
-}
-
-func TestMutator_PanicsWithoutBeginFeature(t *testing.T) {
-	cj := &batchv1.CronJob{}
-	m := NewMutator(cj)
-
-	assert.PanicsWithValue(t, "cronjob.Mutator: BeginFeature() must be called before registering mutations", func() {
-		m.EditObjectMetadata(func(*editors.ObjectMetaEditor) error { return nil })
-	})
-
-	assert.PanicsWithValue(t, "cronjob.Mutator: BeginFeature() must be called before registering mutations", func() {
-		m.EnsureContainer(corev1.Container{Name: "test"})
-	})
 }

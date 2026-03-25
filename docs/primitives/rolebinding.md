@@ -132,7 +132,7 @@ recorded:
 Within each category, edits are applied in their registration order. Later features observe the RoleBinding as modified
 by all previous features.
 
-## Editors
+## Relevant Editors
 
 ### BindingSubjectsEditor
 

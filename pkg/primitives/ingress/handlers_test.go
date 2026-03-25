@@ -127,7 +127,6 @@ func TestDefaultSuspendMutationHandler(t *testing.T) {
 		},
 	}
 	mutator := NewMutator(ing)
-	mutator.BeginFeature()
 	err := DefaultSuspendMutationHandler(mutator)
 	require.NoError(t, err)
 	// No-op: rules should remain unchanged.

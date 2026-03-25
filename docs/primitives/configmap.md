@@ -107,7 +107,7 @@ recorded:
 Within each category, edits are applied in their registration order. Later features observe the ConfigMap as modified by
 all previous features.
 
-## Editors
+## Relevant Editors
 
 ### ConfigMapDataEditor
 

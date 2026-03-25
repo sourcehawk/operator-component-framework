@@ -26,8 +26,8 @@ func (m *recordingMutator) Apply() error {
 	return nil
 }
 
-func (m *recordingMutator) BeginFeature() {
-	m.recorder.record("mutator.BeginFeature")
+func (m *recordingMutator) NextFeature() {
+	m.recorder.record("mutator.NextFeature")
 }
 
 func TestApplyMutationsOrder(t *testing.T) {
@@ -69,10 +69,9 @@ func TestApplyMutationsOrder(t *testing.T) {
 
 	expectedOrder := []string{
 		"newMutator",
-		"mutator.BeginFeature",
 		"mutation1",
+		"mutator.NextFeature",
 		"mutator.Apply",
-		"mutator.BeginFeature",
 		"suspender",
 		"mutator.Apply",
 	}
@@ -137,17 +136,16 @@ func TestApplyMutationsOrder_MultipleMutations(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// Each mutation gets its own plan via BeginFeature.
+	// Each mutation uses the current scope, then NextFeature advances to the next.
 	expectedOrder := []string{
 		"newMutator",
-		"mutator.BeginFeature",
 		"mutation1",
-		"mutator.BeginFeature",
+		"mutator.NextFeature",
 		"mutation2",
-		"mutator.BeginFeature",
+		"mutator.NextFeature",
 		"mutation3",
+		"mutator.NextFeature",
 		"mutator.Apply",
-		"mutator.BeginFeature",
 		"suspender",
 		"mutator.Apply",
 	}

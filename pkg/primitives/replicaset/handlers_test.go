@@ -199,7 +199,6 @@ func TestDefaultSuspendMutationHandler(t *testing.T) {
 		},
 	}
 	mutator := NewMutator(rs)
-	mutator.BeginFeature()
 	err := DefaultSuspendMutationHandler(mutator)
 	require.NoError(t, err)
 	err = mutator.Apply()

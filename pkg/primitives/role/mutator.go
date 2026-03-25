@@ -1,8 +1,6 @@
 package role
 
 import (
-	"fmt"
-
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -34,16 +32,22 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given Role.
-// BeginFeature must be called before registering any mutations.
+// The constructor creates the initial feature scope, so mutations can be
+// registered immediately without an explicit call to NextFeature.
 func NewMutator(role *rbacv1.Role) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		role: role,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) BeginFeature() {
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }
@@ -52,13 +56,10 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before rules edits within the same feature.
 // A nil edit function is ignored.
-//
-// Panics if BeginFeature has not been called.
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
 	}
-	m.requireActive("EditObjectMetadata")
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -70,21 +71,11 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // within the same feature, in registration order.
 //
 // A nil edit function is ignored.
-//
-// Panics if BeginFeature has not been called.
 func (m *Mutator) EditRules(edit func(*editors.PolicyRulesEditor) error) {
 	if edit == nil {
 		return
 	}
-	m.requireActive("EditRules")
 	m.active.rulesEdits = append(m.active.rulesEdits, edit)
-}
-
-// requireActive panics with a descriptive message if BeginFeature has not been called.
-func (m *Mutator) requireActive(method string) {
-	if m.active == nil {
-		panic(fmt.Sprintf("role.Mutator.%s called before BeginFeature", method))
-	}
 }
 
 // Apply executes all recorded mutation intents on the underlying Role.

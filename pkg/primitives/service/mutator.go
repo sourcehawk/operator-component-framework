@@ -32,20 +32,21 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given Service.
-// BeginFeature must be called before registering any mutations.
+// The constructor creates the initial feature scope automatically.
 func NewMutator(svc *corev1.Service) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		svc: svc,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope.
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
 //
-// This method is intended for use by the generic feature/mutation framework to
-// delineate feature boundaries. All subsequent mutation registrations will be
-// grouped into a new feature plan and applied after any previously planned
-// features.
-func (m *Mutator) BeginFeature() {
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

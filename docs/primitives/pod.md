@@ -108,7 +108,7 @@ Kubernetes API server will reject the update. In practice, the set of fields tha
 Pod is very small (primarily container images, plus a few feature-gated fields such as resources with in-place resize);
 treat Pods as effectively immutable and use delete-and-recreate when you need to change other container attributes.
 
-## Editors
+## Relevant Editors
 
 ### PodSpecEditor
 

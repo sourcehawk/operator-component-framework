@@ -131,7 +131,7 @@ Within each category, edits are applied in their registration order. For aggrega
 `SetAggregationRule` call wins within each feature. Later features observe the ClusterRole as modified by all previous
 features.
 
-## Editors
+## Relevant Editors
 
 ### PolicyRulesEditor
 

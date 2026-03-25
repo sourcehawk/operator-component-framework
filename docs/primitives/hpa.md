@@ -129,7 +129,7 @@ order they are recorded:
 | 1    | Metadata edits | Labels and annotations on the `HorizontalPodAutoscaler` object |
 | 2    | HPA spec edits | Scale target ref, min/max replicas, metrics, behavior          |
 
-## Editors
+## Relevant Editors
 
 ### HPASpecEditor
 

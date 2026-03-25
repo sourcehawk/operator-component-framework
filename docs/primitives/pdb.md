@@ -115,7 +115,7 @@ recorded:
 Within each category, edits are applied in their registration order. Later features observe the PodDisruptionBudget as
 modified by all previous features.
 
-## Editors
+## Relevant Editors
 
 ### PodDisruptionBudgetSpecEditor
 

@@ -33,16 +33,22 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given Secret.
-// BeginFeature must be called before registering any mutations.
+// The constructor creates the initial feature scope, so mutations can be
+// registered immediately without an explicit call to NextFeature.
 func NewMutator(s *corev1.Secret) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		secret: s,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) BeginFeature() {
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }
@@ -54,9 +60,6 @@ func (m *Mutator) BeginFeature() {
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
-	}
-	if m.active == nil {
-		panic("BeginFeature must be called before registering mutations")
 	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
@@ -73,9 +76,6 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 func (m *Mutator) EditData(edit func(*editors.SecretDataEditor) error) {
 	if edit == nil {
 		return
-	}
-	if m.active == nil {
-		panic("BeginFeature must be called before registering mutations")
 	}
 	m.active.dataEdits = append(m.active.dataEdits, edit)
 }

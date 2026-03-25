@@ -36,18 +36,21 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given Ingress.
-// BeginFeature should be called before registering mutations to establish
-// feature boundaries. If omitted, EditObjectMetadata and EditIngressSpec
-// will call it implicitly.
+// The constructor creates the initial feature scope automatically.
 func NewMutator(ing *networkingv1.Ingress) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		ing: ing,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) BeginFeature() {
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }
@@ -56,13 +59,9 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before ingress spec edits within the same feature.
 // A nil edit function is ignored.
-// If BeginFeature has not been called, it is called implicitly.
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
-	}
-	if m.active == nil {
-		m.BeginFeature()
 	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
@@ -75,13 +74,9 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // registration order.
 //
 // A nil edit function is ignored.
-// If BeginFeature has not been called, it is called implicitly.
 func (m *Mutator) EditIngressSpec(edit func(*editors.IngressSpecEditor) error) {
 	if edit == nil {
 		return
-	}
-	if m.active == nil {
-		m.BeginFeature()
 	}
 	m.active.ingressSpecEdits = append(m.active.ingressSpecEdits, edit)
 }

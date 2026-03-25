@@ -53,22 +53,22 @@ type Mutator struct {
 // NewMutator creates a new Mutator for the given ReplicaSet.
 //
 // It is typically used within a Feature's Mutation logic to express desired
-// changes to the ReplicaSet. BeginFeature must be called before registering
-// any mutations.
+// changes to the ReplicaSet. The constructor creates the initial feature scope,
+// so mutations can be registered immediately.
 func NewMutator(current *appsv1.ReplicaSet) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		current: current,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan until another
-// BeginFeature is called.
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
 //
-// This is used to ensure that mutations from different features are applied
-// in registration order while maintaining internal category ordering within
-// each feature.
-func (m *Mutator) BeginFeature() {
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }

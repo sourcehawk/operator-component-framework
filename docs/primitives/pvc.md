@@ -113,7 +113,7 @@ Within each category, edits are applied in their registration order. The PVC pri
 boundary: for each applicable feature (after evaluating version constraints and any `When()` conditions), all of its
 planned edits are applied in order, and later features and mutations observe the fully-applied state from earlier ones.
 
-## Editors
+## Relevant Editors
 
 ### PVCSpecEditor
 

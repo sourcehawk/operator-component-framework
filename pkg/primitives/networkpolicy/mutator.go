@@ -39,17 +39,22 @@ type Mutator struct {
 // NewMutator creates a new Mutator for the given NetworkPolicy.
 //
 // It is typically used within a Feature's Mutation logic to express desired
-// changes to the NetworkPolicy. If mutations are registered without an explicit
-// BeginFeature call, a default feature plan is created automatically.
+// changes to the NetworkPolicy. The constructor creates the initial feature
+// scope automatically.
 func NewMutator(np *networkingv1.NetworkPolicy) *Mutator {
-	return &Mutator{
+	m := &Mutator{
 		np: np,
 	}
+	m.NextFeature()
+	return m
 }
 
-// BeginFeature starts a new feature planning scope. All subsequent mutation
-// registrations will be grouped into this feature's plan.
-func (m *Mutator) BeginFeature() {
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
 	m.plans = append(m.plans, featurePlan{})
 	m.active = &m.plans[len(m.plans)-1]
 }
@@ -62,7 +67,6 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -79,15 +83,7 @@ func (m *Mutator) EditNetworkPolicySpec(edit func(*editors.NetworkPolicySpecEdit
 	if edit == nil {
 		return
 	}
-	m.ensureActive()
 	m.active.specEdits = append(m.active.specEdits, edit)
-}
-
-// ensureActive starts a feature plan if one has not been started yet.
-func (m *Mutator) ensureActive() {
-	if m.active == nil {
-		m.BeginFeature()
-	}
 }
 
 // Apply executes all recorded mutation intents on the underlying NetworkPolicy.

@@ -25,7 +25,6 @@ func newTestRole(rules []rbacv1.PolicyRule) *rbacv1.Role {
 func TestMutator_EditObjectMetadata(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
@@ -37,7 +36,6 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditObjectMetadata(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -47,7 +45,6 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 func TestMutator_EditRules_SetRules(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.SetRules([]rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list"}},
@@ -64,7 +61,6 @@ func TestMutator_EditRules_AddRule(t *testing.T) {
 		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
 	})
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"list"},
@@ -81,7 +77,6 @@ func TestMutator_EditRules_RawAccess(t *testing.T) {
 		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
 	})
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		raw := e.Raw()
 		*raw = append(*raw, rbacv1.PolicyRule{
@@ -96,7 +91,6 @@ func TestMutator_EditRules_RawAccess(t *testing.T) {
 func TestMutator_EditRules_Nil(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditRules(nil)
 	assert.NoError(t, m.Apply())
 }
@@ -107,7 +101,6 @@ func TestMutator_OperationOrder(t *testing.T) {
 	// Within a feature: metadata edits run before rules edits.
 	role := newTestRole(nil)
 	m := NewMutator(role)
-	m.BeginFeature()
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
@@ -128,14 +121,13 @@ func TestMutator_OperationOrder(t *testing.T) {
 func TestMutator_MultipleFeatures(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
 		})
 		return nil
 	})
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"list"},
@@ -151,33 +143,31 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 
 // --- Constructor and feature plan invariants ---
 
-func TestNewMutator_InitializesNoPlan(t *testing.T) {
+func TestNewMutator_InitializesOnePlan(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
 
-	assert.Empty(t, m.plans, "NewMutator must not create any plans")
-	assert.Nil(t, m.active, "active plan must not be set")
+	require.Len(t, m.plans, 1, "NewMutator must create exactly one plan")
+	assert.Equal(t, &m.plans[0], m.active, "active must point to the initial plan")
 }
 
-func TestBeginFeature_AddsExactlyOnePlan(t *testing.T) {
+func TestNextFeature_AddsExactlyOnePlan(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 1, "BeginFeature must add exactly one plan")
-	assert.Equal(t, &m.plans[0], m.active, "active must point to the new plan")
+	// Constructor already created one plan.
+	require.Len(t, m.plans, 1)
 
-	m.BeginFeature()
-	require.Len(t, m.plans, 2)
-	assert.Equal(t, &m.plans[1], m.active)
+	m.NextFeature()
+	require.Len(t, m.plans, 2, "NextFeature must add exactly one plan")
+	assert.Equal(t, &m.plans[1], m.active, "active must point to the new plan")
 }
 
-func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
+func TestNextFeature_IsolatesFeaturePlans(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
 
-	// Record a mutation in the first feature plan
-	m.BeginFeature()
+	// Record a mutation in the initial feature plan (created by constructor)
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},
@@ -186,7 +176,7 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	})
 
 	// Start a new feature and record a different mutation
-	m.BeginFeature()
+	m.NextFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"list"},
@@ -203,7 +193,6 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	role := newTestRole(nil)
 	m := NewMutator(role)
-	m.BeginFeature()
 	m.EditRules(func(e *editors.PolicyRulesEditor) error {
 		e.AddRule(rbacv1.PolicyRule{
 			APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"},

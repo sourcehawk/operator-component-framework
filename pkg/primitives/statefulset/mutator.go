@@ -250,8 +250,9 @@ func (m *Mutator) EnsureReplicas(replicas int32) {
 // it is replaced; otherwise, it is appended.
 //
 // Note: VolumeClaimTemplates are immutable once the StatefulSet exists in the cluster.
-// Changes to VolumeClaimTemplates on an existing StatefulSet will be rejected by
-// the Kubernetes API server. This method is primarily useful for initial creation
+// During Apply, these operations are silently skipped for existing resources
+// (identified by a non-empty ResourceVersion) because the Kubernetes API server
+// would reject such changes. This method is primarily useful for initial creation
 // or when recreating a StatefulSet.
 func (m *Mutator) EnsureVolumeClaimTemplate(pvc corev1.PersistentVolumeClaim) {
 	m.active.volumeClaimTemplateOps = append(m.active.volumeClaimTemplateOps, volumeClaimTemplateOp{
@@ -263,7 +264,9 @@ func (m *Mutator) EnsureVolumeClaimTemplate(pvc corev1.PersistentVolumeClaim) {
 // RemoveVolumeClaimTemplate records that a VolumeClaimTemplate should be removed by name.
 //
 // Note: VolumeClaimTemplates are immutable once the StatefulSet exists in the cluster.
-// This method is primarily useful when constructing the initial desired state.
+// During Apply, these operations are silently skipped for existing resources
+// (identified by a non-empty ResourceVersion). This method is primarily useful
+// when constructing the initial desired state.
 func (m *Mutator) RemoveVolumeClaimTemplate(name string) {
 	m.active.volumeClaimTemplateOps = append(m.active.volumeClaimTemplateOps, volumeClaimTemplateOp{
 		name: name,

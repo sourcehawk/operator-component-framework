@@ -1,7 +1,6 @@
 package networkpolicy
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -86,15 +85,16 @@ func TestResource_Mutate(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &networkingv1.NetworkPolicy{}
-	err = res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "test", current.Spec.PodSelector.MatchLabels["app"])
-	require.Len(t, current.Spec.Ingress, 1)
-	require.Len(t, current.Spec.Ingress[0].Ports, 1)
-	assert.Equal(t, int32(8080), current.Spec.Ingress[0].Ports[0].Port.IntVal)
+	got := obj.(*networkingv1.NetworkPolicy)
+	assert.Equal(t, "test", got.Labels["app"])
+	assert.Equal(t, "test", got.Spec.PodSelector.MatchLabels["app"])
+	require.Len(t, got.Spec.Ingress, 1)
+	require.Len(t, got.Spec.Ingress[0].Ports, 1)
+	assert.Equal(t, int32(8080), got.Spec.Ingress[0].Ports[0].Port.IntVal)
 }
 
 func TestResource_Mutate_DisabledFeature(t *testing.T) {
@@ -125,11 +125,12 @@ func TestResource_Mutate_DisabledFeature(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &networkingv1.NetworkPolicy{}
-	err = res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.NotContains(t, current.Labels, "should-not")
+	got := obj.(*networkingv1.NetworkPolicy)
+	assert.NotContains(t, got.Labels, "should-not")
 }
 
 func TestResource_Mutate_NilFeatureIsUnconditional(t *testing.T) {
@@ -154,11 +155,12 @@ func TestResource_Mutate_NilFeatureIsUnconditional(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &networkingv1.NetworkPolicy{}
-	err = res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "present", current.Labels["always"])
+	got := obj.(*networkingv1.NetworkPolicy)
+	assert.Equal(t, "present", got.Labels["always"])
 }
 
 func TestResource_Mutate_MutationOrdering(t *testing.T) {
@@ -210,92 +212,14 @@ func TestResource_Mutate_MutationOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &networkingv1.NetworkPolicy{}
-	err = res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	require.Len(t, current.Spec.Ingress, 2)
-	assert.Equal(t, int32(80), current.Spec.Ingress[0].Ports[0].Port.IntVal)
-	assert.Equal(t, int32(443), current.Spec.Ingress[1].Ports[0].Port.IntVal)
-}
-
-func TestResource_Mutate_WithFlavor(t *testing.T) {
-	desired := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-	}
-
-	res, err := NewBuilder(desired).
-		WithFieldApplicationFlavor(PreserveCurrentLabels).
-		Build()
-	require.NoError(t, err)
-
-	current := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{"external": "label"},
-		},
-	}
-	err = res.Mutate(current)
-	require.NoError(t, err)
-
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "label", current.Labels["external"])
-}
-
-func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
-	desired := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "test"},
-			},
-		},
-	}
-
-	applicatorCalled := false
-	res, err := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current, desired *networkingv1.NetworkPolicy) error {
-			applicatorCalled = true
-			current.Name = desired.Name
-			current.Namespace = desired.Namespace
-			current.Spec.PodSelector = desired.Spec.PodSelector
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	current := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{"external": "label"},
-		},
-	}
-	err = res.Mutate(current)
-	require.NoError(t, err)
-
-	assert.True(t, applicatorCalled)
-	assert.Equal(t, "test", current.Spec.PodSelector.MatchLabels["app"])
-	assert.Equal(t, "label", current.Labels["external"])
-	assert.NotContains(t, current.Labels, "app")
-
-	t.Run("returns error", func(t *testing.T) {
-		res, err := NewBuilder(desired).
-			WithCustomFieldApplicator(func(_, _ *networkingv1.NetworkPolicy) error {
-				return errors.New("applicator error")
-			}).
-			Build()
-		require.NoError(t, err)
-
-		err = res.Mutate(&networkingv1.NetworkPolicy{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "applicator error")
-	})
+	got := obj.(*networkingv1.NetworkPolicy)
+	require.Len(t, got.Spec.Ingress, 2)
+	assert.Equal(t, int32(80), got.Spec.Ingress[0].Ports[0].Port.IntVal)
+	assert.Equal(t, int32(443), got.Spec.Ingress[1].Ports[0].Port.IntVal)
 }
 
 func TestResource_ExtractData(t *testing.T) {
@@ -323,49 +247,4 @@ func TestResource_ExtractData(t *testing.T) {
 	err = res.ExtractData()
 	require.NoError(t, err)
 	assert.Equal(t, "test", extractedSelector)
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test",
-			Namespace:       "default",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-	}
-	desired := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "test"},
-			},
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	assert.Equal(t, "test", current.Spec.PodSelector.MatchLabels["app"])
-	assert.Equal(t, "test", current.Labels["app"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }

@@ -11,7 +11,6 @@ ingress rules, egress rules, and policy types.
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state              |
 | **Mutation pipeline** | Typed editors for NetworkPolicy spec and object metadata, with a raw escape hatch for free-form access      |
 | **Append semantics**  | Ingress and egress rules have no unique key — `AppendIngressRule`/`AppendEgressRule` append unconditionally |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                      |
 | **Data extraction**   | Reads generated or updated values back from the reconciled NetworkPolicy after each sync cycle              |
 
 ## Building a NetworkPolicy Primitive
@@ -36,26 +35,7 @@ base := &networkingv1.NetworkPolicy{
 }
 
 resource, err := networkpolicy.NewBuilder(base).
-    WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels).
     WithMutation(HTTPIngressMutation()).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current NetworkPolicy with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
-original live object. NetworkPolicy has no Status subresource, so no status preservation is needed.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := networkpolicy.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *networkingv1.NetworkPolicy) error {
-        // Only synchronise owned spec fields; leave other fields untouched.
-        current.Spec.Ingress = desired.Spec.Ingress
-        return nil
-    }).
     Build()
 ```
 
@@ -238,34 +218,6 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := networkpolicy.NewBuilder(base).
-    WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := networkpolicy.NewBuilder(base).
-    WithFieldApplicationFlavor(networkpolicy.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Full Example: Feature-Composed Network Policy
 
 ```go
@@ -309,7 +261,6 @@ func MetricsIngressMutation(version string, enabled bool) networkpolicy.Mutation
 }
 
 resource, err := networkpolicy.NewBuilder(base).
-    WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels).
     WithMutation(HTTPIngressMutation()).
     WithMutation(MetricsIngressMutation(owner.Spec.Version, owner.Spec.EnableMetrics)).
     Build()

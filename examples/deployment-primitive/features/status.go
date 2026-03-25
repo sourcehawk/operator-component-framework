@@ -2,7 +2,6 @@ package features
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
@@ -53,16 +52,12 @@ func CustomSuspendMutation() func(*deployment.Mutator) error {
 			return err
 		}
 
-		// Additionally, record when the deployment was first suspended.
-		// NOTE: This annotation is set on every reconcile because the desired
-		// object is rebuilt from scratch each time. To preserve the original
-		// suspension timestamp across reconciles, store it in the owner's status
-		// and reapply it here, or read it from the live object before building.
+		// Additionally, mark the deployment as suspended via an annotation.
+		// Note: mutators operate on a freshly-built desired object each reconcile,
+		// not the live server state. Stateful comparisons (e.g., "only set this if
+		// it doesn't already exist") won't work here since the object is always new.
 		m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
-			raw := meta.Raw()
-			if _, exists := raw.Annotations["example.io/suspended-at"]; !exists {
-				meta.EnsureAnnotation("example.io/suspended-at", time.Now().UTC().Format(time.RFC3339))
-			}
+			meta.EnsureAnnotation("example.io/suspended", "true")
 			return nil
 		})
 

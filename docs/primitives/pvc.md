@@ -6,12 +6,12 @@ requests and object metadata.
 
 ## Capabilities
 
-| Capability               | Detail                                                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Capability               | Detail                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Operational tracking** | Monitors PVC phase — reports `OperationalStatusOperational` (Bound), `OperationalStatusPending`, or `OperationalStatusFailing` (Lost) |
-| **Suspension**           | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default         |
-| **Mutation pipeline**    | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access         |
-| **Data extraction**      | Reads bound volume name, capacity, or other status fields after each sync cycle                      |
+| **Suspension**           | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default                                          |
+| **Mutation pipeline**    | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access                                          |
+| **Data extraction**      | Reads bound volume name, capacity, or other status fields after each sync cycle                                                       |
 
 ## Building a PVC Primitive
 
@@ -183,8 +183,8 @@ single edit block.
 
 The default handler (`DefaultOperationalStatusHandler`) maps PVC phase to operational status:
 
-| PVC Phase | Status             | Reason                          |
-| --------- | ------------------ | ------------------------------- |
+| PVC Phase | Status                         | Reason                          |
+| --------- | ------------------------------ | ------------------------------- |
 | `Bound`   | `OperationalStatusOperational` | PVC is bound to volume \<name\> |
 | `Pending` | `OperationalStatusPending`     | Waiting for PVC to be bound     |
 | `Lost`    | `OperationalStatusFailing`     | PVC has lost its bound volume   |

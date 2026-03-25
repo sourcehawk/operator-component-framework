@@ -13,10 +13,6 @@ type BaseResource[T client.Object, M MutatorApplier] struct {
 
 	IdentityFunc func(T) string
 
-	DefaultFieldApplicator FieldApplicator[T]
-	CustomFieldApplicator  FieldApplicator[T]
-	FieldFlavors           []FieldApplicationFlavor[T]
-
 	DataExtractors []func(T) error
 
 	NewMutator func(T) M
@@ -44,15 +40,10 @@ func (r *BaseResource[T, M]) Object() (client.Object, error) {
 	return obj, nil
 }
 
-// Mutate applies the baseline field applicator, field application flavors, feature mutations,
-// and any active suspension mutation to the provided current object.
+// Mutate applies feature mutations and any active suspension mutation to the provided current object.
 func (r *BaseResource[T, M]) Mutate(current client.Object) error {
 	applied, err := ApplyMutations(
 		current,
-		r.DesiredObject,
-		r.DefaultFieldApplicator,
-		r.CustomFieldApplicator,
-		r.FieldFlavors,
 		r.NewMutator,
 		r.Mutations,
 		r.Suspender,
@@ -66,23 +57,10 @@ func (r *BaseResource[T, M]) Mutate(current client.Object) error {
 	return nil
 }
 
-// ApplyBaselineAndFlavors runs the standard field application pipeline on the provided current object.
-func (r *BaseResource[T, M]) ApplyBaselineAndFlavors(current T) (T, error) {
-	return applyBaselineAndFlavors(
-		current,
-		r.DesiredObject,
-		r.DefaultFieldApplicator,
-		r.CustomFieldApplicator,
-		r.FieldFlavors,
-	)
-}
-
-// PreviewObject returns the object as it would appear after the field applicator, flavors,
-// and feature mutations have been applied, without modifying the resource's internal DesiredObject.
+// PreviewObject returns the object as it would appear after feature mutations have been applied,
+// without modifying the resource's internal DesiredObject.
 //
-// The desired object is used as a stand-in for the current cluster state. Flavors that
-// depend on live cluster content (e.g. PreserveExternalEntries) will see only the
-// operator-owned baseline — externally-managed fields are excluded from the result.
+// The desired object is used as a stand-in for the current cluster state.
 //
 // Suspension mutations are not applied; the preview reflects content state only.
 func (r *BaseResource[T, M]) PreviewObject() (T, error) {
@@ -94,10 +72,6 @@ func (r *BaseResource[T, M]) PreviewObject() (T, error) {
 
 	return ApplyMutations(
 		currentCopy,
-		r.DesiredObject,
-		r.DefaultFieldApplicator,
-		r.CustomFieldApplicator,
-		r.FieldFlavors,
 		r.NewMutator,
 		r.Mutations,
 		nil,

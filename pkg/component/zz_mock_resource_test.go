@@ -99,6 +99,11 @@ func (m *MockClient) Create(ctx context.Context, obj client.Object, opts ...clie
 	return args.Error(0)
 }
 
+func (m *MockClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	args := m.Called(ctx, obj, patch, opts)
+	return args.Error(0)
+}
+
 type MockSuspendableResource struct {
 	MockResource
 }

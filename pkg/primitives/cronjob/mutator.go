@@ -62,6 +62,12 @@ func (m *Mutator) BeginFeature() {
 	m.active = &m.plans[len(m.plans)-1]
 }
 
+func (m *Mutator) requireActive() {
+	if m.active == nil {
+		panic("cronjob.Mutator: BeginFeature() must be called before registering mutations")
+	}
+}
+
 // EditObjectMetadata records a mutation for the CronJob's own metadata.
 //
 // If the edit function is nil, the registration is ignored.
@@ -69,6 +75,7 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.cronjobMetadataEdits = append(m.active.cronjobMetadataEdits, edit)
 }
 
@@ -79,6 +86,7 @@ func (m *Mutator) EditCronJobSpec(edit func(*editors.CronJobSpecEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.cronjobSpecEdits = append(m.active.cronjobSpecEdits, edit)
 }
 
@@ -89,6 +97,7 @@ func (m *Mutator) EditJobSpec(edit func(*editors.JobSpecEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.jobSpecEdits = append(m.active.jobSpecEdits, edit)
 }
 
@@ -99,6 +108,7 @@ func (m *Mutator) EditPodTemplateMetadata(edit func(*editors.ObjectMetaEditor) e
 	if edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.podTemplateMetadataEdits = append(m.active.podTemplateMetadataEdits, edit)
 }
 
@@ -109,6 +119,7 @@ func (m *Mutator) EditPodSpec(edit func(*editors.PodSpecEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.podSpecEdits = append(m.active.podSpecEdits, edit)
 }
 
@@ -121,6 +132,7 @@ func (m *Mutator) EditContainers(selector selectors.ContainerSelector, edit func
 	if selector == nil || edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.containerEdits = append(m.active.containerEdits, containerEdit{
 		selector: selector,
 		edit:     edit,
@@ -136,6 +148,7 @@ func (m *Mutator) EditInitContainers(selector selectors.ContainerSelector, edit 
 	if selector == nil || edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.initContainerEdits = append(m.active.initContainerEdits, containerEdit{
 		selector: selector,
 		edit:     edit,
@@ -145,6 +158,7 @@ func (m *Mutator) EditInitContainers(selector selectors.ContainerSelector, edit 
 // EnsureContainer records that a regular container must be present in the CronJob.
 // If a container with the same name exists, it is replaced; otherwise, it is appended.
 func (m *Mutator) EnsureContainer(container corev1.Container) {
+	m.requireActive()
 	m.active.containerPresence = append(m.active.containerPresence, containerPresenceOp{
 		name:      container.Name,
 		container: &container,
@@ -153,6 +167,7 @@ func (m *Mutator) EnsureContainer(container corev1.Container) {
 
 // RemoveContainer records that a regular container should be removed by name.
 func (m *Mutator) RemoveContainer(name string) {
+	m.requireActive()
 	m.active.containerPresence = append(m.active.containerPresence, containerPresenceOp{
 		name:      name,
 		container: nil,
@@ -169,6 +184,7 @@ func (m *Mutator) RemoveContainers(names []string) {
 // EnsureInitContainer records that an init container must be present in the CronJob.
 // If an init container with the same name exists, it is replaced; otherwise, it is appended.
 func (m *Mutator) EnsureInitContainer(container corev1.Container) {
+	m.requireActive()
 	m.active.initContainerPresence = append(m.active.initContainerPresence, containerPresenceOp{
 		name:      container.Name,
 		container: &container,
@@ -177,6 +193,7 @@ func (m *Mutator) EnsureInitContainer(container corev1.Container) {
 
 // RemoveInitContainer records that an init container should be removed by name.
 func (m *Mutator) RemoveInitContainer(name string) {
+	m.requireActive()
 	m.active.initContainerPresence = append(m.active.initContainerPresence, containerPresenceOp{
 		name:      name,
 		container: nil,

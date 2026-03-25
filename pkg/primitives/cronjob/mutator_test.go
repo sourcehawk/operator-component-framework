@@ -722,3 +722,16 @@ func TestMutator_WithinFeatureCategoryOrdering(t *testing.T) {
 	}
 	assert.Equal(t, expectedOrder, executionOrder)
 }
+
+func TestMutator_PanicsWithoutBeginFeature(t *testing.T) {
+	cj := &batchv1.CronJob{}
+	m := NewMutator(cj)
+
+	assert.PanicsWithValue(t, "cronjob.Mutator: BeginFeature() must be called before registering mutations", func() {
+		m.EditObjectMetadata(func(*editors.ObjectMetaEditor) error { return nil })
+	})
+
+	assert.PanicsWithValue(t, "cronjob.Mutator: BeginFeature() must be called before registering mutations", func() {
+		m.EnsureContainer(corev1.Container{Name: "test"})
+	})
+}

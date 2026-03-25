@@ -26,10 +26,10 @@ func TestMutator_EditObjectMetadata(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+	require.NoError(t, m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("app", "myapp")
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 	assert.Equal(t, "myapp", p.Labels["app"])
 }
@@ -38,7 +38,7 @@ func TestMutator_EditObjectMetadata_Nil(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditObjectMetadata(nil)
+	require.NoError(t, m.EditObjectMetadata(nil))
 	assert.NoError(t, m.Apply())
 }
 
@@ -48,10 +48,10 @@ func TestMutator_EditSpec_SetMinAvailable(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		e.SetMinAvailable(intstr.FromInt32(2))
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 	require.NotNil(t, p.Spec.MinAvailable)
 	assert.Equal(t, intstr.FromInt32(2), *p.Spec.MinAvailable)
@@ -61,10 +61,10 @@ func TestMutator_EditSpec_SetMaxUnavailable(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		e.SetMaxUnavailable(intstr.FromString("25%"))
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 	require.NotNil(t, p.Spec.MaxUnavailable)
 	assert.Equal(t, intstr.FromString("25%"), *p.Spec.MaxUnavailable)
@@ -77,10 +77,10 @@ func TestMutator_EditSpec_SetSelector(t *testing.T) {
 	selector := &metav1.LabelSelector{
 		MatchLabels: map[string]string{"app": "web"},
 	}
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		e.SetSelector(selector)
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 	require.NotNil(t, p.Spec.Selector)
 	assert.Equal(t, selector, p.Spec.Selector)
@@ -90,10 +90,10 @@ func TestMutator_EditSpec_SetUnhealthyPodEvictionPolicy(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		e.SetUnhealthyPodEvictionPolicy(policyv1.AlwaysAllow)
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 	require.NotNil(t, p.Spec.UnhealthyPodEvictionPolicy)
 	assert.Equal(t, policyv1.AlwaysAllow, *p.Spec.UnhealthyPodEvictionPolicy)
@@ -103,11 +103,11 @@ func TestMutator_EditSpec_RawAccess(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		val := intstr.FromInt32(3)
 		e.Raw().MinAvailable = &val
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 	require.NotNil(t, p.Spec.MinAvailable)
 	assert.Equal(t, intstr.FromInt32(3), *p.Spec.MinAvailable)
@@ -117,7 +117,7 @@ func TestMutator_EditSpec_Nil(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditSpec(nil)
+	require.NoError(t, m.EditSpec(nil))
 	assert.NoError(t, m.Apply())
 }
 
@@ -130,7 +130,7 @@ func TestMutator_OperationOrder(t *testing.T) {
 	m := NewMutator(p)
 	m.BeginFeature()
 	// Register in reverse logical order to confirm Apply() enforces category ordering.
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		// Branch on the label set by the metadata edit: if metadata ran first
 		// the label exists and we set MinAvailable to 1; otherwise we set it to 99.
 		if p.Labels["order"] == "metadata-first" {
@@ -139,11 +139,11 @@ func TestMutator_OperationOrder(t *testing.T) {
 			e.SetMinAvailable(intstr.FromInt32(99))
 		}
 		return nil
-	})
-	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+	}))
+	require.NoError(t, m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("order", "metadata-first")
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 
 	assert.Equal(t, "metadata-first", p.Labels["order"])
@@ -157,15 +157,15 @@ func TestMutator_MultipleFeatures(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+	require.NoError(t, m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("feature1", "on")
 		return nil
-	})
+	}))
 	m.BeginFeature()
-	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+	require.NoError(t, m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("feature2", "on")
 		return nil
-	})
+	}))
 	require.NoError(t, m.Apply())
 
 	assert.Equal(t, "on", p.Labels["feature1"])
@@ -176,9 +176,9 @@ func TestMutator_EditSpec_ErrorPropagated(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditSpec(func(_ *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(_ *editors.PodDisruptionBudgetSpecEditor) error {
 		return assert.AnError
-	})
+	}))
 	err := m.Apply()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, assert.AnError)
@@ -188,9 +188,9 @@ func TestMutator_EditObjectMetadata_ErrorPropagated(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
+	require.NoError(t, m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
 		return assert.AnError
-	})
+	}))
 	err := m.Apply()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, assert.AnError)
@@ -225,17 +225,17 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 
 	// Record a mutation in the first feature plan
 	m.BeginFeature()
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		e.SetMinAvailable(intstr.FromInt32(1))
 		return nil
-	})
+	}))
 
 	// Start a new feature and record a different mutation
 	m.BeginFeature()
-	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+	require.NoError(t, m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("f1", "on")
 		return nil
-	})
+	}))
 
 	// The first plan should have exactly one spec edit and no metadata edits
 	assert.Len(t, m.plans[0].specEdits, 1, "first plan should have one spec edit")
@@ -249,10 +249,10 @@ func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	p := newTestPDB()
 	m := NewMutator(p)
 	m.BeginFeature()
-	m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+	require.NoError(t, m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 		e.SetMinAvailable(intstr.FromInt32(1))
 		return nil
-	})
+	}))
 
 	require.NoError(t, m.Apply())
 	assert.Len(t, m.plans, 1, "no extra plans should be created during Apply")

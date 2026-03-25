@@ -2,6 +2,8 @@ package pdb
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/stretchr/testify/assert"
@@ -10,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
-	"testing"
 )
 
 func newValidPDB() *policyv1.PodDisruptionBudget {

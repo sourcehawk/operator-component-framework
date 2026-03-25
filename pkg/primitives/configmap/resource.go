@@ -36,7 +36,7 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes ConfigMap into the desired state.
 //
 // The mutation process follows this order:
-//  1. The object is updated to reflect the desired base state.
+//  1. The desired base state is applied to the current object.
 //  2. Feature mutations: all registered feature-gated mutations are applied in order.
 //
 // This method is invoked by the framework during the Update phase of reconciliation.

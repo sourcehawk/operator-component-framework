@@ -48,14 +48,15 @@ func (s suspensionResults) summary() concepts.SuspensionStatusWithReason {
 // It ensures that suspension mutations are applied and tracks the progress of each resource.
 // If any resource fails to suspend, all encountered errors are joined and returned.
 func suspendResources(
-	ctx context.Context, rec ReconcileContext, resources []Resource, mapper meta.RESTMapper,
+	ctx context.Context, rec ReconcileContext, resources []Resource,
+	componentName string, mapper meta.RESTMapper,
 ) ([]concepts.SuspensionStatusWithReason, error) {
 	var results []concepts.SuspensionStatusWithReason
 	var errs []error
 
 	for _, resource := range resources {
 		if suspendable, ok := resource.(concepts.Suspendable); ok {
-			status, err := suspendResource(ctx, rec, resource, suspendable, mapper)
+			status, err := suspendResource(ctx, rec, resource, suspendable, componentName, mapper)
 			if err != nil {
 				// gather the errors to suspend as many resources as possible
 				errs = append(errs, err)
@@ -85,7 +86,7 @@ func suspendResources(
 // Stage 2: Mutation
 //   - Registers suspension-specific mutations via Suspend(), then applies them to the
 //     resource's desired state.
-//   - Persists these mutations to the cluster using createOrUpdateResources.
+//   - Persists these mutations to the cluster using applyResources.
 //     If the resource does not yet exist, it is created with suspension mutations already applied
 //     (e.g., a Deployment is created with zero replicas). This is intentional: the resource is
 //     immediately available in its suspended state, ready for when suspension ends.
@@ -98,7 +99,7 @@ func suspendResources(
 //     shutdown or final state persistence (e.g., via finalizers or pre-stop hooks).
 func suspendResource(
 	ctx context.Context, rec ReconcileContext, resource Resource, suspendable concepts.Suspendable,
-	mapper meta.RESTMapper,
+	componentName string, mapper meta.RESTMapper,
 ) (concepts.SuspensionStatusWithReason, error) {
 	// Get the object if possible
 	object, err := resource.Object()
@@ -107,7 +108,7 @@ func suspendResource(
 	}
 
 	// Short-circuit: if the resource should be deleted on suspend and already doesn't exist,
-	// skip CreateOrUpdate to avoid a create->delete churn loop on every reconcile.
+	// skip Apply to avoid a create->delete churn loop on every reconcile.
 	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.
 	if suspendable.DeleteOnSuspend() {
 		existing, ok := object.DeepCopyObject().(client.Object)
@@ -136,7 +137,7 @@ func suspendResource(
 	}
 
 	// Apply suspension mutation (if any)
-	_, err = createOrUpdateResources(ctx, rec, []Resource{resource}, mapper)
+	_, err = applyResources(ctx, rec, []Resource{resource}, componentName, mapper)
 	if err != nil {
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 			"failed to create or update resource %s on suspension: %w", resource.Identity(), err,

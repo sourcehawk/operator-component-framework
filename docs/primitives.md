@@ -11,6 +11,8 @@ A primitive wraps a specific Kubernetes kind (e.g., `Deployment`, `ConfigMap`) a
 - **Desired state baseline** — the ideal configuration of the resource.
 - **Lifecycle integration** — built-in readiness detection, grace handling, and suspension.
 - **Mutation surfaces** — typed APIs for modifying the resource based on active features or version constraints.
+- **Server-Side Apply** — desired state is applied via SSA, preserving server defaults and fields managed by external
+  controllers.
 
 Each primitive implements the `component.Resource` interface, and may additionally implement one or more
 [lifecycle interfaces](#lifecycle-interfaces) to participate in component status aggregation.
@@ -81,6 +83,21 @@ Primitives implement behavioral interfaces that the component layer uses for sta
 
 Custom resource wrappers can implement any subset of these interfaces to opt into the corresponding component behaviors.
 
+## Server-Side Apply
+
+The framework reconciles resources using **Server-Side Apply** (SSA). Each primitive builds the desired state — the
+baseline object with all registered mutations applied — and patches it to the cluster using `client.Apply`. Only fields
+the operator declares are sent; server-managed defaults, fields set by other controllers (HPAs, sidecar injectors,
+annotation-based tooling), and values written by webhooks are left untouched.
+
+Field ownership is tracked automatically by the Kubernetes API server. The field manager name is derived from the owner
+and component: `"{Owner.GetKind()}/{componentName}"`. The framework applies with forced ownership, meaning it will take
+control of any conflicting fields from other managers. Fields that the operator does not include in its desired state
+are left to their current owners.
+
+This approach removes the perpetual-update problem that arises when an operator strips server defaults every reconcile
+cycle, and it allows primitives to coexist naturally in clusters where multiple controllers touch the same resources.
+
 ## Mutation System
 
 Primitives use a **plan-and-apply pattern**: instead of mutating the Kubernetes object directly, mutations record their
@@ -97,14 +114,13 @@ This design:
 
 Editors provide scoped, typed APIs for modifying specific parts of a resource:
 
-| Editor                  | Scope                                                                   |
-| ----------------------- | ----------------------------------------------------------------------- |
-| `ContainerEditor`       | Environment variables, arguments, resource limits, ports                |
-| `PodSpecEditor`         | Volumes, tolerations, node selectors, service account, security context |
-| `DeploymentSpecEditor`  | Replicas, update strategy, label selectors                              |
-| `ConfigMapDataEditor`   | `.data` entries — set, remove, deep-merge YAML patches, raw access      |
-| `ObjectMetaEditor`      | Labels and annotations on any Kubernetes object                         |
-| `BindingSubjectsEditor` | Subjects on RoleBinding and ClusterRoleBinding resources                |
+| Editor                 | Scope                                                                   |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `ContainerEditor`      | Environment variables, arguments, resource limits, ports                |
+| `PodSpecEditor`        | Volumes, tolerations, node selectors, service account, security context |
+| `DeploymentSpecEditor` | Replicas, update strategy, label selectors                              |
+| `ConfigMapDataEditor`  | `.data` entries — set, remove, deep-merge YAML patches, raw access      |
+| `ObjectMetaEditor`     | Labels and annotations on any Kubernetes object                         |
 
 Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the
 underlying Kubernetes struct while keeping the mutation scoped to that editor's target.
@@ -125,11 +141,10 @@ have been applied. This means a single mutation can safely add a container and t
 
 ## Built-in Primitives
 
-| Primitive                    | Category | Documentation                               |
-| ---------------------------- | -------- | ------------------------------------------- |
-| `pkg/primitives/deployment`  | Workload | [deployment.md](primitives/deployment.md)   |
-| `pkg/primitives/configmap`   | Static   | [configmap.md](primitives/configmap.md)     |
-| `pkg/primitives/rolebinding` | Static   | [rolebinding.md](primitives/rolebinding.md) |
+| Primitive                   | Category | Documentation                             |
+| --------------------------- | -------- | ----------------------------------------- |
+| `pkg/primitives/deployment` | Workload | [deployment.md](primitives/deployment.md) |
+| `pkg/primitives/configmap`  | Static   | [configmap.md](primitives/configmap.md)   |
 
 ## Usage Examples
 

@@ -17,10 +17,9 @@ func NewConfigMapResource(owner *sharedapp.ExampleApp) (component.Resource, erro
 	// 1. Create the base ConfigMap object.
 	//
 	// app.yaml is initialised to an empty string to declare operator ownership of
-	// that key. With Server-Side Apply, only operator-owned fields are managed —
-	// an empty value is sufficient to signal ownership and prevent the live
-	// cluster value from bleeding into the next reconcile cycle when a feature
-	// is toggled off.
+	// that key. An empty value is sufficient to signal ownership and prevent the
+	// live cluster value from bleeding into the next reconcile cycle when a
+	// feature is toggled off.
 	base := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      owner.Name + "-config",

@@ -19,7 +19,7 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	currentTyped, ok := current.(T)
 	if !ok {
 		var zero T
-		return zero, fmt.Errorf("expected %T, got %T", *new(T), current)
+		return zero, fmt.Errorf("type assertion failed: expected current to be assignable to %T, got %T", zero, current)
 	}
 
 	mutator := newMutator(currentTyped)

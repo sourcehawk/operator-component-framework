@@ -89,8 +89,8 @@ func TestResource_Mutate(t *testing.T) {
 	obj, err := res.Object()
 	require.NoError(t, err)
 	require.NoError(t, res.Mutate(obj))
-	got := obj.(*appsv1.Deployment)
 
+	got := obj.(*appsv1.Deployment)
 	assert.Equal(t, int32(3), *got.Spec.Replicas)
 	assert.Equal(t, "test", got.Labels["app"])
 	assert.Equal(t, "BAR", got.Spec.Template.Spec.Containers[0].Env[0].Value)
@@ -144,8 +144,8 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	obj, err := res.Object()
 	require.NoError(t, err)
 	require.NoError(t, res.Mutate(obj))
-	got := obj.(*appsv1.Deployment)
 
+	got := obj.(*appsv1.Deployment)
 	assert.Equal(t, "v3", got.Spec.Template.Spec.Containers[0].Image)
 }
 
@@ -278,12 +278,11 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		obj, err := res.Object()
+		current := deploy.DeepCopy()
+		err = res.Mutate(current)
 		require.NoError(t, err)
-		require.NoError(t, res.Mutate(obj))
-		got := obj.(*appsv1.Deployment)
 
-		assert.Equal(t, int32(0), *got.Spec.Replicas)
+		assert.Equal(t, int32(0), *current.Spec.Replicas)
 	})
 
 	t.Run("Suspend uses custom mutation handler", func(t *testing.T) {
@@ -300,13 +299,12 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		obj, err := res.Object()
+		current := deploy.DeepCopy()
+		err = res.Mutate(current)
 		require.NoError(t, err)
-		require.NoError(t, res.Mutate(obj))
-		got := obj.(*appsv1.Deployment)
 
 		m.AssertExpectations(t)
-		assert.Equal(t, int32(1), *got.Spec.Replicas)
+		assert.Equal(t, int32(1), *current.Spec.Replicas)
 	})
 }
 
@@ -367,4 +365,3 @@ func TestResource_ExtractData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "nginx:latest", extractedImage)
 }
-

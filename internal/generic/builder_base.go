@@ -2,10 +2,24 @@ package generic
 
 import (
 	"errors"
+	"reflect"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+func isNil(i any) bool {
+	if i == nil {
+		return true
+	}
+	v := reflect.ValueOf(i)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.UnsafePointer, reflect.Interface, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
 
 // BaseBuilder provides shared behavior for all generic internal resource builders.
 type BaseBuilder[T client.Object, M MutatorApplier] struct {

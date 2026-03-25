@@ -47,9 +47,10 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes Deployment into the desired state.
 //
 // The mutation process follows a specific order:
-//  1. Feature Mutations: All registered feature-based mutations are applied in
-//     order, allowing for granular, version-gated changes to the Deployment.
-//  2. Suspension: If the resource is in a suspending state, the suspension
+//  1. Core State: The desired base state is applied to the current object.
+//  2. Feature Mutations: All registered feature-based mutations are applied,
+//     allowing for granular, version-gated changes to the Deployment.
+//  3. Suspension: If the resource is in a suspending state, the suspension
 //     logic (e.g., scaling to zero) is applied.
 //
 // This method is invoked by the framework during the "Update" phase of

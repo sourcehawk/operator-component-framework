@@ -60,6 +60,8 @@ func (r *BaseResource[T, M]) Mutate(current client.Object) error {
 // PreviewObject returns the object as it would appear after feature mutations have been applied,
 // without modifying the resource's internal DesiredObject.
 //
+// The desired object is used as a stand-in for the current cluster state.
+//
 // Suspension mutations are not applied; the preview reflects content state only.
 func (r *BaseResource[T, M]) PreviewObject() (T, error) {
 	currentCopy, ok := r.DesiredObject.DeepCopyObject().(T)

@@ -11,8 +11,8 @@ import (
 // Builder is a configuration helper for creating and customizing a ConfigMap Resource.
 //
 // It provides a fluent API for registering mutations and data extractors.
-// Build() validates the configuration and returns an initialized Resource ready
-// for use in a reconciliation loop.
+// Build() validates the configuration and returns an initialized Resource
+// ready for use in a reconciliation loop.
 type Builder struct {
 	base *generic.StaticBuilder[*corev1.ConfigMap, *Mutator]
 }

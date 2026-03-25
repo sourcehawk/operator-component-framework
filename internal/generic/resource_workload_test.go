@@ -51,9 +51,9 @@ func TestWorkloadResource(t *testing.T) {
 			},
 		}
 
-		obj, err := res.Object()
+		got, err := res.Object()
 		require.NoError(t, err)
-		require.NoError(t, res.Mutate(obj))
+		require.NoError(t, res.Mutate(got))
 		assert.True(t, mutCalled, "mutation was not called")
 	})
 
@@ -67,9 +67,8 @@ func TestWorkloadResource(t *testing.T) {
 		err := res.Suspend()
 		require.NoError(t, err)
 
-		obj, err := res.Object()
-		require.NoError(t, err)
-		err = res.Mutate(obj)
+		current := obj.DeepCopy()
+		err = res.Mutate(current)
 		require.NoError(t, err)
 
 		assert.True(t, suspendMutCalled, "suspend mutation was not called")

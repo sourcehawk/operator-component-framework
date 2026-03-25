@@ -39,6 +39,7 @@ func TestTaskResource(t *testing.T) {
 	})
 
 	t.Run("Mutate and Suspend", func(t *testing.T) {
+		current := obj.DeepCopy()
 		mutCalled := false
 		res.Mutations = []Mutation[*mockMutator]{
 			{
@@ -51,9 +52,7 @@ func TestTaskResource(t *testing.T) {
 			},
 		}
 
-		obj, err := res.Object()
-		require.NoError(t, err)
-		err = res.Mutate(obj)
+		err := res.Mutate(current)
 		require.NoError(t, err)
 		assert.True(t, mutCalled, "mutation was not called")
 
@@ -66,9 +65,8 @@ func TestTaskResource(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		obj, err = res.Object()
-		require.NoError(t, err)
-		err = res.Mutate(obj)
+		current = obj.DeepCopy()
+		err = res.Mutate(current)
 		require.NoError(t, err)
 
 		assert.True(t, suspendMutCalled, "suspend mutation was not called")

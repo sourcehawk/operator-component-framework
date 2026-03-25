@@ -53,9 +53,9 @@ func TestResource_Mutate(t *testing.T) {
 	obj, err := res.Object()
 	require.NoError(t, err)
 	require.NoError(t, res.Mutate(obj))
-	got := obj.(*corev1.ConfigMap)
 
-	assert.Equal(t, "value", got.Data["key"])
+	cm := obj.(*corev1.ConfigMap)
+	assert.Equal(t, "value", cm.Data["key"])
 }
 
 func TestResource_Mutate_WithMutation(t *testing.T) {
@@ -75,10 +75,10 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	obj, err := res.Object()
 	require.NoError(t, err)
 	require.NoError(t, res.Mutate(obj))
-	got := obj.(*corev1.ConfigMap)
 
-	assert.Equal(t, "value", got.Data["key"])
-	assert.Equal(t, "yes", got.Data["from-mutation"])
+	cm := obj.(*corev1.ConfigMap)
+	assert.Equal(t, "value", cm.Data["key"])
+	assert.Equal(t, "yes", cm.Data["from-mutation"])
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -104,12 +104,10 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	obj, err := res.Object()
-	require.NoError(t, err)
-	require.NoError(t, res.Mutate(obj))
-	got := obj.(*corev1.ConfigMap)
+	current := &corev1.ConfigMap{}
+	require.NoError(t, res.Mutate(current))
 
-	assert.Equal(t, "b", got.Data["order"])
+	assert.Equal(t, "b", current.Data["order"])
 }
 
 func TestResource_ExtractData(t *testing.T) {

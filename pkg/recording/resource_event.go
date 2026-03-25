@@ -6,12 +6,13 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func typeName(obj any) string {
@@ -31,54 +32,46 @@ func typeName(obj any) string {
 	return t.Name()
 }
 
-func operationReason(op controllerutil.OperationResult, object client.Object) string {
+func applyOperationReason(op concepts.ConvergingOperation, object client.Object) string {
 	switch op {
-	case controllerutil.OperationResultCreated:
+	case concepts.ConvergingOperationCreated:
 		return "Created" + typeName(object)
-	case controllerutil.OperationResultUpdated:
+	case concepts.ConvergingOperationUpdated:
 		return "Updated" + typeName(object)
-	case controllerutil.OperationResultUpdatedStatus:
-		return "UpdatedResourceAndStatus" + typeName(object)
-	case controllerutil.OperationResultUpdatedStatusOnly:
-		return "UpdatedStatusOnly" + typeName(object)
 	default:
 		return "Unchanged" + typeName(object)
 	}
 }
 
-func operationMessage(op controllerutil.OperationResult, object client.Object) string {
+func applyOperationMessage(op concepts.ConvergingOperation, object client.Object) string {
 	switch op {
-	case controllerutil.OperationResultCreated:
+	case concepts.ConvergingOperationCreated:
 		return fmt.Sprintf("Created %s '%s'", typeName(object), object.GetName())
-	case controllerutil.OperationResultUpdated:
+	case concepts.ConvergingOperationUpdated:
 		return fmt.Sprintf("Updated %s '%s'", typeName(object), object.GetName())
-	case controllerutil.OperationResultUpdatedStatus:
-		return fmt.Sprintf("Updated resource and status of %s '%s'", typeName(object), object.GetName())
-	case controllerutil.OperationResultUpdatedStatusOnly:
-		return fmt.Sprintf("Updated status of %s '%s'", typeName(object), object.GetName())
 	default:
 		return fmt.Sprintf("%s '%s' left unchanged", typeName(object), object.GetName())
 	}
 }
 
-// RecordCreateOrUpdateOperationEvent records an event for CreateOrUpdate operations on a resource (object) for it's owning
-// resource (owner)
+// RecordApplyOperationEvent records an event for Server-Side Apply operations on a resource (object)
+// for its owning resource (owner).
 //
-//   - OperationResultNone: No event is recorded
-//   - Other operation results: An event of type Normal is recorded
-//   - messageKeyValuePairs are strings expected on the format "myKey=myValue" and are prepended to the generated
+//   - ConvergingOperationNone: No event is recorded
+//   - Other operations: An event of type Normal is recorded
+//   - messageKeyValuePairs are strings expected in the format "myKey=myValue" and are prepended to the generated
 //     event message for additional information
-func RecordCreateOrUpdateOperationEvent(
-	recorder record.EventRecorder, op controllerutil.OperationResult, object client.Object, owner runtime.Object,
+func RecordApplyOperationEvent(
+	recorder record.EventRecorder, op concepts.ConvergingOperation, object client.Object, owner runtime.Object,
 	messageKeyValuePairs ...string,
 ) {
-	if op == controllerutil.OperationResultNone {
+	if op == concepts.ConvergingOperationNone {
 		return
 	}
-	message := operationMessage(op, object)
+	message := applyOperationMessage(op, object)
 	if len(messageKeyValuePairs) > 0 {
 		message = fmt.Sprintf("%s (%s)", message, strings.Join(messageKeyValuePairs, ", "))
 	}
 
-	recorder.Eventf(owner, v1.EventTypeNormal, operationReason(op, object), message)
+	recorder.Eventf(owner, v1.EventTypeNormal, applyOperationReason(op, object), message)
 }

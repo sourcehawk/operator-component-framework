@@ -6,12 +6,12 @@ object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state           |
-| **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a raw escape hatch for free-form access      |
-| **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features         |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ConfigMap after each sync cycle               |
+| Capability            | Detail                                                                                              |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state      |
+| **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a raw escape hatch for free-form access |
+| **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features    |
+| **Data extraction**   | Reads generated or updated values back from the reconciled ConfigMap after each sync cycle          |
 
 ## Building a ConfigMap Primitive
 
@@ -247,8 +247,7 @@ cmResource, err := configmap.NewBuilder(base).
 hash, err := cmResource.DesiredHash()
 ```
 
-The hash covers only operator-controlled fields (`.data` and `.binaryData` after applying the baseline and mutations).
-Only changes to operator-owned content will change the hash.
+The hash covers only operator-controlled fields — only changes to operator-owned content will change the hash.
 
 ### Annotating a Deployment pod template (single-pass pattern)
 

@@ -123,6 +123,7 @@ Editors provide scoped, typed APIs for modifying specific parts of a resource:
 | `PolicyRulesEditor`     | `.rules` entries on Role and ClusterRole objects — add, remove, clear, raw access |
 | `BindingSubjectsEditor` | Subjects on RoleBinding or ClusterRoleBinding — ensure, remove, raw               |
 | `PVCSpecEditor`         | Access modes, storage class, volume mode, storage requests                        |
+| `IngressSpecEditor`     | Ingress class, default backend, rules, TLS configuration                          |
 | `ObjectMetaEditor`      | Labels and annotations on any Kubernetes object                                   |
 
 Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the
@@ -153,6 +154,8 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |
 | `pkg/primitives/pvc`                | Integration | [pvc.md](primitives/pvc.md)                               |
 | `pkg/primitives/hpa`                | Integration | [hpa.md](primitives/hpa.md)                               |
+| `pkg/primitives/ingress`            | Integration | [ingress.md](primitives/ingress.md)                       |
+
 
 ## Usage Examples
 

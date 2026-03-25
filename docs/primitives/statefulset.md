@@ -244,8 +244,8 @@ m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
 })
 ```
 
-**Important:** `spec.volumeClaimTemplates` is immutable after creation in Kubernetes. These mutation methods are primarily
-useful for constructing the initial desired state or when recreating a StatefulSet.
+**Important:** `spec.volumeClaimTemplates` is immutable after creation in Kubernetes. These mutation methods are
+primarily useful for constructing the initial desired state or when recreating a StatefulSet.
 
 ## Convenience Methods
 

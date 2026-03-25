@@ -167,6 +167,7 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/pdb`                | Static      | [pdb.md](primitives/pdb.md)                               |
 | `pkg/primitives/clusterrole`        | Static      | [clusterrole.md](primitives/clusterrole.md)               |
 | `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |
+| `pkg/primitives/service`            | Integration | [service.md](primitives/service.md)                       |
 | `pkg/primitives/pv`                 | Integration | [pv.md](primitives/pv.md)                                 |
 | `pkg/primitives/pvc`                | Integration | [pvc.md](primitives/pvc.md)                               |
 | `pkg/primitives/hpa`                | Integration | [hpa.md](primitives/hpa.md)                               |

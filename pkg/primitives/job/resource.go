@@ -65,9 +65,10 @@ func (r *Resource) Mutate(current client.Object) error {
 // By default, it uses DefaultConvergingStatusHandler, which checks the Job's status
 // conditions for Complete or Failed.
 //
-// The return value includes a descriptive status (Completed, TaskRunning, TaskPending,
-// or TaskFailing) and a human-readable reason, which are used to update the component's
-// conditions.
+// The return value includes a descriptive status (concepts.CompletionStatusCompleted,
+// concepts.CompletionStatusRunning, concepts.CompletionStatusPending, or
+// concepts.CompletionStatusFailing) and a human-readable reason, which are used to
+// update the component's conditions.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.CompletionStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
 }

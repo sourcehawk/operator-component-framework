@@ -11,16 +11,6 @@ following the same pod-template mutation pattern as the Deployment primitive.
 | **Completion tracking** | Monitors Job conditions and reports `Completed`, `TaskRunning`, `TaskPending`, or `TaskFailing` |
 | **Suspension**          | Sets `spec.suspend=true` or deletes the Job (default); reports `Suspending` / `Suspended`       |
 | **Mutation pipeline**   | Typed editors for metadata, job spec, pod spec, and containers                                  |
-| **Flavors**             | Preserves externally-managed fields (labels, annotations, pod template metadata)                |
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current Job with a deep copy of the desired object, then restores server-managed
-metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status
-subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by
-the API server or other controllers.
-
-Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten.
 
 ## Building a Job Primitive
 
@@ -45,7 +35,6 @@ base := &batchv1.Job{
 }
 
 resource, err := job.NewBuilder(base).
-    WithFieldApplicationFlavor(job.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
@@ -247,28 +236,6 @@ resource, err := job.NewBuilder(base).
     }).
     Build()
 ```
-
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-### PreserveCurrentPodTemplateLabels
-
-Preserves labels on the live object's pod template that are absent from the applied desired state.
-
-### PreserveCurrentPodTemplateAnnotations
-
-Preserves annotations on the live object's pod template that are absent from the applied desired state.
 
 ## Guidance
 

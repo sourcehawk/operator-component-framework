@@ -64,10 +64,12 @@ func TestResource_Mutate(t *testing.T) {
 	res, err := NewBuilder(desired).Build()
 	require.NoError(t, err)
 
-	current := &batchv1.Job{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "busybox", current.Spec.Template.Spec.Containers[0].Image)
+	got := obj.(*batchv1.Job)
+	assert.Equal(t, "busybox", got.Spec.Template.Spec.Containers[0].Image)
 }
 
 func TestResource_Mutate_WithMutation(t *testing.T) {
@@ -84,10 +86,12 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &batchv1.Job{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "BAR", current.Spec.Template.Spec.Containers[0].Env[0].Value)
+	got := obj.(*batchv1.Job)
+	assert.Equal(t, "BAR", got.Spec.Template.Spec.Containers[0].Env[0].Value)
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -120,11 +124,13 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &batchv1.Job{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	require.NotNil(t, current.Spec.BackoffLimit)
-	assert.Equal(t, int32(10), *current.Spec.BackoffLimit)
+	got := obj.(*batchv1.Job)
+	require.NotNil(t, got.Spec.BackoffLimit)
+	assert.Equal(t, int32(10), *got.Spec.BackoffLimit)
 }
 
 func TestResource_Mutate_CrossMutationSelectorSnapshot(t *testing.T) {
@@ -155,14 +161,16 @@ func TestResource_Mutate_CrossMutationSelectorSnapshot(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &batchv1.Job{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
+	got := obj.(*batchv1.Job)
 	// The sidecar container should exist and have the env var from the second mutation.
 	var sidecar *corev1.Container
-	for i := range current.Spec.Template.Spec.Containers {
-		if current.Spec.Template.Spec.Containers[i].Name == "sidecar" {
-			sidecar = &current.Spec.Template.Spec.Containers[i]
+	for i := range got.Spec.Template.Spec.Containers {
+		if got.Spec.Template.Spec.Containers[i].Name == "sidecar" {
+			sidecar = &got.Spec.Template.Spec.Containers[i]
 			break
 		}
 	}
@@ -357,128 +365,6 @@ func TestResource_ExtractData_Error(t *testing.T) {
 	err = res.ExtractData()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "extract error")
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-job",
-			Namespace:       "test-ns",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-	}
-	desired := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "test-ns",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit: int32Ptr(5),
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	require.NotNil(t, current.Spec.BackoffLimit)
-	assert.Equal(t, int32(5), *current.Spec.BackoffLimit)
-	assert.Equal(t, "test", current.Labels["app"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
-}
-
-func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
-	current := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "test-ns",
-		},
-		Status: batchv1.JobStatus{
-			Active:    2,
-			Succeeded: 1,
-			Failed:    0,
-		},
-	}
-	desired := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-job",
-			Namespace: "test-ns",
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit: int32Ptr(5),
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec is applied
-	require.NotNil(t, current.Spec.BackoffLimit)
-	assert.Equal(t, int32(5), *current.Spec.BackoffLimit)
-
-	// Status from the live object is preserved
-	assert.Equal(t, int32(2), current.Status.Active)
-	assert.Equal(t, int32(1), current.Status.Succeeded)
-	assert.Equal(t, int32(0), current.Status.Failed)
-}
-
-func TestResource_CustomFieldApplicator(t *testing.T) {
-	desired := newValidJob()
-	desired.Labels = map[string]string{"app": "test"}
-
-	applicatorCalled := false
-	res, err := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current *batchv1.Job, desired *batchv1.Job) error {
-			applicatorCalled = true
-			current.Name = desired.Name
-			current.Namespace = desired.Namespace
-			current.Spec = *desired.Spec.DeepCopy()
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	current := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{"external": "label"},
-		},
-	}
-	err = res.Mutate(current)
-	require.NoError(t, err)
-
-	assert.True(t, applicatorCalled)
-	assert.Equal(t, "busybox", current.Spec.Template.Spec.Containers[0].Image)
-	assert.Equal(t, "label", current.Labels["external"], "External label should be preserved")
-	assert.NotContains(t, current.Labels, "app", "Desired label should NOT be applied by custom applicator")
-
-	t.Run("returns error", func(t *testing.T) {
-		res, err := NewBuilder(desired).
-			WithCustomFieldApplicator(func(_ *batchv1.Job, _ *batchv1.Job) error {
-				return errors.New("applicator error")
-			}).
-			Build()
-		require.NoError(t, err)
-
-		err = res.Mutate(&batchv1.Job{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "applicator error")
-	})
 }
 
 func int32Ptr(i int32) *int32 {

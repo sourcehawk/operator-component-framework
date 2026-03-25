@@ -34,7 +34,6 @@ func NewBuilder(job *batchv1.Job) *Builder {
 	base := generic.NewTaskBuilder[*batchv1.Job, *Mutator](
 		job,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -60,37 +59,6 @@ func NewBuilder(job *batchv1.Job) *Builder {
 // based on the component's current version or configuration.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing Job in the cluster.
-//
-// There is a default field applicator (DefaultFieldApplicator) that overwrites
-// the entire spec of the current object with the desired state. Using a custom
-// applicator is necessary when external controllers manage specific fields that
-// should not be overwritten.
-//
-// If a custom applicator is set, it overrides the default baseline application
-// logic. Post-application flavors and mutations are still applied afterward.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current *batchv1.Job, desired *batchv1.Job) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a reusable post-application "flavor" for
-// the Job.
-//
-// Flavors are applied in the order they are registered, after the baseline field
-// applicator (default or custom) has already run. They are typically used to
-// preserve selected live fields from the current object that should not be
-// overwritten by the desired state.
-//
-// If the provided flavor is nil, it is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*batchv1.Job](flavor))
 	return b
 }
 

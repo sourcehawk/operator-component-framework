@@ -7,18 +7,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), and the Status
-// subresource from the original current object.
-func DefaultFieldApplicator(current, desired *batchv1.Job) error {
-	original := current.DeepCopy()
-	*current = *desired.DeepCopy()
-	generic.PreserveServerManagedFields(current, original)
-	generic.PreserveStatus(current, original)
-	return nil
-}
-
 // Resource is a high-level abstraction for managing a Kubernetes Job within a controller's
 // reconciliation loop.
 //
@@ -59,18 +47,15 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes Job into the desired state.
 //
 // The mutation process follows a specific order:
-//  1. Core State: The current object is reset to the desired base state, or
-//     modified via a custom field applicator if one is configured.
-//  2. Field-Application Flavors: Any configured field-application flavors are
-//     applied on top of the baseline field application to adjust how fields are
-//     merged or preserved.
-//  3. Feature Mutations: All registered feature-based mutations are applied,
+//  1. Core State: The desired base state is applied to the current object.
+//  2. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the Job.
-//  4. Suspension: If the resource is in a suspending state, the suspension
+//  3. Suspension: If the resource is in a suspending state, the suspension
 //     logic (e.g., setting suspend=true) is applied.
 //
 // This method is invoked by the framework during the "Update" phase of
-// reconciliation.
+// reconciliation. It ensures that the in-memory object reflects all
+// configuration and feature requirements before it is sent to the API server.
 func (r *Resource) Mutate(current client.Object) error {
 	return r.base.Mutate(current)
 }

@@ -163,6 +163,7 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/cronjob`            | Integration | [cronjob.md](primitives/cronjob.md)                       |
 | `pkg/primitives/configmap`          | Static      | [configmap.md](primitives/configmap.md)                   |
 | `pkg/primitives/secret`             | Static      | [secret.md](primitives/secret.md)                         |
+| `pkg/primitives/role`               | Static      | [role.md](primitives/role.md)                             |
 | `pkg/primitives/pdb`                | Static      | [pdb.md](primitives/pdb.md)                               |
 | `pkg/primitives/clusterrole`        | Static      | [clusterrole.md](primitives/clusterrole.md)               |
 | `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |

@@ -8,6 +8,42 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
+// --- SetRules ---
+
+func TestPolicyRulesEditor_SetRules(t *testing.T) {
+	var rules []rbacv1.PolicyRule
+	e := NewPolicyRulesEditor(&rules)
+	e.SetRules([]rbacv1.PolicyRule{
+		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
+	})
+	assert.Len(t, rules, 1)
+	assert.Equal(t, []string{"pods"}, rules[0].Resources)
+}
+
+func TestPolicyRulesEditor_SetRules_ReplacesExisting(t *testing.T) {
+	rules := []rbacv1.PolicyRule{
+		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
+		{APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"list"}},
+	}
+	e := NewPolicyRulesEditor(&rules)
+	e.SetRules([]rbacv1.PolicyRule{
+		{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"create"}},
+	})
+	assert.Len(t, rules, 1)
+	assert.Equal(t, []string{"deployments"}, rules[0].Resources)
+}
+
+func TestPolicyRulesEditor_SetRules_Empty(t *testing.T) {
+	rules := []rbacv1.PolicyRule{
+		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
+	}
+	e := NewPolicyRulesEditor(&rules)
+	e.SetRules([]rbacv1.PolicyRule{})
+	assert.Empty(t, rules)
+}
+
+// --- AddRule ---
+
 func TestPolicyRulesEditor_AddRule(t *testing.T) {
 	var rules []rbacv1.PolicyRule
 	e := NewPolicyRulesEditor(&rules)
@@ -37,6 +73,8 @@ func TestPolicyRulesEditor_AddRule_Appends(t *testing.T) {
 	assert.Equal(t, "secrets", rules[1].Resources[0])
 }
 
+// --- RemoveRuleByIndex ---
+
 func TestPolicyRulesEditor_RemoveRuleByIndex(t *testing.T) {
 	rules := []rbacv1.PolicyRule{
 		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
@@ -64,6 +102,8 @@ func TestPolicyRulesEditor_RemoveRuleByIndex_OutOfBounds(t *testing.T) {
 	assert.Len(t, rules, 1)
 }
 
+// --- Clear ---
+
 func TestPolicyRulesEditor_Clear(t *testing.T) {
 	rules := []rbacv1.PolicyRule{
 		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get"}},
@@ -74,6 +114,8 @@ func TestPolicyRulesEditor_Clear(t *testing.T) {
 
 	assert.Nil(t, rules)
 }
+
+// --- Raw ---
 
 func TestPolicyRulesEditor_Raw(t *testing.T) {
 	var rules []rbacv1.PolicyRule
@@ -91,16 +133,18 @@ func TestPolicyRulesEditor_Raw(t *testing.T) {
 	assert.Equal(t, "configmaps", rules[0].Resources[0])
 }
 
-func TestNewPolicyRulesEditor_PanicsOnNilPointer(t *testing.T) {
-	assert.PanicsWithValue(t, "NewPolicyRulesEditor: rules must be a non-nil pointer", func() {
-		NewPolicyRulesEditor(nil)
-	})
-}
-
 func TestPolicyRulesEditor_Raw_NilInitialized(t *testing.T) {
 	var rules []rbacv1.PolicyRule
 	e := NewPolicyRulesEditor(&rules)
 
 	raw := e.Raw()
 	assert.NotNil(t, *raw)
+}
+
+// --- Nil safety ---
+
+func TestNewPolicyRulesEditor_PanicsOnNilPointer(t *testing.T) {
+	assert.PanicsWithValue(t, "NewPolicyRulesEditor: rules must be a non-nil pointer", func() {
+		NewPolicyRulesEditor(nil)
+	})
 }

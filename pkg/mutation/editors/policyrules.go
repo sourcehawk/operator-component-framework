@@ -9,7 +9,7 @@ import (
 // PolicyRulesEditor provides a typed API for mutating the .rules field of
 // a Kubernetes Role or ClusterRole.
 //
-// It exposes structured operations (AddRule, RemoveRuleByIndex, Clear) as well
+// It exposes structured operations (SetRules, AddRule, RemoveRuleByIndex, Clear) as well
 // as Raw() for free-form access when none of the structured methods are sufficient.
 type PolicyRulesEditor struct {
 	rules *[]rbacv1.PolicyRule
@@ -39,6 +39,11 @@ func (e *PolicyRulesEditor) Raw() *[]rbacv1.PolicyRule {
 		*e.rules = []rbacv1.PolicyRule{}
 	}
 	return e.rules
+}
+
+// SetRules replaces the full rules slice with the provided rules.
+func (e *PolicyRulesEditor) SetRules(rules []rbacv1.PolicyRule) {
+	*e.rules = rules
 }
 
 // AddRule appends a PolicyRule to the rules slice.

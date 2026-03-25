@@ -243,7 +243,6 @@ pkg/
 ├── mutation/
 │   ├── editors/        # Typed mutation APIs (DeploymentSpec, PodSpec, Container, …)
 │   └── selectors/      # Container selectors (ByName, ByIndex, All)
-├── apply/              # Server-Side Apply utilities
 └── recording/          # Event recording helpers
 
 examples/

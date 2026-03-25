@@ -91,8 +91,9 @@ the operator declares are sent; server-managed defaults, fields set by other con
 annotation-based tooling), and values written by webhooks are left untouched.
 
 Field ownership is tracked automatically by the Kubernetes API server. The field manager name is derived from the owner
-and component: `"{Owner.GetKind()}/{componentName}"`. Conflicts with other field managers are detected by the API server
-at apply time, eliminating the need for manual merge strategies or preservation policies.
+and component: `"{Owner.GetKind()}/{componentName}"`. The framework applies with forced ownership, meaning it will take
+control of any conflicting fields from other managers. Fields that the operator does not include in its desired state are
+left to their current owners.
 
 This approach removes the perpetual-update problem that arises when an operator strips server defaults every reconcile
 cycle, and it allows primitives to coexist naturally in clusters where multiple controllers touch the same resources.

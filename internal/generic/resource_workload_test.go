@@ -39,7 +39,6 @@ func TestWorkloadResource(t *testing.T) {
 	})
 
 	t.Run("Mutate", func(t *testing.T) {
-		current := obj.DeepCopy()
 		mutCalled := false
 		res.Mutations = []Mutation[*mockMutator]{
 			{
@@ -52,8 +51,9 @@ func TestWorkloadResource(t *testing.T) {
 			},
 		}
 
-		err := res.Mutate(current)
+		got, err := res.Object()
 		require.NoError(t, err)
+		require.NoError(t, res.Mutate(got))
 		assert.True(t, mutCalled, "mutation was not called")
 	})
 

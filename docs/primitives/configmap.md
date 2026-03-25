@@ -11,7 +11,6 @@ object metadata.
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state                           |
 | **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a raw escape hatch for free-form access                      |
 | **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features                         |
-| **Server-Side Apply** | Desired state is applied via SSA; server defaults and fields managed by external controllers are preserved automatically |
 | **Data extraction**   | Reads generated or updated values back from the reconciled ConfigMap after each sync cycle                               |
 
 ## Building a ConfigMap Primitive
@@ -33,12 +32,6 @@ resource, err := configmap.NewBuilder(base).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
-
-## Server-Side Apply
-
-The configmap primitive applies desired state to the cluster using Server-Side Apply. The framework sends only the
-fields the operator manages; `.data` entries, labels, and annotations owned by other controllers or added by webhooks
-are left untouched. Field ownership conflicts are detected automatically by the Kubernetes API server.
 
 ## Mutations
 

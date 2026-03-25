@@ -7,6 +7,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/internal/scope"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/recording"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,11 +28,12 @@ import (
 //
 // Server-Side Apply behavior:
 //   - The resource's desired state is built via Object() + Mutate(), then patched into the
-//     cluster with field ownership. Only operator-managed fields are sent; server-defaulted
+//     cluster with forced field ownership. Only operator-managed fields are sent; server-defaulted
 //     fields (e.g., imagePullPolicy, strategy) are untouched. This prevents perpetual updates
 //     that occur with CreateOrUpdate when the API server re-adds defaults every reconcile.
 //   - Field ownership is derived from the owner's Kind and the component name
-//     (e.g., "ExampleApp/web-interface").
+//     (e.g., "ExampleApp/web-interface"). Forced ownership means the framework takes control
+//     of any conflicting fields from other managers for fields it explicitly declares.
 func applyResources(
 	ctx context.Context, rec ReconcileContext, resources []Resource,
 	componentName string, mapper meta.RESTMapper,
@@ -50,16 +52,22 @@ func applyResources(
 			)
 		}
 
-		// Check if the object already exists (for ConvergingOperation detection)
-		existingVersion := ""
+		// Check if the object already exists (reads from informer cache, not the API server).
+		var objectExists bool
 		existing := obj.DeepCopyObject().(client.Object)
 		if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), existing); err == nil {
-			existingVersion = existing.GetResourceVersion()
+			objectExists = true
 		} else if !apierrors.IsNotFound(err) {
 			return nil, fmt.Errorf(
 				"failed to check existence of resource %s: %w", resource.Identity(), err,
 			)
 		}
+
+		// Snapshot the object before mutations for operation detection.
+		// Comparing pre-Mutate vs post-Mutate detects whether the operator's desired
+		// state actually changed, without being affected by status subresource updates
+		// from other controllers (Mutate does not touch status).
+		preMutate := obj.DeepCopyObject()
 
 		// Apply mutations to desired state
 		ownerRefSkipped, err := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper)
@@ -69,10 +77,22 @@ func applyResources(
 			)
 		}
 
-		// SSA requires managedFields to be nil in the patch object.
-		// After the first apply, DesiredObject retains server state including managedFields.
-		// Clear it before patching to avoid "metadata.managedFields must be nil" errors.
-		obj.SetManagedFields(nil)
+		// Determine the converging operation before clearing server fields.
+		var convergingOperation concepts.ConvergingOperation
+		switch {
+		case !objectExists:
+			convergingOperation = concepts.ConvergingOperationCreated
+		case !equality.Semantic.DeepEqual(preMutate, obj):
+			convergingOperation = concepts.ConvergingOperationUpdated
+		default:
+			convergingOperation = concepts.ConvergingOperationNone
+		}
+
+		// Prepare the object for SSA by clearing server-populated fields that must not
+		// be present in the patch. After the first reconcile, DesiredObject retains the
+		// server response (including these fields) because Mutate updates the internal
+		// pointer and Patch writes back into the same object.
+		clearServerFields(obj)
 
 		// Set GVK on the object (required for SSA — builders often omit TypeMeta)
 		if err := ensureGVK(obj, rec.Scheme); err != nil {
@@ -81,22 +101,11 @@ func applyResources(
 			)
 		}
 
-		// Server-Side Apply
+		// Server-Side Apply with forced ownership
 		if err := rec.Client.Patch(ctx, obj, client.Apply, client.ForceOwnership, fieldOwner); err != nil {
 			return nil, fmt.Errorf(
 				"failed to apply resource %s: %w", resource.Identity(), err,
 			)
-		}
-
-		// Determine operation based on whether the resource existed and whether it changed
-		var convergingOperation concepts.ConvergingOperation
-		switch {
-		case existingVersion == "":
-			convergingOperation = concepts.ConvergingOperationCreated
-		case existingVersion != obj.GetResourceVersion():
-			convergingOperation = concepts.ConvergingOperationUpdated
-		default:
-			convergingOperation = concepts.ConvergingOperationNone
 		}
 
 		if ownerRefSkipped && convergingOperation != concepts.ConvergingOperationNone {
@@ -148,6 +157,20 @@ func mutateResource(
 	return false, ctrl.SetControllerReference(owner, obj, scheme)
 }
 
+// clearServerFields removes metadata fields that the API server populates on
+// responses but must not be present in an SSA patch object. After the first
+// apply, the resource's internal DesiredObject retains these from the server
+// response because Patch writes back into the same pointer.
+func clearServerFields(obj client.Object) {
+	obj.SetManagedFields(nil)
+	obj.SetResourceVersion("")
+	obj.SetUID("")
+	obj.SetGeneration(0)
+	obj.SetDeletionTimestamp(nil)
+	obj.SetDeletionGracePeriodSeconds(nil)
+	obj.SetSelfLink("")
+}
+
 // ensureGVK sets the GroupVersionKind on the object if it is not already set.
 // SSA requires TypeMeta to be present on the patch object.
 func ensureGVK(obj client.Object, scheme *runtime.Scheme) error {
@@ -158,8 +181,9 @@ func ensureGVK(obj client.Object, scheme *runtime.Scheme) error {
 	if err != nil {
 		return err
 	}
-	if len(gvks) > 0 {
-		obj.GetObjectKind().SetGroupVersionKind(gvks[0])
+	if len(gvks) == 0 {
+		return fmt.Errorf("no GVK registered in scheme for type %T", obj)
 	}
+	obj.GetObjectKind().SetGroupVersionKind(gvks[0])
 	return nil
 }

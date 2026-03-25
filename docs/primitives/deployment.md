@@ -12,7 +12,6 @@ pod specs, and metadata.
 | **Graceful rollouts** | Detects stalled or failing rollouts via configurable grace periods                                                                                       |
 | **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                              |
 | **Mutation pipeline** | Typed editors for metadata, deployment spec, pod spec, and containers                                                                                    |
-| **Server-Side Apply** | Desired state is applied via SSA; server defaults and fields managed by external controllers are preserved automatically                                 |
 
 ## Building a Deployment Primitive
 
@@ -33,13 +32,6 @@ resource, err := deployment.NewBuilder(base).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
-
-## Server-Side Apply
-
-The deployment primitive applies desired state to the cluster using Server-Side Apply. The framework sends only the
-fields the operator manages; server defaults (such as default container resource values or strategy settings) and fields
-owned by other controllers (such as replicas managed by an HPA, or annotations added by sidecar injectors) are left
-untouched. Field ownership conflicts are detected automatically by the Kubernetes API server.
 
 ## Mutations
 

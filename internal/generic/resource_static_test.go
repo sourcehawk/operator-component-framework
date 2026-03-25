@@ -42,10 +42,11 @@ func TestStaticResource(t *testing.T) {
 	})
 
 	t.Run("Mutate", func(t *testing.T) {
-		current := obj.DeepCopy()
-		err := res.Mutate(current)
+		got, err := res.Object()
 		require.NoError(t, err)
-		assert.Equal(t, testVal, res.DesiredObject.Data["foo"])
+		require.NoError(t, res.Mutate(got))
+		cm := got.(*corev1.ConfigMap)
+		assert.Equal(t, testVal, cm.Data["foo"])
 	})
 
 	t.Run("Mutate applies registered mutations", func(t *testing.T) {
@@ -56,8 +57,9 @@ func TestStaticResource(t *testing.T) {
 			return nil
 		}))
 
-		current := obj.DeepCopy()
-		require.NoError(t, res.Mutate(current))
+		got, err := res.Object()
+		require.NoError(t, err)
+		require.NoError(t, res.Mutate(got))
 		assert.True(t, applied, "mutation was not applied")
 
 		res.Mutations = nil

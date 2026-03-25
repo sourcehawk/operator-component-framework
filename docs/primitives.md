@@ -152,6 +152,7 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/clusterrole`        | Static      | [clusterrole.md](primitives/clusterrole.md)               |
 | `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |
 | `pkg/primitives/pvc`                | Integration | [pvc.md](primitives/pvc.md)                               |
+| `pkg/primitives/hpa`                | Integration | [hpa.md](primitives/hpa.md)                               |
 
 ## Usage Examples
 

@@ -124,6 +124,7 @@ run-examples: ## Run all examples to verify they execute without error.
 	go run ./examples/configmap-primitive/.
 	go run ./examples/rolebinding-primitive/.
 	go run ./examples/custom-resource-implementation/.
+	go run ./examples/hpa-primitive/.
 	go run ./examples/clusterrolebinding-primitive/.
 
 ##@ E2E Testing

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -241,4 +242,25 @@ func TestDesiredHash_DisabledMutationDoesNotAffectHash(t *testing.T) {
 	h2, err := withDisabled.DesiredHash()
 	require.NoError(t, err)
 	assert.Equal(t, h1, h2, "disabled mutation must not influence the hash")
+}
+
+func TestDesiredHash_MetadataOnlyMutationDoesNotAffectHash(t *testing.T) {
+	withoutLabel := newHashTestResource(t, map[string][]byte{"key": []byte("value")})
+	withLabel := newHashTestResource(t, map[string][]byte{"key": []byte("value")}, Mutation{
+		Name:    "label",
+		Feature: feature.NewResourceFeature("1.0.0", nil),
+		Mutate: func(m *Mutator) error {
+			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+				e.EnsureLabel("extra", "label")
+				return nil
+			})
+			return nil
+		},
+	})
+
+	h1, err := withoutLabel.DesiredHash()
+	require.NoError(t, err)
+	h2, err := withLabel.DesiredHash()
+	require.NoError(t, err)
+	assert.Equal(t, h1, h2, "metadata-only mutations must not influence the hash")
 }

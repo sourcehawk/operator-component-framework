@@ -155,13 +155,17 @@ func (m *Mutator) Apply() error {
 	// .stringData on reads. Doing it here ensures the mutated object matches
 	// the server-persisted form, preventing spurious Updates from
 	// controllerutil.CreateOrUpdate on every reconcile.
-	if len(m.secret.StringData) > 0 {
-		if m.secret.Data == nil {
-			m.secret.Data = make(map[string][]byte, len(m.secret.StringData))
+	if m.secret.StringData != nil {
+		if len(m.secret.StringData) > 0 {
+			if m.secret.Data == nil {
+				m.secret.Data = make(map[string][]byte, len(m.secret.StringData))
+			}
+			for k, v := range m.secret.StringData {
+				m.secret.Data[k] = []byte(v)
+			}
 		}
-		for k, v := range m.secret.StringData {
-			m.secret.Data[k] = []byte(v)
-		}
+		// Always clear StringData so the in-memory Secret matches the
+		// API server's canonical form, which never includes stringData.
 		m.secret.StringData = nil
 	}
 

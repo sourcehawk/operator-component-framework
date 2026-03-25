@@ -122,6 +122,7 @@ build-examples: ## Build all example binaries.
 run-examples: ## Run all examples to verify they execute without error.
 	go run ./examples/deployment-primitive/.
 	go run ./examples/configmap-primitive/.
+	go run ./examples/secret-primitive/.
 	go run ./examples/custom-resource-implementation/.
 
 ##@ E2E Testing

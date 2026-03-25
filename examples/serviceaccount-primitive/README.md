@@ -6,7 +6,6 @@ how to manage a Kubernetes ServiceAccount as a component of a larger application
 - **Base Construction**: Initializing a ServiceAccount with basic metadata.
 - **Feature Mutations**: Composing image pull secrets and automount settings from independent, feature-gated mutations.
 - **Metadata Mutations**: Setting version labels on the ServiceAccount via `EditObjectMetadata`.
-- **Field Flavors**: Preserving labels managed by external controllers using `PreserveCurrentLabels`.
 - **Data Extraction**: Harvesting ServiceAccount fields after each reconcile cycle.
 
 ## Directory Structure

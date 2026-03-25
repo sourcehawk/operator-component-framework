@@ -10,7 +10,6 @@ secrets, the automount token flag, and object metadata.
 | --------------------- | --------------------------------------------------------------------------------------------------------- |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state            |
 | **Mutation pipeline** | Direct mutator methods for `.imagePullSecrets` and `.automountServiceAccountToken`, plus metadata editors |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                    |
 | **Data extraction**   | Reads generated or updated values back from the reconciled ServiceAccount after each sync cycle           |
 
 ## Building a ServiceAccount Primitive
@@ -26,28 +25,7 @@ base := &corev1.ServiceAccount{
 }
 
 resource, err := serviceaccount.NewBuilder(base).
-    WithFieldApplicationFlavor(serviceaccount.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current ServiceAccount with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
-live `.secrets` field from the original object. The `.secrets` field is populated by the token controller and is not
-owned by the primitive — any `.secrets` value on the desired object is discarded. ServiceAccount has no Status
-subresource, so no status preservation is needed.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := serviceaccount.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *corev1.ServiceAccount) error {
-        // Only synchronise owned fields; leave other fields untouched.
-        current.ImagePullSecrets = desired.ImagePullSecrets
-        return nil
-    }).
     Build()
 ```
 
@@ -169,34 +147,6 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := serviceaccount.NewBuilder(base).
-    WithFieldApplicationFlavor(serviceaccount.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := serviceaccount.NewBuilder(base).
-    WithFieldApplicationFlavor(serviceaccount.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Full Example: Feature-Composed ServiceAccount
 
 ```go
@@ -224,7 +174,6 @@ func DisableAutomountMutation(version string, disableAutomount bool) serviceacco
 }
 
 resource, err := serviceaccount.NewBuilder(base).
-    WithFieldApplicationFlavor(serviceaccount.PreserveCurrentLabels).
     WithMutation(BaseImagePullSecretMutation(owner.Spec.Version)).
     WithMutation(DisableAutomountMutation(owner.Spec.Version, owner.Spec.DisableAutomount)).
     Build()

@@ -1,6 +1,10 @@
 package editors
 
-import rbacv1 "k8s.io/api/rbac/v1"
+import (
+	"slices"
+
+	rbacv1 "k8s.io/api/rbac/v1"
+)
 
 // PolicyRulesEditor provides a typed API for mutating the .rules field of
 // a Kubernetes Role or ClusterRole.
@@ -49,7 +53,7 @@ func (e *PolicyRulesEditor) RemoveRuleByIndex(index int) {
 	if index < 0 || index >= len(*e.rules) {
 		return
 	}
-	*e.rules = append((*e.rules)[:index], (*e.rules)[index+1:]...)
+	*e.rules = slices.Delete(*e.rules, index, index+1)
 }
 
 // Clear removes all rules.

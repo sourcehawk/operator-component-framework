@@ -148,6 +148,10 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/configmap`   | Static   | [configmap.md](primitives/configmap.md)     |
 | `pkg/primitives/clusterrole` | Static   | [clusterrole.md](primitives/clusterrole.md) |
 
+The `clusterrole` primitive is exercised by the `examples/clusterrole-primitive` example. Because it requires
+cluster-scoped RBAC and may need elevated permissions, it is intentionally not included in the default
+`make run-examples` target used for CI/local smoke runs.
+
 ## Usage Examples
 
 ### Creating a primitive

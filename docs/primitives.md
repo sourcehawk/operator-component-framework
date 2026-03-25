@@ -114,14 +114,24 @@ This design:
 
 Editors provide scoped, typed APIs for modifying specific parts of a resource:
 
-| Editor                    | Scope                                                                   |
-| ------------------------- | ----------------------------------------------------------------------- |
-| `ContainerEditor`         | Environment variables, arguments, resource limits, ports                |
-| `PodSpecEditor`           | Volumes, tolerations, node selectors, service account, security context |
-| `DeploymentSpecEditor`    | Replicas, update strategy, label selectors                              |
-| `ConfigMapDataEditor`     | `.data` entries — set, remove, deep-merge YAML patches, raw access      |
-| `NetworkPolicySpecEditor` | Pod selector, ingress/egress rules, policy types                        |
-| `ObjectMetaEditor`        | Labels and annotations on any Kubernetes object                         |
+| Editor                          | Scope                                                                                               |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ContainerEditor`               | Environment variables, arguments, resource limits, ports                                            |
+| `PodSpecEditor`                 | Volumes, tolerations, node selectors, service account, security context                             |
+| `DeploymentSpecEditor`          | Replicas, update strategy, label selectors                                                          |
+| `StatefulSetSpecEditor`         | Replicas, service name, pod management policy, update strategy                                      |
+| `ReplicaSetSpecEditor`          | Replicas, min ready seconds                                                                         |
+| `DaemonSetSpecEditor`           | Update strategy, min ready seconds, revision history limit                                          |
+| `PodDisruptionBudgetSpecEditor` | MinAvailable, MaxUnavailable, selector, eviction policy                                             |
+| `ConfigMapDataEditor`           | `.data` entries — set, remove, deep-merge YAML patches, raw access                                  |
+| `SecretDataEditor`              | `.data` and `.stringData` — set/remove bytes, `SetString`/`RemoveString`, `Raw()`/`RawStringData()` |
+| `PolicyRulesEditor`             | `.rules` entries on Role and ClusterRole objects — add, remove, clear, raw access                   |
+| `BindingSubjectsEditor`         | Subjects on RoleBinding or ClusterRoleBinding — ensure, remove, raw                                 |
+| `PVSpecEditor`                  | PV spec fields — capacity, access modes, reclaim policy, storage class                              |
+| `PVCSpecEditor`                 | Access modes, storage class, volume mode, storage requests                                          |
+| `IngressSpecEditor`             | Ingress class, default backend, rules, TLS configuration                                            |
+| `NetworkPolicySpecEditor`       | Pod selector, ingress/egress rules, policy types                                                    |
+| `ObjectMetaEditor`              | Labels and annotations on any Kubernetes object                                                     |
 
 Every editor exposes a `.Raw()` method for cases where the typed API is insufficient, giving direct access to the
 underlying Kubernetes struct while keeping the mutation scoped to that editor's target.
@@ -142,11 +152,25 @@ have been applied. This means a single mutation can safely add a container and t
 
 ## Built-in Primitives
 
-| Primitive                      | Category | Documentation                                   |
-| ------------------------------ | -------- | ----------------------------------------------- |
-| `pkg/primitives/deployment`    | Workload | [deployment.md](primitives/deployment.md)       |
-| `pkg/primitives/configmap`     | Static   | [configmap.md](primitives/configmap.md)         |
-| `pkg/primitives/networkpolicy` | Static   | [networkpolicy.md](primitives/networkpolicy.md) |
+| Primitive                           | Category    | Documentation                                             |
+| ----------------------------------- | ----------- | --------------------------------------------------------- |
+| `pkg/primitives/deployment`         | Workload    | [deployment.md](primitives/deployment.md)                 |
+| `pkg/primitives/statefulset`        | Workload    | [statefulset.md](primitives/statefulset.md)               |
+| `pkg/primitives/replicaset`         | Workload    | [replicaset.md](primitives/replicaset.md)                 |
+| `pkg/primitives/daemonset`          | Workload    | [daemonset.md](primitives/daemonset.md)                   |
+| `pkg/primitives/pod`                | Workload    | [pod.md](primitives/pod.md)                               |
+| `pkg/primitives/job`                | Task        | [job.md](primitives/job.md)                               |
+| `pkg/primitives/cronjob`            | Integration | [cronjob.md](primitives/cronjob.md)                       |
+| `pkg/primitives/configmap`          | Static      | [configmap.md](primitives/configmap.md)                   |
+| `pkg/primitives/secret`             | Static      | [secret.md](primitives/secret.md)                         |
+| `pkg/primitives/pdb`                | Static      | [pdb.md](primitives/pdb.md)                               |
+| `pkg/primitives/clusterrole`        | Static      | [clusterrole.md](primitives/clusterrole.md)               |
+| `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |
+| `pkg/primitives/pv`                 | Integration | [pv.md](primitives/pv.md)                                 |
+| `pkg/primitives/pvc`                | Integration | [pvc.md](primitives/pvc.md)                               |
+| `pkg/primitives/hpa`                | Integration | [hpa.md](primitives/hpa.md)                               |
+| `pkg/primitives/ingress`            | Integration | [ingress.md](primitives/ingress.md)                       |
+| `pkg/primitives/networkpolicy`      | Static      | [networkpolicy.md](primitives/networkpolicy.md)           |
 
 ## Usage Examples
 

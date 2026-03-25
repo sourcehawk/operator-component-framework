@@ -1,5 +1,5 @@
 .PHONY: all
-all: fmt fmt-md lint test build-examples
+all: fmt lint test build-examples
 
 ##@ General
 

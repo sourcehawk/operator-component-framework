@@ -147,6 +147,7 @@ have been applied. This means a single mutation can safely add a container and t
 | Primitive                           | Category    | Documentation                                             |
 | ----------------------------------- | ----------- | --------------------------------------------------------- |
 | `pkg/primitives/deployment`         | Workload    | [deployment.md](primitives/deployment.md)                 |
+| `pkg/primitives/cronjob`            | Integration | [cronjob.md](primitives/cronjob.md)                       |
 | `pkg/primitives/configmap`          | Static      | [configmap.md](primitives/configmap.md)                   |
 | `pkg/primitives/clusterrole`        | Static      | [clusterrole.md](primitives/clusterrole.md)               |
 | `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |

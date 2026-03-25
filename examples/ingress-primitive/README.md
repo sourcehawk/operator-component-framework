@@ -5,8 +5,6 @@ manage a Kubernetes Ingress as a component of a larger application, utilizing fe
 
 - **Base Construction**: Initializing an Ingress with rules, TLS, and ingress class.
 - **Feature Mutations**: Applying conditional changes (TLS configuration, version annotations) using the `Mutator`.
-- **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., cert-manager,
-  ingress controllers).
 - **Data Extraction**: Harvesting information from the reconciled resource.
 
 ## Directory Structure

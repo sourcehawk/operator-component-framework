@@ -8,15 +8,10 @@ import (
 
 // ApplyMutations provides a shared implementation for the Mutate method in generic resources.
 // It handles:
-//  1. Baseline field application and flavors
-//  2. Feature mutations
-//  3. Optional suspension mutations
+//  1. Feature mutations
+//  2. Optional suspension mutations
 func ApplyMutations[T client.Object, M MutatorApplier](
 	current client.Object,
-	desired T,
-	defaultApplicator FieldApplicator[T],
-	customApplicator FieldApplicator[T],
-	flavors []FieldApplicationFlavor[T],
 	newMutator func(T) M,
 	mutations []Mutation[M],
 	suspender func(M) error,
@@ -24,22 +19,10 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	currentTyped, ok := current.(T)
 	if !ok {
 		var zero T
-		return zero, fmt.Errorf("expected %T, got %T", desired, current)
+		return zero, fmt.Errorf("type assertion failed: expected current to be assignable to %T, got %T", zero, current)
 	}
 
-	applied, err := applyBaselineAndFlavors(
-		currentTyped,
-		desired,
-		defaultApplicator,
-		customApplicator,
-		flavors,
-	)
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-
-	mutator := newMutator(applied)
+	mutator := newMutator(currentTyped)
 	fm, isFeatureMutator := any(mutator).(FeatureMutator)
 
 	for _, mutation := range mutations {
@@ -74,5 +57,5 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 		}
 	}
 
-	return applied, nil
+	return currentTyped, nil
 }

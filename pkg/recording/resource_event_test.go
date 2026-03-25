@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -11,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func Test_RecordResourceOperationEvent(t *testing.T) {
@@ -19,7 +19,7 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 		name            string
 		object          client.Object
 		owner           client.Object
-		operation       controllerutil.OperationResult
+		operation       concepts.ConvergingOperation
 		keyValuePairs   []string
 		expectedReason  string
 		expectedMessage string
@@ -33,7 +33,7 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 				},
 			},
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultCreated,
+			operation:       concepts.ConvergingOperationCreated,
 			keyValuePairs:   []string{},
 			expectedReason:  "CreatedServiceAccount",
 			expectedMessage: "Created ServiceAccount 'test-service-account'",
@@ -46,36 +46,10 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 				},
 			},
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultUpdated,
+			operation:       concepts.ConvergingOperationUpdated,
 			keyValuePairs:   []string{"foo=bar"},
 			expectedReason:  "UpdatedDeployment",
 			expectedMessage: "Updated Deployment 'test-deployment' (foo=bar)",
-		},
-		{
-			name: "updated deployment resource and status",
-			object: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-deployment",
-				},
-			},
-			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultUpdatedStatus,
-			keyValuePairs:   []string{"foo=bar", "bar=baz"},
-			expectedReason:  "UpdatedResourceAndStatusDeployment",
-			expectedMessage: "Updated resource and status of Deployment 'test-deployment' (foo=bar, bar=baz)",
-		},
-		{
-			name: "updated encrypted storage status",
-			object: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-service",
-				},
-			},
-			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultUpdatedStatusOnly,
-			keyValuePairs:   []string{},
-			expectedReason:  "UpdatedStatusOnlyService",
-			expectedMessage: "Updated status of Service 'test-service'",
 		},
 		{
 			name: "unchanged object",
@@ -85,7 +59,7 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 				},
 			},
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultNone,
+			operation:       concepts.ConvergingOperationNone,
 			keyValuePairs:   []string{},
 			expectedReason:  "",
 			expectedMessage: "",
@@ -101,7 +75,7 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 				return u
 			}(),
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultUpdated,
+			operation:       concepts.ConvergingOperationUpdated,
 			keyValuePairs:   []string{"foo=bar"},
 			expectedReason:  "UpdatedXRole",
 			expectedMessage: "Updated XRole 'test-xrole' (foo=bar)",
@@ -116,7 +90,7 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 				return &u
 			}(),
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultUpdated,
+			operation:       concepts.ConvergingOperationUpdated,
 			keyValuePairs:   []string{"foo=bar"},
 			expectedReason:  "UpdatedXRoleValue",
 			expectedMessage: "Updated XRoleValue 'test-xrole-value' (foo=bar)",
@@ -133,7 +107,7 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 				return *p
 			}(),
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultUpdated,
+			operation:       concepts.ConvergingOperationUpdated,
 			keyValuePairs:   []string{},
 			expectedReason:  "UpdatedServiceAccount",
 			expectedMessage: "Updated ServiceAccount 'test-nested-sa'",
@@ -149,20 +123,20 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 				return *p
 			}(),
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResultUpdated,
+			operation:       concepts.ConvergingOperationUpdated,
 			keyValuePairs:   []string{},
 			expectedReason:  "UpdatedXRoleNested",
 			expectedMessage: "Updated XRoleNested 'test-xrole-nested'",
 		},
 		{
-			name: "unchanged object through custom operation result",
+			name: "unchanged object through custom operation",
 			object: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-service",
 				},
 			},
 			owner:           &appsv1.Deployment{},
-			operation:       controllerutil.OperationResult("Unknown"),
+			operation:       concepts.ConvergingOperation("Unknown"),
 			keyValuePairs:   []string{},
 			expectedReason:  "UnchangedService",
 			expectedMessage: "Service 'test-service' left unchanged",
@@ -173,7 +147,7 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			RecordCreateOrUpdateOperationEvent(recorder, tc.operation, tc.object, tc.owner, tc.keyValuePairs...)
+			RecordApplyOperationEvent(recorder, tc.operation, tc.object, tc.owner, tc.keyValuePairs...)
 
 			if tc.expectNoEvent {
 				select {

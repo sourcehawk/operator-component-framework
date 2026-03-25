@@ -51,6 +51,12 @@ func (m *Mutator) BeginFeature() {
 	m.active = &m.plans[len(m.plans)-1]
 }
 
+func (m *Mutator) ensureActive() {
+	if m.active == nil {
+		panic("serviceaccount.Mutator: BeginFeature() must be called before registering mutations")
+	}
+}
+
 // EditObjectMetadata records a mutation for the ServiceAccount's own metadata.
 //
 // Metadata edits are applied before image pull secret and automount edits within
@@ -59,12 +65,14 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
 // EnsureImagePullSecret records that the named image pull secret should be present
 // in .imagePullSecrets. If a secret with the same name already exists, it is a no-op.
 func (m *Mutator) EnsureImagePullSecret(name string) {
+	m.ensureActive()
 	m.active.imagePullSecretEdits = append(m.active.imagePullSecretEdits, func(sa *corev1.ServiceAccount) {
 		for _, ref := range sa.ImagePullSecrets {
 			if ref.Name == name {
@@ -78,6 +86,7 @@ func (m *Mutator) EnsureImagePullSecret(name string) {
 // RemoveImagePullSecret records that the named image pull secret should be removed
 // from .imagePullSecrets. It is a no-op if the secret is not present.
 func (m *Mutator) RemoveImagePullSecret(name string) {
+	m.ensureActive()
 	m.active.imagePullSecretEdits = append(m.active.imagePullSecretEdits, func(sa *corev1.ServiceAccount) {
 		filtered := sa.ImagePullSecrets[:0]
 		for _, ref := range sa.ImagePullSecrets {
@@ -101,6 +110,7 @@ func (m *Mutator) SetAutomountServiceAccountToken(v *bool) {
 		snapshot = &val
 	}
 
+	m.ensureActive()
 	m.active.automountEdits = append(m.active.automountEdits, func(sa *corev1.ServiceAccount) {
 		sa.AutomountServiceAccountToken = snapshot
 	})

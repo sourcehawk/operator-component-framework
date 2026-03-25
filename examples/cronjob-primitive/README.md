@@ -6,7 +6,6 @@ manage a Kubernetes CronJob as a component of a larger application, utilizing fe
 - **Base Construction**: Initializing a CronJob with a schedule, job template, and containers.
 - **Feature Mutations**: Applying conditional changes (tracing env vars, metrics annotations, version-based image
   updates) using the `Mutator`.
-- **Field Flavors**: Preserving labels and annotations that might be managed by external tools.
 - **Suspension**: Suspending the CronJob by setting `spec.suspend = true`.
 - **Data Extraction**: Harvesting information from the reconciled resource.
 

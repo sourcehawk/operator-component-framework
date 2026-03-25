@@ -11,16 +11,12 @@ mutation API for managing the CronJob schedule, job template, pod spec, and cont
 | **Operational tracking** | Reports `OperationPending` (never scheduled) or `Operational` (has scheduled at least once) |
 | **Suspension**           | Sets `spec.suspend = true`; reports `Suspending` (active jobs running) / `Suspended`        |
 | **Mutation pipeline**    | Typed editors for metadata, CronJob spec, Job spec, pod spec, and containers                |
-| **Flavors**              | Preserves externally-managed fields (labels, annotations, pod template metadata)            |
 
-## Default Field Application
+## Server-Side Apply
 
-`DefaultFieldApplicator` replaces the current CronJob with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
-Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
-written by the API server or other controllers.
-
-Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten.
+The CronJob primitive reconciles resources using **Server-Side Apply** (SSA). Only fields declared by the operator are
+sent; server-managed defaults, fields set by other controllers, and values written by webhooks are left untouched. Field
+ownership is tracked automatically by the Kubernetes API server.
 
 ## Building a CronJob Primitive
 
@@ -50,7 +46,6 @@ base := &batchv1.CronJob{
 }
 
 resource, err := cronjob.NewBuilder(base).
-    WithFieldApplicationFlavor(cronjob.PreserveCurrentLabels).
     WithMutation(MyScheduleMutation(owner.Spec.Version)).
     Build()
 ```
@@ -232,8 +227,8 @@ from creating new Job objects. Existing active jobs continue to run.
 | `Suspending` | `spec.suspend == true` but active jobs still running |
 | `Suspending` | Waiting for suspend flag to be applied               |
 
-On unsuspend, the `DefaultFieldApplicator` restores the desired state (without `spec.suspend = true`), allowing the
-CronJob to resume scheduling.
+On unsuspend, the desired state (without `spec.suspend = true`) is applied via SSA, allowing the CronJob to resume
+scheduling.
 
 The CronJob is never deleted on suspend (`DeleteOnSuspend = false`).
 

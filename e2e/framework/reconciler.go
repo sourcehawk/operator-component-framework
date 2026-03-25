@@ -90,7 +90,7 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
 
-	key := req.NamespacedName.String()
+	key := req.String()
 
 	r.mu.RLock()
 	compFactory, hasComp := r.componentFactories[key]

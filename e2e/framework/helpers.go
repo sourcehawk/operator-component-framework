@@ -63,16 +63,17 @@ func InstallCRD(cfg *rest.Config) error {
 	existing, err := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
 		ctx, TestAppCRD.Name, metav1.GetOptions{},
 	)
-	if apierrors.IsNotFound(err) {
+	switch {
+	case apierrors.IsNotFound(err):
 		_, err = cs.ApiextensionsV1().CustomResourceDefinitions().Create(
 			ctx, TestAppCRD, metav1.CreateOptions{},
 		)
 		if err != nil && !apierrors.IsAlreadyExists(err) {
 			return fmt.Errorf("creating CRD: %w", err)
 		}
-	} else if err != nil {
+	case err != nil:
 		return fmt.Errorf("getting CRD: %w", err)
-	} else {
+	default:
 		TestAppCRD.ResourceVersion = existing.ResourceVersion
 		_, err = cs.ApiextensionsV1().CustomResourceDefinitions().Update(
 			ctx, TestAppCRD, metav1.UpdateOptions{},
@@ -154,7 +155,7 @@ func (m *conditionStatusMatcher) FailureMessage(actual interface{}) string {
 		m.expectedStatus, m.expectedReason, cond.Status, cond.Reason, cond.Message)
 }
 
-func (m *conditionStatusMatcher) NegatedFailureMessage(actual interface{}) string {
+func (m *conditionStatusMatcher) NegatedFailureMessage(_ interface{}) string {
 	return fmt.Sprintf("expected condition NOT to have Status=%q Reason=%q, but it did",
 		m.expectedStatus, m.expectedReason)
 }

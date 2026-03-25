@@ -101,8 +101,10 @@ func applyResources(
 			)
 		}
 
-		// Server-Side Apply with forced ownership
-		if err := rec.Client.Patch(ctx, obj, client.Apply, client.ForceOwnership, fieldOwner); err != nil {
+		// Server-Side Apply with forced ownership.
+		// client.Apply is deprecated in favor of client.Client.Apply() which requires generated
+		// ApplyConfiguration types. Using Patch with Apply is the pragmatic approach for untyped objects.
+		if err := rec.Client.Patch(ctx, obj, client.Apply, client.ForceOwnership, fieldOwner); err != nil { //nolint:staticcheck
 			return nil, fmt.Errorf(
 				"failed to apply resource %s: %w", resource.Identity(), err,
 			)

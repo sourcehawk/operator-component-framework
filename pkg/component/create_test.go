@@ -225,86 +225,66 @@ func TestApplyResources(t *testing.T) {
 		resource.AssertExpectations(t)
 	})
 
-	t.Run("should handle Alive resources", func(t *testing.T) {
-		// Given
-		resourceObject := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-alive",
-				Namespace: namespace,
-			},
-		}
-		resource := &MockAliveResource{}
-		resource.On("Object").Return(resourceObject, nil)
-		resource.On("Mutate", mock.Anything).Return(nil)
-		resource.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
-			Status: concepts.AliveConvergingStatusHealthy,
-			Reason: "Ready",
-		}, nil)
+	for _, tc := range []struct {
+		name           string
+		resource       Resource
+		expectedStatus convergingStatus
+	}{
+		{
+			name: "should handle Alive resources",
+			resource: func() Resource {
+				r := &MockAliveResource{}
+				r.On("Object").Return(&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-alive", Namespace: namespace},
+				}, nil)
+				r.On("Mutate", mock.Anything).Return(nil)
+				r.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+					Status: concepts.AliveConvergingStatusHealthy, Reason: "Ready",
+				}, nil)
+				return r
+			}(),
+			expectedStatus: convergingStatusAliveHealthy,
+		},
+		{
+			name: "should handle Operational resources",
+			resource: func() Resource {
+				r := &MockOperationalResource{}
+				r.On("Object").Return(&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-operational", Namespace: namespace},
+				}, nil)
+				r.On("Mutate", mock.Anything).Return(nil)
+				r.On("ConvergingStatus", mock.Anything).Return(concepts.OperationalStatusWithReason{
+					Status: concepts.OperationalStatusOperational, Reason: "Operational",
+				}, nil)
+				return r
+			}(),
+			expectedStatus: convergingStatusOperationalOperational,
+		},
+		{
+			name: "should handle Completable resources",
+			resource: func() Resource {
+				r := &MockCompletableResource{}
+				r.On("Object").Return(&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-completable", Namespace: namespace},
+				}, nil)
+				r.On("Mutate", mock.Anything).Return(nil)
+				r.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
+					Status: concepts.CompletionStatusCompleted, Reason: "Completed",
+				}, nil)
+				return r
+			}(),
+			expectedStatus: convergingStatusCompletableCompleted,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			results, err := applyResources(ctx, reconcileContext, []Resource{tc.resource}, "test-component", createTestRESTMapper())
 
-		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
-
-		// Then
-		require.NoError(t, err)
-		require.Len(t, results, 1)
-		assert.Equal(t, resource, results[0].Resource)
-		assert.Equal(t, convergingStatusAliveHealthy, results[0].Status.Status)
-		resource.AssertExpectations(t)
-	})
-
-	t.Run("should handle Operational resources", func(t *testing.T) {
-		// Given
-		resourceObject := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-operational",
-				Namespace: namespace,
-			},
-		}
-		resource := &MockOperationalResource{}
-		resource.On("Object").Return(resourceObject, nil)
-		resource.On("Mutate", mock.Anything).Return(nil)
-		resource.On("ConvergingStatus", mock.Anything).Return(concepts.OperationalStatusWithReason{
-			Status: concepts.OperationalStatusOperational,
-			Reason: "Operational",
-		}, nil)
-
-		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
-
-		// Then
-		require.NoError(t, err)
-		require.Len(t, results, 1)
-		assert.Equal(t, resource, results[0].Resource)
-		assert.Equal(t, convergingStatusOperationalOperational, results[0].Status.Status)
-		resource.AssertExpectations(t)
-	})
-
-	t.Run("should handle Completable resources", func(t *testing.T) {
-		// Given
-		resourceObject := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-completable",
-				Namespace: namespace,
-			},
-		}
-		resource := &MockCompletableResource{}
-		resource.On("Object").Return(resourceObject, nil)
-		resource.On("Mutate", mock.Anything).Return(nil)
-		resource.On("ConvergingStatus", mock.Anything).Return(concepts.CompletionStatusWithReason{
-			Status: concepts.CompletionStatusCompleted,
-			Reason: "Completed",
-		}, nil)
-
-		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
-
-		// Then
-		require.NoError(t, err)
-		require.Len(t, results, 1)
-		assert.Equal(t, resource, results[0].Resource)
-		assert.Equal(t, convergingStatusCompletableCompleted, results[0].Status.Status)
-		resource.AssertExpectations(t)
-	})
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			assert.Equal(t, tc.resource, results[0].Resource)
+			assert.Equal(t, tc.expectedStatus, results[0].Status.Status)
+		})
+	}
 
 	t.Run("should return error if resource.Object() fails", func(t *testing.T) {
 		// Given

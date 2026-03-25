@@ -1,7 +1,6 @@
 package generic
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,11 +11,6 @@ import (
 )
 
 const errClusterScopedNamespace = "cluster-scoped object must not have a namespace"
-
-// reflectValueOf is a helper for testing function equality.
-func reflectValueOf(i any) reflect.Value {
-	return reflect.ValueOf(i)
-}
 
 type mockMutator struct {
 	deployment *appsv1.Deployment

@@ -10,7 +10,6 @@ policies and object metadata.
 | --------------------- | ---------------------------------------------------------------------------------------------- |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state |
 | **Mutation pipeline** | Typed editors for PDB spec and object metadata, with a raw escape hatch for free-form access   |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator         |
 | **Data extraction**   | Reads generated or updated values back from the reconciled PDB after each sync cycle           |
 
 ## Building a PDB Primitive
@@ -33,27 +32,7 @@ base := &policyv1.PodDisruptionBudget{
 }
 
 resource, err := pdb.NewBuilder(base).
-    WithFieldApplicationFlavor(pdb.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current PodDisruptionBudget with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
-Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
-written by the API server or other controllers.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := pdb.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *policyv1.PodDisruptionBudget) error {
-        // Only synchronise the spec; leave metadata untouched.
-        current.Spec = *desired.Spec.DeepCopy()
-        return nil
-    }).
     Build()
 ```
 
@@ -222,34 +201,6 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := pdb.NewBuilder(base).
-    WithFieldApplicationFlavor(pdb.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := pdb.NewBuilder(base).
-    WithFieldApplicationFlavor(pdb.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Full Example: Feature-Gated Disruption Policy
 
 ```go
@@ -283,7 +234,6 @@ func StrictAvailabilityMutation(version string, enabled bool) pdb.Mutation {
 }
 
 resource, err := pdb.NewBuilder(base).
-    WithFieldApplicationFlavor(pdb.PreserveCurrentLabels).
     WithMutation(BasePDBMutation(owner.Spec.Version)).
     WithMutation(StrictAvailabilityMutation(owner.Spec.Version, owner.Spec.StrictMode)).
     Build()

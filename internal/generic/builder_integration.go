@@ -20,14 +20,13 @@ type IntegrationBuilder[T client.Object, M MutatorApplier] struct {
 func NewIntegrationBuilder[T client.Object, M MutatorApplier](
 	obj T,
 	identityFunc func(T) string,
-	defaultApplicator FieldApplicator[T],
 	newMutator func(T) M,
 ) *IntegrationBuilder[T, M] {
 	res := &IntegrationResource[T, M]{}
 	b := &IntegrationBuilder[T, M]{
 		res: res,
 	}
-	b.InitBase(obj, identityFunc, defaultApplicator, newMutator)
+	b.InitBase(obj, identityFunc, newMutator)
 	b.res.BaseResource = *b.BaseRes
 	return b
 }
@@ -37,22 +36,6 @@ func (b *IntegrationBuilder[T, M]) WithMutation(
 	m Mutation[M],
 ) *IntegrationBuilder[T, M] {
 	b.BaseBuilder.WithMutation(m)
-	return b
-}
-
-// WithCustomFieldApplicator overrides the default baseline field applicator.
-func (b *IntegrationBuilder[T, M]) WithCustomFieldApplicator(
-	applicator FieldApplicator[T],
-) *IntegrationBuilder[T, M] {
-	b.BaseBuilder.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-func (b *IntegrationBuilder[T, M]) WithFieldApplicationFlavor(
-	flavor FieldApplicationFlavor[T],
-) *IntegrationBuilder[T, M] {
-	b.BaseBuilder.WithFieldApplicationFlavor(flavor)
 	return b
 }
 

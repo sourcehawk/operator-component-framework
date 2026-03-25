@@ -6,7 +6,6 @@ to manage a Kubernetes ConfigMap as a component of a larger application, utilisi
 - **Base Construction**: Initializing a ConfigMap with basic metadata.
 - **Feature Mutations**: Composing YAML configuration from independent, feature-gated mutations using `MergeYAML`.
 - **Metadata Mutations**: Setting version labels on the ConfigMap via `EditObjectMetadata`.
-- **Field Flavors**: Preserving `.data` entries managed by external controllers using `PreserveExternalEntries`.
 - **Data Extraction**: Harvesting ConfigMap entries after each reconcile cycle.
 
 ## Directory Structure
@@ -15,7 +14,6 @@ to manage a Kubernetes ConfigMap as a component of a larger application, utilisi
   `examples/shared/app`.
 - `features/`: Contains modular feature definitions:
   - `mutations.go`: base config, version labelling, and feature-gated tracing and metrics sections.
-  - `flavors.go`: usage of `FieldApplicationFlavor` to preserve externally-managed entries.
 - `resources/`: Contains the central `NewConfigMapResource` factory that assembles all features using
   `configmap.Builder`.
 - `main.go`: A standalone entry point that demonstrates multiple reconciliation cycles with a fake client.

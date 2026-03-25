@@ -26,7 +26,7 @@ func (e *JobSpecEditor) SetCompletions(n int32) {
 	e.spec.Completions = &n
 }
 
-// SetParallelism sets the maximum number of pods running in parallel.
+// SetParallelism sets the maximum desired number of pods running at any given time.
 func (e *JobSpecEditor) SetParallelism(n int32) {
 	e.spec.Parallelism = &n
 }
@@ -36,17 +36,18 @@ func (e *JobSpecEditor) SetBackoffLimit(n int32) {
 	e.spec.BackoffLimit = &n
 }
 
-// SetActiveDeadlineSeconds sets the maximum duration in seconds for the job to run.
+// SetActiveDeadlineSeconds sets the duration in seconds relative to the start time
+// that the job may be active before it is terminated.
 func (e *JobSpecEditor) SetActiveDeadlineSeconds(seconds int64) {
 	e.spec.ActiveDeadlineSeconds = &seconds
 }
 
-// SetTTLSecondsAfterFinished sets how long (in seconds) to keep the job after it finishes.
+// SetTTLSecondsAfterFinished sets the TTL for cleaning up finished jobs.
 func (e *JobSpecEditor) SetTTLSecondsAfterFinished(seconds int32) {
 	e.spec.TTLSecondsAfterFinished = &seconds
 }
 
-// SetCompletionMode sets the completion mode of the job (e.g. NonIndexed or Indexed).
+// SetCompletionMode sets the completion mode of the job.
 func (e *JobSpecEditor) SetCompletionMode(mode batchv1.CompletionMode) {
 	e.spec.CompletionMode = &mode
 }

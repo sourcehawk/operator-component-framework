@@ -82,7 +82,7 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
-	// A second mutation should observe changes made by the first.
+	// When two features write the same key, the last feature wins (deterministic ordering).
 	desired := newValidSecret()
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{

@@ -138,11 +138,11 @@ func TestMutator_RemoveStringData(t *testing.T) {
 // --- Execution order ---
 
 func TestMutator_OperationOrder(t *testing.T) {
-	// Within a feature: metadata edits run before data edits.
+	// Both metadata and data edits are applied regardless of registration order.
 	s := newTestSecret(nil)
 	m := NewMutator(s)
 	m.BeginFeature()
-	// Register in reverse logical order to confirm Apply() enforces category ordering.
+	// Register data edit before metadata edit; both should be applied.
 	m.SetData("direct", []byte("yes"))
 	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 		e.EnsureLabel("order", "tested")
@@ -217,6 +217,30 @@ func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	require.NoError(t, m.Apply())
 	assert.Len(t, m.plans, 1, "no extra plans should be created during Apply")
 	assert.Equal(t, []byte("value"), s.Data["key"])
+}
+
+// --- BeginFeature guard ---
+
+func TestMutator_EditObjectMetadata_PanicsWithoutBeginFeature(t *testing.T) {
+	s := newTestSecret(nil)
+	m := NewMutator(s)
+	assert.PanicsWithValue(t, "BeginFeature must be called before registering mutations", func() {
+		m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+			e.EnsureLabel("app", "myapp")
+			return nil
+		})
+	})
+}
+
+func TestMutator_EditData_PanicsWithoutBeginFeature(t *testing.T) {
+	s := newTestSecret(nil)
+	m := NewMutator(s)
+	assert.PanicsWithValue(t, "BeginFeature must be called before registering mutations", func() {
+		m.EditData(func(e *editors.SecretDataEditor) error {
+			e.Set("key", []byte("value"))
+			return nil
+		})
+	})
 }
 
 // --- ObjectMutator interface ---

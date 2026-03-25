@@ -55,6 +55,9 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
+	if m.active == nil {
+		panic("BeginFeature must be called before registering mutations")
+	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -70,6 +73,9 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 func (m *Mutator) EditData(edit func(*editors.SecretDataEditor) error) {
 	if edit == nil {
 		return
+	}
+	if m.active == nil {
+		panic("BeginFeature must be called before registering mutations")
 	}
 	m.active.dataEdits = append(m.active.dataEdits, edit)
 }

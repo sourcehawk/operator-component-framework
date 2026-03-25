@@ -6,8 +6,6 @@ manage a Kubernetes Job as a component of a larger application, utilizing featur
 - **Base Construction**: Initializing a Job with basic metadata, spec, and restart policy.
 - **Feature Mutations**: Applying version-gated or conditional changes (env vars, image version, retry policies) using
   the `Mutator`.
-- **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., ArgoCD, manual
-  edits).
 - **Custom Status Handlers**: Overriding the default `ConvergingStatus` interface using the `WithCustomConvergeStatus`
   builder option.
 - **Suspension**: Demonstrating how Jobs are suspended (deleted by default) when the component is suspended.
@@ -18,7 +16,6 @@ manage a Kubernetes Job as a component of a larger application, utilizing featur
 - `app/`: Defines the mock `ExampleApp` CRD and the controller that uses the component framework.
 - `features/`: Contains modular feature definitions:
   - `mutations.go`: tracing env vars, retry policies, and version-based image updates.
-  - `flavors.go`: usage of `FieldApplicationFlavor` to preserve fields.
   - `status.go`: implementation of a custom handler for completion status.
 - `resources/`: Contains the central `NewJobResource` factory that assembles all features using the `job.Builder`.
 - `main.go`: A standalone entry point that demonstrates a single reconciliation loop using a fake client.

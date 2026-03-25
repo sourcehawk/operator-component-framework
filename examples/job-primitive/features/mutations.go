@@ -1,3 +1,4 @@
+// Package features provides sample features for the job primitive.
 package features
 
 import (

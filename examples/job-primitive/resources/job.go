@@ -53,14 +53,10 @@ func NewJobResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.TracingFeature(owner.Spec.EnableTracing))
 	builder.WithMutation(features.RetryPolicyFeature(owner.Spec.Version))
 
-	// 4. Configure flavors (e.g., preserve labels/annotations if they were modified externally).
-	builder.WithFieldApplicationFlavor(features.PreserveLabelsFlavor())
-	builder.WithFieldApplicationFlavor(features.PreserveAnnotationsFlavor())
-
-	// 5. Configure custom status handler.
+	// 4. Configure custom status handler.
 	builder.WithCustomConvergeStatus(features.CustomConvergeStatus())
 
-	// 6. Data extraction (optional).
+	// 5. Data extraction (optional).
 	builder.WithDataExtractor(func(j batchv1.Job) error {
 		fmt.Printf("Reconciling job: %s, active: %d, succeeded: %d, failed: %d\n",
 			j.Name, j.Status.Active, j.Status.Succeeded, j.Status.Failed)
@@ -75,6 +71,6 @@ func NewJobResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 7. Build the final resource.
+	// 6. Build the final resource.
 	return builder.Build()
 }

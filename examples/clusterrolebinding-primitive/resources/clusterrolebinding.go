@@ -43,10 +43,7 @@ func NewClusterRoleBindingResource(owner *sharedapp.ExampleApp) (*clusterrolebin
 	builder.WithMutation(features.VersionLabelMutation(owner.Spec.Version))
 	builder.WithMutation(features.MonitoringSubjectMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve labels added by external controllers.
-	builder.WithFieldApplicationFlavor(clusterrolebinding.PreserveCurrentLabels)
-
-	// 5. Extract data from the reconciled ClusterRoleBinding.
+	// 4. Extract data from the reconciled ClusterRoleBinding.
 	builder.WithDataExtractor(func(crb rbacv1.ClusterRoleBinding) error {
 		fmt.Printf("Reconciled ClusterRoleBinding: %s\n", crb.Name)
 		fmt.Printf("  RoleRef: %s/%s\n", crb.RoleRef.Kind, crb.RoleRef.Name)
@@ -57,6 +54,6 @@ func NewClusterRoleBindingResource(owner *sharedapp.ExampleApp) (*clusterrolebin
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

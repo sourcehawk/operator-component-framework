@@ -20,18 +20,13 @@ func TestStaticResource(t *testing.T) {
 		Data: map[string]string{"foo": testVal},
 	}
 	identityFunc := func(cm *corev1.ConfigMap) string { return cm.Name }
-	defaultApp := func(current, desired *corev1.ConfigMap) error {
-		current.Data = desired.Data
-		return nil
-	}
 	newMutator := func(_ *corev1.ConfigMap) *mockMutator { return &mockMutator{} }
 
 	res := &StaticResource[*corev1.ConfigMap, *mockMutator]{
 		BaseResource: BaseResource[*corev1.ConfigMap, *mockMutator]{
-			DesiredObject:          obj,
-			IdentityFunc:           identityFunc,
-			DefaultFieldApplicator: defaultApp,
-			NewMutator:             newMutator,
+			DesiredObject: obj,
+			IdentityFunc:  identityFunc,
+			NewMutator:    newMutator,
 		},
 	}
 
@@ -47,10 +42,9 @@ func TestStaticResource(t *testing.T) {
 	})
 
 	t.Run("Mutate", func(t *testing.T) {
-		current := &corev1.ConfigMap{}
-		err := res.Mutate(current)
+		obj, err := res.Object()
 		require.NoError(t, err)
-		assert.Equal(t, testVal, current.Data["foo"])
+		require.NoError(t, res.Mutate(obj))
 	})
 
 	t.Run("Mutate applies registered mutations", func(t *testing.T) {
@@ -61,8 +55,9 @@ func TestStaticResource(t *testing.T) {
 			return nil
 		}))
 
-		current := &corev1.ConfigMap{}
-		require.NoError(t, res.Mutate(current))
+		obj, err := res.Object()
+		require.NoError(t, err)
+		require.NoError(t, res.Mutate(obj))
 		assert.True(t, applied, "mutation was not applied")
 
 		res.Mutations = nil
@@ -73,7 +68,6 @@ func TestStaticResource(t *testing.T) {
 		res.DataExtractors = []func(*corev1.ConfigMap) error{
 			func(cm *corev1.ConfigMap) error {
 				extracted = true
-				assert.Equal(t, testVal, cm.Data["foo"])
 				return nil
 			},
 		}

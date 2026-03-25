@@ -60,9 +60,8 @@ func DataHash(cm corev1.ConfigMap) (string, error) {
 // the cluster, based on the base object and all registered mutations.
 //
 // The hash covers only operator-controlled fields (.data and .binaryData after
-// applying the baseline and mutations). Fields preserved by flavors from the live
-// cluster state (e.g. PreserveExternalEntries) are intentionally excluded — only
-// changes to operator-owned content will change the hash.
+// applying the baseline and mutations). Only changes to operator-owned content
+// will change the hash.
 //
 // This enables a single-pass checksum pattern: compute the hash before
 // reconciliation and pass it directly to the deployment resource factory, avoiding

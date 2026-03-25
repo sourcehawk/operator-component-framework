@@ -6,7 +6,6 @@ to manage a Kubernetes RoleBinding as a component of a larger application, utili
 - **Base Construction**: Initializing a RoleBinding with an immutable `roleRef` and basic metadata.
 - **Feature Mutations**: Composing subjects from independent, feature-gated mutations using `EditSubjects`.
 - **Metadata Mutations**: Setting version labels on the RoleBinding via `EditObjectMetadata`.
-- **Field Flavors**: Preserving labels managed by external controllers using `PreserveCurrentLabels`.
 - **Data Extraction**: Inspecting subjects and roleRef after each reconcile cycle.
 
 ## Directory Structure

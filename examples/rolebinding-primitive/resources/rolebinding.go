@@ -45,10 +45,7 @@ func NewRoleBindingResource(owner *sharedapp.ExampleApp) (component.Resource, er
 		owner.Spec.Version, owner.Spec.EnableMetrics,
 	))
 
-	// 4. Preserve labels added by external controllers.
-	builder.WithFieldApplicationFlavor(rolebinding.PreserveCurrentLabels)
-
-	// 5. Extract data from the reconciled RoleBinding.
+	// 4. Extract data from the reconciled RoleBinding.
 	builder.WithDataExtractor(func(rb rbacv1.RoleBinding) error {
 		fmt.Printf("Reconciled RoleBinding: %s\n", rb.Name)
 		fmt.Printf("  RoleRef: %s/%s\n", rb.RoleRef.Kind, rb.RoleRef.Name)
@@ -58,6 +55,6 @@ func NewRoleBindingResource(owner *sharedapp.ExampleApp) (component.Resource, er
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

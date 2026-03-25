@@ -18,18 +18,13 @@ func TestTaskResource(t *testing.T) {
 		},
 	}
 	identityFunc := func(j *batchv1.Job) string { return j.Name }
-	defaultApp := func(current, desired *batchv1.Job) error {
-		current.Spec = desired.Spec
-		return nil
-	}
 	newMutator := func(j *batchv1.Job) *mockMutator { return &mockMutator{job: j} }
 
 	res := &TaskResource[*batchv1.Job, *mockMutator]{
 		BaseResource: BaseResource[*batchv1.Job, *mockMutator]{
-			DesiredObject:          obj,
-			IdentityFunc:           identityFunc,
-			DefaultFieldApplicator: defaultApp,
-			NewMutator:             newMutator,
+			DesiredObject: obj,
+			IdentityFunc:  identityFunc,
+			NewMutator:    newMutator,
 		},
 	}
 
@@ -44,7 +39,6 @@ func TestTaskResource(t *testing.T) {
 	})
 
 	t.Run("Mutate and Suspend", func(t *testing.T) {
-		current := &batchv1.Job{}
 		mutCalled := false
 		res.Mutations = []Mutation[*mockMutator]{
 			{
@@ -57,7 +51,9 @@ func TestTaskResource(t *testing.T) {
 			},
 		}
 
-		err := res.Mutate(current)
+		obj, err := res.Object()
+		require.NoError(t, err)
+		err = res.Mutate(obj)
 		require.NoError(t, err)
 		assert.True(t, mutCalled, "mutation was not called")
 
@@ -70,8 +66,9 @@ func TestTaskResource(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current = &batchv1.Job{}
-		err = res.Mutate(current)
+		obj, err = res.Object()
+		require.NoError(t, err)
+		err = res.Mutate(obj)
 		require.NoError(t, err)
 
 		assert.True(t, suspendMutCalled, "suspend mutation was not called")

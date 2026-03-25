@@ -55,10 +55,9 @@ func CustomSuspendMutation() func(*deployment.Mutator) error {
 
 		// Additionally, record when the deployment was first suspended.
 		// Only set if absent so the timestamp is stable across reconcile cycles.
-		// This works because PreserveCurrentAnnotations (registered as a flavor)
-		// restores live-cluster annotations before mutations run — so on the second
-		// and subsequent reconciles while suspended the annotation is already present
-		// and is left unchanged.
+		// With Server-Side Apply, live-cluster annotations are preserved across
+		// reconciles — so on the second and subsequent reconciles while suspended
+		// the annotation is already present and is left unchanged.
 		m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
 			raw := meta.Raw()
 			if _, exists := raw.Annotations["example.io/suspended-at"]; !exists {

@@ -18,18 +18,13 @@ func TestWorkloadResource(t *testing.T) {
 		},
 	}
 	identityFunc := func(d *appsv1.Deployment) string { return d.Name }
-	defaultApp := func(current, desired *appsv1.Deployment) error {
-		current.Spec = desired.Spec
-		return nil
-	}
 	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
 
 	res := &WorkloadResource[*appsv1.Deployment, *mockMutator]{
 		BaseResource: BaseResource[*appsv1.Deployment, *mockMutator]{
-			DesiredObject:          obj,
-			IdentityFunc:           identityFunc,
-			DefaultFieldApplicator: defaultApp,
-			NewMutator:             newMutator,
+			DesiredObject: obj,
+			IdentityFunc:  identityFunc,
+			NewMutator:    newMutator,
 		},
 	}
 
@@ -44,7 +39,6 @@ func TestWorkloadResource(t *testing.T) {
 	})
 
 	t.Run("Mutate", func(t *testing.T) {
-		current := &appsv1.Deployment{}
 		mutCalled := false
 		res.Mutations = []Mutation[*mockMutator]{
 			{
@@ -57,8 +51,9 @@ func TestWorkloadResource(t *testing.T) {
 			},
 		}
 
-		err := res.Mutate(current)
+		obj, err := res.Object()
 		require.NoError(t, err)
+		require.NoError(t, res.Mutate(obj))
 		assert.True(t, mutCalled, "mutation was not called")
 	})
 
@@ -72,8 +67,9 @@ func TestWorkloadResource(t *testing.T) {
 		err := res.Suspend()
 		require.NoError(t, err)
 
-		current := &appsv1.Deployment{}
-		err = res.Mutate(current)
+		obj, err := res.Object()
+		require.NoError(t, err)
+		err = res.Mutate(obj)
 		require.NoError(t, err)
 
 		assert.True(t, suspendMutCalled, "suspend mutation was not called")

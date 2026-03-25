@@ -17,32 +17,18 @@ type BaseBuilder[T client.Object, M MutatorApplier] struct {
 func (b *BaseBuilder[T, M]) InitBase(
 	obj T,
 	identityFunc func(T) string,
-	defaultApplicator FieldApplicator[T],
 	newMutator func(T) M,
 ) {
 	b.BaseRes = &BaseResource[T, M]{
-		DesiredObject:          obj,
-		IdentityFunc:           identityFunc,
-		DefaultFieldApplicator: defaultApplicator,
-		NewMutator:             newMutator,
+		DesiredObject: obj,
+		IdentityFunc:  identityFunc,
+		NewMutator:    newMutator,
 	}
 }
 
 // WithMutation registers a typed feature mutation for the resource.
 func (b *BaseBuilder[T, M]) WithMutation(m Mutation[M]) {
 	b.BaseRes.Mutations = append(b.BaseRes.Mutations, m)
-}
-
-// WithCustomFieldApplicator overrides the default baseline field applicator.
-func (b *BaseBuilder[T, M]) WithCustomFieldApplicator(applicator FieldApplicator[T]) {
-	b.BaseRes.CustomFieldApplicator = applicator
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-func (b *BaseBuilder[T, M]) WithFieldApplicationFlavor(flavor FieldApplicationFlavor[T]) {
-	if flavor != nil {
-		b.BaseRes.FieldFlavors = append(b.BaseRes.FieldFlavors, flavor)
-	}
 }
 
 // WithDataExtractor registers a typed data extractor to run after successful reconciliation.
@@ -97,10 +83,6 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 
 	if b.BaseRes.IdentityFunc == nil {
 		return errors.New("identity function cannot be nil")
-	}
-
-	if b.BaseRes.DefaultFieldApplicator == nil {
-		return errors.New("default field applicator cannot be nil")
 	}
 
 	if b.BaseRes.NewMutator == nil {

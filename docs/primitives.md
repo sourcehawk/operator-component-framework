@@ -11,7 +11,6 @@ A primitive wraps a specific Kubernetes kind (e.g., `Deployment`, `ConfigMap`) a
 - **Desired state baseline** — the ideal configuration of the resource.
 - **Lifecycle integration** — built-in readiness detection, grace handling, and suspension.
 - **Mutation surfaces** — typed APIs for modifying the resource based on active features or version constraints.
-- **Field application rules** — precise control over which fields are merged or preserved during reconciliation.
 
 Each primitive implements the `component.Resource` interface, and may additionally implement one or more
 [lifecycle interfaces](#lifecycle-interfaces) to participate in component status aggregation.
@@ -82,32 +81,6 @@ Primitives implement behavioral interfaces that the component layer uses for sta
 
 Custom resource wrappers can implement any subset of these interfaces to opt into the corresponding component behaviors.
 
-## Field Application Model
-
-When a primitive is reconciled, it applies changes in a fixed three-stage pipeline:
-
-```
-1. Baseline application   →   merge desired state onto current object
-2. Flavor adjustments     →   preserve fields managed by external controllers
-3. Mutation edits         →   apply feature-specific or version-specific changes
-```
-
-This ordering guarantees that mutations always operate on a predictable, fully-formed baseline.
-
-### Flavors
-
-Flavors are reusable merge policies that run after baseline application but before mutations. Their purpose is to
-preserve fields that may be managed by external controllers or tools — sidecar injectors, autoscalers, annotation-based
-tooling — that the primitive should not overwrite.
-
-Examples of what flavors can preserve:
-
-- Labels and annotations added by external tools
-- Pod template metadata managed by injection webhooks
-- Fields managed by the Kubernetes HPA
-
-Flavors allow primitives to coexist in clusters where multiple controllers touch the same resources.
-
 ## Mutation System
 
 Primitives use a **plan-and-apply pattern**: instead of mutating the Kubernetes object directly, mutations record their
@@ -174,7 +147,6 @@ base := &appsv1.Deployment{
 }
 
 resource, err := deployment.NewBuilder(base).
-    WithFieldApplicationFlavor(deployment.PreserveCurrentLabels).
     Build()
 ```
 

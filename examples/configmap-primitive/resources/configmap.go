@@ -17,10 +17,10 @@ func NewConfigMapResource(owner *sharedapp.ExampleApp) (component.Resource, erro
 	// 1. Create the base ConfigMap object.
 	//
 	// app.yaml is initialised to an empty string to declare operator ownership of
-	// that key. PreserveExternalEntries only copies keys that are absent from the
-	// applied object — an empty value is sufficient to signal ownership and
-	// prevent the live cluster value from bleeding into the next reconcile cycle
-	// when a feature is toggled off.
+	// that key. With Server-Side Apply, only operator-owned fields are managed —
+	// an empty value is sufficient to signal ownership and prevent the live
+	// cluster value from bleeding into the next reconcile cycle when a feature
+	// is toggled off.
 	base := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      owner.Name + "-config",
@@ -46,10 +46,7 @@ func NewConfigMapResource(owner *sharedapp.ExampleApp) (component.Resource, erro
 	builder.WithMutation(features.TracingConfigMutation(owner.Spec.Version, owner.Spec.EnableTracing))
 	builder.WithMutation(features.MetricsConfigMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve entries added by external controllers or admission webhooks.
-	builder.WithFieldApplicationFlavor(features.PreserveExternalEntriesFlavor())
-
-	// 5. Extract data from the reconciled ConfigMap.
+	// 4. Extract data from the reconciled ConfigMap.
 	builder.WithDataExtractor(func(cm corev1.ConfigMap) error {
 		fmt.Printf("Reconciled ConfigMap: %s\n", cm.Name)
 		for key, value := range cm.Data {
@@ -58,6 +55,6 @@ func NewConfigMapResource(owner *sharedapp.ExampleApp) (component.Resource, erro
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

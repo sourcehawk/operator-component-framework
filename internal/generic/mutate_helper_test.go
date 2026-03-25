@@ -36,21 +36,6 @@ func TestApplyMutationsOrder(t *testing.T) {
 	current := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
 	}
-	desired := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-	}
-
-	defaultApplicator := func(_, _ *corev1.ConfigMap) error {
-		recorder.record("defaultApplicator")
-		return nil
-	}
-
-	flavors := []FieldApplicationFlavor[*corev1.ConfigMap]{
-		func(_, _, _ *corev1.ConfigMap) error {
-			recorder.record("flavor1")
-			return nil
-		},
-	}
 
 	newMutator := func(_ *corev1.ConfigMap) *recordingMutator {
 		recorder.record("newMutator")
@@ -75,10 +60,6 @@ func TestApplyMutationsOrder(t *testing.T) {
 
 	_, err := ApplyMutations[*corev1.ConfigMap, *recordingMutator](
 		current,
-		desired,
-		defaultApplicator,
-		nil,
-		flavors,
 		newMutator,
 		mutations,
 		suspender,
@@ -87,8 +68,6 @@ func TestApplyMutationsOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedOrder := []string{
-		"defaultApplicator",
-		"flavor1",
 		"newMutator",
 		"mutator.BeginFeature",
 		"mutation1",

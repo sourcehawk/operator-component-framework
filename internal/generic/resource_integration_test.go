@@ -17,18 +17,13 @@ func TestIntegrationResource(t *testing.T) {
 		},
 	}
 	identityFunc := func(s *corev1.Service) string { return s.Name }
-	defaultApp := func(current, desired *corev1.Service) error {
-		current.Spec = desired.Spec
-		return nil
-	}
 	newMutator := func(s *corev1.Service) *mockMutator { return &mockMutator{service: s} }
 
 	res := &IntegrationResource[*corev1.Service, *mockMutator]{
 		BaseResource: BaseResource[*corev1.Service, *mockMutator]{
-			DesiredObject:          obj,
-			IdentityFunc:           identityFunc,
-			DefaultFieldApplicator: defaultApp,
-			NewMutator:             newMutator,
+			DesiredObject: obj,
+			IdentityFunc:  identityFunc,
+			NewMutator:    newMutator,
 		},
 	}
 
@@ -43,7 +38,7 @@ func TestIntegrationResource(t *testing.T) {
 	})
 
 	t.Run("Mutate and Suspend", func(t *testing.T) {
-		current := &corev1.Service{}
+		current := obj.DeepCopy()
 		mutCalled := false
 		res.Mutations = []Mutation[*mockMutator]{
 			{
@@ -69,7 +64,7 @@ func TestIntegrationResource(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current = &corev1.Service{}
+		current = obj.DeepCopy()
 		err = res.Mutate(current)
 		require.NoError(t, err)
 

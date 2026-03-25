@@ -213,7 +213,7 @@ See the [examples directory](examples/) for complete implementations.
 | Document                                              | Description                                                          |
 | ----------------------------------------------------- | -------------------------------------------------------------------- |
 | [Component Framework](docs/component.md)              | Reconciliation lifecycle, condition model, grace periods, suspension |
-| [Resource Primitives](docs/primitives.md)             | Primitive categories, field application pipeline, mutation system    |
+| [Resource Primitives](docs/primitives.md)             | Primitive categories, Server-Side Apply, mutation system             |
 | [Deployment Primitive](docs/primitives/deployment.md) | Deployment-specific mutation ordering and editors                    |
 
 ## Examples
@@ -222,9 +222,7 @@ The [examples directory](examples/) contains runnable, end-to-end implementation
 
 | Example                                                                      | Description                                                                                |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [`deployment-primitive`](examples/deployment-primitive/)                     | Core Deployment primitive: mutations, flavors, suspension, data extraction                 |
-| [`cronjob-primitive`](examples/cronjob-primitive/)                           | CronJob primitive: schedule mutations, job template configuration, suspension              |
-| [`configmap-primitive`](examples/configmap-primitive/)                       | ConfigMap primitive: data mutations, field application, immutability                       |
+| [`deployment-primitive`](examples/deployment-primitive/)                     | Core Deployment primitive: mutations, suspension, data extraction                          |
 | [`custom-resource-implementation`](examples/custom-resource-implementation/) | Full custom resource wrapper implementing lifecycle interfaces and version-gated mutations |
 
 Run any example with:
@@ -240,12 +238,11 @@ pkg/
 ├── component/          # Component framework: builder, reconciliation, conditions
 │   └── concepts/       # Lifecycle interface definitions (Alive, Suspendable, …)
 ├── primitives/
-│   └── deployment/     # Deployment primitive: builder, mutator, editors, flavors
+│   └── deployment/     # Deployment primitive: builder, mutator, editors
 ├── feature/            # Feature and version-constraint types
 ├── mutation/
 │   ├── editors/        # Typed mutation APIs (DeploymentSpec, PodSpec, Container, …)
 │   └── selectors/      # Container selectors (ByName, ByIndex, All)
-├── flavors/            # Field application flavor utilities
 └── recording/          # Event recording helpers
 
 examples/

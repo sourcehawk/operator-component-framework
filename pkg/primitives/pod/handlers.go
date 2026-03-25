@@ -117,7 +117,7 @@ func DefaultGraceStatusHandler(pod *corev1.Pod) (concepts.GraceStatusWithReason,
 	if pod.Status.Phase != corev1.PodRunning {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDown,
-			Reason: "Pod is not running",
+			Reason: "Pod phase is " + string(pod.Status.Phase),
 		}, nil
 	}
 

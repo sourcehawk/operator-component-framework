@@ -219,7 +219,7 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		got, err := DefaultGraceStatusHandler(pod)
 		require.NoError(t, err)
 		assert.Equal(t, concepts.GraceStatusDown, got.Status)
-		assert.Equal(t, "Pod is not running", got.Reason)
+		assert.Equal(t, "Pod phase is Pending", got.Reason)
 	})
 
 	t.Run("down (failed phase)", func(t *testing.T) {

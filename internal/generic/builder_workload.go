@@ -22,14 +22,13 @@ type WorkloadBuilder[T client.Object, M MutatorApplier] struct {
 func NewWorkloadBuilder[T client.Object, M MutatorApplier](
 	obj T,
 	identityFunc func(T) string,
-	defaultApplicator FieldApplicator[T],
 	newMutator func(T) M,
 ) *WorkloadBuilder[T, M] {
 	res := &WorkloadResource[T, M]{}
 	b := &WorkloadBuilder[T, M]{
 		res: res,
 	}
-	b.InitBase(obj, identityFunc, defaultApplicator, newMutator)
+	b.InitBase(obj, identityFunc, newMutator)
 	b.res.BaseResource = *b.BaseRes
 	return b
 }
@@ -39,22 +38,6 @@ func (b *WorkloadBuilder[T, M]) WithMutation(
 	m Mutation[M],
 ) *WorkloadBuilder[T, M] {
 	b.BaseBuilder.WithMutation(m)
-	return b
-}
-
-// WithCustomFieldApplicator overrides the default baseline field applicator.
-func (b *WorkloadBuilder[T, M]) WithCustomFieldApplicator(
-	applicator FieldApplicator[T],
-) *WorkloadBuilder[T, M] {
-	b.BaseBuilder.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-func (b *WorkloadBuilder[T, M]) WithFieldApplicationFlavor(
-	flavor FieldApplicationFlavor[T],
-) *WorkloadBuilder[T, M] {
-	b.BaseBuilder.WithFieldApplicationFlavor(flavor)
 	return b
 }
 

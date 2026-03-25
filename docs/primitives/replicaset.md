@@ -43,13 +43,14 @@ resource, err := replicaset.NewBuilder(base).
 Mutations are the primary mechanism for modifying a `ReplicaSet` beyond its baseline. Each mutation is a named function
 that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally:
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
+with no version constraints and no `When()` conditions is also always enabled:
 
 ```go
 func MyFeatureMutation(version string) replicaset.Mutation {
     return replicaset.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewResourceFeature(version, nil), // always enabled
         Mutate: func(m *replicaset.Mutator) error {
             // record edits here
             return nil
@@ -91,9 +92,9 @@ order they are recorded:
 | 2    | ReplicaSetSpec edits        | Replicas, min ready seconds                                             |
 | 3    | Pod template metadata edits | Labels and annotations on the pod template                              |
 | 4    | Pod spec edits              | Volumes, tolerations, node selectors, service account, security context |
-| 5    | Regular container presence  | Adding or removing containers from `spec.containers`                    |
+| 5    | Regular container presence  | Adding or removing containers from `spec.template.spec.containers`      |
 | 6    | Regular container edits     | Env vars, args, resources (snapshot taken after step 5)                 |
-| 7    | Init container presence     | Adding or removing containers from `spec.initContainers`                |
+| 7    | Init container presence     | Adding or removing containers from `spec.template.spec.initContainers`  |
 | 8    | Init container edits        | Env vars, args, resources (snapshot taken after step 7)                 |
 
 Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.

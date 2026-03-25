@@ -11,7 +11,6 @@ and metadata. For an overview of all built-in primitives, see [Primitives](../pr
 | **Operational status** | Reports `OperationPending` until the ingress controller assigns an address, then `Operational` |
 | **Suspension**         | No-op by default — Ingress is left in place; backend returns 502/503                           |
 | **Mutation pipeline**  | Typed editors for metadata and ingress spec (rules, TLS, class name, default backend)          |
-| **Flavors**            | Preserves externally-managed fields (labels, annotations)                                      |
 
 ## Building an Ingress Primitive
 
@@ -50,19 +49,9 @@ base := &networkingv1.Ingress{
 }
 
 resource, err := ingress.NewBuilder(base).
-    WithFieldApplicationFlavor(ingress.PreserveCurrentAnnotations).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current Ingress with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
-Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
-written by the ingress controller (e.g. `Status.LoadBalancer.Ingress` addresses).
-
-Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten.
 
 ## Mutations
 
@@ -269,45 +258,11 @@ resource, err := ingress.NewBuilder(base).
     Build()
 ```
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := ingress.NewBuilder(base).
-    WithFieldApplicationFlavor(ingress.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-This is particularly useful for Ingress resources, where ingress controllers and cert-manager often manage annotations:
-
-```go
-resource, err := ingress.NewBuilder(base).
-    WithFieldApplicationFlavor(ingress.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
 `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
 boolean conditions.
-
-**Use `PreserveCurrentAnnotations` when sharing an Ingress.** Ingress controllers, cert-manager, and external-dns
-frequently manage annotations. This flavor prevents your operator from silently deleting those annotations each
-reconcile cycle.
 
 **Register mutations in dependency order.** If mutation B relies on a rule added by mutation A, register A first.
 

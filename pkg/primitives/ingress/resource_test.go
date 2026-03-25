@@ -76,12 +76,14 @@ func TestResource_Mutate(t *testing.T) {
 	res, err := NewBuilder(desired).Build()
 	require.NoError(t, err)
 
-	current := &networkingv1.Ingress{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, ptr.To("nginx"), current.Spec.IngressClassName)
-	require.Len(t, current.Spec.Rules, 1)
-	assert.Equal(t, "example.com", current.Spec.Rules[0].Host)
+	got := obj.(*networkingv1.Ingress)
+	assert.Equal(t, ptr.To("nginx"), got.Spec.IngressClassName)
+	require.Len(t, got.Spec.Rules, 1)
+	assert.Equal(t, "example.com", got.Spec.Rules[0].Host)
 }
 
 func TestResource_Mutate_WithMutation(t *testing.T) {
@@ -104,12 +106,14 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &networkingv1.Ingress{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, ptr.To("nginx"), current.Spec.IngressClassName)
-	require.Len(t, current.Spec.TLS, 1)
-	assert.Equal(t, "tls-cert", current.Spec.TLS[0].SecretName)
+	got := obj.(*networkingv1.Ingress)
+	assert.Equal(t, ptr.To("nginx"), got.Spec.IngressClassName)
+	require.Len(t, got.Spec.TLS, 1)
+	assert.Equal(t, "tls-cert", got.Spec.TLS[0].SecretName)
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -140,92 +144,13 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &networkingv1.Ingress{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
 	// Last mutation wins.
-	assert.Equal(t, ptr.To("haproxy"), current.Spec.IngressClassName)
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test",
-			Namespace:       "default",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-	}
-	desired := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: networkingv1.IngressSpec{
-			IngressClassName: ptr.To("nginx"),
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	assert.Equal(t, ptr.To("nginx"), current.Spec.IngressClassName)
-	assert.Equal(t, "test", current.Labels["app"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
-}
-
-func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
-	current := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test",
-			Namespace:       "default",
-			ResourceVersion: "12345",
-		},
-		Status: networkingv1.IngressStatus{
-			LoadBalancer: networkingv1.IngressLoadBalancerStatus{
-				Ingress: []networkingv1.IngressLoadBalancerIngress{
-					{IP: "10.0.0.1"},
-					{Hostname: "lb.example.com"},
-				},
-			},
-		},
-	}
-	desired := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-		},
-		Spec: networkingv1.IngressSpec{
-			IngressClassName: ptr.To("nginx"),
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec is applied
-	assert.Equal(t, ptr.To("nginx"), current.Spec.IngressClassName)
-
-	// Status is preserved from the live object
-	require.Len(t, current.Status.LoadBalancer.Ingress, 2)
-	assert.Equal(t, "10.0.0.1", current.Status.LoadBalancer.Ingress[0].IP)
-	assert.Equal(t, "lb.example.com", current.Status.LoadBalancer.Ingress[1].Hostname)
+	got := obj.(*networkingv1.Ingress)
+	assert.Equal(t, ptr.To("haproxy"), got.Spec.IngressClassName)
 }
 
 func TestDefaultOperationalStatusHandler_Operational(t *testing.T) {
@@ -256,46 +181,6 @@ func TestDefaultOperationalStatusHandler_OperationalWithHostname(t *testing.T) {
 	status, err := DefaultOperationalStatusHandler(concepts.ConvergingOperationUpdated, ing)
 	require.NoError(t, err)
 	assert.Equal(t, concepts.OperationalStatusOperational, status.Status)
-}
-
-func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
-	desired := newValidIngress()
-
-	applicatorCalled := false
-	res, err := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current, d *networkingv1.Ingress) error {
-			applicatorCalled = true
-			current.Spec.IngressClassName = d.Spec.IngressClassName
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	current := &networkingv1.Ingress{
-		Spec: networkingv1.IngressSpec{
-			Rules: []networkingv1.IngressRule{{Host: "preserved.com"}},
-		},
-	}
-	require.NoError(t, res.Mutate(current))
-
-	assert.True(t, applicatorCalled)
-	assert.Equal(t, ptr.To("nginx"), current.Spec.IngressClassName)
-	// Custom applicator only copied className, so rules should be preserved.
-	require.Len(t, current.Spec.Rules, 1)
-	assert.Equal(t, "preserved.com", current.Spec.Rules[0].Host)
-}
-
-func TestResource_Mutate_CustomFieldApplicator_Error(t *testing.T) {
-	res, err := NewBuilder(newValidIngress()).
-		WithCustomFieldApplicator(func(_, _ *networkingv1.Ingress) error {
-			return errors.New("applicator error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.Mutate(&networkingv1.Ingress{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "applicator error")
 }
 
 func TestResource_ConvergingStatus_Pending(t *testing.T) {

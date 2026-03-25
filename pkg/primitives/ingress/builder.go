@@ -11,9 +11,9 @@ import (
 
 // Builder is a configuration helper for creating and customizing an Ingress Resource.
 //
-// It provides a fluent API for registering mutations, field application flavors,
-// status handlers, and data extractors. Build() validates the configuration and
-// returns an initialized Resource ready for use in a reconciliation loop.
+// It provides a fluent API for registering mutations, status handlers, and data
+// extractors. Build() validates the configuration and returns an initialized
+// Resource ready for use in a reconciliation loop.
 type Builder struct {
 	base *generic.IntegrationBuilder[*networkingv1.Ingress, *Mutator]
 }
@@ -22,7 +22,7 @@ type Builder struct {
 //
 // The Ingress object serves as the desired base state. During reconciliation
 // the Resource will make the cluster's state match this base, modified by any
-// registered mutations and flavors.
+// registered mutations.
 //
 // The provided Ingress must have both Name and Namespace set, which is validated
 // during the Build() call.
@@ -34,7 +34,6 @@ func NewBuilder(ing *networkingv1.Ingress) *Builder {
 	base := generic.NewIntegrationBuilder[*networkingv1.Ingress, *Mutator](
 		ing,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -51,41 +50,11 @@ func NewBuilder(ing *networkingv1.Ingress) *Builder {
 
 // WithMutation registers a mutation for the Ingress.
 //
-// Mutations are applied sequentially during the Mutate() phase of reconciliation,
-// after the baseline field applicator and any registered flavors have run.
+// Mutations are applied sequentially during the Mutate() phase of reconciliation.
 // A mutation with a nil Feature is applied unconditionally; one with a non-nil
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing Ingress in the cluster.
-//
-// The default applicator (DefaultFieldApplicator) replaces the current object
-// with a deep copy of the desired object. Use a custom applicator when other
-// controllers manage fields you need to preserve.
-//
-// The applicator receives the current object from the API server and the desired
-// object from the Resource, and is responsible for merging the desired changes
-// into the current object.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current, desired *networkingv1.Ingress) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-//
-// Flavors run after the baseline applicator (default or custom) in registration
-// order. They are typically used to preserve fields from the live cluster object
-// that should not be overwritten by the desired state.
-//
-// A nil flavor is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*networkingv1.Ingress](flavor))
 	return b
 }
 

@@ -18,13 +18,13 @@ type PolicyRulesEditor struct {
 // NewPolicyRulesEditor creates a new PolicyRulesEditor wrapping the given rules
 // slice pointer.
 //
-// The pointer may refer to a nil slice; methods that append rules initialise it
-// automatically. Pass a non-nil pointer (e.g. &cr.Rules) so that writes are
-// reflected on the object.
+// The pointer itself must be non-nil — passing a nil pointer is a programmer
+// error and will cause a panic. It may refer to a nil slice; methods that
+// append rules initialise it automatically. Pass a non-nil pointer (e.g.
+// &cr.Rules) so that writes are reflected on the object.
 func NewPolicyRulesEditor(rules *[]rbacv1.PolicyRule) *PolicyRulesEditor {
 	if rules == nil {
-		var r []rbacv1.PolicyRule
-		rules = &r
+		panic("NewPolicyRulesEditor: rules must be a non-nil pointer")
 	}
 	return &PolicyRulesEditor{rules: rules}
 }

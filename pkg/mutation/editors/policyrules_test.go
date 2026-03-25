@@ -91,6 +91,12 @@ func TestPolicyRulesEditor_Raw(t *testing.T) {
 	assert.Equal(t, "configmaps", rules[0].Resources[0])
 }
 
+func TestNewPolicyRulesEditor_PanicsOnNilPointer(t *testing.T) {
+	assert.PanicsWithValue(t, "NewPolicyRulesEditor: rules must be a non-nil pointer", func() {
+		NewPolicyRulesEditor(nil)
+	})
+}
+
 func TestPolicyRulesEditor_Raw_NilInitialized(t *testing.T) {
 	var rules []rbacv1.PolicyRule
 	e := NewPolicyRulesEditor(&rules)

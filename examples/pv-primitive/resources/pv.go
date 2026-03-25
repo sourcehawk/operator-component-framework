@@ -45,9 +45,6 @@ func NewPVResource(owner *sharedapp.ExampleApp) (*pv.Resource, error) {
 	builder.WithMutation(features.RetainPolicyMutation(owner.Spec.Version, owner.Spec.EnableTracing))
 	builder.WithMutation(features.MountOptionsMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve annotations added by external controllers.
-	builder.WithFieldApplicationFlavor(pv.PreserveCurrentAnnotations)
-
-	// 5. Build the final resource.
+	// 4. Build the final resource.
 	return builder.Build()
 }

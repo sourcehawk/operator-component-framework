@@ -1,0 +1,123 @@
+package daemonset
+
+import (
+	"github.com/sourcehawk/operator-component-framework/internal/generic"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	appsv1 "k8s.io/api/apps/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// Resource is a high-level abstraction for managing a Kubernetes DaemonSet within a controller's
+// reconciliation loop.
+//
+// It implements several component interfaces to integrate with the operator-component-framework:
+//   - component.Resource: for basic identity and mutation behavior.
+//   - component.Alive: for health and readiness tracking.
+//   - component.Suspendable: for graceful deactivation via deletion.
+//   - component.DataExtractable: for exporting information after successful reconciliation.
+//
+// This resource handles the lifecycle of a DaemonSet, including initial creation,
+// updates via feature mutations, and status monitoring.
+type Resource struct {
+	base *generic.WorkloadResource[*appsv1.DaemonSet, *Mutator]
+}
+
+// Identity returns a unique identifier for the DaemonSet in the format
+// "apps/v1/DaemonSet/<namespace>/<name>".
+//
+// This identifier is used by the framework's internal tracking and recording
+// mechanisms to distinguish this specific DaemonSet from other resources
+// managed by the same component.
+func (r *Resource) Identity() string {
+	return r.base.Identity()
+}
+
+// Object returns a copy of the underlying Kubernetes DaemonSet object.
+//
+// The returned object implements the client.Object interface, making it
+// fully compatible with controller-runtime's Client for operations like
+// Get, Create, Update, and Patch.
+//
+// This method is called by the framework to obtain the current state
+// of the resource before applying mutations.
+func (r *Resource) Object() (client.Object, error) {
+	return r.base.Object()
+}
+
+// Mutate transforms the current state of a Kubernetes DaemonSet into the desired state.
+//
+// The mutation process follows a specific order:
+//  1. Core State: The desired base state is applied to the current object.
+//  2. Feature Mutations: All registered feature-based mutations are applied,
+//     allowing for granular, version-gated changes to the DaemonSet.
+//  3. Suspension: If the resource is in a suspending state, the suspension
+//     logic is applied.
+//
+// This method is invoked by the framework during the "Update" phase of
+// reconciliation. It ensures that the in-memory object reflects all
+// configuration and feature requirements before it is sent to the API server.
+func (r *Resource) Mutate(current client.Object) error {
+	return r.base.Mutate(current)
+}
+
+// ConvergingStatus evaluates if the DaemonSet has successfully reached its desired state.
+//
+// By default, it uses DefaultConvergingStatusHandler, which first ensures that
+// status.ObservedGeneration is at least the DaemonSet's metadata.Generation.
+// Once the generation has been observed:
+//   - If DesiredNumberScheduled is zero, the DaemonSet is considered converged (no pods expected).
+//   - If DesiredNumberScheduled is greater than zero, the DaemonSet is considered converged when
+//     NumberReady is greater than or equal to DesiredNumberScheduled.
+//
+// The return value includes a descriptive status (Ready, Creating, Updating, or Scaling)
+// and a human-readable reason, which are used to update the component's conditions.
+func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.AliveStatusWithReason, error) {
+	return r.base.ConvergingStatus(op)
+}
+
+// GraceStatus provides a health assessment of the DaemonSet when it has not yet
+// reached full readiness.
+//
+// By default, it uses DefaultGraceStatusHandler, which categorizes the current state into:
+//   - GraceStatusHealthy: DesiredNumberScheduled is zero (no matching nodes).
+//   - GraceStatusDegraded: Some pods are ready but below the desired count.
+//   - GraceStatusDown: No pods are ready.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
+}
+
+// DeleteOnSuspend determines whether the DaemonSet should be deleted from the
+// cluster when the parent component is suspended.
+//
+// By default, it uses DefaultDeleteOnSuspendHandler, which returns true because
+// DaemonSets have no replicas field and cannot be scaled to zero in-place.
+func (r *Resource) DeleteOnSuspend() bool {
+	return r.base.DeleteOnSuspend()
+}
+
+// Suspend triggers the deactivation of the DaemonSet.
+//
+// It registers a mutation that will be executed during the next Mutate call.
+// The default behavior uses DefaultSuspendMutationHandler, which is a no-op
+// because the DaemonSet is deleted on suspension rather than mutated.
+func (r *Resource) Suspend() error {
+	return r.base.Suspend()
+}
+
+// SuspensionStatus monitors the progress of the suspension process.
+//
+// By default, it uses DefaultSuspensionStatusHandler, which always reports
+// Suspended because the DaemonSet is deleted on suspension.
+func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
+	return r.base.SuspensionStatus()
+}
+
+// ExtractData executes registered data extraction functions to harvest information
+// from the reconciled DaemonSet.
+//
+// This is called by the framework after a successful reconciliation of the
+// resource. It allows the component to export details that might be needed
+// by other resources or higher-level controllers.
+func (r *Resource) ExtractData() error {
+	return r.base.ExtractData()
+}

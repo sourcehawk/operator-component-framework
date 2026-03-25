@@ -11,16 +11,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 )
 
-// PreserveLabelsFlavor demonstrates using a flavor to keep external labels.
-func PreserveLabelsFlavor() statefulset.FieldApplicationFlavor {
-	return statefulset.PreserveCurrentLabels
-}
-
-// PreserveAnnotationsFlavor demonstrates using a flavor to keep external annotations.
-func PreserveAnnotationsFlavor() statefulset.FieldApplicationFlavor {
-	return statefulset.PreserveCurrentAnnotations
-}
-
 // CustomConvergeStatus demonstrates a custom handler for statefulset readiness.
 func CustomConvergeStatus() func(concepts.ConvergingOperation, *appsv1.StatefulSet) (concepts.AliveStatusWithReason, error) {
 	return func(op concepts.ConvergingOperation, s *appsv1.StatefulSet) (concepts.AliveStatusWithReason, error) {

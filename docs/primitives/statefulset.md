@@ -12,7 +12,6 @@ pod specs, metadata, and volume claim templates.
 | **Rollout health**    | Surfaces stalled or failing rollouts by transitioning the resource to `Degraded` or `Down` (no grace-period timing)                                                                 |
 | **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                                                         |
 | **Mutation pipeline** | Typed editors for metadata, statefulset spec, pod spec, containers, and volume claim templates                                                                                      |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                                                                                    |
 
 ## Building a StatefulSet Primitive
 
@@ -43,31 +42,7 @@ base := &appsv1.StatefulSet{
 }
 
 resource, err := statefulset.NewBuilder(base).
-    WithFieldApplicationFlavor(statefulset.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current StatefulSet with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
-Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
-written by the API server or other controllers.
-
-It also preserves `spec.volumeClaimTemplates` from the live object when the resource already exists (i.e., has a
-non-empty `ResourceVersion`). This is necessary because `spec.volumeClaimTemplates` is immutable after creation in
-Kubernetes — the API server rejects any update that changes it.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := statefulset.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *appsv1.StatefulSet) error {
-        // Custom merge logic
-        current.Spec.Template = *desired.Spec.Template.DeepCopy()
-        return nil
-    }).
     Build()
 ```
 
@@ -269,9 +244,8 @@ m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
 })
 ```
 
-**Important:** `spec.volumeClaimTemplates` is immutable after creation in Kubernetes. The `DefaultFieldApplicator`
-preserves the live VolumeClaimTemplates to avoid API server rejections. These mutation methods are primarily useful for
-constructing the initial desired state or when recreating a StatefulSet.
+**Important:** `spec.volumeClaimTemplates` is immutable after creation in Kubernetes. These mutation methods are primarily
+useful for constructing the initial desired state or when recreating a StatefulSet.
 
 ## Convenience Methods
 
@@ -284,41 +258,6 @@ The `Mutator` also exposes convenience wrappers:
 | `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
 | `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
 | `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
-
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-### PreserveCurrentPodTemplateLabels
-
-Preserves labels present on the live object's pod template but absent from the applied desired state's pod template.
-Applied labels win on overlap.
-
-### PreserveCurrentPodTemplateAnnotations
-
-Preserves annotations present on the live object's pod template but absent from the applied desired state's pod
-template. Applied annotations win on overlap.
-
-```go
-resource, err := statefulset.NewBuilder(base).
-    WithFieldApplicationFlavor(statefulset.PreserveCurrentLabels).
-    WithFieldApplicationFlavor(statefulset.PreserveCurrentAnnotations).
-    WithFieldApplicationFlavor(statefulset.PreserveCurrentPodTemplateLabels).
-    WithFieldApplicationFlavor(statefulset.PreserveCurrentPodTemplateAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
 
 ## Full Example: Database StatefulSet with Storage
 
@@ -375,8 +314,7 @@ The internal ordering within each mutation handles intra-mutation dependencies a
 **Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
 the same mutation resolve correctly and reconciliation remains idempotent.
 
-**VolumeClaimTemplates are immutable.** Plan your storage layout before the first creation. The `DefaultFieldApplicator`
-preserves live VolumeClaimTemplates to prevent API server rejections on updates.
+**VolumeClaimTemplates are immutable.** Plan your storage layout before the first creation.
 
 **Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
 cause unexpected behavior if sidecar containers are present.

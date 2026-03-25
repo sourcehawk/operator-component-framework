@@ -7,28 +7,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), and the Status
-// subresource from the original current object.
-//
-// It also preserves the existing VolumeClaimTemplates from the current object
-// when it already exists on the server. spec.volumeClaimTemplates is immutable
-// after creation in Kubernetes; attempting to update it will be rejected by the
-// API server.
-func DefaultFieldApplicator(current, desired *appsv1.StatefulSet) error {
-	original := current.DeepCopy()
-
-	*current = *desired.DeepCopy()
-	generic.PreserveServerManagedFields(current, original)
-	generic.PreserveStatus(current, original)
-
-	if original.ResourceVersion != "" {
-		current.Spec.VolumeClaimTemplates = original.Spec.VolumeClaimTemplates
-	}
-	return nil
-}
-
 // Resource is a high-level abstraction for managing a Kubernetes StatefulSet within a controller's
 // reconciliation loop.
 //
@@ -69,8 +47,7 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes StatefulSet into the desired state.
 //
 // The mutation process follows a specific order:
-//  1. Core State: The current object is reset to the desired base state, or
-//     modified via a custom field applicator if one is configured.
+//  1. Core State: The desired base state is applied to the current object.
 //  2. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the StatefulSet.
 //  3. Suspension: If the resource is in a suspending state, the suspension

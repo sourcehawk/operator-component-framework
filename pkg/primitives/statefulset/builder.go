@@ -35,7 +35,6 @@ func NewBuilder(statefulset *appsv1.StatefulSet) *Builder {
 	base := generic.NewWorkloadBuilder[*appsv1.StatefulSet, *Mutator](
 		statefulset,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -58,36 +57,6 @@ func NewBuilder(statefulset *appsv1.StatefulSet) *Builder {
 // arguments, or other configuration into the StatefulSet's containers.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing StatefulSet in the cluster.
-//
-// By default, the field applicator (DefaultFieldApplicator) deep-copies the
-// entire desired object (metadata and spec) over the current object, and then
-// restores server-managed fields, status, and VolumeClaimTemplates from the
-// live object (since VCTs are immutable after creation). This means metadata
-// such as labels and annotations is not merged or automatically preserved
-// unless your custom applicator or a flavor explicitly handles it.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current *appsv1.StatefulSet, desired *appsv1.StatefulSet) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a reusable post-application "flavor" for
-// the StatefulSet.
-//
-// Flavors are applied in the order they are registered, after the baseline field
-// applicator (default or custom) has already run. They are typically used to
-// preserve selected live fields from the current object that should not be
-// overwritten by the desired state.
-//
-// If the provided flavor is nil, it is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*appsv1.StatefulSet](flavor))
 	return b
 }
 

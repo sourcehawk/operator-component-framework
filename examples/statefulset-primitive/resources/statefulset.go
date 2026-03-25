@@ -72,18 +72,14 @@ func NewStatefulSetResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.TracingFeature(owner.Spec.EnableTracing))
 	builder.WithMutation(features.MetricsFeature(owner.Spec.EnableMetrics, 9090))
 
-	// 4. Configure flavors.
-	builder.WithFieldApplicationFlavor(features.PreserveLabelsFlavor())
-	builder.WithFieldApplicationFlavor(features.PreserveAnnotationsFlavor())
-
-	// 5. Configure custom status handlers.
+	// 4. Configure custom status handlers.
 	builder.WithCustomConvergeStatus(features.CustomConvergeStatus())
 	builder.WithCustomGraceStatus(features.CustomGraceStatus())
 
-	// 6. Configure custom suspension logic.
+	// 5. Configure custom suspension logic.
 	builder.WithCustomSuspendMutation(features.CustomSuspendMutation())
 
-	// 7. Data extraction (optional).
+	// 6. Data extraction (optional).
 	builder.WithDataExtractor(func(s appsv1.StatefulSet) error {
 		fmt.Printf("Reconciling statefulset: %s, ready replicas: %d\n", s.Name, s.Status.ReadyReplicas)
 
@@ -96,6 +92,6 @@ func NewStatefulSetResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 8. Build the final resource.
+	// 7. Build the final resource.
 	return builder.Build()
 }

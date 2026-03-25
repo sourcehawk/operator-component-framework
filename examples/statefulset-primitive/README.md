@@ -6,8 +6,6 @@ to manage a Kubernetes StatefulSet as a component of a larger application, utili
 - **Base Construction**: Initializing a StatefulSet with basic metadata, spec, and volume claim templates.
 - **Feature Mutations**: Applying version-gated or conditional changes (sidecars, env vars, annotations) using the
   `Mutator`.
-- **Field Flavors**: Preserving labels and annotations that might be managed by external tools (e.g., ArgoCD, manual
-  edits).
 - **Custom Status Handlers**: Overriding the default logic for determining readiness (via `ConvergingStatus` and the
   `WithCustomConvergeStatus` builder hook) and health assessment during rollouts (`GraceStatus`).
 - **Custom Suspension**: Extending the default suspension logic (scaling to 0) with additional mutations.
@@ -18,7 +16,7 @@ to manage a Kubernetes StatefulSet as a component of a larger application, utili
 - `app/`: Defines the mock `ExampleApp` CRD and the controller that uses the component framework.
 - `features/`: Contains modular feature definitions:
   - `mutations.go`: sidecar injection, env vars, and version-based image updates.
-  - `flavors.go`: usage of `FieldApplicationFlavor` to preserve fields, plus custom status and suspension handlers.
+  - `handlers.go`: custom status and suspension handlers.
 - `resources/`: Contains the central `NewStatefulSetResource` factory that assembles all features using the
   `statefulset.Builder`.
 - `main.go`: A standalone entry point that demonstrates a single reconciliation loop using a fake client.

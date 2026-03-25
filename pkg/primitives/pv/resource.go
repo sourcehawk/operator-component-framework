@@ -7,39 +7,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), the Status
-// subresource, and PV-specific immutable fields (PersistentVolumeSource,
-// VolumeMode, ClaimRef) from the original current object.
-//
-// On a fresh PV (empty ResourceVersion, meaning it has not yet been persisted),
-// the full desired state is applied without preservation.
-func DefaultFieldApplicator(current, desired *corev1.PersistentVolume) error {
-	if current.ResourceVersion == "" {
-		// First creation — apply everything from desired.
-		*current = *desired.DeepCopy()
-		return nil
-	}
-
-	// Snapshot immutable fields before overwriting.
-	savedSource := current.Spec.PersistentVolumeSource
-	savedVolumeMode := current.Spec.VolumeMode
-	savedClaimRef := current.Spec.ClaimRef
-
-	original := current.DeepCopy()
-	*current = *desired.DeepCopy()
-	generic.PreserveServerManagedFields(current, original)
-	generic.PreserveStatus(current, original)
-
-	// Restore PV-specific immutable fields from the live object.
-	current.Spec.PersistentVolumeSource = savedSource
-	current.Spec.VolumeMode = savedVolumeMode
-	current.Spec.ClaimRef = savedClaimRef
-
-	return nil
-}
-
 // Resource is a high-level abstraction for managing a Kubernetes PersistentVolume
 // within a controller's reconciliation loop.
 //
@@ -73,11 +40,8 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes PersistentVolume into the desired state.
 //
 // The mutation process follows this order:
-//  1. Field application: the current object is updated to reflect the desired base state,
-//     using either DefaultFieldApplicator or a custom applicator if one is configured.
-//     The default applicator preserves immutable fields on existing PVs.
-//  2. Field application flavors: any registered flavors are applied in registration order.
-//  3. Feature mutations: all registered feature-gated mutations are applied in order.
+//  1. The desired base state is applied to the current object.
+//  2. Feature mutations: all registered feature-gated mutations are applied in order.
 //
 // This method is invoked by the framework during the Update phase of reconciliation.
 func (r *Resource) Mutate(current client.Object) error {

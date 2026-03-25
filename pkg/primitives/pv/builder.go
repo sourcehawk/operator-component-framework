@@ -12,10 +12,9 @@ import (
 
 // Builder is a configuration helper for creating and customizing a PersistentVolume Resource.
 //
-// It provides a fluent API for registering mutations, field application flavors,
-// operational status handlers, and data extractors. Build() validates the
-// configuration and returns an initialized Resource ready for use in a
-// reconciliation loop.
+// It provides a fluent API for registering mutations, operational status handlers,
+// and data extractors. Build() validates the configuration and returns an
+// initialized Resource ready for use in a reconciliation loop.
 type Builder struct {
 	base *generic.IntegrationBuilder[*corev1.PersistentVolume, *Mutator]
 }
@@ -24,7 +23,7 @@ type Builder struct {
 //
 // The PersistentVolume object serves as the desired base state. During reconciliation
 // the Resource will make the cluster's state match this base, modified by any
-// registered mutations and flavors.
+// registered mutations.
 //
 // PersistentVolumes are cluster-scoped; the provided object must have a Name set
 // but must not have a Namespace. This is validated during the Build() call.
@@ -36,7 +35,6 @@ func NewBuilder(pv *corev1.PersistentVolume) *Builder {
 	base := generic.NewIntegrationBuilder[*corev1.PersistentVolume, *Mutator](
 		pv,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 	base.MarkClusterScoped()
@@ -53,36 +51,6 @@ func NewBuilder(pv *corev1.PersistentVolume) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing PersistentVolume in the cluster.
-//
-// The default applicator (DefaultFieldApplicator) preserves immutable fields
-// (volume source, volume mode, claim ref) on existing PVs while replacing all
-// other fields from the desired state. Use a custom applicator when you need
-// different preservation semantics.
-//
-// The applicator receives the current object from the API server and the desired
-// object from the Resource, and is responsible for merging the desired changes
-// into the current object.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current, desired *corev1.PersistentVolume) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-//
-// Flavors run after the baseline applicator (default or custom) in registration
-// order. They are typically used to preserve fields from the live cluster object
-// that should not be overwritten by the desired state.
-//
-// A nil flavor is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*corev1.PersistentVolume](flavor))
 	return b
 }
 
@@ -121,7 +89,7 @@ func (b *Builder) WithDataExtractor(extractor func(corev1.PersistentVolume) erro
 //   - No PersistentVolume object was provided.
 //   - The PersistentVolume is missing a Name.
 //   - The PersistentVolume has a Namespace set (PVs are cluster-scoped).
-//   - Identity function, field applicator, or mutator factory is nil.
+//   - Identity function or mutator factory is nil.
 func (b *Builder) Build() (*Resource, error) {
 	genericRes, err := b.base.Build()
 	if err != nil {

@@ -75,38 +75,6 @@ func TestBuilder_WithMutation(t *testing.T) {
 	assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
 }
 
-func TestBuilder_WithCustomFieldApplicator(t *testing.T) {
-	t.Parallel()
-	pv := &corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-pv"},
-	}
-	called := false
-	applicator := func(_, _ *corev1.PersistentVolume) error {
-		called = true
-		return nil
-	}
-	res, err := NewBuilder(pv).
-		WithCustomFieldApplicator(applicator).
-		Build()
-	require.NoError(t, err)
-	require.NotNil(t, res.base.CustomFieldApplicator)
-	_ = res.base.CustomFieldApplicator(nil, nil)
-	assert.True(t, called)
-}
-
-func TestBuilder_WithFieldApplicationFlavor(t *testing.T) {
-	t.Parallel()
-	pv := &corev1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-pv"},
-	}
-	res, err := NewBuilder(pv).
-		WithFieldApplicationFlavor(PreserveCurrentLabels).
-		WithFieldApplicationFlavor(nil). // nil must be ignored
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.FieldFlavors, 1)
-}
-
 func TestBuilder_WithCustomOperationalStatus(t *testing.T) {
 	t.Parallel()
 	pv := &corev1.PersistentVolume{

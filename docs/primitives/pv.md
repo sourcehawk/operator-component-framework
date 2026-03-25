@@ -6,14 +6,12 @@ and object metadata.
 
 ## Capabilities
 
-| Capability                 | Detail                                                                                                      |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Integration lifecycle**  | Reports `Operational`, `OperationPending`, or `OperationFailing` based on the PV's phase                    |
-| **Cluster-scoped**         | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources                    |
-| **Immutable preservation** | Default field applicator preserves immutable fields (volume source, volume mode, claim ref) on existing PVs |
-| **Mutation pipeline**      | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access          |
-| **Flavors**                | Preserves externally-managed labels and annotations not owned by the operator                               |
-| **Data extraction**        | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle           |
+| Capability                | Detail                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Integration lifecycle** | Reports `Operational`, `OperationPending`, or `OperationFailing` based on the PV's phase                 |
+| **Cluster-scoped**        | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources                 |
+| **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access       |
+| **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle        |
 
 ## Building a PersistentVolume Primitive
 
@@ -39,41 +37,12 @@ base := &corev1.PersistentVolume{
 }
 
 resource, err := pv.NewBuilder(base).
-    WithFieldApplicationFlavor(pv.PreserveCurrentAnnotations).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
 
 PersistentVolumes are cluster-scoped. The builder validates that Name is set and that Namespace is empty. Setting a
 namespace on the PV object will cause `Build()` to return an error.
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current PersistentVolume with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), the Status
-subresource, and PV-specific immutable fields from the original live object. This prevents spec-level reconciliation
-from clearing status data written by the API server or other controllers.
-
-Preserved immutable fields:
-
-- `Spec.PersistentVolumeSource` — the volume backend (NFS, CSI, HostPath, etc.)
-- `Spec.VolumeMode` — Filesystem or Block
-- `Spec.ClaimRef` — the binding to a PersistentVolumeClaim
-
-On initial creation (empty `ResourceVersion`), the entire desired state is applied without preservation.
-
-Use `WithCustomFieldApplicator` when you need different preservation semantics:
-
-```go
-resource, err := pv.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *corev1.PersistentVolume) error {
-        // Only update specific fields.
-        current.Spec.StorageClassName = desired.Spec.StorageClassName
-        current.Spec.MountOptions = desired.Spec.MountOptions
-        return nil
-    }).
-    Build()
-```
 
 ## Mutations
 
@@ -231,34 +200,6 @@ status:
 
 Override with `WithCustomOperationalStatus` when your PV requires different readiness logic.
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := pv.NewBuilder(base).
-    WithFieldApplicationFlavor(pv.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := pv.NewBuilder(base).
-    WithFieldApplicationFlavor(pv.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Full Example: Storage-Tier PersistentVolume
 
 ```go
@@ -289,7 +230,6 @@ func TierLabelMutation(version, tier string) pv.Mutation {
 }
 
 resource, err := pv.NewBuilder(base).
-    WithFieldApplicationFlavor(pv.PreserveCurrentAnnotations).
     WithMutation(StorageClassMutation(owner.Spec.Version)).
     WithMutation(TierLabelMutation(owner.Spec.Version, "premium")).
     Build()
@@ -299,10 +239,6 @@ resource, err := pv.NewBuilder(base).
 
 **PersistentVolumes are cluster-scoped.** Do not set a namespace on the PV object. The builder rejects namespaced PVs
 with a clear error.
-
-**Immutable fields are preserved automatically.** The default field applicator detects existing PVs (by
-`ResourceVersion`) and preserves the volume source, volume mode, and claim ref. You do not need a custom applicator
-unless you require different preservation semantics.
 
 **Use the Integration lifecycle for status.** PVs report `Operational`, `OperationPending`, or `OperationFailing` based
 on their phase. Override with `WithCustomOperationalStatus` only when phase-based readiness is insufficient.

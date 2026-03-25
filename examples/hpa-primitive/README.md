@@ -6,7 +6,6 @@ manage a Kubernetes HorizontalPodAutoscaler as a component of a larger applicati
 - **Base Construction**: Initializing an HPA with a scale target ref, min/max replicas, and labels.
 - **Feature Mutations**: Applying version-gated or conditional changes (CPU metrics, memory metrics, scaling behavior)
   using the `Mutator`.
-- **Field Flavors**: Preserving labels and annotations that might be managed by external tools.
 - **Operational Status**: Reporting HPA health based on `ScalingActive` and `AbleToScale` conditions.
 - **Suspension (Delete)**: Demonstrating delete-on-suspend behavior — the HPA is removed during suspension to prevent it
   from scaling the target back up.
@@ -16,7 +15,7 @@ manage a Kubernetes HorizontalPodAutoscaler as a component of a larger applicati
 
 - `app/`: Defines the mock `ExampleApp` CRD and the controller that uses the component framework.
 - `features/`: Contains modular feature definitions:
-  - `mutations.go`: CPU metric, memory metric, scale behavior, and flavor functions.
+  - `mutations.go`: CPU metric, memory metric, and scale behavior feature mutations.
 - `resources/`: Contains the central `NewHPAResource` factory that assembles all features using the `hpa.Builder`.
 - `main.go`: A standalone entry point that demonstrates a reconciliation loop using a fake client.
 

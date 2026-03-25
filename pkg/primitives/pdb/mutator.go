@@ -30,8 +30,9 @@ type featurePlan struct {
 // together and applied in the order the features were registered.
 //
 // Unlike other primitive mutators, EditObjectMetadata and EditSpec return an
-// error when called without an active feature scope, rather than silently
-// succeeding. This means Mutator does not satisfy editors.ObjectMutator.
+// error when a non-nil edit function is provided without an active feature
+// scope (i.e. before BeginFeature is called). Nil edit functions are always
+// ignored and return nil. This means Mutator does not satisfy editors.ObjectMutator.
 type Mutator struct {
 	pdb *policyv1.PodDisruptionBudget
 

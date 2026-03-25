@@ -22,8 +22,8 @@ type Builder struct {
 // NewBuilder initializes a new Builder with the provided Deployment object.
 //
 // The Deployment object passed here serves as the "desired base state". During
-// reconciliation, the Resource will attempt to make the cluster's state match
-// this base state, modified by any registered mutations.
+// reconciliation, the framework uses Server-Side Apply to make the cluster's
+// state match this base state, modified by any registered mutations.
 //
 // The provided deployment must have at least a Name and Namespace set, which
 // is validated during the Build() call.

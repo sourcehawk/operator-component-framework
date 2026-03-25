@@ -75,7 +75,7 @@ func TestMutator_EditSubjects_Add(t *testing.T) {
 	m := NewMutator(crb)
 	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-		e.Add(rbacv1.Subject{Kind: "User", Name: "alice", APIGroup: "rbac.authorization.k8s.io"})
+		e.EnsureSubject(rbacv1.Subject{Kind: "User", Name: "alice", APIGroup: "rbac.authorization.k8s.io"})
 		return nil
 	})
 	require.NoError(t, m.Apply())
@@ -92,7 +92,7 @@ func TestMutator_EditSubjects_Remove(t *testing.T) {
 	m := NewMutator(crb)
 	m.BeginFeature()
 	m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-		e.Remove("User", "alice", "")
+		e.RemoveSubject("User", "alice", "")
 		return nil
 	})
 	require.NoError(t, m.Apply())

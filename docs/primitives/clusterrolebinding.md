@@ -110,30 +110,19 @@ The primary API for modifying `.subjects` entries. Use `m.EditSubjects` for full
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
     e.EnsureServiceAccount("my-sa", "default")
-    e.Remove("User", "old-user", "")
+    e.RemoveSubject("User", "old-user", "")
     return nil
 })
 ```
 
-#### EnsureServiceAccount
+#### EnsureSubject
 
-Ensures a `ServiceAccount` subject with the given name and namespace exists. If an identical subject already exists,
-this is a no-op:
-
-```go
-m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-    e.EnsureServiceAccount("app-sa", "production")
-    return nil
-})
-```
-
-#### Add
-
-Appends a subject to the list without checking for duplicates:
+Upserts a subject in the subjects list. A subject is identified by the combination of Kind, Name, and Namespace.
+If a matching subject already exists it is replaced; otherwise the new subject is appended:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-    e.Add(rbacv1.Subject{
+    e.EnsureSubject(rbacv1.Subject{
         Kind:     "Group",
         Name:     "developers",
         APIGroup: "rbac.authorization.k8s.io",
@@ -142,14 +131,25 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 })
 ```
 
-#### Remove and RemoveServiceAccount
+#### EnsureServiceAccount
 
-`Remove` removes all subjects matching the given kind, name, and namespace. `RemoveServiceAccount` is a convenience
+Convenience method that ensures a `ServiceAccount` subject with the given name and namespace exists:
+
+```go
+m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
+    e.EnsureServiceAccount("app-sa", "production")
+    return nil
+})
+```
+
+#### RemoveSubject and RemoveServiceAccount
+
+`RemoveSubject` removes a subject matching the given kind, name, and namespace. `RemoveServiceAccount` is a convenience
 wrapper for removing `ServiceAccount` subjects:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-    e.Remove("User", "old-user", "")
+    e.RemoveSubject("User", "old-user", "")
     e.RemoveServiceAccount("deprecated-sa", "default")
     return nil
 })

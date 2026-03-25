@@ -8,70 +8,85 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-func TestBindingSubjectsEditor_Raw(t *testing.T) {
-	t.Run("initialises nil slice", func(t *testing.T) {
-		var subjects []rbacv1.Subject
-		e := NewBindingSubjectsEditor(&subjects)
-		raw := e.Raw()
-		require.NotNil(t, raw)
-		assert.Empty(t, *raw)
-	})
-
-	t.Run("returns existing slice", func(t *testing.T) {
-		subjects := []rbacv1.Subject{{Kind: "User", Name: "alice"}}
-		e := NewBindingSubjectsEditor(&subjects)
-		raw := e.Raw()
-		assert.Len(t, *raw, 1)
-		assert.Equal(t, "alice", (*raw)[0].Name)
-	})
-
-	t.Run("append through pointer propagates", func(t *testing.T) {
-		var subjects []rbacv1.Subject
-		e := NewBindingSubjectsEditor(&subjects)
-		raw := e.Raw()
-		*raw = append(*raw, rbacv1.Subject{Kind: "User", Name: "bob"})
-		assert.Len(t, subjects, 1)
-		assert.Equal(t, "bob", subjects[0].Name)
-	})
-}
-
-func TestBindingSubjectsEditor_Add(t *testing.T) {
+func TestBindingSubjectsEditor_EnsureSubject_Append(t *testing.T) {
 	var subjects []rbacv1.Subject
 	e := NewBindingSubjectsEditor(&subjects)
-	e.Add(rbacv1.Subject{Kind: "User", Name: "alice"})
-	e.Add(rbacv1.Subject{Kind: "Group", Name: "devs"})
-	assert.Len(t, subjects, 2)
-	assert.Equal(t, "alice", subjects[0].Name)
-	assert.Equal(t, "devs", subjects[1].Name)
+
+	e.EnsureSubject(rbacv1.Subject{
+		Kind:      "ServiceAccount",
+		Name:      "my-sa",
+		Namespace: "default",
+	})
+
+	require.Len(t, subjects, 1)
+	assert.Equal(t, "ServiceAccount", subjects[0].Kind)
+	assert.Equal(t, "my-sa", subjects[0].Name)
+	assert.Equal(t, "default", subjects[0].Namespace)
 }
 
-func TestBindingSubjectsEditor_Remove(t *testing.T) {
-	t.Run("removes matching subject", func(t *testing.T) {
-		subjects := []rbacv1.Subject{
-			{Kind: "User", Name: "alice", Namespace: "default"},
-			{Kind: "User", Name: "bob", Namespace: "default"},
-		}
-		e := NewBindingSubjectsEditor(&subjects)
-		e.Remove("User", "alice", "default")
-		assert.Len(t, subjects, 1)
-		assert.Equal(t, "bob", subjects[0].Name)
+func TestBindingSubjectsEditor_EnsureSubject_Upsert(t *testing.T) {
+	subjects := []rbacv1.Subject{
+		{Kind: "ServiceAccount", Name: "my-sa", Namespace: "default", APIGroup: ""},
+	}
+	e := NewBindingSubjectsEditor(&subjects)
+
+	e.EnsureSubject(rbacv1.Subject{
+		Kind:      "ServiceAccount",
+		Name:      "my-sa",
+		Namespace: "default",
+		APIGroup:  "rbac.authorization.k8s.io",
 	})
 
-	t.Run("no-op when not found", func(t *testing.T) {
-		subjects := []rbacv1.Subject{
-			{Kind: "User", Name: "alice", Namespace: "default"},
-		}
-		e := NewBindingSubjectsEditor(&subjects)
-		e.Remove("User", "nobody", "default")
-		assert.Len(t, subjects, 1)
-	})
+	require.Len(t, subjects, 1)
+	assert.Equal(t, "rbac.authorization.k8s.io", subjects[0].APIGroup)
+}
 
-	t.Run("no-op on nil slice", func(t *testing.T) {
-		var subjects []rbacv1.Subject
-		e := NewBindingSubjectsEditor(&subjects)
-		e.Remove("User", "alice", "default")
-		assert.Nil(t, subjects)
-	})
+func TestBindingSubjectsEditor_EnsureSubject_MultipleSubjects(t *testing.T) {
+	var subjects []rbacv1.Subject
+	e := NewBindingSubjectsEditor(&subjects)
+
+	e.EnsureSubject(rbacv1.Subject{Kind: "ServiceAccount", Name: "sa-1", Namespace: "ns-1"})
+	e.EnsureSubject(rbacv1.Subject{Kind: "User", Name: "admin", Namespace: ""})
+
+	require.Len(t, subjects, 2)
+	assert.Equal(t, "sa-1", subjects[0].Name)
+	assert.Equal(t, "admin", subjects[1].Name)
+}
+
+func TestBindingSubjectsEditor_RemoveSubject(t *testing.T) {
+	subjects := []rbacv1.Subject{
+		{Kind: "ServiceAccount", Name: "keep", Namespace: "default"},
+		{Kind: "ServiceAccount", Name: "remove", Namespace: "default"},
+		{Kind: "User", Name: "admin", Namespace: ""},
+	}
+	e := NewBindingSubjectsEditor(&subjects)
+
+	e.RemoveSubject("ServiceAccount", "remove", "default")
+
+	require.Len(t, subjects, 2)
+	assert.Equal(t, "keep", subjects[0].Name)
+	assert.Equal(t, "admin", subjects[1].Name)
+}
+
+func TestBindingSubjectsEditor_RemoveSubject_NotPresent(t *testing.T) {
+	subjects := []rbacv1.Subject{
+		{Kind: "ServiceAccount", Name: "keep", Namespace: "default"},
+	}
+	e := NewBindingSubjectsEditor(&subjects)
+
+	e.RemoveSubject("ServiceAccount", "missing", "default")
+
+	require.Len(t, subjects, 1)
+	assert.Equal(t, "keep", subjects[0].Name)
+}
+
+func TestBindingSubjectsEditor_RemoveSubject_EmptySlice(t *testing.T) {
+	var subjects []rbacv1.Subject
+	e := NewBindingSubjectsEditor(&subjects)
+
+	e.RemoveSubject("ServiceAccount", "missing", "default")
+
+	assert.Empty(t, subjects)
 }
 
 func TestBindingSubjectsEditor_EnsureServiceAccount(t *testing.T) {
@@ -104,4 +119,35 @@ func TestBindingSubjectsEditor_RemoveServiceAccount(t *testing.T) {
 	e.RemoveServiceAccount("my-sa", "default")
 	assert.Len(t, subjects, 1)
 	assert.Equal(t, "alice", subjects[0].Name)
+}
+
+func TestBindingSubjectsEditor_Raw(t *testing.T) {
+	subjects := []rbacv1.Subject{
+		{Kind: "ServiceAccount", Name: "my-sa", Namespace: "default"},
+	}
+	e := NewBindingSubjectsEditor(&subjects)
+
+	raw := e.Raw()
+	require.NotNil(t, raw)
+	assert.Same(t, &subjects, raw)
+}
+
+func TestBindingSubjectsEditor_Raw_NilSlice(t *testing.T) {
+	var subjects []rbacv1.Subject
+	e := NewBindingSubjectsEditor(&subjects)
+
+	raw := e.Raw()
+	require.NotNil(t, raw)
+}
+
+func TestBindingSubjectsEditor_NilPointer(t *testing.T) {
+	e := NewBindingSubjectsEditor(nil)
+
+	// Should not panic; operations work on the internal slice.
+	e.EnsureSubject(rbacv1.Subject{Kind: "ServiceAccount", Name: "sa", Namespace: "ns"})
+	e.RemoveSubject("ServiceAccount", "sa", "ns")
+
+	raw := e.Raw()
+	require.NotNil(t, raw)
+	assert.Empty(t, *raw)
 }

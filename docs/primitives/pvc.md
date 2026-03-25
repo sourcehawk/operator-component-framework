@@ -6,14 +6,12 @@ requests and object metadata.
 
 ## Capabilities
 
-| Capability                 | Detail                                                                                               |
-| -------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **Operational tracking**   | Monitors PVC phase — reports `Operational` (Bound), `OperationPending`, or `OperationFailing` (Lost) |
-| **Immutable field safety** | DefaultFieldApplicator preserves `accessModes`, `storageClassName`, `volumeMode`, `volumeName`       |
-| **Suspension**             | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default         |
-| **Mutation pipeline**      | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access         |
-| **Flavors**                | Preserves externally-managed fields — labels and annotations not owned by the operator               |
-| **Data extraction**        | Reads bound volume name, capacity, or other status fields after each sync cycle                      |
+| Capability               | Detail                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **Operational tracking** | Monitors PVC phase — reports `Operational` (Bound), `OperationPending`, or `OperationFailing` (Lost) |
+| **Suspension**           | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default         |
+| **Mutation pipeline**    | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access         |
+| **Data extraction**      | Reads bound volume name, capacity, or other status fields after each sync cycle                      |
 
 ## Building a PVC Primitive
 
@@ -36,37 +34,7 @@ base := &corev1.PersistentVolumeClaim{
 }
 
 resource, err := pvc.NewBuilder(base).
-    WithFieldApplicationFlavor(pvc.PreserveCurrentLabels).
     WithMutation(MyStorageMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current PVC with a deep copy of the desired object, then restores server-managed
-metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status
-subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by
-the API server or other controllers.
-
-Kubernetes marks several PVC spec fields as immutable after creation. The default applicator detects existing PVCs (via
-`ResourceVersion`) and restores these fields from the cluster object:
-
-| Immutable Field    | Preserved On Existing |
-| ------------------ | --------------------- |
-| `accessModes`      | Yes                   |
-| `storageClassName` | Yes                   |
-| `volumeMode`       | Yes                   |
-| `volumeName`       | Yes                   |
-
-Use `WithCustomFieldApplicator` when you need different merge semantics:
-
-```go
-resource, err := pvc.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *corev1.PersistentVolumeClaim) error {
-        // Only update the storage request; leave everything else untouched.
-        current.Spec.Resources.Requests = desired.Spec.Resources.Requests
-        return nil
-    }).
     Build()
 ```
 
@@ -209,34 +177,6 @@ The `Mutator` exposes a convenience wrapper for the most common PVC operation:
 Use this for simple, single-operation mutations. Use `EditPVCSpec` when you need multiple operations or raw access in a
 single edit block.
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := pvc.NewBuilder(base).
-    WithFieldApplicationFlavor(pvc.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := pvc.NewBuilder(base).
-    WithFieldApplicationFlavor(pvc.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Status Handlers
 
 ### Operational Status
@@ -265,16 +205,9 @@ PVCs that use ephemeral storage.
 
 ## Guidance
 
-**Use `DefaultFieldApplicator` unless you have a specific reason not to.** It handles the immutable field preservation
-that Kubernetes requires for PVCs, preventing rejected update requests.
-
 **Register mutations for storage expansion carefully.** Kubernetes only allows expanding PVC storage (not shrinking).
 Ensure your mutations respect this constraint. The `SetStorageRequest` method does not enforce this — the API server
 will reject invalid requests.
 
 **Prefer `WithCustomSuspendDeletionDecision` over deleting PVCs manually.** If you need PVCs to be cleaned up during
 suspension, register a deletion decision handler rather than deleting them in a mutation.
-
-**Use flavors for externally-managed metadata.** If admission webhooks, external controllers, or GitOps tools add labels
-or annotations to your PVCs, use `PreserveCurrentLabels` and `PreserveCurrentAnnotations` to prevent your operator from
-removing them.

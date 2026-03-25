@@ -5,8 +5,6 @@ manage a Kubernetes PersistentVolumeClaim as a component of a larger application
 
 - **Base Construction**: Initializing a PVC with access modes, storage request, and metadata.
 - **Feature Mutations**: Applying conditional storage expansion and metadata updates using the `Mutator`.
-- **Immutable Field Safety**: The `DefaultFieldApplicator` preserves immutable PVC fields on existing resources.
-- **Field Flavors**: Preserving labels and annotations managed by external tools.
 - **Suspension**: PVCs are immediately suspended with data preserved by default.
 - **Data Extraction**: Harvesting PVC status after each reconcile cycle.
 

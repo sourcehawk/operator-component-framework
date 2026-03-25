@@ -11,9 +11,9 @@ import (
 
 // Builder is a configuration helper for creating and customizing a PVC Resource.
 //
-// It provides a fluent API for registering mutations, field application flavors,
-// status handlers, and data extractors. Build() validates the configuration and
-// returns an initialized Resource ready for use in a reconciliation loop.
+// It provides a fluent API for registering mutations, status handlers, and data
+// extractors. Build() validates the configuration and returns an initialized
+// Resource ready for use in a reconciliation loop.
 type Builder struct {
 	base *generic.IntegrationBuilder[*corev1.PersistentVolumeClaim, *Mutator]
 }
@@ -21,8 +21,7 @@ type Builder struct {
 // NewBuilder initializes a new Builder with the provided PersistentVolumeClaim object.
 //
 // The PVC object serves as the desired base state. During reconciliation the Resource
-// will make the cluster's state match this base, modified by any registered mutations
-// and flavors.
+// will make the cluster's state match this base, modified by any registered mutations.
 //
 // The provided PVC must have both Name and Namespace set, which is validated during
 // the Build() call.
@@ -34,7 +33,6 @@ func NewBuilder(pvc *corev1.PersistentVolumeClaim) *Builder {
 	base := generic.NewIntegrationBuilder[*corev1.PersistentVolumeClaim, *Mutator](
 		pvc,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -51,37 +49,11 @@ func NewBuilder(pvc *corev1.PersistentVolumeClaim) *Builder {
 
 // WithMutation registers a mutation for the PVC.
 //
-// Mutations are applied sequentially during the Mutate() phase of reconciliation,
-// after the baseline field applicator and any registered flavors have run.
+// Mutations are applied sequentially during the Mutate() phase of reconciliation.
 // A mutation with a nil Feature is applied unconditionally; one with a non-nil
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing PVC in the cluster.
-//
-// The default applicator (DefaultFieldApplicator) replaces the current object
-// with a deep copy of the desired object while preserving immutable fields on
-// existing PVCs. Use a custom applicator when you need different merge semantics.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current, desired *corev1.PersistentVolumeClaim) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-//
-// Flavors run after the baseline applicator (default or custom) in registration
-// order. They are typically used to preserve fields from the live cluster object
-// that should not be overwritten by the desired state.
-//
-// A nil flavor is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*corev1.PersistentVolumeClaim](flavor))
 	return b
 }
 

@@ -42,11 +42,7 @@ func NewPVCResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.StorageAnnotationMutation(owner.Spec.Version, "standard"))
 	builder.WithMutation(features.LargeStorageMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve labels and annotations added by external controllers.
-	builder.WithFieldApplicationFlavor(pvc.PreserveCurrentLabels)
-	builder.WithFieldApplicationFlavor(pvc.PreserveCurrentAnnotations)
-
-	// 5. Extract data from the reconciled PVC.
+	// 4. Extract data from the reconciled PVC.
 	builder.WithDataExtractor(func(p corev1.PersistentVolumeClaim) error {
 		fmt.Printf("Reconciled PVC: %s\n", p.Name)
 		fmt.Printf("  Phase: %s\n", p.Status.Phase)
@@ -56,6 +52,6 @@ func NewPVCResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

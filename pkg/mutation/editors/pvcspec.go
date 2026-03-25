@@ -36,7 +36,7 @@ func (e *PVCSpecEditor) SetStorageRequest(quantity resource.Quantity) {
 // SetAccessModes sets the access modes for the PVC.
 //
 // Access modes are immutable on existing PVCs. This method is intended for
-// initial construction; the DefaultFieldApplicator preserves existing values.
+// initial construction; immutable fields are preserved by Server-Side Apply.
 func (e *PVCSpecEditor) SetAccessModes(modes []corev1.PersistentVolumeAccessMode) {
 	e.spec.AccessModes = modes
 }
@@ -44,7 +44,7 @@ func (e *PVCSpecEditor) SetAccessModes(modes []corev1.PersistentVolumeAccessMode
 // SetStorageClassName sets the storage class name for the PVC.
 //
 // The storage class name is immutable on existing PVCs. This method is intended
-// for initial construction; the DefaultFieldApplicator preserves existing values.
+// for initial construction; immutable fields are preserved by Server-Side Apply.
 func (e *PVCSpecEditor) SetStorageClassName(name string) {
 	e.spec.StorageClassName = &name
 }
@@ -52,7 +52,7 @@ func (e *PVCSpecEditor) SetStorageClassName(name string) {
 // SetVolumeMode sets the volume mode (Filesystem or Block) for the PVC.
 //
 // The volume mode is immutable on existing PVCs. This method is intended for
-// initial construction; the DefaultFieldApplicator preserves existing values.
+// initial construction; immutable fields are preserved by Server-Side Apply.
 func (e *PVCSpecEditor) SetVolumeMode(mode corev1.PersistentVolumeMode) {
 	e.spec.VolumeMode = &mode
 }
@@ -60,7 +60,7 @@ func (e *PVCSpecEditor) SetVolumeMode(mode corev1.PersistentVolumeMode) {
 // SetVolumeName binds the PVC to a specific PersistentVolume by name.
 //
 // The volume name is immutable on existing PVCs. This method is intended for
-// initial construction; the DefaultFieldApplicator preserves existing values.
+// initial construction; immutable fields are preserved by Server-Side Apply.
 func (e *PVCSpecEditor) SetVolumeName(name string) {
 	e.spec.VolumeName = name
 }

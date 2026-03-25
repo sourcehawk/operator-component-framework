@@ -210,26 +210,10 @@ See the [examples directory](examples/) for complete implementations.
 
 ## Documentation
 
-| Document                                              | Description                                                          |
-| ----------------------------------------------------- | -------------------------------------------------------------------- |
-| [Component Framework](docs/component.md)              | Reconciliation lifecycle, condition model, grace periods, suspension |
-| [Resource Primitives](docs/primitives.md)             | Primitive categories, Server-Side Apply, mutation system             |
-| [Deployment Primitive](docs/primitives/deployment.md) | Deployment-specific mutation ordering and editors                    |
-
-## Examples
-
-The [examples directory](examples/) contains runnable, end-to-end implementations:
-
-| Example                                                                      | Description                                                                                |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [`deployment-primitive`](examples/deployment-primitive/)                     | Core Deployment primitive: mutations, suspension, data extraction                          |
-| [`custom-resource-implementation`](examples/custom-resource-implementation/) | Full custom resource wrapper implementing lifecycle interfaces and version-gated mutations |
-
-Run any example with:
-
-```bash
-go run examples/<example-name>/main.go
-```
+| Document                                  | Description                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| [Component Framework](docs/component.md)  | Reconciliation lifecycle, condition model, grace periods, suspension |
+| [Resource Primitives](docs/primitives.md) | Primitive categories, Server-Side Apply, mutation system             |
 
 ## Project Structure
 

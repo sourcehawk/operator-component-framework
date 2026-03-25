@@ -11,7 +11,8 @@ A primitive wraps a specific Kubernetes kind (e.g., `Deployment`, `ConfigMap`) a
 - **Desired state baseline** — the ideal configuration of the resource.
 - **Lifecycle integration** — built-in readiness detection, grace handling, and suspension.
 - **Mutation surfaces** — typed APIs for modifying the resource based on active features or version constraints.
-- **Field application rules** — precise control over which fields are merged or preserved during reconciliation.
+- **Server-Side Apply** — desired state is applied via SSA, preserving server defaults and fields managed by external
+  controllers.
 
 Each primitive implements the `component.Resource` interface, and may additionally implement one or more
 [lifecycle interfaces](#lifecycle-interfaces) to participate in component status aggregation.
@@ -82,31 +83,20 @@ Primitives implement behavioral interfaces that the component layer uses for sta
 
 Custom resource wrappers can implement any subset of these interfaces to opt into the corresponding component behaviors.
 
-## Field Application Model
+## Server-Side Apply
 
-When a primitive is reconciled, it applies changes in a fixed three-stage pipeline:
+The framework reconciles resources using **Server-Side Apply** (SSA). Each primitive builds the desired state — the
+baseline object with all registered mutations applied — and patches it to the cluster using `client.Apply`. Only fields
+the operator declares are sent; server-managed defaults, fields set by other controllers (HPAs, sidecar injectors,
+annotation-based tooling), and values written by webhooks are left untouched.
 
-```
-1. Baseline application   →   merge desired state onto current object
-2. Flavor adjustments     →   preserve fields managed by external controllers
-3. Mutation edits         →   apply feature-specific or version-specific changes
-```
+Field ownership is tracked automatically by the Kubernetes API server. The field manager name is derived from the owner
+and component: `"{Owner.GetKind()}/{componentName}"`. The framework applies with forced ownership, meaning it will take
+control of any conflicting fields from other managers. Fields that the operator does not include in its desired state
+are left to their current owners.
 
-This ordering guarantees that mutations always operate on a predictable, fully-formed baseline.
-
-### Flavors
-
-Flavors are reusable merge policies that run after baseline application but before mutations. Their purpose is to
-preserve fields that may be managed by external controllers or tools — sidecar injectors, autoscalers, annotation-based
-tooling — that the primitive should not overwrite.
-
-Examples of what flavors can preserve:
-
-- Labels and annotations added by external tools
-- Pod template metadata managed by injection webhooks
-- Fields managed by the Kubernetes HPA
-
-Flavors allow primitives to coexist in clusters where multiple controllers touch the same resources.
+This approach removes the perpetual-update problem that arises when an operator strips server defaults every reconcile
+cycle, and it allows primitives to coexist naturally in clusters where multiple controllers touch the same resources.
 
 ## Mutation System
 
@@ -172,7 +162,6 @@ base := &appsv1.Deployment{
 }
 
 resource, err := deployment.NewBuilder(base).
-    WithFieldApplicationFlavor(deployment.PreserveCurrentLabels).
     Build()
 ```
 

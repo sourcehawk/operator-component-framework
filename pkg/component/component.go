@@ -155,7 +155,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 
 	// Perform suspension reconciliation if component is marked as suspended
 	if c.suspended {
-		results, err := suspendResources(ctx, rec, c.createResources, mapper)
+		results, err := suspendResources(ctx, rec, c.createResources, c.name, mapper)
 		if err != nil {
 			return fail(ctx, rec, c.conditionType, err)
 		}
@@ -176,8 +176,8 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		return nil
 	}
 
-	// Create or update resources otherwise
-	createResults, err := createOrUpdateResources(ctx, rec, c.createResources, mapper)
+	// Apply resources using Server-Side Apply
+	createResults, err := applyResources(ctx, rec, c.createResources, c.name, mapper)
 	if err != nil {
 		return fail(ctx, rec, c.conditionType, err)
 	}

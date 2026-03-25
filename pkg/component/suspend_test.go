@@ -159,7 +159,7 @@ func TestSuspendResources(t *testing.T) {
 		rec := setupReconcileContext(scheme, owner, cli)
 
 		resources := []Resource{r1, r2, nonSuspendable}
-		results, err := suspendResources(ctx, rec, resources, testRESTMapper())
+		results, err := suspendResources(ctx, rec, resources, "test-component", testRESTMapper())
 
 		require.NoError(t, err)
 		assert.Len(t, results, 2)
@@ -181,7 +181,7 @@ func TestSuspendResources(t *testing.T) {
 		r2.On("Suspend").Return(errors.New("fail2"))
 
 		resources := []Resource{r1, r2}
-		results, err := suspendResources(ctx, rec, resources, testRESTMapper())
+		results, err := suspendResources(ctx, rec, resources, "test-component", testRESTMapper())
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "fail1")
@@ -194,7 +194,7 @@ func TestSuspendResources(t *testing.T) {
 		nonSuspendable := &MockResource{}
 
 		resources := []Resource{nonSuspendable}
-		results, err := suspendResources(ctx, rec, resources, testRESTMapper())
+		results, err := suspendResources(ctx, rec, resources, "test-component", testRESTMapper())
 
 		require.NoError(t, err)
 		assert.Empty(t, results)
@@ -211,7 +211,7 @@ func TestSuspendResource(t *testing.T) {
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
-		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		status, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 
@@ -226,7 +226,7 @@ func TestSuspendResource(t *testing.T) {
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
-		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		status, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 
@@ -236,7 +236,7 @@ func TestSuspendResource(t *testing.T) {
 
 		recorder := rec.Recorder.(*record.FakeRecorder)
 
-		// Drain the "UpdatedConfigMap" event from createOrUpdateResources
+		// Drain the "UpdatedConfigMap" event from applyResources
 		select {
 		case <-recorder.Events:
 		default:
@@ -256,7 +256,7 @@ func TestSuspendResource(t *testing.T) {
 		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
 		rec := setupReconcileContext(scheme, owner, cli)
 
-		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		status, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspending, status.Status)
 
@@ -273,10 +273,10 @@ func TestSuspendResource(t *testing.T) {
 		rec := setupReconcileContext(scheme, owner, cli)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		cli.On("Patch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Delete", ctx, obj, mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{}, "cm"))
 
-		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		status, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
@@ -290,7 +290,7 @@ func TestSuspendResource(t *testing.T) {
 		res.On("DeleteOnSuspend").Return(false)
 		res.On("Suspend").Return(errors.New("suspend fail"))
 
-		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		_, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "suspend fail")
 	})
@@ -301,19 +301,19 @@ func TestSuspendResource(t *testing.T) {
 		res := &MockSuspendableResource{}
 		res.On("Object").Return(nil, errors.New("object fail"))
 
-		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		_, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "object fail")
 	})
 
-	t.Run("should return error if createOrUpdateResources fails", func(t *testing.T) {
+	t.Run("should return error if applyResources fails", func(t *testing.T) {
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
 		res, _ := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", false)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("get fail"))
 
-		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		_, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get fail")
 	})
@@ -324,12 +324,12 @@ func TestSuspendResource(t *testing.T) {
 		res, _ := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", false)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		cli.On("Patch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		res.On("SuspensionStatus").Unset()
 		res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{}, errors.New("status fail"))
 
-		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		_, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "status fail")
 	})
@@ -340,10 +340,10 @@ func TestSuspendResource(t *testing.T) {
 		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		cli.On("Patch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Delete", ctx, obj, mock.Anything).Return(errors.New("delete fail"))
 
-		_, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		_, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "delete fail")
 	})
@@ -354,16 +354,16 @@ func TestSuspendResource(t *testing.T) {
 		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
 
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		cli.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		cli.On("Patch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		cli.On("Delete", ctx, obj, mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Group: "v1", Resource: "ConfigMap"}, "cm"))
 
-		status, err := suspendResource(ctx, rec, res, res, testRESTMapper())
+		status, err := suspendResource(ctx, rec, res, res, "test-component", testRESTMapper())
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 		cli.AssertCalled(t, "Delete", ctx, obj, mock.Anything)
 	})
 
-	t.Run("should skip CreateOrUpdate when DeleteOnSuspend is true and object does not exist", func(t *testing.T) {
+	t.Run("should skip Apply when DeleteOnSuspend is true and object does not exist", func(t *testing.T) {
 		cli := &MockClient{}
 		rec := setupReconcileContext(scheme, setupTestOwner(), cli)
 		res, _ := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", true)
@@ -371,15 +371,15 @@ func TestSuspendResource(t *testing.T) {
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "configmaps"}, "cm"))
 
-		status, err := suspendResource(ctx, rec, res, res, nil)
+		status, err := suspendResource(ctx, rec, res, res, "test-component", nil)
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 		assert.Contains(t, status.Reason, "already deleted")
 
 		// Verify Suspend() was not called — no mutation should be queued when short-circuiting
 		res.AssertNotCalled(t, "Suspend")
-		// Verify CreateOrUpdate was never called (no Update or Create calls)
-		cli.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
+		// Verify Apply was never called (no Patch or Create calls)
+		cli.AssertNotCalled(t, "Patch", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		cli.AssertNotCalled(t, "Create", mock.Anything, mock.Anything, mock.Anything)
 		cli.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything, mock.Anything)
 	})
@@ -392,7 +392,7 @@ func TestSuspendResource(t *testing.T) {
 		cli.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(errors.New("network error"))
 
-		_, err := suspendResource(ctx, rec, res, res, nil)
+		_, err := suspendResource(ctx, rec, res, res, "test-component", nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "network error")
 	})

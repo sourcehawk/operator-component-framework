@@ -148,7 +148,7 @@ func TestMutator_EditNetworkPolicySpec_ReplaceIngressAtomically(t *testing.T) {
 	})
 	require.NoError(t, m.Apply())
 	require.Len(t, np.Spec.Ingress, 1)
-	assert.Equal(t, &port8080, np.Spec.Ingress[0].Ports[0].Port)
+	assert.Equal(t, port8080.IntVal, np.Spec.Ingress[0].Ports[0].Port.IntVal)
 }
 
 func TestMutator_EditNetworkPolicySpec_SetPolicyTypes(t *testing.T) {

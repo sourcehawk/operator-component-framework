@@ -6,7 +6,6 @@ manage a Kubernetes PodDisruptionBudget as a component of a larger application, 
 - **Base Construction**: Initializing a PDB with a percentage-based `MinAvailable` and a label selector.
 - **Feature Mutations**: Switching between `MinAvailable` and `MaxUnavailable` based on a feature toggle via `EditSpec`.
 - **Metadata Mutations**: Setting version labels on the PDB via `EditObjectMetadata`.
-- **Field Flavors**: Preserving labels managed by external controllers using `PreserveCurrentLabels`.
 - **Data Extraction**: Inspecting the reconciled PDB's disruption policy after each sync cycle.
 
 ## Directory Structure

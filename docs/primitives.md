@@ -156,6 +156,7 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/statefulset`        | Workload    | [statefulset.md](primitives/statefulset.md)               |
 | `pkg/primitives/replicaset`         | Workload    | [replicaset.md](primitives/replicaset.md)                 |
 | `pkg/primitives/daemonset`          | Workload    | [daemonset.md](primitives/daemonset.md)                   |
+| `pkg/primitives/job`                | Task        | [job.md](primitives/job.md)                               |
 | `pkg/primitives/cronjob`            | Integration | [cronjob.md](primitives/cronjob.md)                       |
 | `pkg/primitives/configmap`          | Static      | [configmap.md](primitives/configmap.md)                   |
 | `pkg/primitives/pdb`                | Static      | [pdb.md](primitives/pdb.md)                               |

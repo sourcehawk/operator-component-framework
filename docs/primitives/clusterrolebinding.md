@@ -117,8 +117,8 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 
 #### EnsureSubject
 
-Upserts a subject in the subjects list. A subject is identified by the combination of Kind, Name, and Namespace.
-If a matching subject already exists it is replaced; otherwise the new subject is appended:
+Upserts a subject in the subjects list. A subject is identified by the combination of Kind, Name, and Namespace. If a
+matching subject already exists it is replaced; otherwise the new subject is appended:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {

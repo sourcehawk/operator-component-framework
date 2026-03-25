@@ -45,10 +45,7 @@ func NewNetworkPolicyResource(owner *sharedapp.ExampleApp) (component.Resource, 
 	builder.WithMutation(features.MetricsIngressMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 	builder.WithMutation(features.DNSEgressMutation())
 
-	// 4. Preserve labels added by external controllers.
-	builder.WithFieldApplicationFlavor(networkpolicy.PreserveCurrentLabels)
-
-	// 5. Extract data from the reconciled NetworkPolicy.
+	// 4. Extract data from the reconciled NetworkPolicy.
 	builder.WithDataExtractor(func(np networkingv1.NetworkPolicy) error {
 		fmt.Printf("Reconciled NetworkPolicy: %s\n", np.Name)
 		fmt.Printf("  PodSelector: %v\n", np.Spec.PodSelector.MatchLabels)
@@ -58,6 +55,6 @@ func NewNetworkPolicyResource(owner *sharedapp.ExampleApp) (component.Resource, 
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

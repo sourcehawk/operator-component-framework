@@ -92,44 +92,6 @@ func TestBuilder(t *testing.T) {
 		assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
 	})
 
-	t.Run("WithCustomFieldApplicator", func(t *testing.T) {
-		t.Parallel()
-		hpa := &autoscalingv2.HorizontalPodAutoscaler{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-hpa",
-				Namespace: "test-ns",
-			},
-		}
-		applied := false
-		applicator := func(_, _ *autoscalingv2.HorizontalPodAutoscaler) error {
-			applied = true
-			return nil
-		}
-		res, err := NewBuilder(hpa).
-			WithCustomFieldApplicator(applicator).
-			Build()
-		require.NoError(t, err)
-		require.NotNil(t, res.base.CustomFieldApplicator)
-		_ = res.base.CustomFieldApplicator(nil, nil)
-		assert.True(t, applied)
-	})
-
-	t.Run("WithFieldApplicationFlavor", func(t *testing.T) {
-		t.Parallel()
-		hpa := &autoscalingv2.HorizontalPodAutoscaler{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-hpa",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(hpa).
-			WithFieldApplicationFlavor(PreserveCurrentLabels).
-			WithFieldApplicationFlavor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.FieldFlavors, 1)
-	})
-
 	t.Run("WithCustomOperationalStatus", func(t *testing.T) {
 		t.Parallel()
 		hpa := &autoscalingv2.HorizontalPodAutoscaler{

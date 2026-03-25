@@ -7,18 +7,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), and the Status
-// subresource from the original current object.
-func DefaultFieldApplicator(current, desired *autoscalingv2.HorizontalPodAutoscaler) error {
-	original := current.DeepCopy()
-	*current = *desired.DeepCopy()
-	generic.PreserveServerManagedFields(current, original)
-	generic.PreserveStatus(current, original)
-	return nil
-}
-
 // Resource is a high-level abstraction for managing a Kubernetes HorizontalPodAutoscaler
 // within a controller's reconciliation loop.
 //
@@ -48,11 +36,7 @@ func (r *Resource) Object() (client.Object, error) {
 
 // Mutate transforms the current state of a Kubernetes HorizontalPodAutoscaler into the desired state.
 //
-// The mutation process follows this order:
-//  1. Field application: the current object is updated to reflect the desired base state,
-//     using either DefaultFieldApplicator or a custom applicator if one is configured.
-//  2. Field application flavors: any registered flavors are applied in registration order.
-//  3. Feature mutations: all registered feature-gated mutations are applied in order.
+// All registered feature-gated mutations are applied in order.
 //
 // This method is invoked by the framework during the Update phase of reconciliation.
 func (r *Resource) Mutate(current client.Object) error {

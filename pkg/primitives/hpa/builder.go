@@ -9,6 +9,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
+
 // Builder is a configuration helper for creating and customizing an HPA Resource.
 //
 // It provides a fluent API for registering mutations, status handlers, and
@@ -34,7 +35,6 @@ func NewBuilder(hpa *autoscalingv2.HorizontalPodAutoscaler) *Builder {
 	base := generic.NewIntegrationBuilder[*autoscalingv2.HorizontalPodAutoscaler, *Mutator](
 		hpa,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -56,31 +56,6 @@ func NewBuilder(hpa *autoscalingv2.HorizontalPodAutoscaler) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing HPA in the cluster.
-//
-// The default applicator (DefaultFieldApplicator) replaces the current object
-// with a deep copy of the desired object. Use a custom applicator when other
-// controllers manage fields you need to preserve.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current, desired *autoscalingv2.HorizontalPodAutoscaler) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-//
-// Flavors run after the baseline applicator (default or custom) in registration
-// order. They are typically used to preserve fields from the live cluster object
-// that should not be overwritten by the desired state.
-//
-// A nil flavor is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*autoscalingv2.HorizontalPodAutoscaler](flavor))
 	return b
 }
 

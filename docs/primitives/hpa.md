@@ -11,7 +11,6 @@ Suspendable resource and provides a structured mutation API for configuring auto
 | **Operational status**  | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`      |
 | **Suspension (delete)** | Deletes the HPA on suspend to prevent it from scaling the target back up; recreated on resume               |
 | **Mutation pipeline**   | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                            |
-| **Flavors**             | Preserves externally-managed labels and annotations                                                         |
 | **Data extraction**     | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
 
 ## Building an HPA Primitive
@@ -36,44 +35,7 @@ base := &autoscalingv2.HorizontalPodAutoscaler{
 }
 
 resource, err := hpa.NewBuilder(base).
-    WithFieldApplicationFlavor(hpa.PreserveCurrentLabels).
     WithMutation(CPUMetricMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current HPA with a deep copy of the desired object, then restores server-managed
-metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the Status
-subresource from the original live object. This prevents spec-level reconciliation from clearing status data written by
-the API server or other controllers.
-
-Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten. The
-example below restores only the fields needed for API server updates and shared-controller coordination; for full
-server-managed field preservation, use `DefaultFieldApplicator` as a starting point:
-
-```go
-resource, err := hpa.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *autoscalingv2.HorizontalPodAutoscaler) error {
-        // Preserve specific fields from the live object
-        savedStatus := current.Status
-        savedMeta := current.ObjectMeta
-
-        // Update spec and other desired fields
-        desired.DeepCopyInto(current)
-
-        // Restore ResourceVersion, UID, Generation (required for updates),
-        // plus OwnerReferences and Finalizers (shared-controller fields)
-        current.ObjectMeta.ResourceVersion = savedMeta.ResourceVersion
-        current.ObjectMeta.UID = savedMeta.UID
-        current.ObjectMeta.Generation = savedMeta.Generation
-        current.ObjectMeta.OwnerReferences = savedMeta.OwnerReferences
-        current.ObjectMeta.Finalizers = savedMeta.Finalizers
-
-        // Restore status from the live object
-        current.Status = savedStatus
-        return nil
-    }).
     Build()
 ```
 
@@ -305,19 +267,6 @@ hpa.NewBuilder(base).
     WithCustomSuspendDeletionDecision(func(_ *autoscalingv2.HorizontalPodAutoscaler) bool {
         return false // keep HPA during suspension
     })
-```
-
-## Flavors
-
-| Flavor                       | Effect                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| `PreserveCurrentLabels`      | Keeps labels from the live object that the desired state does not declare      |
-| `PreserveCurrentAnnotations` | Keeps annotations from the live object that the desired state does not declare |
-
-```go
-hpa.NewBuilder(base).
-    WithFieldApplicationFlavor(hpa.PreserveCurrentLabels).
-    WithFieldApplicationFlavor(hpa.PreserveCurrentAnnotations)
 ```
 
 ## Full Example: CPU and Memory Autoscaling

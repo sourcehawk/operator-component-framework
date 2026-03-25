@@ -1,3 +1,4 @@
+// Package features provides feature plan mutations for the replicaset-primitive example.
 package features
 
 import (

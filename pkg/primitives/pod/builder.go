@@ -35,7 +35,6 @@ func NewBuilder(pod *corev1.Pod) *Builder {
 	base := generic.NewWorkloadBuilder[*corev1.Pod, *Mutator](
 		pod,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -62,42 +61,6 @@ func NewBuilder(pod *corev1.Pod) *Builder {
 // based on the component's current version or configuration.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing Pod in the cluster.
-//
-// The default field applicator (DefaultFieldApplicator) preserves the spec
-// on existing pods (since pod spec is largely immutable) and only updates
-// metadata. Using a custom applicator is necessary when:
-//   - Additional metadata fields need to be selectively propagated.
-//   - Specific labels or annotations should be excluded from updates.
-//
-// The applicator function receives both the 'current' object from the API
-// server and the 'desired' object from the Resource. It is responsible for
-// merging the desired changes into the current object.
-//
-// If a custom applicator is set, it overrides the default baseline application
-// logic. Post-application flavors and mutations are still applied afterward.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current *corev1.Pod, desired *corev1.Pod) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a reusable post-application "flavor" for
-// the Pod.
-//
-// Flavors are applied in the order they are registered, after the baseline field
-// applicator (default or custom) has already run. They are typically used to
-// preserve selected live fields from the current object that should not be
-// overwritten by the desired state.
-//
-// If the provided flavor is nil, it is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*corev1.Pod](flavor))
 	return b
 }
 

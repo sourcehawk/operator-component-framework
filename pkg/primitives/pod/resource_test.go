@@ -69,12 +69,13 @@ func TestResource_Mutate(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &corev1.Pod{}
-	err = res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "BAR", current.Spec.Containers[0].Env[0].Value)
+	got := obj.(*corev1.Pod)
+	assert.Equal(t, "test", got.Labels["app"])
+	assert.Equal(t, "BAR", got.Spec.Containers[0].Env[0].Value)
 }
 
 func TestResource_Mutate_DeepCopySemantics(t *testing.T) {
@@ -84,11 +85,13 @@ func TestResource_Mutate_DeepCopySemantics(t *testing.T) {
 	res, err := NewBuilder(desired).Build()
 	require.NoError(t, err)
 
-	current := &corev1.Pod{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	// Modifying current's labels must not affect the desired object.
-	current.Labels["app"] = "modified"
+	// Modifying the mutated object's labels must not affect the desired object.
+	got := obj.(*corev1.Pod)
+	got.Labels["app"] = "modified"
 	assert.Equal(t, "test", desired.Labels["app"])
 }
 
@@ -123,10 +126,12 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &corev1.Pod{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "v3", current.Spec.Containers[0].Image)
+	got := obj.(*corev1.Pod)
+	assert.Equal(t, "v3", got.Spec.Containers[0].Image)
 }
 
 func TestResource_Mutate_DisabledFeatureSkipped(t *testing.T) {
@@ -144,10 +149,12 @@ func TestResource_Mutate_DisabledFeatureSkipped(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &corev1.Pod{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Empty(t, current.Spec.Containers[0].Env)
+	got := obj.(*corev1.Pod)
+	assert.Empty(t, got.Spec.Containers[0].Env)
 }
 
 type podMockHandlers struct {
@@ -274,8 +281,9 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current := pod.DeepCopy()
-		err = res.Mutate(current)
+		obj, err := res.Object()
+		require.NoError(t, err)
+		err = res.Mutate(obj)
 		require.NoError(t, err)
 		// Default suspend mutation is a no-op for pods (they are deleted instead).
 		// Just verify Mutate succeeds.
@@ -298,12 +306,14 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current := pod.DeepCopy()
-		err = res.Mutate(current)
+		obj, err := res.Object()
+		require.NoError(t, err)
+		err = res.Mutate(obj)
 		require.NoError(t, err)
 
 		m.AssertExpectations(t)
-		assert.Equal(t, "true", current.Labels["suspended"])
+		got := obj.(*corev1.Pod)
+		assert.Equal(t, "true", got.Labels["suspended"])
 	})
 }
 
@@ -365,210 +375,3 @@ func TestResource_ExtractData_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "extract error")
 }
 
-func TestResource_CustomFieldApplicator(t *testing.T) {
-	desired := newValidPod()
-	desired.Labels = map[string]string{"app": "test"}
-
-	applicatorCalled := false
-	res, err := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current, d *corev1.Pod) error {
-			applicatorCalled = true
-			current.Name = d.Name
-			current.Namespace = d.Namespace
-			current.Spec = *d.Spec.DeepCopy()
-			// Intentionally do not copy labels.
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	current := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{"external": "label"},
-		},
-	}
-	err = res.Mutate(current)
-	require.NoError(t, err)
-
-	assert.True(t, applicatorCalled)
-	assert.Equal(t, "nginx:latest", current.Spec.Containers[0].Image)
-	assert.Equal(t, "label", current.Labels["external"])
-	assert.NotContains(t, current.Labels, "app")
-}
-
-func TestResource_CustomFieldApplicator_Error(t *testing.T) {
-	res, err := NewBuilder(newValidPod()).
-		WithCustomFieldApplicator(func(_, _ *corev1.Pod) error {
-			return errors.New("applicator error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.Mutate(&corev1.Pod{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "applicator error")
-}
-
-func TestDefaultFieldApplicator_CreatePath_DoesNotLeakStatus(t *testing.T) {
-	desired := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "test-ns",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{Name: "app", Image: "nginx:latest"},
-			},
-		},
-		Status: corev1.PodStatus{
-			Phase: corev1.PodRunning,
-			PodIP: "10.0.0.1",
-			ContainerStatuses: []corev1.ContainerStatus{
-				{Name: "app", Ready: true, RestartCount: 5},
-			},
-		},
-	}
-
-	// Empty ResourceVersion simulates the create path.
-	current := &corev1.Pod{}
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Spec and metadata from desired are applied.
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "nginx:latest", current.Spec.Containers[0].Image)
-
-	// Status must not leak from the desired object.
-	assert.Equal(t, corev1.PodStatus{}, current.Status)
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-pod",
-			Namespace:       "test-ns",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{Name: "app", Image: "nginx:latest"},
-			},
-		},
-	}
-	desired := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        "test-pod",
-			Namespace:   "test-ns",
-			Labels:      map[string]string{"app": "test"},
-			Annotations: map[string]string{"note": "hello"},
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{Name: "app", Image: "nginx:latest"},
-			},
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired labels and annotations are applied
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "hello", current.Annotations["note"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
-}
-
-func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
-	current := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-pod",
-			Namespace:       "test-ns",
-			ResourceVersion: "12345",
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{Name: "app", Image: "nginx:latest"},
-			},
-		},
-		Status: corev1.PodStatus{
-			Phase: corev1.PodRunning,
-			PodIP: "10.0.0.1",
-			ContainerStatuses: []corev1.ContainerStatus{
-				{Name: "app", Ready: true, RestartCount: 2},
-			},
-		},
-	}
-	desired := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "test-ns",
-			Labels:    map[string]string{"app": "updated"},
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{Name: "app", Image: "nginx:latest"},
-			},
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired labels are applied
-	assert.Equal(t, "updated", current.Labels["app"])
-
-	// Status from the live object is preserved
-	assert.Equal(t, corev1.PodRunning, current.Status.Phase)
-	assert.Equal(t, "10.0.0.1", current.Status.PodIP)
-	require.Len(t, current.Status.ContainerStatuses, 1)
-	assert.Equal(t, "app", current.Status.ContainerStatuses[0].Name)
-	assert.True(t, current.Status.ContainerStatuses[0].Ready)
-	assert.Equal(t, int32(2), current.Status.ContainerStatuses[0].RestartCount)
-}
-
-func TestResource_DefaultFieldApplicator_ExistingPod(t *testing.T) {
-	desired := newValidPod()
-	desired.Labels = map[string]string{"app": "test"}
-	desired.Annotations = map[string]string{"note": "hello"}
-
-	res, err := NewBuilder(desired).Build()
-	require.NoError(t, err)
-
-	// Existing pod has a ResourceVersion, so only metadata should be propagated.
-	current := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-pod",
-			Namespace:       "test-ns",
-			ResourceVersion: "12345",
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{Name: "app", Image: "old-image"},
-			},
-		},
-	}
-	err = res.Mutate(current)
-	require.NoError(t, err)
-
-	// Metadata should be updated.
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "hello", current.Annotations["note"])
-	// Spec should be preserved (immutable).
-	assert.Equal(t, "old-image", current.Spec.Containers[0].Image)
-}

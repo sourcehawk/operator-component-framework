@@ -7,42 +7,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator handles the immutable nature of pod specs while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), and the Status
-// subresource from the original current object.
-//
-// For new pods (empty ResourceVersion), the entire desired state is applied.
-// For existing pods, only metadata (labels and annotations) is propagated
-// because pod spec fields are largely immutable after creation.
-func DefaultFieldApplicator(current, desired *corev1.Pod) error {
-	if current.ResourceVersion == "" {
-		*current = *desired.DeepCopy()
-		// Status is server-managed and must not leak from the desired object.
-		current.Status = corev1.PodStatus{}
-		return nil
-	}
-	original := current.DeepCopy()
-	// Pod spec is largely immutable; only propagate metadata changes.
-	// Clone maps to avoid sharing mutable references between desired and current.
-	current.Labels = cloneStringMap(desired.Labels)
-	current.Annotations = cloneStringMap(desired.Annotations)
-	generic.PreserveServerManagedFields(current, original)
-	generic.PreserveStatus(current, original)
-	return nil
-}
-
-func cloneStringMap(src map[string]string) map[string]string {
-	if src == nil {
-		return nil
-	}
-	dst := make(map[string]string, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
 // Resource is a high-level abstraction for managing a Kubernetes Pod within a controller's
 // reconciliation loop.
 //
@@ -83,8 +47,7 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes Pod into the desired state.
 //
 // The mutation process follows a specific order:
-//  1. Core State: The current object is reset to the desired base state, or
-//     modified via a customFieldApplicator if one is configured.
+//  1. Core State: The desired base state is applied to the current object.
 //  2. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the Pod.
 //  3. Suspension: If the resource is in a suspending state, the suspension

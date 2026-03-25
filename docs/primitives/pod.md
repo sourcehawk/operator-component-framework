@@ -15,7 +15,6 @@ pod objects (e.g. debugging utilities, node-local agents).
 | **Graceful rollouts** | Detects degraded or down states via grace status handler                                           |
 | **Suspension**        | Deletes the pod (pods cannot be paused); reports `Suspended`                                       |
 | **Mutation pipeline** | Typed editors for metadata, pod spec, and containers                                               |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations)                                          |
 
 ## Building a Pod Primitive
 
@@ -38,39 +37,7 @@ base := &corev1.Pod{
 }
 
 resource, err := pod.NewBuilder(base).
-    WithFieldApplicationFlavor(pod.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` handles the immutable nature of pod specs. For new pods (empty `ResourceVersion`), the entire
-desired state is applied. For existing pods, only metadata (labels and annotations) is propagated because pod spec
-fields are largely immutable after creation. In both cases, server-managed metadata (ResourceVersion, UID, etc.),
-shared-controller fields (OwnerReferences, Finalizers), and the Status subresource are preserved from the original live
-object. This prevents spec-level reconciliation from clearing status data written by the kubelet or other controllers.
-
-Use `WithCustomFieldApplicator` when additional metadata fields need to be selectively propagated:
-
-```go
-resource, err := pod.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *corev1.Pod) error {
-        if desired.Labels != nil {
-            current.Labels = make(map[string]string, len(desired.Labels))
-            for k, v := range desired.Labels {
-                current.Labels[k] = v
-            }
-        }
-        // Selectively preserve some annotations
-        if desired.Annotations != nil {
-            current.Annotations = make(map[string]string, len(desired.Annotations))
-            for k, v := range desired.Annotations {
-                current.Annotations[k] = v
-            }
-        }
-        return nil
-    }).
     Build()
 ```
 
@@ -243,34 +210,6 @@ Pods cannot be paused. The default behavior deletes the pod when the component i
 - `DefaultSuspendMutationHandler`: no-op (deletion is handled by the framework).
 - `DefaultSuspensionStatusHandler`: always returns `{Suspended, "Pod deleted on suspend"}`.
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := pod.NewBuilder(base).
-    WithFieldApplicationFlavor(pod.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := pod.NewBuilder(base).
-    WithFieldApplicationFlavor(pod.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
@@ -285,6 +224,3 @@ the same mutation resolve correctly and reconciliation remains idempotent.
 
 **Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
 cause unexpected behavior if sidecar containers are present.
-
-**Pod spec immutability.** Most pod spec fields cannot be changed after creation. The `DefaultFieldApplicator` accounts
-for this by only propagating metadata changes to existing pods. New pods receive the full desired state.

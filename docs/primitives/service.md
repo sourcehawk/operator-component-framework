@@ -11,7 +11,6 @@ service configuration.
 | **Operational tracking** | Monitors LoadBalancer ingress assignment; reports `Operational` or `Pending`                  |
 | **Suspension**           | Unaffected by suspension by default; customizable via handlers to delete or mutate on suspend |
 | **Mutation pipeline**    | Typed editors for metadata and service spec, with a raw escape hatch for free-form access     |
-| **Flavors**              | Preserves externally-managed fields (labels, annotations)                                     |
 | **Data extraction**      | Reads generated or updated values (ClusterIP, LoadBalancer ingress) after each sync cycle     |
 
 ## Building a Service Primitive
@@ -33,33 +32,7 @@ base := &corev1.Service{
 }
 
 resource, err := service.NewBuilder(base).
-    WithFieldApplicationFlavor(service.PreserveCurrentAnnotations).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current Service with a deep copy of the desired object while preserving
-server-managed metadata, the Status subresource (including `LoadBalancer.Ingress`), the immutable `spec.clusterIP` and
-`spec.clusterIPs` fields that Kubernetes assigns after creation, server-defaulted IP family configuration
-(`spec.ipFamilies` and `spec.ipFamilyPolicy`), the server-allocated `spec.healthCheckNodePort`, and auto-allocated
-NodePort values for `NodePort` and `LoadBalancer` Services.
-
-This prevents the operator from clearing the cluster-assigned IP, load balancer ingress assignments, IP family defaults,
-health check node ports, or automatically-assigned NodePort numbers on every reconciliation cycle while ensuring all
-other fields converge to the desired state. Explicitly specified values in the desired object always take precedence, so
-these fields can still be managed by the operator when needed.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := service.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *corev1.Service) error {
-        // Only synchronise owned fields; leave other fields untouched.
-        current.Spec.Ports = desired.DeepCopy().Spec.Ports
-        return nil
-    }).
     Build()
 ```
 
@@ -221,34 +194,6 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := service.NewBuilder(base).
-    WithFieldApplicationFlavor(service.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := service.NewBuilder(base).
-    WithFieldApplicationFlavor(service.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Operational Status
 
 The Service primitive implements the `Operational` concept to track whether the Service is ready to accept traffic.
@@ -351,7 +296,6 @@ func MetricsPortMutation(version string, enabled bool) service.Mutation {
 }
 
 resource, err := service.NewBuilder(base).
-    WithFieldApplicationFlavor(service.PreserveCurrentAnnotations).
     WithMutation(BaseServiceMutation(owner.Spec.Version)).
     WithMutation(MetricsPortMutation(owner.Spec.Version, owner.Spec.EnableMetrics)).
     Build()
@@ -370,6 +314,3 @@ boolean conditions.
 
 **Use `EnsurePort` for idempotent port management.** The mutator tracks ports by name (or port number when unnamed), so
 repeated calls with the same name produce the same result.
-
-**Use `PreserveCurrentAnnotations` when cloud providers annotate Services.** Cloud load balancer controllers often add
-annotations to Services. This flavor prevents your operator from deleting those annotations each reconcile cycle.

@@ -34,7 +34,6 @@ func NewBuilder(svc *corev1.Service) *Builder {
 	base := generic.NewIntegrationBuilder[*corev1.Service, *Mutator](
 		svc,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -60,35 +59,6 @@ func NewBuilder(svc *corev1.Service) *Builder {
 // based on the component's current version or configuration.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing Service in the cluster.
-//
-// The default applicator (DefaultFieldApplicator) replaces the current object
-// with a deep copy of the desired object while preserving Kubernetes-assigned
-// immutable fields (spec.clusterIP and spec.clusterIPs).
-//
-// The applicator receives the current object from the API server and the desired
-// object from the Resource, and is responsible for merging the desired changes
-// into the current object.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current, desired *corev1.Service) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a post-baseline field application flavor.
-//
-// Flavors run after the baseline applicator (default or custom) in registration
-// order. They are typically used to preserve fields from the live cluster object
-// that should not be overwritten by the desired state.
-//
-// A nil flavor is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*corev1.Service](flavor))
 	return b
 }
 

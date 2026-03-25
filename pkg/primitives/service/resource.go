@@ -8,62 +8,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.),
-// shared-controller fields (OwnerReferences, Finalizers), the immutable
-// spec.clusterIP and spec.clusterIPs fields that Kubernetes assigns after creation,
-// the server-populated Status (including LoadBalancer.Ingress), server-defaulted
-// IP family configuration (spec.ipFamilies, spec.ipFamilyPolicy), the
-// server-allocated spec.healthCheckNodePort (only when the desired Service is a
-// LoadBalancer with externalTrafficPolicy: Local), and auto-allocated NodePort values
-// for NodePort and LoadBalancer Services. NodePorts are only preserved when the
-// resulting Service type is NodePort or LoadBalancer and the desired port's
-// NodePort is 0 (unset); explicitly specified NodePort values in the desired
-// object are always applied.
-func DefaultFieldApplicator(current, desired *corev1.Service) error {
-	original := current.DeepCopy()
-	clusterIP := current.Spec.ClusterIP
-	clusterIPs := current.Spec.ClusterIPs
-	*current = *desired.DeepCopy()
-	generic.PreserveServerManagedFields(current, original)
-	generic.PreserveStatus(current, original)
-	if clusterIP != "" {
-		current.Spec.ClusterIP = clusterIP
-		current.Spec.ClusterIPs = clusterIPs
-	}
-	// Preserve server-defaulted IP family configuration when the desired
-	// object leaves them unset, avoiding perpetual reconcile diffs.
-	if len(current.Spec.IPFamilies) == 0 && len(original.Spec.IPFamilies) > 0 {
-		current.Spec.IPFamilies = original.Spec.IPFamilies
-	}
-	if current.Spec.IPFamilyPolicy == nil && original.Spec.IPFamilyPolicy != nil {
-		current.Spec.IPFamilyPolicy = original.Spec.IPFamilyPolicy
-	}
-	// Determine the effective Service type for fields that are only meaningful
-	// on specific Service kinds. When type is empty, the API server defaults it
-	// to ClusterIP.
-	effectiveType := current.Spec.Type
-	if effectiveType == "" {
-		effectiveType = corev1.ServiceTypeClusterIP
-	}
-	// Preserve the server-allocated HealthCheckNodePort only when the desired
-	// configuration represents a LoadBalancer Service with
-	// externalTrafficPolicy: Local and the desired spec leaves the field unset.
-	// In all other cases, leaving the field as-is (typically 0) clears any
-	// previously allocated value when the Service moves away from that shape.
-	if effectiveType == corev1.ServiceTypeLoadBalancer &&
-		current.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyLocal &&
-		current.Spec.HealthCheckNodePort == 0 &&
-		original.Spec.HealthCheckNodePort != 0 {
-		current.Spec.HealthCheckNodePort = original.Spec.HealthCheckNodePort
-	}
-	// Only preserve nodePorts when the resulting Service type supports them.
-	if effectiveType == corev1.ServiceTypeNodePort || effectiveType == corev1.ServiceTypeLoadBalancer {
-		preserveNodePorts(current, original)
-	}
-	return nil
-}
-
 // preserveNodePorts restores auto-allocated nodePort values from the original
 // object when the desired port's NodePort is 0. Ports are matched by Name when
 // both ports have a non-empty Name; otherwise they are matched by Port+Protocol
@@ -132,12 +76,8 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes Service into the desired state.
 //
 // The mutation process follows this order:
-//  1. Field application: the current object is updated to reflect the desired base state,
-//     using either DefaultFieldApplicator or a custom applicator if one is configured.
-//     The default applicator preserves spec.clusterIP and spec.clusterIPs.
-//  2. Field application flavors: any registered flavors are applied in registration order.
-//  3. Feature mutations: all registered feature-gated mutations are applied in order.
-//  4. Suspension: if the resource is in a suspending state, the suspension mutation is applied.
+//  1. Feature mutations: all registered feature-gated mutations are applied in order.
+//  2. Suspension: if the resource is in a suspending state, the suspension mutation is applied.
 func (r *Resource) Mutate(current client.Object) error {
 	return r.base.Mutate(current)
 }

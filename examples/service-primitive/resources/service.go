@@ -46,10 +46,7 @@ func NewServiceResource(owner *sharedapp.ExampleApp) (component.Resource, error)
 	builder.WithMutation(features.VersionLabelMutation(owner.Spec.Version))
 	builder.WithMutation(features.MetricsPortMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
 
-	// 4. Preserve annotations added by external controllers (e.g., cloud LB controllers).
-	builder.WithFieldApplicationFlavor(service.PreserveCurrentAnnotations)
-
-	// 5. Extract data from the reconciled Service.
+	// 4. Extract data from the reconciled Service.
 	builder.WithDataExtractor(func(svc corev1.Service) error {
 		fmt.Printf("Reconciled Service: %s (ClusterIP: %s)\n", svc.Name, svc.Spec.ClusterIP)
 		for _, port := range svc.Spec.Ports {
@@ -58,6 +55,6 @@ func NewServiceResource(owner *sharedapp.ExampleApp) (component.Resource, error)
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

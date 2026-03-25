@@ -58,11 +58,7 @@ func NewIngressResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.VersionAnnotation(owner.Spec.Version))
 	builder.WithMutation(features.TLSFeature(owner.Spec.EnableTracing, owner.Name))
 
-	// 4. Configure flavors.
-	builder.WithFieldApplicationFlavor(ingress.PreserveCurrentLabels)
-	builder.WithFieldApplicationFlavor(ingress.PreserveCurrentAnnotations)
-
-	// 5. Data extraction.
+	// 4. Data extraction.
 	builder.WithDataExtractor(func(ing networkingv1.Ingress) error {
 		fmt.Printf("Reconciling ingress: %s\n", ing.Name)
 
@@ -75,6 +71,6 @@ func NewIngressResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

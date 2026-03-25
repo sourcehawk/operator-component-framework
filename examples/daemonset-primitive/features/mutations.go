@@ -1,3 +1,4 @@
+// Package features provides sample features for the daemonset primitive.
 package features
 
 import (

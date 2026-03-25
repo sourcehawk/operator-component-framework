@@ -57,11 +57,7 @@ func NewDaemonSetResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.TracingFeature(owner.Spec.EnableTracing))
 	builder.WithMutation(features.MetricsFeature(owner.Spec.EnableMetrics, 9090))
 
-	// 4. Configure flavors (e.g., preserve labels/annotations if they were modified externally).
-	builder.WithFieldApplicationFlavor(features.PreserveLabelsFlavor())
-	builder.WithFieldApplicationFlavor(features.PreserveAnnotationsFlavor())
-
-	// 5. Data extraction (optional).
+	// 4. Data extraction (optional).
 	builder.WithDataExtractor(func(d appsv1.DaemonSet) error {
 		fmt.Printf("Reconciling desired DaemonSet object: %s/%s\n", d.Namespace, d.Name)
 
@@ -75,6 +71,6 @@ func NewDaemonSetResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

@@ -367,4 +367,3 @@ func TestResource_ExtractData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "nginx:latest", extractedImage)
 }
-

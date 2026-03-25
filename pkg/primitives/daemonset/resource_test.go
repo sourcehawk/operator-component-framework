@@ -1,7 +1,6 @@
 package daemonset
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -85,12 +84,13 @@ func TestResource_Mutate(t *testing.T) {
 		}).
 		Build()
 
-	current := &appsv1.DaemonSet{}
-	err := res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "BAR", current.Spec.Template.Spec.Containers[0].Env[0].Value)
+	got := obj.(*appsv1.DaemonSet)
+	assert.Equal(t, "test", got.Labels["app"])
+	assert.Equal(t, "BAR", got.Spec.Template.Spec.Containers[0].Env[0].Value)
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -137,11 +137,12 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		}).
 		Build()
 
-	current := &appsv1.DaemonSet{}
-	err := res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, "v3", current.Spec.Template.Spec.Containers[0].Image)
+	got := obj.(*appsv1.DaemonSet)
+	assert.Equal(t, "v3", got.Spec.Template.Spec.Containers[0].Image)
 }
 
 type mockHandlers struct {
@@ -276,12 +277,13 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current := ds.DeepCopy()
-		err = res.Mutate(current)
+		obj, err := res.Object()
 		require.NoError(t, err)
+		require.NoError(t, res.Mutate(obj))
 
+		got := obj.(*appsv1.DaemonSet)
 		// Default suspend mutation is a no-op for DaemonSets
-		assert.Equal(t, "nginx", current.Spec.Template.Spec.Containers[0].Image)
+		assert.Equal(t, "nginx", got.Spec.Template.Spec.Containers[0].Image)
 	})
 
 	t.Run("Suspend uses custom mutation handler", func(t *testing.T) {
@@ -301,12 +303,13 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current := ds.DeepCopy()
-		err = res.Mutate(current)
+		obj, err := res.Object()
 		require.NoError(t, err)
+		require.NoError(t, res.Mutate(obj))
 
+		got := obj.(*appsv1.DaemonSet)
 		m.AssertExpectations(t)
-		assert.Equal(t, "paused", current.Spec.Template.Spec.Containers[0].Image)
+		assert.Equal(t, "paused", got.Spec.Template.Spec.Containers[0].Image)
 	})
 }
 
@@ -365,135 +368,3 @@ func TestResource_ExtractData(t *testing.T) {
 	assert.Equal(t, "nginx:latest", extractedImage)
 }
 
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test",
-			Namespace:       "default",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-	}
-	desired := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "test"},
-			},
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	assert.Equal(t, map[string]string{"app": "test"}, current.Spec.Selector.MatchLabels)
-	assert.Equal(t, "test", current.Labels["app"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
-}
-
-func TestDefaultFieldApplicator_PreservesStatus(t *testing.T) {
-	current := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-		},
-		Status: appsv1.DaemonSetStatus{
-			CurrentNumberScheduled: 3,
-			DesiredNumberScheduled: 3,
-			NumberReady:            3,
-			NumberAvailable:        3,
-			UpdatedNumberScheduled: 3,
-		},
-	}
-	desired := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-		},
-		Spec: appsv1.DaemonSetSpec{
-			MinReadySeconds: 30,
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec is applied
-	assert.Equal(t, int32(30), current.Spec.MinReadySeconds)
-
-	// Status from the live object is preserved
-	assert.Equal(t, int32(3), current.Status.CurrentNumberScheduled)
-	assert.Equal(t, int32(3), current.Status.DesiredNumberScheduled)
-	assert.Equal(t, int32(3), current.Status.NumberReady)
-	assert.Equal(t, int32(3), current.Status.NumberAvailable)
-	assert.Equal(t, int32(3), current.Status.UpdatedNumberScheduled)
-}
-
-func TestResource_CustomFieldApplicator(t *testing.T) {
-	desired := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: appsv1.DaemonSetSpec{
-			MinReadySeconds: 30,
-		},
-	}
-
-	applicatorCalled := false
-	res, _ := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current *appsv1.DaemonSet, desired *appsv1.DaemonSet) error {
-			applicatorCalled = true
-			current.Name = desired.Name
-			current.Namespace = desired.Namespace
-			// Only apply MinReadySeconds, ignore labels
-			current.Spec.MinReadySeconds = desired.Spec.MinReadySeconds
-			return nil
-		}).
-		Build()
-
-	current := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{"external": "label"},
-		},
-	}
-	err := res.Mutate(current)
-	require.NoError(t, err)
-
-	assert.True(t, applicatorCalled)
-	assert.Equal(t, int32(30), current.Spec.MinReadySeconds)
-	assert.Equal(t, "label", current.Labels["external"], "External label should be preserved")
-	assert.NotContains(t, current.Labels, "app", "Desired label should NOT be applied by custom applicator")
-
-	t.Run("returns error", func(t *testing.T) {
-		res, _ := NewBuilder(desired).
-			WithCustomFieldApplicator(func(_ *appsv1.DaemonSet, _ *appsv1.DaemonSet) error {
-				return errors.New("applicator error")
-			}).
-			Build()
-
-		err := res.Mutate(&appsv1.DaemonSet{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "applicator error")
-	})
-}

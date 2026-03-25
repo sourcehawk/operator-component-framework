@@ -12,7 +12,6 @@ pod specs, and metadata.
 | **Graceful rollouts** | Reports rollout progress via `GraceStatus` for use with component-level grace periods (for example, configured with `WithGracePeriod`)      |
 | **Suspension**        | Deletes the DaemonSet on suspend; reports `Suspended`                                                                                       |
 | **Mutation pipeline** | Typed editors for metadata, DaemonSet spec, pod spec, and containers                                                                        |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                                            |
 
 ## Building a DaemonSet Primitive
 
@@ -35,7 +34,6 @@ base := &appsv1.DaemonSet{
 }
 
 resource, err := daemonset.NewBuilder(base).
-    WithFieldApplicationFlavor(daemonset.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```

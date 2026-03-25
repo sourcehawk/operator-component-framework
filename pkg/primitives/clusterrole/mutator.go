@@ -50,6 +50,12 @@ func (m *Mutator) BeginFeature() {
 	m.active = &m.plans[len(m.plans)-1]
 }
 
+func (m *Mutator) requireActive() {
+	if m.active == nil {
+		panic("clusterrole.Mutator: BeginFeature must be called before registering mutations")
+	}
+}
+
 // EditObjectMetadata records a mutation for the ClusterRole's own metadata.
 //
 // Metadata edits are applied before rules edits within the same feature.
@@ -58,6 +64,7 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -73,6 +80,7 @@ func (m *Mutator) EditRules(edit func(*editors.PolicyRulesEditor) error) {
 	if edit == nil {
 		return
 	}
+	m.requireActive()
 	m.active.rulesEdits = append(m.active.rulesEdits, edit)
 }
 
@@ -99,6 +107,7 @@ func (m *Mutator) SetAggregationRule(rule *rbacv1.AggregationRule) {
 	if rule != nil {
 		copied = rule.DeepCopy()
 	}
+	m.requireActive()
 	m.active.aggregationRuleSets = append(m.active.aggregationRuleSets, copied)
 }
 

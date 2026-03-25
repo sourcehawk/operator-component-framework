@@ -307,6 +307,27 @@ func TestBeginFeature_IsolatesFeaturePlans(t *testing.T) {
 	assert.Len(t, m.plans[1].rulesEdits, 1, "second plan should have one rules edit")
 }
 
+func TestMutator_PanicsWithoutBeginFeature(t *testing.T) {
+	cr := newTestCR(nil)
+	m := NewMutator(cr)
+
+	assert.PanicsWithValue(t,
+		"clusterrole.Mutator: BeginFeature must be called before registering mutations",
+		func() { m.EditObjectMetadata(func(*editors.ObjectMetaEditor) error { return nil }) },
+		"EditObjectMetadata should panic without BeginFeature",
+	)
+	assert.PanicsWithValue(t,
+		"clusterrole.Mutator: BeginFeature must be called before registering mutations",
+		func() { m.EditRules(func(*editors.PolicyRulesEditor) error { return nil }) },
+		"EditRules should panic without BeginFeature",
+	)
+	assert.PanicsWithValue(t,
+		"clusterrole.Mutator: BeginFeature must be called before registering mutations",
+		func() { m.SetAggregationRule(nil) },
+		"SetAggregationRule should panic without BeginFeature",
+	)
+}
+
 func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	cr := newTestCR(nil)
 	m := NewMutator(cr)

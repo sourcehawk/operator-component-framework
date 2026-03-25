@@ -70,14 +70,14 @@ func TestBuilder_Build_NoNamespaceRequired(t *testing.T) {
 	assert.Equal(t, "rbac.authorization.k8s.io/v1/ClusterRole/cluster-scoped", res.Identity())
 }
 
-func TestBuilder_Build_NamespaceNotPersisted(t *testing.T) {
+func TestBuilder_Build_DoesNotSetNamespace(t *testing.T) {
 	t.Parallel()
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-cr"},
 	}
 	_, err := NewBuilder(cr).Build()
 	require.NoError(t, err)
-	assert.Empty(t, cr.Namespace, "namespace should remain empty after Build")
+	assert.Empty(t, cr.Namespace, "namespace should not be set by Build")
 }
 
 func TestBuilder_WithMutation(t *testing.T) {

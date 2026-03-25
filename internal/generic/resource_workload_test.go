@@ -18,18 +18,13 @@ func TestWorkloadResource(t *testing.T) {
 		},
 	}
 	identityFunc := func(d *appsv1.Deployment) string { return d.Name }
-	defaultApp := func(current, desired *appsv1.Deployment) error {
-		current.Spec = desired.Spec
-		return nil
-	}
 	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
 
 	res := &WorkloadResource[*appsv1.Deployment, *mockMutator]{
 		BaseResource: BaseResource[*appsv1.Deployment, *mockMutator]{
-			DesiredObject:          obj,
-			IdentityFunc:           identityFunc,
-			DefaultFieldApplicator: defaultApp,
-			NewMutator:             newMutator,
+			DesiredObject: obj,
+			IdentityFunc:  identityFunc,
+			NewMutator:    newMutator,
 		},
 	}
 
@@ -44,7 +39,7 @@ func TestWorkloadResource(t *testing.T) {
 	})
 
 	t.Run("Mutate", func(t *testing.T) {
-		current := &appsv1.Deployment{}
+		current := obj.DeepCopy()
 		mutCalled := false
 		res.Mutations = []Mutation[*mockMutator]{
 			{
@@ -72,7 +67,7 @@ func TestWorkloadResource(t *testing.T) {
 		err := res.Suspend()
 		require.NoError(t, err)
 
-		current := &appsv1.Deployment{}
+		current := obj.DeepCopy()
 		err = res.Mutate(current)
 		require.NoError(t, err)
 

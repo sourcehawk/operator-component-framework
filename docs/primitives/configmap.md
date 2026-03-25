@@ -6,13 +6,13 @@ object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state           |
-| **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a raw escape hatch for free-form access      |
-| **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features         |
-| **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.data` entries not owned by the operator |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ConfigMap after each sync cycle               |
+| Capability            | Detail                                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state                           |
+| **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a raw escape hatch for free-form access                      |
+| **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features                         |
+| **Server-Side Apply** | Desired state is applied via SSA; server defaults and fields managed by external controllers are preserved automatically |
+| **Data extraction**   | Reads generated or updated values back from the reconciled ConfigMap after each sync cycle                               |
 
 ## Building a ConfigMap Primitive
 
@@ -30,29 +30,15 @@ base := &corev1.ConfigMap{
 }
 
 resource, err := configmap.NewBuilder(base).
-    WithFieldApplicationFlavor(configmap.PreserveExternalEntries).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
 
-## Default Field Application
+## Server-Side Apply
 
-`DefaultFieldApplicator` replaces the current ConfigMap with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
-original live object. This ensures every reconciliation cycle produces a clean, predictable state without losing
-server-managed data.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := configmap.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *corev1.ConfigMap) error {
-        // Only synchronise owned keys; leave other fields untouched.
-        current.Data["owned-key"] = desired.Data["owned-key"]
-        return nil
-    }).
-    Build()
-```
+The configmap primitive applies desired state to the cluster using Server-Side Apply. The framework sends only the
+fields the operator manages; `.data` entries, labels, and annotations owned by other controllers or added by webhooks
+are left untouched. Field ownership conflicts are detected automatically by the Kubernetes API server.
 
 ## Mutations
 
@@ -237,47 +223,6 @@ The `Mutator` exposes convenience wrappers for the most common `.data` operation
 Use these for simple, single-operation mutations. Use `EditData` when you need multiple operations or raw access in a
 single edit block.
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := configmap.NewBuilder(base).
-    WithFieldApplicationFlavor(configmap.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := configmap.NewBuilder(base).
-    WithFieldApplicationFlavor(configmap.PreserveCurrentAnnotations).
-    Build()
-```
-
-### PreserveExternalEntries
-
-Preserves `.data` keys present on the live object but absent from the applied desired state. Applied values win on
-overlap.
-
-Use this when other controllers or admission webhooks inject entries into the ConfigMap that your operator does not own:
-
-```go
-resource, err := configmap.NewBuilder(base).
-    WithFieldApplicationFlavor(configmap.PreserveExternalEntries).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Data Hash
 
 Two utilities are provided for computing a stable SHA-256 hash of a ConfigMap's `.data` and `.binaryData` fields. A
@@ -309,8 +254,7 @@ cmResource, err := configmap.NewBuilder(base).
 hash, err := cmResource.DesiredHash()
 ```
 
-The hash covers only operator-controlled fields. Entries preserved by flavors from the live cluster (e.g.
-`PreserveExternalEntries`) are excluded — only changes to operator-owned content will change the hash.
+The hash covers only operator-controlled fields — only changes to operator-owned content will change the hash.
 
 ### Annotating a Deployment pod template (single-pass pattern)
 
@@ -402,7 +346,6 @@ metrics:
 }
 
 resource, err := configmap.NewBuilder(base).
-    WithFieldApplicationFlavor(configmap.PreserveExternalEntries).
     WithMutation(BaseConfigMutation(owner.Spec.Version)).
     WithMutation(MetricsFeatureMutation(owner.Spec.Version, owner.Spec.MetricsEnabled)).
     Build()
@@ -420,9 +363,5 @@ boolean conditions.
 **Use `MergeYAML` for composable config files.** When multiple features need to contribute to the same YAML entry,
 `MergeYAML` lets each feature contribute its section independently. Using `SetEntry` in multiple features for the same
 key means the last registration wins — only use that when replacement is the intended semantics.
-
-**Use `PreserveExternalEntries` when sharing a ConfigMap.** If admission webhooks, external controllers, or manual
-operations add entries to a ConfigMap your operator manages, this flavor prevents your operator from silently deleting
-those entries each reconcile cycle.
 
 **Register mutations in dependency order.** If mutation B relies on an entry set by mutation A, register A first.

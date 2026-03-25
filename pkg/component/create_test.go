@@ -29,7 +29,7 @@ func createTestRESTMapper() meta.RESTMapper {
 	return mapper
 }
 
-func TestCreateOrUpdateResources(t *testing.T) {
+func TestApplyResources(t *testing.T) {
 	var (
 		scheme          = setupScheme()
 		namespace       = "test-namespace"
@@ -59,7 +59,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource.On("Mutate", mock.Anything).Return(nil)
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource2.On("Mutate", mock.Anything).Return(nil)
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource1, resource2}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource1, resource2}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}, nil)
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{regularResource, aliveResource}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{regularResource, aliveResource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource3 := &MockResource{} // Should not be processed
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource1, resource2, resource3}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource1, resource2, resource3}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.Error(t, err)
@@ -212,7 +212,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}).Return(nil)
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -242,7 +242,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}, nil)
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -269,7 +269,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}, nil)
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -296,7 +296,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		}, nil)
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -313,7 +313,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource.On("Object").Return(nil, fmt.Errorf("object error"))
 
 		// When
-		_, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, createTestRESTMapper())
+		_, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.Error(t, err)
@@ -334,7 +334,7 @@ func TestCreateOrUpdateResources(t *testing.T) {
 		resource.On("Mutate", mock.Anything).Return(fmt.Errorf("mutation failed"))
 
 		// When
-		_, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, createTestRESTMapper())
+		_, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.Error(t, err)
@@ -434,7 +434,7 @@ func TestMutateResource(t *testing.T) {
 	})
 }
 
-func TestCreateOrUpdateResources_ClusterScopedResource(t *testing.T) {
+func TestApplyResources_ClusterScopedResource(t *testing.T) {
 	var (
 		scheme    = setupScheme()
 		namespace = "test-namespace"
@@ -475,7 +475,7 @@ func TestCreateOrUpdateResources_ClusterScopedResource(t *testing.T) {
 		resource.On("Identity").Maybe().Return("rbac.authorization.k8s.io/v1/ClusterRole/test-cluster-role-create")
 
 		// When
-		results, err := createOrUpdateResources(ctx, reconcileContext, []Resource{resource}, clusterScopedMapper)
+		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", clusterScopedMapper)
 
 		// Then
 		require.NoError(t, err)

@@ -1,0 +1,87 @@
+package hpa
+
+import (
+	"github.com/sourcehawk/operator-component-framework/internal/generic"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// Resource is a high-level abstraction for managing a Kubernetes HorizontalPodAutoscaler
+// within a controller's reconciliation loop.
+//
+// It implements the following component interfaces:
+//   - component.Resource: for basic identity and mutation behaviour.
+//   - component.Operational: for reporting operational status based on HPA conditions.
+//   - component.Suspendable: for default delete-on-suspend behaviour that removes the HPA to
+//     prevent it from scaling the target back up during suspension.
+//   - component.DataExtractable: for exporting values after successful reconciliation.
+type Resource struct {
+	base *generic.IntegrationResource[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]
+}
+
+// Identity returns a unique identifier for the HPA in the format
+// "autoscaling/v2/HorizontalPodAutoscaler/<namespace>/<name>".
+func (r *Resource) Identity() string {
+	return r.base.Identity()
+}
+
+// Object returns a deep copy of the underlying Kubernetes HorizontalPodAutoscaler object.
+//
+// The returned object implements client.Object, making it compatible with
+// controller-runtime's Client for Create, Update, and Patch operations.
+func (r *Resource) Object() (client.Object, error) {
+	return r.base.Object()
+}
+
+// Mutate transforms the current state of a Kubernetes HorizontalPodAutoscaler into the desired state.
+//
+// All registered feature-gated mutations are applied in order.
+//
+// This method is invoked by the framework during the Update phase of reconciliation.
+func (r *Resource) Mutate(current client.Object) error {
+	return r.base.Mutate(current)
+}
+
+// ConvergingStatus reports the HPA's operational status using the configured handler.
+//
+// By default, it uses DefaultOperationalStatusHandler, which inspects HPA conditions
+// to determine if the autoscaler is active, pending, or failing.
+func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
+	return r.base.ConvergingStatus(op)
+}
+
+// DeleteOnSuspend determines whether the HPA should be deleted from the cluster
+// when the parent component is suspended.
+//
+// By default, it uses DefaultDeleteOnSuspendHandler, which returns true. The HPA is
+// deleted to prevent the Kubernetes HPA controller from scaling the target back up
+// while it is suspended. On resume the framework recreates the HPA with the desired spec.
+func (r *Resource) DeleteOnSuspend() bool {
+	return r.base.DeleteOnSuspend()
+}
+
+// Suspend registers the configured suspension mutation for the next mutate cycle.
+//
+// For HPA, the default suspension mutation is a no-op since the HPA is deleted on
+// suspend (no spec mutations are needed before deletion).
+func (r *Resource) Suspend() error {
+	return r.base.Suspend()
+}
+
+// SuspensionStatus reports the suspension status of the HPA.
+//
+// By default, it uses DefaultSuspensionStatusHandler, which reports Suspended
+// immediately because deletion is handled by the framework after this status is reported.
+func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
+	return r.base.SuspensionStatus()
+}
+
+// ExtractData executes all registered data extractor functions against a deep copy
+// of the reconciled HPA.
+//
+// This is called by the framework after successful reconciliation, allowing the
+// component to read generated or updated values from the HPA.
+func (r *Resource) ExtractData() error {
+	return r.base.ExtractData()
+}

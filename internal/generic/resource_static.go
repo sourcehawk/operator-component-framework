@@ -7,7 +7,6 @@ import "sigs.k8s.io/controller-runtime/pkg/client"
 //
 // It supports:
 //   - default or custom baseline field application
-//   - post-baseline field application flavors
 //   - feature mutations
 //   - data extraction after reconciliation
 //

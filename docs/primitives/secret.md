@@ -6,8 +6,8 @@ entries and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
+| Capability            | Detail                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state   |
 | **Mutation pipeline** | Typed editors for `.data` and `.stringData` entries and object metadata, with a raw escape hatch |
 | **Data extraction**   | Reads generated or updated values back from the reconciled Secret after each sync cycle          |

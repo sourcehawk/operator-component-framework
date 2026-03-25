@@ -34,7 +34,6 @@ func NewBuilder(cj *batchv1.CronJob) *Builder {
 	base := generic.NewIntegrationBuilder[*batchv1.CronJob, *Mutator](
 		cj,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -54,24 +53,6 @@ func NewBuilder(cj *batchv1.CronJob) *Builder {
 // Mutations are applied sequentially during the Mutate() phase of reconciliation.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing CronJob in the cluster.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current *batchv1.CronJob, desired *batchv1.CronJob) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a reusable post-application "flavor" for
-// the CronJob.
-//
-// If the provided flavor is nil, it is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*batchv1.CronJob](flavor))
 	return b
 }
 

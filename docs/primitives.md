@@ -126,6 +126,7 @@ Editors provide scoped, typed APIs for modifying specific parts of a resource:
 | `ConfigMapDataEditor`           | `.data` entries — set, remove, deep-merge YAML patches, raw access                |
 | `PolicyRulesEditor`             | `.rules` entries on Role and ClusterRole objects — add, remove, clear, raw access |
 | `BindingSubjectsEditor`         | Subjects on RoleBinding or ClusterRoleBinding — ensure, remove, raw               |
+| `PVSpecEditor`                  | PV spec fields — capacity, access modes, reclaim policy, storage class            |
 | `PVCSpecEditor`                 | Access modes, storage class, volume mode, storage requests                        |
 | `IngressSpecEditor`             | Ingress class, default backend, rules, TLS configuration                          |
 | `ObjectMetaEditor`              | Labels and annotations on any Kubernetes object                                   |
@@ -161,6 +162,7 @@ have been applied. This means a single mutation can safely add a container and t
 | `pkg/primitives/pdb`                | Static      | [pdb.md](primitives/pdb.md)                               |
 | `pkg/primitives/clusterrole`        | Static      | [clusterrole.md](primitives/clusterrole.md)               |
 | `pkg/primitives/clusterrolebinding` | Static      | [clusterrolebinding.md](primitives/clusterrolebinding.md) |
+| `pkg/primitives/pv`                 | Integration | [pv.md](primitives/pv.md)                                 |
 | `pkg/primitives/pvc`                | Integration | [pvc.md](primitives/pvc.md)                               |
 | `pkg/primitives/hpa`                | Integration | [hpa.md](primitives/hpa.md)                               |
 | `pkg/primitives/ingress`            | Integration | [ingress.md](primitives/ingress.md)                       |

@@ -85,38 +85,6 @@ func TestBuilder_WithMutation(t *testing.T) {
 	assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
 }
 
-func TestBuilder_WithCustomFieldApplicator(t *testing.T) {
-	t.Parallel()
-	crb := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-crb"},
-	}
-	called := false
-	applicator := func(_, _ *rbacv1.ClusterRoleBinding) error {
-		called = true
-		return nil
-	}
-	res, err := NewBuilder(crb).
-		WithCustomFieldApplicator(applicator).
-		Build()
-	require.NoError(t, err)
-	require.NotNil(t, res.base.CustomFieldApplicator)
-	_ = res.base.CustomFieldApplicator(nil, nil)
-	assert.True(t, called)
-}
-
-func TestBuilder_WithFieldApplicationFlavor(t *testing.T) {
-	t.Parallel()
-	crb := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-crb"},
-	}
-	res, err := NewBuilder(crb).
-		WithFieldApplicationFlavor(PreserveCurrentLabels).
-		WithFieldApplicationFlavor(nil). // nil must be ignored
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.FieldFlavors, 1)
-}
-
 func TestBuilder_WithDataExtractor(t *testing.T) {
 	t.Parallel()
 	crb := &rbacv1.ClusterRoleBinding{

@@ -10,9 +10,7 @@ managing `.subjects` entries and object metadata.
 | --------------------- | ------------------------------------------------------------------------------------------------------------ |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state               |
 | **Cluster-scoped**    | Cluster-scoped resource — Build() validates Name and requires metadata.namespace to be empty (errors if set) |
-| **Immutable roleRef** | `DefaultFieldApplicator` preserves `roleRef` on updates since it is immutable after creation                 |
 | **Mutation pipeline** | Typed editors for `.subjects` entries and object metadata, with a raw escape hatch for free-form access      |
-| **Flavors**           | Preserves externally-managed fields — labels and annotations not owned by the operator                       |
 | **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRoleBinding after each sync cycle          |
 
 ## Building a ClusterRoleBinding Primitive
@@ -39,31 +37,7 @@ base := &rbacv1.ClusterRoleBinding{
 }
 
 resource, err := clusterrolebinding.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrolebinding.PreserveCurrentLabels).
     WithMutation(MySubjectMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current ClusterRoleBinding with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and
-`roleRef` from the original live object. ClusterRoleBinding does not have a Status subresource, so no status
-preservation is needed.
-
-The `roleRef` field is immutable after creation in the Kubernetes RBAC API — attempting to change it results in an API
-error. When the current object already exists in the cluster (has a non-empty `ResourceVersion`), the applicator
-restores the original `roleRef` after copying. On initial creation, the desired `roleRef` is used as-is.
-
-Use `WithCustomFieldApplicator` when you need different field application behaviour:
-
-```go
-resource, err := clusterrolebinding.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *rbacv1.ClusterRoleBinding) error {
-        // Custom merge logic
-        current.Subjects = desired.DeepCopy().Subjects
-        return nil
-    }).
     Build()
 ```
 
@@ -211,43 +185,11 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := clusterrolebinding.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrolebinding.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := clusterrolebinding.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrolebinding.PreserveCurrentAnnotations).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
 `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
 boolean conditions.
-
-**`roleRef` is immutable.** The default field applicator preserves the existing `roleRef` on updates. To change a
-`roleRef`, delete the ClusterRoleBinding and recreate it — the Kubernetes API does not support in-place updates to this
-field.
 
 **Cluster-scoped resources have no namespace.** Unlike namespaced primitives, ClusterRoleBinding does not require or
 validate a namespace. The identity format is `rbac.authorization.k8s.io/v1/ClusterRoleBinding/<name>`.

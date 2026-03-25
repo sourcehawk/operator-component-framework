@@ -58,6 +58,23 @@ func (e *BindingSubjectsEditor) RemoveSubject(kind, name, namespace string) {
 	*e.subjects = filtered
 }
 
+// EnsureServiceAccount ensures a ServiceAccount subject with the given name and
+// namespace exists in the binding's subjects list. If an identical subject
+// already exists, this is a no-op.
+func (e *BindingSubjectsEditor) EnsureServiceAccount(name, namespace string) {
+	e.EnsureSubject(rbacv1.Subject{
+		Kind:      "ServiceAccount",
+		Name:      name,
+		Namespace: namespace,
+	})
+}
+
+// RemoveServiceAccount removes a ServiceAccount subject with the given name and
+// namespace from the binding's subjects list.
+func (e *BindingSubjectsEditor) RemoveServiceAccount(name, namespace string) {
+	e.RemoveSubject("ServiceAccount", name, namespace)
+}
+
 // Raw returns a pointer to the underlying subjects slice, allowing
 // free-form modifications when the structured methods are insufficient.
 func (e *BindingSubjectsEditor) Raw() *[]rbacv1.Subject {

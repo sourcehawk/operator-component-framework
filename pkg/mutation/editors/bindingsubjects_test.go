@@ -89,6 +89,38 @@ func TestBindingSubjectsEditor_RemoveSubject_EmptySlice(t *testing.T) {
 	assert.Empty(t, subjects)
 }
 
+func TestBindingSubjectsEditor_EnsureServiceAccount(t *testing.T) {
+	t.Run("adds new service account", func(t *testing.T) {
+		var subjects []rbacv1.Subject
+		e := NewBindingSubjectsEditor(&subjects)
+		e.EnsureServiceAccount("my-sa", "default")
+		require.Len(t, subjects, 1)
+		assert.Equal(t, "ServiceAccount", subjects[0].Kind)
+		assert.Equal(t, "my-sa", subjects[0].Name)
+		assert.Equal(t, "default", subjects[0].Namespace)
+	})
+
+	t.Run("no-op when already present", func(t *testing.T) {
+		subjects := []rbacv1.Subject{
+			{Kind: "ServiceAccount", Name: "my-sa", Namespace: "default"},
+		}
+		e := NewBindingSubjectsEditor(&subjects)
+		e.EnsureServiceAccount("my-sa", "default")
+		assert.Len(t, subjects, 1)
+	})
+}
+
+func TestBindingSubjectsEditor_RemoveServiceAccount(t *testing.T) {
+	subjects := []rbacv1.Subject{
+		{Kind: "ServiceAccount", Name: "my-sa", Namespace: "default"},
+		{Kind: "User", Name: "alice"},
+	}
+	e := NewBindingSubjectsEditor(&subjects)
+	e.RemoveServiceAccount("my-sa", "default")
+	assert.Len(t, subjects, 1)
+	assert.Equal(t, "alice", subjects[0].Name)
+}
+
 func TestBindingSubjectsEditor_Raw(t *testing.T) {
 	subjects := []rbacv1.Subject{
 		{Kind: "ServiceAccount", Name: "my-sa", Namespace: "default"},

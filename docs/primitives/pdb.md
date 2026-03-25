@@ -68,12 +68,11 @@ func StrictAvailabilityMutation(version string, enabled bool) pdb.Mutation {
         Name:    "strict-availability",
         Feature: feature.NewResourceFeature(version, nil).When(enabled),
         Mutate: func(m *pdb.Mutator) error {
-            m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+            return m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.ClearMinAvailable()
                 e.SetMaxUnavailable(intstr.FromInt32(1))
                 return nil
             })
-            return nil
         },
     }
 }
@@ -92,11 +91,10 @@ func LegacyPDBMutation(version string) pdb.Mutation {
             []feature.VersionConstraint{legacyConstraint},
         ),
         Mutate: func(m *pdb.Mutator) error {
-            m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+            return m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.SetMinAvailable(intstr.FromInt32(1))
                 return nil
             })
-            return nil
         },
     }
 }
@@ -209,11 +207,10 @@ func BasePDBMutation(version string) pdb.Mutation {
         Name:    "base-pdb",
         Feature: feature.NewResourceFeature(version, nil),
         Mutate: func(m *pdb.Mutator) error {
-            m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+            return m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
                 e.EnsureLabel("app.kubernetes.io/version", version)
                 return nil
             })
-            return nil
         },
     }
 }
@@ -223,12 +220,11 @@ func StrictAvailabilityMutation(version string, enabled bool) pdb.Mutation {
         Name:    "strict-availability",
         Feature: feature.NewResourceFeature(version, nil).When(enabled),
         Mutate: func(m *pdb.Mutator) error {
-            m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+            return m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.ClearMinAvailable()
                 e.SetMaxUnavailable(intstr.FromInt32(1))
                 return nil
             })
-            return nil
         },
     }
 }

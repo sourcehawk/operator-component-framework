@@ -62,6 +62,7 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
 
@@ -78,7 +79,15 @@ func (m *Mutator) EditNetworkPolicySpec(edit func(*editors.NetworkPolicySpecEdit
 	if edit == nil {
 		return
 	}
+	m.ensureActive()
 	m.active.specEdits = append(m.active.specEdits, edit)
+}
+
+// ensureActive starts a feature plan if one has not been started yet.
+func (m *Mutator) ensureActive() {
+	if m.active == nil {
+		m.BeginFeature()
+	}
 }
 
 // Apply executes all recorded mutation intents on the underlying NetworkPolicy.

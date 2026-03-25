@@ -64,10 +64,7 @@ func (t *TestApp) DeepCopy() *TestApp {
 
 // DeepCopyObject implements runtime.Object.
 func (t *TestApp) DeepCopyObject() runtime.Object {
-	if c := t.DeepCopy(); c != nil {
-		return c
-	}
-	return nil
+	return t.DeepCopy()
 }
 
 // TestAppList contains a list of TestApp.
@@ -104,10 +101,7 @@ func (t *TestAppList) DeepCopy() *TestAppList {
 
 // DeepCopyObject implements runtime.Object.
 func (t *TestAppList) DeepCopyObject() runtime.Object {
-	if c := t.DeepCopy(); c != nil {
-		return c
-	}
-	return nil
+	return t.DeepCopy()
 }
 
 var (

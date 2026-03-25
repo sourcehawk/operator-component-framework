@@ -24,7 +24,7 @@ func DefaultConvergingStatusHandler(
 	op concepts.ConvergingOperation, ds *appsv1.DaemonSet,
 ) (concepts.AliveStatusWithReason, error) {
 	if status := concepts.StaleGenerationStatus(
-		op, ds.Status.ObservedGeneration, ds.Generation, "daemonset",
+		op, ds.Status.ObservedGeneration, ds.Generation, "DaemonSet",
 	); status != nil {
 		return *status, nil
 	}

@@ -58,7 +58,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusUpdating,
-			wantReason: "Waiting for daemonset controller to observe latest spec",
+			wantReason: "Waiting for DaemonSet controller to observe latest spec",
 		},
 		{
 			name: "stale observed generation after create",
@@ -72,7 +72,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusCreating,
-			wantReason: "Waiting for daemonset controller to observe latest spec",
+			wantReason: "Waiting for DaemonSet controller to observe latest spec",
 		},
 		{
 			name: "stale observed generation with no operation",
@@ -86,7 +86,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusUpdating,
-			wantReason: "Waiting for daemonset controller to observe latest spec",
+			wantReason: "Waiting for DaemonSet controller to observe latest spec",
 		},
 		{
 			name: "creating",
@@ -150,7 +150,7 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusCreating,
-			wantReason: "Waiting for daemonset controller to observe latest spec",
+			wantReason: "Waiting for DaemonSet controller to observe latest spec",
 		},
 	}
 

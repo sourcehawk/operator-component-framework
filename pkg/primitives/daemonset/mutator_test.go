@@ -646,3 +646,23 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	assert.Equal(t, "init-1-renamed", ds.Spec.Template.Spec.InitContainers[0].Name)
 	assert.Equal(t, "v1-final", ds.Spec.Template.Spec.InitContainers[0].Image)
 }
+
+func TestMutator_PanicsWithoutBeginFeature(t *testing.T) {
+	ds := &appsv1.DaemonSet{
+		Spec: appsv1.DaemonSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "main", Image: "nginx"}},
+				},
+			},
+		},
+	}
+	m := NewMutator(ds)
+
+	assert.PanicsWithValue(t, "daemonset.Mutator: BeginFeature() must be called before registering mutations", func() {
+		m.EnsureContainer(corev1.Container{Name: "new"})
+	})
+	assert.PanicsWithValue(t, "daemonset.Mutator: BeginFeature() must be called before registering mutations", func() {
+		m.EditObjectMetadata(func(*editors.ObjectMetaEditor) error { return nil })
+	})
+}

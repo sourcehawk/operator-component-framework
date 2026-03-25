@@ -22,7 +22,8 @@ func TestResource_Identity(t *testing.T) {
 			Namespace: "test-ns",
 		},
 	}
-	res, _ := NewBuilder(ds).Build()
+	res, err := NewBuilder(ds).Build()
+	require.NoError(t, err)
 
 	assert.Equal(t, "apps/v1/DaemonSet/test-ns/test-ds", res.Identity())
 }
@@ -34,7 +35,8 @@ func TestResource_Object(t *testing.T) {
 			Namespace: "test-ns",
 		},
 	}
-	res, _ := NewBuilder(ds).Build()
+	res, err := NewBuilder(ds).Build()
+	require.NoError(t, err)
 
 	obj, err := res.Object()
 	require.NoError(t, err)
@@ -73,7 +75,7 @@ func TestResource_Mutate(t *testing.T) {
 		},
 	}
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "test-mutation",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
@@ -83,6 +85,7 @@ func TestResource_Mutate(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	obj, err := res.Object()
 	require.NoError(t, err)
@@ -110,7 +113,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		},
 	}
 
-	res, _ := NewBuilder(desired).
+	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "feature-a",
 			Feature: feature.NewResourceFeature("v1", nil).When(true),
@@ -136,6 +139,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 			},
 		}).
 		Build()
+	require.NoError(t, err)
 
 	obj, err := res.Object()
 	require.NoError(t, err)
@@ -191,9 +195,10 @@ func TestResource_Status(t *testing.T) {
 		statusReady := concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusHealthy}
 		m.On("ConvergingStatus", concepts.ConvergingOperationUpdated, ds).Return(statusReady, nil)
 
-		res, _ := NewBuilder(ds).
+		res, err := NewBuilder(ds).
 			WithCustomConvergeStatus(m.ConvergingStatus).
 			Build()
+		require.NoError(t, err)
 
 		status, err := res.ConvergingStatus(concepts.ConvergingOperationUpdated)
 		require.NoError(t, err)
@@ -214,9 +219,10 @@ func TestResource_Status(t *testing.T) {
 		statusReady := concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}
 		m.On("GraceStatus", ds).Return(statusReady, nil)
 
-		res, _ := NewBuilder(ds).
+		res, err := NewBuilder(ds).
 			WithCustomGraceStatus(m.GraceStatus).
 			Build()
+		require.NoError(t, err)
 
 		status, err := res.GraceStatus()
 		require.NoError(t, err)

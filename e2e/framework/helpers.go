@@ -52,47 +52,103 @@ func NewTestApp(ctx context.Context, c client.Client, namespace, name string) *T
 	return app
 }
 
+// NewClusterTestApp creates a cluster-scoped ClusterTestApp CR and returns it.
+func NewClusterTestApp(ctx context.Context, c client.Client, name string) *ClusterTestApp {
+	app := &ClusterTestApp{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}
+	app.SetGroupVersionKind(GroupVersion.WithKind("ClusterTestApp"))
+	gomega.ExpectWithOffset(1, c.Create(ctx, app)).To(gomega.Succeed())
+	return app
+}
+
+// DeleteClusterTestApp deletes the named ClusterTestApp from the cluster.
+// It is intended for AfterEach cleanup since cluster-scoped resources are not
+// garbage-collected by namespace deletion.
+func DeleteClusterTestApp(ctx context.Context, c client.Client, name string) {
+	app := &ClusterTestApp{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}
+	gomega.ExpectWithOffset(1, client.IgnoreNotFound(c.Delete(ctx, app))).To(gomega.Succeed())
+}
+
+// GetClusterCondition returns a closure that fetches a fresh ClusterTestApp from the
+// cluster and returns the named condition. Suitable for use with gomega.Eventually.
+func GetClusterCondition(
+	ctx context.Context, c client.Client,
+	name string, conditionType string,
+) func(gomega.Gomega) *metav1.Condition {
+	return func(g gomega.Gomega) *metav1.Condition {
+		app := &ClusterTestApp{}
+		g.Expect(c.Get(ctx, types.NamespacedName{Name: name}, app)).To(gomega.Succeed())
+		return meta.FindStatusCondition(app.Status.Conditions, conditionType)
+	}
+}
+
+// InstallCRDs applies both the TestApp and ClusterTestApp CRD definitions and
+// waits until they are established.
+func InstallCRDs(cfg *rest.Config) error {
+	cs, err := apiextensionsclient.NewForConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("creating apiextensions client: %w", err)
+	}
+
+	for _, crd := range []*apiextensionsv1.CustomResourceDefinition{TestAppCRD, ClusterTestAppCRD} {
+		if err := installCRD(cs, crd); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // InstallCRD applies the TestApp CRD definition and waits until it is established.
 func InstallCRD(cfg *rest.Config) error {
 	cs, err := apiextensionsclient.NewForConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("creating apiextensions client: %w", err)
 	}
+	return installCRD(cs, TestAppCRD)
+}
 
+func installCRD(cs apiextensionsclient.Interface, crd *apiextensionsv1.CustomResourceDefinition) error {
 	ctx := context.Background()
 	existing, err := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
-		ctx, TestAppCRD.Name, metav1.GetOptions{},
+		ctx, crd.Name, metav1.GetOptions{},
 	)
 	switch {
 	case apierrors.IsNotFound(err):
 		_, err = cs.ApiextensionsV1().CustomResourceDefinitions().Create(
-			ctx, TestAppCRD, metav1.CreateOptions{},
+			ctx, crd, metav1.CreateOptions{},
 		)
 		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return fmt.Errorf("creating CRD: %w", err)
+			return fmt.Errorf("creating CRD %s: %w", crd.Name, err)
 		}
 	case err != nil:
-		return fmt.Errorf("getting CRD: %w", err)
+		return fmt.Errorf("getting CRD %s: %w", crd.Name, err)
 	default:
-		TestAppCRD.ResourceVersion = existing.ResourceVersion
+		crd.ResourceVersion = existing.ResourceVersion
 		_, err = cs.ApiextensionsV1().CustomResourceDefinitions().Update(
-			ctx, TestAppCRD, metav1.UpdateOptions{},
+			ctx, crd, metav1.UpdateOptions{},
 		)
 		if err != nil {
-			return fmt.Errorf("updating CRD: %w", err)
+			return fmt.Errorf("updating CRD %s: %w", crd.Name, err)
 		}
 	}
 
 	// Wait for the CRD to be established.
 	return wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 30*time.Second, true,
 		func(ctx context.Context) (bool, error) {
-			crd, err := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
-				ctx, TestAppCRD.Name, metav1.GetOptions{},
+			fetched, err := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
+				ctx, crd.Name, metav1.GetOptions{},
 			)
 			if err != nil {
 				return false, err
 			}
-			for _, c := range crd.Status.Conditions {
+			for _, c := range fetched.Status.Conditions {
 				if c.Type == apiextensionsv1.Established && c.Status == apiextensionsv1.ConditionTrue {
 					return true, nil
 				}

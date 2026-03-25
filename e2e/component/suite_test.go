@@ -41,8 +41,8 @@ var _ = BeforeSuite(func() {
 	By("getting cluster configuration")
 	cfg := ctrl.GetConfigOrDie()
 
-	By("installing TestApp CRD")
-	Expect(framework.InstallCRD(cfg)).To(Succeed())
+	By("installing CRDs")
+	Expect(framework.InstallCRDs(cfg)).To(Succeed())
 
 	By("setting up scheme")
 	Expect(framework.AddToScheme(scheme.Scheme)).To(Succeed())
@@ -67,9 +67,6 @@ var _ = BeforeSuite(func() {
 	)
 
 	By("registering controller")
-	// When adding a new primitive, add a corresponding .Owns() call here
-	// so that changes to the owned resource (e.g. status updates) trigger
-	// re-reconciliation of the parent TestApp.
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&framework.TestApp{}).
 		Owns(&appsv1.Deployment{}).

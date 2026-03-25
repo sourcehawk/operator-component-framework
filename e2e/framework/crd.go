@@ -20,7 +20,7 @@ type TestAppStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// TestApp is the CRD used as the owner object in E2E tests.
+// TestApp is the namespace-scoped CRD used as the owner object in E2E tests.
 type TestApp struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -104,21 +104,130 @@ func (t *TestAppList) DeepCopyObject() runtime.Object {
 	return t.DeepCopy()
 }
 
+// ClusterTestApp is the cluster-scoped CRD used as the owner object in E2E
+// tests for cluster-scoped primitives (ClusterRole, ClusterRoleBinding,
+// PersistentVolume).
+type ClusterTestApp struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   TestAppSpec   `json:"spec,omitempty"`
+	Status TestAppStatus `json:"status,omitempty"`
+}
+
+// GetStatusConditions returns a pointer to the slice of status conditions.
+func (t *ClusterTestApp) GetStatusConditions() *[]metav1.Condition {
+	return &t.Status.Conditions
+}
+
+// GetKind returns the kind of the object.
+func (t *ClusterTestApp) GetKind() string {
+	return "ClusterTestApp"
+}
+
+// DeepCopyInto copies all properties into another ClusterTestApp.
+func (t *ClusterTestApp) DeepCopyInto(out *ClusterTestApp) {
+	*out = *t
+	out.TypeMeta = t.TypeMeta
+	out.ObjectMeta = *t.ObjectMeta.DeepCopy()
+	out.Spec = t.Spec
+	if t.Status.Conditions != nil {
+		in, outC := &t.Status.Conditions, &out.Status.Conditions
+		*outC = make([]metav1.Condition, len(*in))
+		copy(*outC, *in)
+	}
+}
+
+// DeepCopy returns a deep copy of the ClusterTestApp.
+func (t *ClusterTestApp) DeepCopy() *ClusterTestApp {
+	if t == nil {
+		return nil
+	}
+	out := new(ClusterTestApp)
+	t.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyObject implements runtime.Object.
+func (t *ClusterTestApp) DeepCopyObject() runtime.Object {
+	return t.DeepCopy()
+}
+
+// ClusterTestAppList contains a list of ClusterTestApp.
+type ClusterTestAppList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+
+	Items []ClusterTestApp `json:"items"`
+}
+
+// DeepCopyInto copies all properties into another ClusterTestAppList.
+func (t *ClusterTestAppList) DeepCopyInto(out *ClusterTestAppList) {
+	*out = *t
+	out.TypeMeta = t.TypeMeta
+	out.ListMeta = *t.ListMeta.DeepCopy()
+	if t.Items != nil {
+		in, outI := &t.Items, &out.Items
+		*outI = make([]ClusterTestApp, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*outI)[i])
+		}
+	}
+}
+
+// DeepCopy returns a deep copy of the ClusterTestAppList.
+func (t *ClusterTestAppList) DeepCopy() *ClusterTestAppList {
+	if t == nil {
+		return nil
+	}
+	out := new(ClusterTestAppList)
+	t.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyObject implements runtime.Object.
+func (t *ClusterTestAppList) DeepCopyObject() runtime.Object {
+	return t.DeepCopy()
+}
+
+// conditionSchema is the shared OpenAPI schema for status conditions used by
+// both the namespace-scoped TestApp and cluster-scoped ClusterTestApp CRDs.
+var conditionSchema = apiextensionsv1.JSONSchemaProps{
+	Type: "array",
+	Items: &apiextensionsv1.JSONSchemaPropsOrArray{
+		Schema: &apiextensionsv1.JSONSchemaProps{
+			Type: "object",
+			Properties: map[string]apiextensionsv1.JSONSchemaProps{
+				"type":               {Type: "string"},
+				"status":             {Type: "string"},
+				"reason":             {Type: "string"},
+				"message":            {Type: "string"},
+				"lastTransitionTime": {Type: "string", Format: "date-time"},
+				"observedGeneration": {Type: "integer", Format: "int64"},
+			},
+			Required: []string{"type", "status", "lastTransitionTime", "reason", "message"},
+		},
+	},
+}
+
 var (
 	// GroupVersion is the group version used to register the TestApp types.
 	GroupVersion = schema.GroupVersion{Group: "e2e.ocf.io", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add Go types to the GroupVersionKind scheme.
 	SchemeBuilder = runtime.NewSchemeBuilder(func(scheme *runtime.Scheme) error {
-		scheme.AddKnownTypes(GroupVersion, &TestApp{}, &TestAppList{})
+		scheme.AddKnownTypes(GroupVersion,
+			&TestApp{}, &TestAppList{},
+			&ClusterTestApp{}, &ClusterTestAppList{},
+		)
 		metav1.AddToGroupVersion(scheme, GroupVersion)
 		return nil
 	})
 
-	// AddToScheme adds the TestApp types to the given scheme.
+	// AddToScheme adds the E2E types to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 
-	// TestAppCRD is the programmatic CRD definition for TestApp.
+	// TestAppCRD is the programmatic CRD definition for the namespace-scoped TestApp.
 	TestAppCRD = &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testapps.e2e.ocf.io",
@@ -150,23 +259,53 @@ var (
 								"status": {
 									Type: "object",
 									Properties: map[string]apiextensionsv1.JSONSchemaProps{
-										"conditions": {
-											Type: "array",
-											Items: &apiextensionsv1.JSONSchemaPropsOrArray{
-												Schema: &apiextensionsv1.JSONSchemaProps{
-													Type: "object",
-													Properties: map[string]apiextensionsv1.JSONSchemaProps{
-														"type":               {Type: "string"},
-														"status":             {Type: "string"},
-														"reason":             {Type: "string"},
-														"message":            {Type: "string"},
-														"lastTransitionTime": {Type: "string", Format: "date-time"},
-														"observedGeneration": {Type: "integer", Format: "int64"},
-													},
-													Required: []string{"type", "status", "lastTransitionTime", "reason", "message"},
-												},
-											},
-										},
+										"conditions": conditionSchema,
+									},
+								},
+							},
+						},
+					},
+					Subresources: &apiextensionsv1.CustomResourceSubresources{
+						Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
+					},
+				},
+			},
+		},
+	}
+
+	// ClusterTestAppCRD is the programmatic CRD definition for the cluster-scoped ClusterTestApp.
+	ClusterTestAppCRD = &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "clustertestapps.e2e.ocf.io",
+		},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "e2e.ocf.io",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Kind:     "ClusterTestApp",
+				ListKind: "ClusterTestAppList",
+				Plural:   "clustertestapps",
+				Singular: "clustertestapp",
+			},
+			Scope: apiextensionsv1.ClusterScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
+				{
+					Name:    "v1alpha1",
+					Served:  true,
+					Storage: true,
+					Schema: &apiextensionsv1.CustomResourceValidation{
+						OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+							Type: "object",
+							Properties: map[string]apiextensionsv1.JSONSchemaProps{
+								"spec": {
+									Type: "object",
+									Properties: map[string]apiextensionsv1.JSONSchemaProps{
+										"suspended": {Type: "boolean"},
+									},
+								},
+								"status": {
+									Type: "object",
+									Properties: map[string]apiextensionsv1.JSONSchemaProps{
+										"conditions": conditionSchema,
 									},
 								},
 							},

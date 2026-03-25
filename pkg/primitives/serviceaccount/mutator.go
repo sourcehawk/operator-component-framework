@@ -53,7 +53,7 @@ func (m *Mutator) BeginFeature() {
 
 func (m *Mutator) ensureActive() {
 	if m.active == nil {
-		panic("serviceaccount.Mutator: BeginFeature() must be called before registering mutations")
+		m.BeginFeature()
 	}
 }
 

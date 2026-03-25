@@ -1,3 +1,4 @@
+// Package features provides example feature mutations for the deployment primitive.
 package features
 
 import (

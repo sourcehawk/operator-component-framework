@@ -12,7 +12,6 @@ pod specs, and metadata.
 | **Graceful rollouts** | Detects stalled or failing rollouts via configurable grace periods                                                                                       |
 | **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                              |
 | **Mutation pipeline** | Typed editors for metadata, deployment spec, pod spec, and containers                                                                                    |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                                                         |
 
 ## Building a Deployment Primitive
 
@@ -30,20 +29,9 @@ base := &appsv1.Deployment{
 }
 
 resource, err := deployment.NewBuilder(base).
-    WithFieldApplicationFlavor(deployment.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current Deployment with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.), shared-controller fields (OwnerReferences, Finalizers), and the
-Status subresource from the original live object. This prevents spec-level reconciliation from clearing status data
-written by the API server or other controllers.
-
-Use `WithCustomFieldApplicator` when other controllers manage spec-level fields that should not be overwritten (e.g.,
-replicas managed by an HPA).
 
 ## Mutations
 

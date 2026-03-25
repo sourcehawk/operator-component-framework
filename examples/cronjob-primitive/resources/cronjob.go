@@ -59,11 +59,7 @@ func NewCronJobResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder.WithMutation(features.TracingFeature(owner.Spec.EnableTracing))
 	builder.WithMutation(features.MetricsFeature(owner.Spec.EnableMetrics))
 
-	// 4. Configure flavors.
-	builder.WithFieldApplicationFlavor(cronjob.PreserveCurrentLabels)
-	builder.WithFieldApplicationFlavor(cronjob.PreserveCurrentAnnotations)
-
-	// 5. Data extraction (optional).
+	// 4. Data extraction (optional).
 	builder.WithDataExtractor(func(cj batchv1.CronJob) error {
 		fmt.Printf("Reconciling CronJob: %s, schedule: %s\n", cj.Name, cj.Spec.Schedule)
 
@@ -76,6 +72,6 @@ func NewCronJobResource(owner *app.ExampleApp) (component.Resource, error) {
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

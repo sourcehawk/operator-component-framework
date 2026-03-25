@@ -90,14 +90,6 @@ func TestApplyMutationsOrder_MultipleMutations(t *testing.T) {
 	current := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
 	}
-	desired := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-	}
-
-	defaultApplicator := func(_, _ *corev1.ConfigMap) error {
-		recorder.record("defaultApplicator")
-		return nil
-	}
 
 	newMutator := func(_ *corev1.ConfigMap) *recordingMutator {
 		recorder.record("newMutator")
@@ -131,22 +123,22 @@ func TestApplyMutationsOrder_MultipleMutations(t *testing.T) {
 		},
 	}
 
+	suspender := func(_ *recordingMutator) error {
+		recorder.record("suspender")
+		return nil
+	}
+
 	_, err := ApplyMutations[*corev1.ConfigMap, *recordingMutator](
 		current,
-		desired,
-		defaultApplicator,
-		nil,
-		nil,
 		newMutator,
 		mutations,
-		nil,
+		suspender,
 	)
 
 	require.NoError(t, err)
 
 	// Each mutation gets its own plan via BeginFeature.
 	expectedOrder := []string{
-		"defaultApplicator",
 		"newMutator",
 		"mutator.BeginFeature",
 		"mutation1",
@@ -154,6 +146,9 @@ func TestApplyMutationsOrder_MultipleMutations(t *testing.T) {
 		"mutation2",
 		"mutator.BeginFeature",
 		"mutation3",
+		"mutator.Apply",
+		"mutator.BeginFeature",
+		"suspender",
 		"mutator.Apply",
 	}
 

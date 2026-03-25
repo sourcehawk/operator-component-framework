@@ -35,32 +35,40 @@ func (e *PVCSpecEditor) SetStorageRequest(quantity resource.Quantity) {
 
 // SetAccessModes sets the access modes for the PVC.
 //
-// Access modes are immutable on existing PVCs. This method is intended for
-// initial construction; immutable fields are preserved by Server-Side Apply.
+// Access modes are immutable on existing PVCs. This method should be used for
+// initial construction, or when reapplying the same value via Server-Side Apply.
+// Attempting to change this field on an existing PVC will be rejected by the
+// Kubernetes API server.
 func (e *PVCSpecEditor) SetAccessModes(modes []corev1.PersistentVolumeAccessMode) {
 	e.spec.AccessModes = modes
 }
 
 // SetStorageClassName sets the storage class name for the PVC.
 //
-// The storage class name is immutable on existing PVCs. This method is intended
-// for initial construction; immutable fields are preserved by Server-Side Apply.
+// The storage class name is immutable on existing PVCs. This method should be
+// used for initial construction, or when reapplying the same value via
+// Server-Side Apply. Attempting to change this field on an existing PVC will be
+// rejected by the Kubernetes API server.
 func (e *PVCSpecEditor) SetStorageClassName(name string) {
 	e.spec.StorageClassName = &name
 }
 
 // SetVolumeMode sets the volume mode (Filesystem or Block) for the PVC.
 //
-// The volume mode is immutable on existing PVCs. This method is intended for
-// initial construction; immutable fields are preserved by Server-Side Apply.
+// The volume mode is immutable on existing PVCs. This method should be used
+// for initial construction, or when reapplying the same value via Server-Side
+// Apply. Attempting to change this field on an existing PVC will be rejected
+// by the Kubernetes API server.
 func (e *PVCSpecEditor) SetVolumeMode(mode corev1.PersistentVolumeMode) {
 	e.spec.VolumeMode = &mode
 }
 
 // SetVolumeName binds the PVC to a specific PersistentVolume by name.
 //
-// The volume name is immutable on existing PVCs. This method is intended for
-// initial construction; immutable fields are preserved by Server-Side Apply.
+// The volume name is immutable on existing PVCs. This method should be used
+// for initial construction, or when reapplying the same value via Server-Side
+// Apply. Attempting to change this field on an existing PVC will be rejected
+// by the Kubernetes API server.
 func (e *PVCSpecEditor) SetVolumeName(name string) {
 	e.spec.VolumeName = name
 }

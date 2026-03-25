@@ -11,7 +11,7 @@ Suspendable resource and provides a structured mutation API for configuring auto
 | **Operational status**  | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`      |
 | **Suspension (delete)** | Deletes the HPA on suspend to prevent it from scaling the target back up; recreated on resume               |
 | **Mutation pipeline**   | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                            |
-| **Data extraction**     | Optionally exposes current and desired replica counts via a registered data extractor (`WithDataExtractor`) |
+| **Data extraction**     | Allows custom extraction from the reconciled HPA object via a registered data extractor (`WithDataExtractor`) |
 
 ## Building an HPA Primitive
 

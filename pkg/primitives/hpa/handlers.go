@@ -48,6 +48,11 @@ func DefaultOperationalStatusHandler(
 				Status: concepts.OperationalStatusPending,
 				Reason: conditionReason(scalingActive, "ScalingActive is Unknown"),
 			}, nil
+		default:
+			return concepts.OperationalStatusWithReason{
+				Status: concepts.OperationalStatusPending,
+				Reason: conditionReason(scalingActive, "ScalingActive has unrecognized status"),
+			}, nil
 		}
 	}
 

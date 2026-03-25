@@ -11,8 +11,8 @@ import (
 // is operationally ready.
 //
 // It considers a PV operational when its Status.Phase is Available or Bound.
-// A PV in the Pending phase is reported as OperationPending. A PV in the
-// Released or Failed phase is reported as OperationFailing.
+// A PV in the Pending phase is reported as concepts.OperationalStatusPending. A PV in the
+// Released or Failed phase is reported as concepts.OperationalStatusFailing.
 //
 // This function is used as the default handler by the Resource if no custom handler
 // is registered via Builder.WithCustomOperationalStatus. It can be reused within

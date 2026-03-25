@@ -8,7 +8,7 @@ and object metadata.
 
 | Capability                | Detail                                                                                             |
 | ------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Integration lifecycle** | Reports `Operational`, `OperationPending`, or `OperationFailing` based on the PV's phase           |
+| **Integration lifecycle** | Reports `concepts.OperationalStatusOperational`, `concepts.OperationalStatusPending`, or `concepts.OperationalStatusFailing` based on the PV's phase |
 | **Cluster-scoped**        | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources           |
 | **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access |
 | **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle  |
@@ -192,11 +192,11 @@ status:
 
 | PV Phase  | Operational Status | Meaning                                |
 | --------- | ------------------ | -------------------------------------- |
-| Available | Operational        | PV is ready for binding                |
-| Bound     | Operational        | PV is bound to a PersistentVolumeClaim |
-| Pending   | OperationPending   | PV is waiting to become available      |
-| Released  | OperationFailing   | PV was released, not yet reclaimed     |
-| Failed    | OperationFailing   | PV reclamation has failed              |
+| Available | OperationalStatusOperational | PV is ready for binding                |
+| Bound     | OperationalStatusOperational | PV is bound to a PersistentVolumeClaim |
+| Pending   | OperationalStatusPending   | PV is waiting to become available      |
+| Released  | OperationalStatusFailing   | PV was released, not yet reclaimed     |
+| Failed    | OperationalStatusFailing   | PV reclamation has failed              |
 
 Override with `WithCustomOperationalStatus` when your PV requires different readiness logic.
 
@@ -240,7 +240,7 @@ resource, err := pv.NewBuilder(base).
 **PersistentVolumes are cluster-scoped.** Do not set a namespace on the PV object. The builder rejects namespaced PVs
 with a clear error.
 
-**Use the Integration lifecycle for status.** PVs report `Operational`, `OperationPending`, or `OperationFailing` based
+**Use the Integration lifecycle for status.** PVs report `OperationalStatusOperational`, `OperationalStatusPending`, or `OperationalStatusFailing` based
 on their phase. Override with `WithCustomOperationalStatus` only when phase-based readiness is insufficient.
 
 **Controller references and garbage collection.** The component reconciliation pipeline attempts to set a controller

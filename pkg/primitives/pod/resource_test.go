@@ -374,4 +374,3 @@ func TestResource_ExtractData_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "extract error")
 }
-

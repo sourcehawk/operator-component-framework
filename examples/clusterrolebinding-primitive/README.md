@@ -6,7 +6,6 @@ shows how to manage a Kubernetes ClusterRoleBinding as a component of a larger a
 - **Base Construction**: Initializing a ClusterRoleBinding with a roleRef and base subjects.
 - **Feature Mutations**: Adding subjects conditionally via feature-gated mutations using `EditSubjects`.
 - **Metadata Mutations**: Setting version labels on the ClusterRoleBinding via `EditObjectMetadata`.
-- **Field Flavors**: Preserving labels managed by external controllers using `PreserveCurrentLabels`.
 - **Data Extraction**: Inspecting ClusterRoleBinding state after each reconcile cycle.
 
 ## Directory Structure

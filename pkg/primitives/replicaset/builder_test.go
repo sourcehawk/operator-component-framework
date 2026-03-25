@@ -92,44 +92,6 @@ func TestBuilder(t *testing.T) {
 		assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
 	})
 
-	t.Run("WithCustomFieldApplicator", func(t *testing.T) {
-		t.Parallel()
-		rs := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-rs",
-				Namespace: "test-ns",
-			},
-		}
-		applied := false
-		applicator := func(_ *appsv1.ReplicaSet, _ *appsv1.ReplicaSet) error {
-			applied = true
-			return nil
-		}
-		res, err := NewBuilder(rs).
-			WithCustomFieldApplicator(applicator).
-			Build()
-		require.NoError(t, err)
-		require.NotNil(t, res.base.CustomFieldApplicator)
-		_ = res.base.CustomFieldApplicator(nil, nil)
-		assert.True(t, applied)
-	})
-
-	t.Run("WithFieldApplicationFlavor", func(t *testing.T) {
-		t.Parallel()
-		rs := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-rs",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(rs).
-			WithFieldApplicationFlavor(PreserveCurrentLabels).
-			WithFieldApplicationFlavor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.FieldFlavors, 1)
-	})
-
 	t.Run("WithCustomConvergeStatus", func(t *testing.T) {
 		t.Parallel()
 		rs := &appsv1.ReplicaSet{

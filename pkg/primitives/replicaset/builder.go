@@ -35,7 +35,6 @@ func NewBuilder(replicaset *appsv1.ReplicaSet) *Builder {
 	base := generic.NewWorkloadBuilder[*appsv1.ReplicaSet, *Mutator](
 		replicaset,
 		identityFunc,
-		DefaultFieldApplicator,
 		NewMutator,
 	)
 
@@ -62,40 +61,6 @@ func NewBuilder(replicaset *appsv1.ReplicaSet) *Builder {
 // based on the component's current version or configuration.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
-	return b
-}
-
-// WithCustomFieldApplicator sets a custom strategy for applying the desired
-// state to the existing ReplicaSet in the cluster.
-//
-// There is a default field applicator (DefaultFieldApplicator) that overwrites
-// the entire spec of the current object with the desired state, while preserving
-// the immutable spec.selector from the live object.
-//
-// The applicator function receives both the 'current' object from the API
-// server and the 'desired' object from the Resource. It is responsible for
-// merging the desired changes into the current object.
-//
-// If a custom applicator is set, it overrides the default baseline application
-// logic. Post-application flavors and mutations are still applied afterward.
-func (b *Builder) WithCustomFieldApplicator(
-	applicator func(current *appsv1.ReplicaSet, desired *appsv1.ReplicaSet) error,
-) *Builder {
-	b.base.WithCustomFieldApplicator(applicator)
-	return b
-}
-
-// WithFieldApplicationFlavor registers a reusable post-application "flavor" for
-// the ReplicaSet.
-//
-// Flavors are applied in the order they are registered, after the baseline field
-// applicator (default or custom) has already run. They are typically used to
-// preserve selected live fields from the current object that should not be
-// overwritten by the desired state.
-//
-// If the provided flavor is nil, it is ignored.
-func (b *Builder) WithFieldApplicationFlavor(flavor FieldApplicationFlavor) *Builder {
-	b.base.WithFieldApplicationFlavor(generic.FieldApplicationFlavor[*appsv1.ReplicaSet](flavor))
 	return b
 }
 

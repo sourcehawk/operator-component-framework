@@ -14,7 +14,6 @@ that own ReplicaSets explicitly (e.g. custom rollout controllers).
 | **Health tracking**   | Verifies `ObservedGeneration` matches `Generation` before evaluating `ReadyReplicas`; reports `Healthy`, `Creating`, `Updating`, or `Scaling` |
 | **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                   |
 | **Mutation pipeline** | Typed editors for metadata, replicaset spec, pod spec, and containers                                                                         |
-| **Flavors**           | Preserves externally-managed fields (labels, annotations, pod template metadata)                                                              |
 
 ## Building a ReplicaSet Primitive
 
@@ -35,19 +34,9 @@ base := &appsv1.ReplicaSet{
 }
 
 resource, err := replicaset.NewBuilder(base).
-    WithFieldApplicationFlavor(replicaset.PreserveCurrentLabels).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
     Build()
 ```
-
-## Immutable Selector
-
-A ReplicaSet's `spec.selector` is immutable after creation in Kubernetes. The `DefaultFieldApplicator` preserves the
-selector from the live object when updating an existing ReplicaSet. Set the selector via the desired object passed to
-`NewBuilder` — it is applied on creation and preserved on subsequent updates.
-
-If you supply a custom field applicator via `WithCustomFieldApplicator`, you are responsible for preserving the selector
-yourself.
 
 ## Mutations
 

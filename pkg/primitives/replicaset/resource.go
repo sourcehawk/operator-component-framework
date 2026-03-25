@@ -7,25 +7,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// DefaultFieldApplicator replaces current with a deep copy of desired while
-// preserving server-managed metadata (ResourceVersion, UID, Generation, etc.)
-// and shared-controller fields (OwnerReferences, Finalizers) from the original
-// current object.
-//
-// In Kubernetes, a ReplicaSet's spec.selector is immutable after creation. This
-// applicator also preserves the current selector when updating an existing object
-// (indicated by a non-empty ResourceVersion).
-func DefaultFieldApplicator(current, desired *appsv1.ReplicaSet) error {
-	original := current.DeepCopy()
-	*current = *desired.DeepCopy()
-	generic.PreserveServerManagedFields(current, original)
-
-	if original.ResourceVersion != "" {
-		current.Spec.Selector = original.Spec.Selector
-	}
-	return nil
-}
-
 // Resource is a high-level abstraction for managing a Kubernetes ReplicaSet within a controller's
 // reconciliation loop.
 //
@@ -66,11 +47,9 @@ func (r *Resource) Object() (client.Object, error) {
 // Mutate transforms the current state of a Kubernetes ReplicaSet into the desired state.
 //
 // The mutation process follows a specific order:
-//  1. Core State: The current object is reset to the desired base state, or
-//     modified via a custom field applicator if one is configured.
-//  2. Feature Mutations: All registered feature-based mutations are applied,
+//  1. Feature Mutations: All registered feature-based mutations are applied,
 //     allowing for granular, version-gated changes to the ReplicaSet.
-//  3. Suspension: If the resource is in a suspending state, the suspension
+//  2. Suspension: If the resource is in a suspending state, the suspension
 //     logic (e.g., scaling to zero) is applied.
 //
 // This method is invoked by the framework during the "Update" phase of

@@ -1,7 +1,6 @@
 package replicaset
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -87,13 +86,14 @@ func TestResource_Mutate(t *testing.T) {
 		}).
 		Build()
 
-	current := &appsv1.ReplicaSet{}
-	err := res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
+	got := obj.(*appsv1.ReplicaSet)
 
-	assert.Equal(t, int32(3), *current.Spec.Replicas)
-	assert.Equal(t, "test", current.Labels["app"])
-	assert.Equal(t, "BAR", current.Spec.Template.Spec.Containers[0].Env[0].Value)
+	assert.Equal(t, int32(3), *got.Spec.Replicas)
+	assert.Equal(t, "test", got.Labels["app"])
+	assert.Equal(t, "BAR", got.Spec.Template.Spec.Containers[0].Env[0].Value)
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -141,181 +141,12 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		}).
 		Build()
 
-	current := &appsv1.ReplicaSet{}
-	err := res.Mutate(current)
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
+	got := obj.(*appsv1.ReplicaSet)
 
-	assert.Equal(t, "v3", current.Spec.Template.Spec.Containers[0].Image)
-}
-
-func TestDefaultFieldApplicator(t *testing.T) {
-	t.Run("creation applies all fields from desired", func(t *testing.T) {
-		current := &appsv1.ReplicaSet{}
-		desired := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test",
-				Namespace: "default",
-				Labels:    map[string]string{"app": "test"},
-			},
-			Spec: appsv1.ReplicaSetSpec{
-				Replicas: ptr.To(int32(3)),
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"app": "test"},
-				},
-			},
-		}
-
-		err := DefaultFieldApplicator(current, desired)
-		require.NoError(t, err)
-
-		assert.Equal(t, "test", current.Name)
-		assert.Equal(t, int32(3), *current.Spec.Replicas)
-		assert.Equal(t, "test", current.Spec.Selector.MatchLabels["app"])
-	})
-
-	t.Run("update preserves immutable selector from current", func(t *testing.T) {
-		currentSelector := &metav1.LabelSelector{
-			MatchLabels: map[string]string{"app": "original"},
-		}
-		current := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            "test",
-				Namespace:       "default",
-				ResourceVersion: "12345",
-			},
-			Spec: appsv1.ReplicaSetSpec{
-				Replicas: ptr.To(int32(1)),
-				Selector: currentSelector,
-			},
-		}
-		desired := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test",
-				Namespace: "default",
-			},
-			Spec: appsv1.ReplicaSetSpec{
-				Replicas: ptr.To(int32(5)),
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"app": "changed"},
-				},
-			},
-		}
-
-		err := DefaultFieldApplicator(current, desired)
-		require.NoError(t, err)
-
-		assert.Equal(t, int32(5), *current.Spec.Replicas, "mutable fields should be updated")
-		assert.Equal(t, "original", current.Spec.Selector.MatchLabels["app"],
-			"immutable selector should be preserved from current on update")
-	})
-
-	t.Run("update preserves ResourceVersion", func(t *testing.T) {
-		current := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            "test",
-				Namespace:       "default",
-				ResourceVersion: "99999",
-			},
-		}
-		desired := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test",
-				Namespace: "default",
-			},
-			Spec: appsv1.ReplicaSetSpec{
-				Replicas: ptr.To(int32(2)),
-			},
-		}
-
-		err := DefaultFieldApplicator(current, desired)
-		require.NoError(t, err)
-
-		assert.Equal(t, "99999", current.ResourceVersion,
-			"ResourceVersion should be preserved from current on update")
-	})
-
-	t.Run("desired is not mutated", func(t *testing.T) {
-		current := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{ResourceVersion: "1"},
-			Spec: appsv1.ReplicaSetSpec{
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"app": "current"},
-				},
-			},
-		}
-		desired := &appsv1.ReplicaSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test",
-				Namespace: "default",
-			},
-			Spec: appsv1.ReplicaSetSpec{
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"app": "desired"},
-				},
-			},
-		}
-
-		err := DefaultFieldApplicator(current, desired)
-		require.NoError(t, err)
-
-		assert.Equal(t, "desired", desired.Spec.Selector.MatchLabels["app"],
-			"desired should not be mutated by the applicator")
-	})
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &appsv1.ReplicaSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test",
-			Namespace:       "default",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-		Spec: appsv1.ReplicaSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "original"},
-			},
-		},
-	}
-	desired := &appsv1.ReplicaSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: appsv1.ReplicaSetSpec{
-			Replicas: ptr.To(int32(3)),
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "changed"},
-			},
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	assert.Equal(t, int32(3), *current.Spec.Replicas)
-	assert.Equal(t, "test", current.Labels["app"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
-
-	// Immutable selector is preserved
-	assert.Equal(t, "original", current.Spec.Selector.MatchLabels["app"],
-		"immutable selector should be preserved from current on update")
+	assert.Equal(t, "v3", got.Spec.Template.Spec.Containers[0].Image)
 }
 
 type mockHandlers struct {
@@ -447,11 +278,12 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current := rs.DeepCopy()
-		err = res.Mutate(current)
+		obj, err := res.Object()
 		require.NoError(t, err)
+		require.NoError(t, res.Mutate(obj))
+		got := obj.(*appsv1.ReplicaSet)
 
-		assert.Equal(t, int32(0), *current.Spec.Replicas)
+		assert.Equal(t, int32(0), *got.Spec.Replicas)
 	})
 
 	t.Run("Suspend uses custom mutation handler", func(t *testing.T) {
@@ -468,12 +300,13 @@ func TestResource_Suspend(t *testing.T) {
 		err = res.Suspend()
 		require.NoError(t, err)
 
-		current := rs.DeepCopy()
-		err = res.Mutate(current)
+		obj, err := res.Object()
 		require.NoError(t, err)
+		require.NoError(t, res.Mutate(obj))
+		got := obj.(*appsv1.ReplicaSet)
 
 		m.AssertExpectations(t)
-		assert.Equal(t, int32(1), *current.Spec.Replicas)
+		assert.Equal(t, int32(1), *got.Spec.Replicas)
 	})
 }
 
@@ -535,52 +368,3 @@ func TestResource_ExtractData(t *testing.T) {
 	assert.Equal(t, "nginx:latest", extractedImage)
 }
 
-func TestResource_CustomFieldApplicator(t *testing.T) {
-	desired := &appsv1.ReplicaSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Spec: appsv1.ReplicaSetSpec{
-			Replicas: ptr.To(int32(3)),
-		},
-	}
-
-	applicatorCalled := false
-	res, _ := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current *appsv1.ReplicaSet, desired *appsv1.ReplicaSet) error {
-			applicatorCalled = true
-			current.Name = desired.Name
-			current.Namespace = desired.Namespace
-			// Only apply replicas, ignore labels
-			current.Spec.Replicas = desired.Spec.Replicas
-			return nil
-		}).
-		Build()
-
-	current := &appsv1.ReplicaSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{"external": "label"},
-		},
-	}
-	err := res.Mutate(current)
-	require.NoError(t, err)
-
-	assert.True(t, applicatorCalled)
-	assert.Equal(t, int32(3), *current.Spec.Replicas)
-	assert.Equal(t, "label", current.Labels["external"], "External label should be preserved")
-	assert.NotContains(t, current.Labels, "app", "Desired label should NOT be applied by custom applicator")
-
-	t.Run("returns error", func(t *testing.T) {
-		res, _ := NewBuilder(desired).
-			WithCustomFieldApplicator(func(_ *appsv1.ReplicaSet, _ *appsv1.ReplicaSet) error {
-				return errors.New("applicator error")
-			}).
-			Build()
-
-		err := res.Mutate(&appsv1.ReplicaSet{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "applicator error")
-	})
-}

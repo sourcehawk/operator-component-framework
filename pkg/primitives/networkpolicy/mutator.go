@@ -39,8 +39,8 @@ type Mutator struct {
 // NewMutator creates a new Mutator for the given NetworkPolicy.
 //
 // It is typically used within a Feature's Mutation logic to express desired
-// changes to the NetworkPolicy. BeginFeature must be called before registering
-// any mutations.
+// changes to the NetworkPolicy. If mutations are registered without an explicit
+// BeginFeature call, a default feature plan is created automatically.
 func NewMutator(np *networkingv1.NetworkPolicy) *Mutator {
 	return &Mutator{
 		np: np,

@@ -48,11 +48,13 @@ func TestResource_Mutate(t *testing.T) {
 	res, err := NewBuilder(desired).Build()
 	require.NoError(t, err)
 
-	current := &rbacv1.ClusterRole{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	require.Len(t, current.Rules, 1)
-	assert.Equal(t, []string{"get", "list"}, current.Rules[0].Verbs)
+	got := obj.(*rbacv1.ClusterRole)
+	require.Len(t, got.Rules, 1)
+	assert.Equal(t, []string{"get", "list"}, got.Rules[0].Verbs)
 }
 
 func TestResource_Mutate_WithMutation(t *testing.T) {
@@ -73,12 +75,14 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &rbacv1.ClusterRole{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	require.Len(t, current.Rules, 2)
-	assert.Equal(t, []string{"get", "list"}, current.Rules[0].Verbs)
-	assert.Equal(t, []string{"deployments"}, current.Rules[1].Resources)
+	got := obj.(*rbacv1.ClusterRole)
+	require.Len(t, got.Rules, 2)
+	assert.Equal(t, []string{"get", "list"}, got.Rules[0].Verbs)
+	assert.Equal(t, []string{"deployments"}, got.Rules[1].Resources)
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -107,47 +111,16 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &rbacv1.ClusterRole{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
+	got := obj.(*rbacv1.ClusterRole)
 	// Base rule + feature-a + feature-b = 3 rules in order.
-	require.Len(t, current.Rules, 3)
-	assert.Equal(t, []string{"pods"}, current.Rules[0].Resources)
-	assert.Equal(t, []string{"secrets"}, current.Rules[1].Resources)
-	assert.Equal(t, []string{"configmaps"}, current.Rules[2].Resources)
-}
-
-func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
-	desired := newValidCR()
-
-	applicatorCalled := false
-	res, err := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current, d *rbacv1.ClusterRole) error {
-			applicatorCalled = true
-			current.Rules = d.Rules
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	current := &rbacv1.ClusterRole{}
-	require.NoError(t, res.Mutate(current))
-
-	assert.True(t, applicatorCalled)
-	require.Len(t, current.Rules, 1)
-}
-
-func TestResource_Mutate_CustomFieldApplicator_Error(t *testing.T) {
-	res, err := NewBuilder(newValidCR()).
-		WithCustomFieldApplicator(func(_, _ *rbacv1.ClusterRole) error {
-			return errors.New("applicator error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.Mutate(&rbacv1.ClusterRole{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "applicator error")
+	require.Len(t, got.Rules, 3)
+	assert.Equal(t, []string{"pods"}, got.Rules[0].Resources)
+	assert.Equal(t, []string{"secrets"}, got.Rules[1].Resources)
+	assert.Equal(t, []string{"configmaps"}, got.Rules[2].Resources)
 }
 
 func TestResource_ExtractData(t *testing.T) {
@@ -177,50 +150,4 @@ func TestResource_ExtractData_Error(t *testing.T) {
 	err = res.ExtractData()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "extract error")
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-	}
-	desired := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "test",
-			Labels: map[string]string{"app": "test"},
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"pods"},
-				Verbs:     []string{"get", "list"},
-			},
-		},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	assert.Equal(t, "test", current.Labels["app"])
-	require.Len(t, current.Rules, 1)
-	assert.Equal(t, []string{"get", "list"}, current.Rules[0].Verbs)
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
 }

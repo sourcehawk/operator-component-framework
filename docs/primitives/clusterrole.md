@@ -21,7 +21,6 @@ empty — setting a namespace on a cluster-scoped resource is rejected.
 | **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state                             |
 | **Mutation pipeline** | Typed editors (`PolicyRulesEditor`) for `.rules` and object metadata, with aggregation rule support and a raw escape hatch |
 | **Cluster-scoped**    | No namespace required — identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`                               |
-| **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.rules` entries not owned by the operator                  |
 | **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRole after each sync cycle                               |
 
 ## Building a ClusterRole Primitive
@@ -43,26 +42,7 @@ base := &rbacv1.ClusterRole{
 }
 
 resource, err := clusterrole.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrole.PreserveExternalRules).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current ClusterRole with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
-original live object. ClusterRole has no Status subresource, so no status preservation is needed.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := clusterrole.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *rbacv1.ClusterRole) error {
-        // Only synchronise owned rules; leave other fields untouched.
-        current.Rules = desired.Rules
-        return nil
-    }).
     Build()
 ```
 
@@ -257,48 +237,6 @@ m.SetAggregationRule(&rbacv1.AggregationRule{
 
 Setting the aggregation rule to nil clears it. Within a single feature, the last `SetAggregationRule` call wins.
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := clusterrole.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrole.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := clusterrole.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrole.PreserveCurrentAnnotations).
-    Build()
-```
-
-### PreserveExternalRules
-
-Preserves `.rules` entries present on the live object but absent from the applied desired state. Rules are compared
-using all `PolicyRule` fields (APIGroups, Resources, Verbs, ResourceNames, NonResourceURLs), treating these slice fields
-as sets so that order differences are ignored.
-
-Use this when other controllers or admission webhooks inject rules into the ClusterRole that your operator does not own:
-
-```go
-resource, err := clusterrole.NewBuilder(base).
-    WithFieldApplicationFlavor(clusterrole.PreserveExternalRules).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Full Example: Feature-Composed RBAC
 
 ```go
@@ -340,21 +278,11 @@ resource, err := clusterrole.NewBuilder(base).
 When `ManageCRDs` is true, the final rules include both core and CRD access rules. When false, only the core rules are
 written. Neither mutation needs to know about the other.
 
-> **Note:** Do not combine `PreserveExternalRules` with feature-gated mutations that add and remove rules. Because
-> flavors run before mutations and preserve rules from the live object, previously-added rules will be retained even
-> after a feature gate is disabled, and rules can be duplicated if a mutation re-adds a rule already present on the live
-> object. Use `PreserveExternalRules` only when external controllers or admission webhooks manage rules that your
-> operator does not own.
-
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
 `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
 boolean conditions.
-
-**Use `PreserveExternalRules` when sharing a ClusterRole.** If admission webhooks, external controllers, or manual
-operations add rules to a ClusterRole your operator manages, this flavor prevents your operator from silently deleting
-those rules each reconcile cycle.
 
 **Use `SetAggregationRule` for composite roles.** When you want the API server to aggregate rules from multiple
 ClusterRoles based on label selectors, use `SetAggregationRule` instead of managing `.rules` directly. The two

@@ -38,10 +38,7 @@ func NewServiceAccountResource(owner *sharedapp.ExampleApp) (component.Resource,
 	disableAutomount := owner.Spec.EnableMetrics
 	builder.WithMutation(features.DisableAutomountMutation(owner.Spec.Version, disableAutomount))
 
-	// 4. Preserve labels added by external controllers.
-	builder.WithFieldApplicationFlavor(serviceaccount.PreserveCurrentLabels)
-
-	// 5. Extract data from the reconciled ServiceAccount.
+	// 4. Extract data from the reconciled ServiceAccount.
 	builder.WithDataExtractor(func(sa corev1.ServiceAccount) error {
 		fmt.Printf("Reconciled ServiceAccount: %s\n", sa.Name)
 		fmt.Printf("  ImagePullSecrets: ")
@@ -60,6 +57,6 @@ func NewServiceAccountResource(owner *sharedapp.ExampleApp) (component.Resource,
 		return nil
 	})
 
-	// 6. Build the final resource.
+	// 5. Build the final resource.
 	return builder.Build()
 }

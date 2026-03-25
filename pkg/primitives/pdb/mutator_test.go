@@ -260,8 +260,20 @@ func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	assert.Equal(t, intstr.FromInt32(1), *p.Spec.MinAvailable)
 }
 
-// --- ObjectMutator interface ---
+// --- ErrNoActiveFeature ---
 
-func TestMutator_ImplementsObjectMutator(_ *testing.T) {
-	var _ editors.ObjectMutator = (*Mutator)(nil)
+func TestMutator_EditObjectMetadata_NoActiveFeature(t *testing.T) {
+	m := NewMutator(newTestPDB())
+	err := m.EditObjectMetadata(func(_ *editors.ObjectMetaEditor) error {
+		return nil
+	})
+	require.ErrorIs(t, err, ErrNoActiveFeature)
+}
+
+func TestMutator_EditSpec_NoActiveFeature(t *testing.T) {
+	m := NewMutator(newTestPDB())
+	err := m.EditSpec(func(_ *editors.PodDisruptionBudgetSpecEditor) error {
+		return nil
+	})
+	require.ErrorIs(t, err, ErrNoActiveFeature)
 }

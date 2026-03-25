@@ -1,10 +1,16 @@
 package pdb
 
 import (
+	"errors"
+
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	policyv1 "k8s.io/api/policy/v1"
 )
+
+// ErrNoActiveFeature is returned when EditObjectMetadata or EditSpec is called
+// before BeginFeature has started a feature scope.
+var ErrNoActiveFeature = errors.New("pdb mutator: no active feature scope; call BeginFeature first")
 
 // Mutation defines a mutation that is applied to a pdb Mutator
 // only if its associated feature gate is enabled.
@@ -23,7 +29,9 @@ type featurePlan struct {
 // The Mutator maintains feature boundaries: each feature's mutations are planned
 // together and applied in the order the features were registered.
 //
-// Mutator implements editors.ObjectMutator.
+// Unlike other primitive mutators, EditObjectMetadata and EditSpec return an
+// error when called without an active feature scope, rather than silently
+// succeeding. This means Mutator does not satisfy editors.ObjectMutator.
 type Mutator struct {
 	pdb *policyv1.PodDisruptionBudget
 
@@ -53,11 +61,15 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before spec edits within the same feature.
 // A nil edit function is ignored.
-func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
+func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) error {
 	if edit == nil {
-		return
+		return nil
+	}
+	if m.active == nil {
+		return ErrNoActiveFeature
 	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
+	return nil
 }
 
 // EditSpec records a mutation for the PodDisruptionBudget's spec via a
@@ -68,11 +80,15 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // after metadata edits within the same feature, in registration order.
 //
 // A nil edit function is ignored.
-func (m *Mutator) EditSpec(edit func(*editors.PodDisruptionBudgetSpecEditor) error) {
+func (m *Mutator) EditSpec(edit func(*editors.PodDisruptionBudgetSpecEditor) error) error {
 	if edit == nil {
-		return
+		return nil
+	}
+	if m.active == nil {
+		return ErrNoActiveFeature
 	}
 	m.active.specEdits = append(m.active.specEdits, edit)
+	return nil
 }
 
 // Apply executes all recorded mutation intents on the underlying PodDisruptionBudget.

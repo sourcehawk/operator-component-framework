@@ -22,6 +22,11 @@ func newValidPDB() *policyv1.PodDisruptionBudget {
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			MinAvailable: ptr.To(intstr.FromInt32(2)),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "test",
+				},
+			},
 		},
 	}
 }

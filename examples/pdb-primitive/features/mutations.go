@@ -15,11 +15,10 @@ func VersionLabelMutation(version string) pdb.Mutation {
 		Name:    "version-label",
 		Feature: feature.NewResourceFeature(version, nil),
 		Mutate: func(m *pdb.Mutator) error {
-			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+			return m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
 				return nil
 			})
-			return nil
 		},
 	}
 }
@@ -32,12 +31,11 @@ func StrictAvailabilityMutation(version string, metricsEnabled bool) pdb.Mutatio
 		Name:    "strict-availability",
 		Feature: feature.NewResourceFeature(version, nil).When(metricsEnabled),
 		Mutate: func(m *pdb.Mutator) error {
-			m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+			return m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 				e.ClearMinAvailable()
 				e.SetMaxUnavailable(intstr.FromInt32(1))
 				return nil
 			})
-			return nil
 		},
 	}
 }

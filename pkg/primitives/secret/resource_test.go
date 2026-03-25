@@ -50,10 +50,12 @@ func TestResource_Mutate(t *testing.T) {
 	res, err := NewBuilder(desired).Build()
 	require.NoError(t, err)
 
-	current := &corev1.Secret{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, []byte("value"), current.Data["key"])
+	got := obj.(*corev1.Secret)
+	assert.Equal(t, []byte("value"), got.Data["key"])
 }
 
 func TestResource_Mutate_WithMutation(t *testing.T) {
@@ -70,11 +72,13 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &corev1.Secret{}
-	require.NoError(t, res.Mutate(current))
+	obj, err := res.Object()
+	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	assert.Equal(t, []byte("value"), current.Data["key"])
-	assert.Equal(t, []byte("yes"), current.Data["from-mutation"])
+	got := obj.(*corev1.Secret)
+	assert.Equal(t, []byte("value"), got.Data["key"])
+	assert.Equal(t, []byte("yes"), got.Data["from-mutation"])
 }
 
 func TestResource_Mutate_FeatureOrdering(t *testing.T) {
@@ -100,91 +104,12 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	current := &corev1.Secret{}
-	require.NoError(t, res.Mutate(current))
-
-	assert.Equal(t, []byte("b"), current.Data["order"])
-}
-
-func TestResource_Mutate_CustomFieldApplicator(t *testing.T) {
-	desired := newValidSecret()
-
-	applicatorCalled := false
-	res, err := NewBuilder(desired).
-		WithCustomFieldApplicator(func(current, d *corev1.Secret) error {
-			applicatorCalled = true
-			// Only copy "key", ignore everything else.
-			if current.Data == nil {
-				current.Data = make(map[string][]byte)
-			}
-			current.Data["key"] = d.Data["key"]
-			return nil
-		}).
-		Build()
+	obj, err := res.Object()
 	require.NoError(t, err)
+	require.NoError(t, res.Mutate(obj))
 
-	current := &corev1.Secret{
-		Data: map[string][]byte{"external": []byte("preserved")},
-	}
-	require.NoError(t, res.Mutate(current))
-
-	assert.True(t, applicatorCalled)
-	assert.Equal(t, []byte("value"), current.Data["key"])
-	assert.Equal(t, []byte("preserved"), current.Data["external"])
-}
-
-func TestResource_Mutate_CustomFieldApplicator_Error(t *testing.T) {
-	res, err := NewBuilder(newValidSecret()).
-		WithCustomFieldApplicator(func(_, _ *corev1.Secret) error {
-			return errors.New("applicator error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.Mutate(&corev1.Secret{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "applicator error")
-}
-
-func TestDefaultFieldApplicator_PreservesServerManagedFields(t *testing.T) {
-	current := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test",
-			Namespace:       "default",
-			ResourceVersion: "12345",
-			UID:             "abc-def",
-			Generation:      3,
-			OwnerReferences: []metav1.OwnerReference{
-				{APIVersion: "v1", Kind: "Pod", Name: "other-owner", UID: "other-uid"},
-			},
-			Finalizers: []string{"finalizer.example.com"},
-		},
-	}
-	desired := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-			Labels:    map[string]string{"app": "test"},
-		},
-		Data: map[string][]byte{"key": []byte("value")},
-	}
-
-	err := DefaultFieldApplicator(current, desired)
-	require.NoError(t, err)
-
-	// Desired spec and labels are applied
-	assert.Equal(t, []byte("value"), current.Data["key"])
-	assert.Equal(t, "test", current.Labels["app"])
-
-	// Server-managed fields are preserved
-	assert.Equal(t, "12345", current.ResourceVersion)
-	assert.Equal(t, "abc-def", string(current.UID))
-	assert.Equal(t, int64(3), current.Generation)
-
-	// Shared-controller fields are preserved
-	assert.Len(t, current.OwnerReferences, 1)
-	assert.Equal(t, "other-owner", current.OwnerReferences[0].Name)
-	assert.Equal(t, []string{"finalizer.example.com"}, current.Finalizers)
+	got := obj.(*corev1.Secret)
+	assert.Equal(t, []byte("b"), got.Data["order"])
 }
 
 func TestResource_ExtractData(t *testing.T) {

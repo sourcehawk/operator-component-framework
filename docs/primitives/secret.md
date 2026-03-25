@@ -6,12 +6,11 @@ entries and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state           |
-| **Mutation pipeline** | Typed editors for `.data` and `.stringData` entries and object metadata, with a raw escape hatch         |
-| **Flavors**           | Preserves externally-managed fields — labels, annotations, and `.data` entries not owned by the operator |
-| **Data extraction**   | Reads generated or updated values back from the reconciled Secret after each sync cycle                  |
+| Capability            | Detail                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state   |
+| **Mutation pipeline** | Typed editors for `.data` and `.stringData` entries and object metadata, with a raw escape hatch |
+| **Data extraction**   | Reads generated or updated values back from the reconciled Secret after each sync cycle          |
 
 ## Building a Secret Primitive
 
@@ -29,30 +28,7 @@ base := &corev1.Secret{
 }
 
 resource, err := secret.NewBuilder(base).
-    WithFieldApplicationFlavor(secret.PreserveExternalEntries).
     WithMutation(MyFeatureMutation(owner.Spec.Version)).
-    Build()
-```
-
-## Default Field Application
-
-`DefaultFieldApplicator` replaces the current Secret with a deep copy of the desired object, then restores
-server-managed metadata (ResourceVersion, UID, etc.) and shared-controller fields (OwnerReferences, Finalizers) from the
-original live object. This ensures every reconciliation cycle produces a clean, predictable state without losing
-server-managed data.
-
-Use `WithCustomFieldApplicator` when other controllers manage fields that should not be overwritten:
-
-```go
-resource, err := secret.NewBuilder(base).
-    WithCustomFieldApplicator(func(current, desired *corev1.Secret) error {
-        // Only synchronise owned keys; leave other fields untouched.
-        if current.Data == nil {
-            current.Data = make(map[string][]byte)
-        }
-        current.Data["owned-key"] = desired.Data["owned-key"]
-        return nil
-    }).
     Build()
 ```
 
@@ -218,47 +194,6 @@ The `Mutator` exposes convenience wrappers for the most common `.data` and `.str
 Use these for simple, single-operation mutations. Use `EditData` when you need multiple operations or raw access in a
 single edit block.
 
-## Flavors
-
-Flavors run after the baseline applicator and before mutations. They are used to preserve fields managed by external
-controllers or other tools.
-
-### PreserveCurrentLabels
-
-Preserves labels present on the live object but absent from the applied desired state. Applied labels win on overlap.
-
-```go
-resource, err := secret.NewBuilder(base).
-    WithFieldApplicationFlavor(secret.PreserveCurrentLabels).
-    Build()
-```
-
-### PreserveCurrentAnnotations
-
-Preserves annotations present on the live object but absent from the applied desired state. Applied annotations win on
-overlap.
-
-```go
-resource, err := secret.NewBuilder(base).
-    WithFieldApplicationFlavor(secret.PreserveCurrentAnnotations).
-    Build()
-```
-
-### PreserveExternalEntries
-
-Preserves `.data` keys present on the live object but absent from the applied desired state. Applied values win on
-overlap.
-
-Use this when other controllers or admission webhooks inject entries into the Secret that your operator does not own:
-
-```go
-resource, err := secret.NewBuilder(base).
-    WithFieldApplicationFlavor(secret.PreserveExternalEntries).
-    Build()
-```
-
-Multiple flavors can be registered and run in registration order.
-
 ## Data Hash
 
 Two utilities are provided for computing a stable SHA-256 hash of a Secret's effective data content (`.data` plus
@@ -293,8 +228,7 @@ secretResource, err := secret.NewBuilder(base).
 hash, err := secretResource.DesiredHash()
 ```
 
-The hash covers only operator-controlled fields. Entries preserved by flavors from the live cluster (e.g.
-`PreserveExternalEntries`) are excluded — only changes to operator-owned content will change the hash.
+The hash covers only operator-controlled fields. Only changes to operator-owned content will change the hash.
 
 ### Annotating a Deployment pod template (single-pass pattern)
 
@@ -355,10 +289,6 @@ reconcile cycle, the pod template annotation changes, and Kubernetes triggers a 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
 `feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
 boolean conditions.
-
-**Use `PreserveExternalEntries` when sharing a Secret.** If admission webhooks, external controllers, or manual
-operations add entries to a Secret your operator manages, this flavor prevents your operator from silently deleting
-those entries each reconcile cycle.
 
 **Register mutations in dependency order.** If mutation B relies on an entry set by mutation A, register A first.
 

@@ -9,13 +9,16 @@ import (
 
 // BaseCredentialsMutation writes the application's core credentials into the Secret.
 // It is always enabled.
+//
+// NOTE: Real controllers must never hard-code credentials. Source them from
+// external secret stores, environment variables, or operator CR fields.
 func BaseCredentialsMutation(version string) secret.Mutation {
 	return secret.Mutation{
 		Name:    "base-credentials",
 		Feature: feature.NewResourceFeature(version, nil),
 		Mutate: func(m *secret.Mutator) error {
-			m.SetStringData("username", "app-user")
-			m.SetStringData("password", "default-password")
+			m.SetStringData("username", "REPLACE_ME")
+			m.SetStringData("password", "REPLACE_ME")
 			return nil
 		},
 	}
@@ -44,7 +47,7 @@ func TracingTokenMutation(version string, enableTracing bool) secret.Mutation {
 		Name:    "tracing-token",
 		Feature: feature.NewResourceFeature(version, nil).When(enableTracing),
 		Mutate: func(m *secret.Mutator) error {
-			m.SetStringData("otel-auth-token", "trace-secret-token-abc123")
+			m.SetStringData("otel-auth-token", "REPLACE_ME")
 			return nil
 		},
 	}
@@ -57,7 +60,7 @@ func MetricsTokenMutation(version string, enableMetrics bool) secret.Mutation {
 		Name:    "metrics-token",
 		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
 		Mutate: func(m *secret.Mutator) error {
-			m.SetStringData("metrics-auth-token", "metrics-secret-token-xyz789")
+			m.SetStringData("metrics-auth-token", "REPLACE_ME")
 			return nil
 		},
 	}

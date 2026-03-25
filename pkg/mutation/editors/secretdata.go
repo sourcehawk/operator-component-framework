@@ -66,8 +66,12 @@ func (e *SecretDataEditor) Set(key string, value []byte) {
 	(*e.data)[key] = value
 }
 
-// Remove deletes key from .data. It is a no-op if the key does not exist.
+// Remove deletes key from .data. It is a no-op if the key does not exist
+// or the underlying map is nil.
 func (e *SecretDataEditor) Remove(key string) {
+	if *e.data == nil {
+		return
+	}
 	delete(*e.data, key)
 }
 
@@ -82,7 +86,11 @@ func (e *SecretDataEditor) SetString(key, value string) {
 	(*e.stringData)[key] = value
 }
 
-// RemoveString deletes key from .stringData. It is a no-op if the key does not exist.
+// RemoveString deletes key from .stringData. It is a no-op if the key does not exist
+// or the underlying map is nil.
 func (e *SecretDataEditor) RemoveString(key string) {
+	if *e.stringData == nil {
+		return
+	}
 	delete(*e.stringData, key)
 }

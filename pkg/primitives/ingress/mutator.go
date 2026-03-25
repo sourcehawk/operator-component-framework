@@ -36,7 +36,9 @@ type Mutator struct {
 }
 
 // NewMutator creates a new Mutator for the given Ingress.
-// BeginFeature must be called before registering any mutations.
+// BeginFeature should be called before registering mutations to establish
+// feature boundaries. If omitted, EditObjectMetadata and EditIngressSpec
+// will call it implicitly.
 func NewMutator(ing *networkingv1.Ingress) *Mutator {
 	return &Mutator{
 		ing: ing,
@@ -54,9 +56,13 @@ func (m *Mutator) BeginFeature() {
 //
 // Metadata edits are applied before ingress spec edits within the same feature.
 // A nil edit function is ignored.
+// If BeginFeature has not been called, it is called implicitly.
 func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
 	if edit == nil {
 		return
+	}
+	if m.active == nil {
+		m.BeginFeature()
 	}
 	m.active.metadataEdits = append(m.active.metadataEdits, edit)
 }
@@ -69,9 +75,13 @@ func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error)
 // registration order.
 //
 // A nil edit function is ignored.
+// If BeginFeature has not been called, it is called implicitly.
 func (m *Mutator) EditIngressSpec(edit func(*editors.IngressSpecEditor) error) {
 	if edit == nil {
 		return
+	}
+	if m.active == nil {
+		m.BeginFeature()
 	}
 	m.active.ingressSpecEdits = append(m.active.ingressSpecEdits, edit)
 }

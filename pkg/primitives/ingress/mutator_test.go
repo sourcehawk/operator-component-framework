@@ -250,6 +250,33 @@ func TestMutator_SingleFeature_PlanCount(t *testing.T) {
 	require.Len(t, m.plans, 1, "single feature should have exactly one plan")
 }
 
+// --- Implicit BeginFeature ---
+
+func TestMutator_EditObjectMetadata_ImplicitBeginFeature(t *testing.T) {
+	ing := newTestIngress()
+	m := NewMutator(ing)
+	// No explicit BeginFeature call — should not panic.
+	m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+		e.EnsureLabel("implicit", "true")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	assert.Equal(t, "true", ing.Labels["implicit"])
+}
+
+func TestMutator_EditIngressSpec_ImplicitBeginFeature(t *testing.T) {
+	ing := newTestIngress()
+	m := NewMutator(ing)
+	// No explicit BeginFeature call — should not panic.
+	m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
+		e.SetIngressClassName("nginx")
+		return nil
+	})
+	require.NoError(t, m.Apply())
+	require.NotNil(t, ing.Spec.IngressClassName)
+	assert.Equal(t, "nginx", *ing.Spec.IngressClassName)
+}
+
 // --- ObjectMutator interface ---
 
 func TestMutator_ImplementsObjectMutator(_ *testing.T) {

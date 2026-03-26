@@ -93,13 +93,11 @@ var _ = Describe("pdb Primitive", Label("pdb"), func() {
 					WithMutation(pdb.Mutation{
 						Name: "set-max-unavailable",
 						Mutate: func(m *pdb.Mutator) error {
-							if err := m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+							m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 								e.ClearMinAvailable()
 								e.SetMaxUnavailable(intstr.FromString("25%"))
 								return nil
-							}); err != nil {
-								return fmt.Errorf("failed to edit PodDisruptionBudget spec: %w", err)
-							}
+							})
 							return nil
 						},
 					}).

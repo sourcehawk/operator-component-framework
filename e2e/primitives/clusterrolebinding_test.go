@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -131,11 +132,11 @@ var _ = Describe("clusterrolebinding Primitive", Label("clusterrolebinding"), fu
 	Context("Updates", func() {
 		It("should propagate subject changes on re-reconciliation", func() {
 			crbName := "e2e-crb-update-" + ns
-			var useUpdatedSubjects bool
+			var useUpdatedSubjects atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				saName := "default"
-				if useUpdatedSubjects {
+				if useUpdatedSubjects.Load() {
 					saName = "updated-sa"
 				}
 				crb := newBaseClusterRoleBinding(crbName, "view", saName, ns)
@@ -155,7 +156,7 @@ var _ = Describe("clusterrolebinding Primitive", Label("clusterrolebinding"), fu
 			Expect(crb.Subjects[0].Name).To(Equal("default"))
 
 			By("switching desired subjects and triggering reconciliation")
-			useUpdatedSubjects = true
+			useUpdatedSubjects.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

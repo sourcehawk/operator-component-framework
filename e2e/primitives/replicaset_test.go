@@ -49,7 +49,7 @@ func newBaseReplicaSet(namespace, name string, replicas int32) *appsv1.ReplicaSe
 	}
 }
 
-var _ = Describe("replicaset Primitive", Label("replicaset"), func() {
+var _ = Describe("ReplicaSet Primitive", Label("replicaset"), func() {
 	var (
 		ns   string
 		name string

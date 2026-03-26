@@ -57,24 +57,23 @@ func newConfigMap(namespace, name string, data map[string]string) *corev1.Config
 
 var _ = Describe("Multi-Resource Component", func() {
 	var (
-		ns  string
-		key types.NamespacedName
+		ns   string
+		name string
 	)
 
 	BeforeEach(func() {
 		ns = framework.CreateTestNamespace(ctx, k8sClient, "e2e-comp-")
+		name = ns
 	})
 
 	AfterEach(func() {
-		reconciler.Unregister(key)
+		clusterReconciler.Unregister(name)
+		framework.DeleteClusterTestApp(ctx, k8sClient, name)
 	})
 
 	Context("Aggregate Health", func() {
 		It("should aggregate health from Deployment and ConfigMap into one condition", func() {
-			name := "comp-multi"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterComponent(key, func(owner *framework.TestApp) (*component.Component, error) {
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
 				depRes, err := deployment.NewBuilder(newDeployment(ns, "web", 1)).Build()
 				if err != nil {
 					return nil, err
@@ -96,9 +95,9 @@ var _ = Describe("Multi-Resource Component", func() {
 					Build()
 			})
 
-			framework.NewTestApp(ctx, k8sClient, ns, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying both resources exist")
@@ -113,10 +112,7 @@ var _ = Describe("Multi-Resource Component", func() {
 
 	Context("Suspension", func() {
 		It("should suspend the Deployment while leaving ConfigMap intact", func() {
-			name := "comp-suspend"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterComponent(key, func(owner *framework.TestApp) (*component.Component, error) {
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
 				depRes, err := deployment.NewBuilder(newDeployment(ns, "web-sus", 1)).Build()
 				if err != nil {
 					return nil, err
@@ -138,19 +134,19 @@ var _ = Describe("Multi-Resource Component", func() {
 					Build()
 			})
 
-			app := framework.NewTestApp(ctx, k8sClient, ns, name)
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Healthy state")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("suspending the component")
-			Expect(k8sClient.Get(ctx, key, app)).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			app.Spec.Suspended = true
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("waiting for Suspended condition")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Suspended"))
 
 			By("verifying Deployment is scaled to zero")
@@ -167,10 +163,7 @@ var _ = Describe("Multi-Resource Component", func() {
 
 	Context("Participation Modes", func() {
 		It("should ignore auxiliary resource health in component condition", func() {
-			name := "comp-auxiliary"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterComponent(key, func(owner *framework.TestApp) (*component.Component, error) {
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
 				// Required deployment — must be healthy for component to be healthy
 				depRes, err := deployment.NewBuilder(newDeployment(ns, "web-req", 1)).Build()
 				if err != nil {
@@ -196,10 +189,10 @@ var _ = Describe("Multi-Resource Component", func() {
 					Build()
 			})
 
-			framework.NewTestApp(ctx, k8sClient, ns, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Healthy condition (auxiliary should not block)")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying both Deployments exist")

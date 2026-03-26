@@ -24,10 +24,10 @@ import (
 )
 
 var (
-	ctx        context.Context
-	cancel     context.CancelFunc
-	k8sClient  client.Client
-	reconciler *framework.E2EReconciler
+	ctx               context.Context
+	cancel            context.CancelFunc
+	k8sClient         client.Client
+	clusterReconciler *framework.ClusterE2EReconciler
 )
 
 func TestE2EComponent(t *testing.T) {
@@ -41,8 +41,8 @@ var _ = BeforeSuite(func() {
 	By("getting cluster configuration")
 	cfg := ctrl.GetConfigOrDie()
 
-	By("installing TestApp CRD")
-	Expect(framework.InstallCRD(cfg)).To(Succeed())
+	By("installing CRDs")
+	Expect(framework.InstallCRDs(cfg)).To(Succeed())
 
 	By("setting up scheme")
 	Expect(framework.AddToScheme(scheme.Scheme)).To(Succeed())
@@ -59,22 +59,19 @@ var _ = BeforeSuite(func() {
 		Controller:              "e2e-component",
 		OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("e2e_component"),
 	}
-	reconciler = framework.NewE2EReconciler(
+	clusterReconciler = framework.NewClusterE2EReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		recorder,
 		metrics,
 	)
 
-	By("registering controller")
-	// When adding a new primitive, add a corresponding .Owns() call here
-	// so that changes to the owned resource (e.g. status updates) trigger
-	// re-reconciliation of the parent TestApp.
+	By("registering cluster-scoped controller")
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&framework.TestApp{}).
+		For(&framework.ClusterTestApp{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.ConfigMap{}).
-		Complete(reconciler)
+		Complete(clusterReconciler)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("starting manager")

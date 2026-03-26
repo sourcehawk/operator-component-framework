@@ -1,0 +1,29 @@
+name: E2E
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  e2e:
+    name: Run on Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install tools with asdf
+        uses: asdf-vm/actions/install@v4
+        with:
+          only: |
+            kind
+
+      - name: Run E2E tests
+        run: make e2e-full

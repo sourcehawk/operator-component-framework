@@ -11,28 +11,53 @@ import (
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
 	. "github.com/onsi/gomega"    //nolint:revive
 )
 
 var (
-	ctx        context.Context
-	cancel     context.CancelFunc
-	k8sClient  client.Client
-	reconciler *framework.E2EReconciler
+	ctx               context.Context
+	cancel            context.CancelFunc
+	k8sClient         client.Client
+	reconciler        *framework.E2EReconciler
+	clusterReconciler *framework.ClusterE2EReconciler
 )
 
 func TestE2EPrimitives(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "E2E Primitives Suite")
+}
+
+// clusterResourceMapper maps a cluster-scoped resource back to the owning
+// namespace-scoped TestApp using labels. This enables the namespace-scoped
+// controller to receive reconcile events when cluster-scoped resources it
+// manages are created or changed.
+func clusterResourceMapper(_ context.Context, obj client.Object) []reconcile.Request {
+	labels := obj.GetLabels()
+	ns := labels["e2e.ocf.io/owner-namespace"]
+	name := labels["e2e.ocf.io/owner-name"]
+	if ns == "" || name == "" {
+		return nil
+	}
+	return []reconcile.Request{
+		{NamespacedName: types.NamespacedName{Namespace: ns, Name: name}},
+	}
 }
 
 var _ = BeforeSuite(func() {
@@ -41,8 +66,8 @@ var _ = BeforeSuite(func() {
 	By("getting cluster configuration")
 	cfg := ctrl.GetConfigOrDie()
 
-	By("installing TestApp CRD")
-	Expect(framework.InstallCRD(cfg)).To(Succeed())
+	By("installing CRDs")
+	Expect(framework.InstallCRDs(cfg)).To(Succeed())
 
 	By("setting up scheme")
 	Expect(framework.AddToScheme(scheme.Scheme)).To(Succeed())
@@ -53,7 +78,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	By("creating E2E reconciler")
+	By("creating E2E reconcilers")
 	recorder := record.NewFakeRecorder(1000)
 	metrics := &ocm.ConditionMetricRecorder{
 		Controller:              "e2e-primitives",
@@ -65,15 +90,53 @@ var _ = BeforeSuite(func() {
 		recorder,
 		metrics,
 	)
+	clusterReconciler = framework.NewClusterE2EReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		recorder,
+		metrics,
+	)
 
-	By("registering controller")
-	// When adding a new primitive, add a corresponding .Owns() call here
-	// so that changes to the owned resource (e.g. status updates) trigger
-	// re-reconciliation of the parent TestApp.
+	By("registering cluster-scoped controller")
+	err = ctrl.NewControllerManagedBy(mgr).
+		For(&framework.ClusterTestApp{}).
+		// apps/v1
+		Owns(&appsv1.DaemonSet{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&appsv1.ReplicaSet{}).
+		Owns(&appsv1.StatefulSet{}).
+		// autoscaling/v2
+		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
+		// batch/v1
+		Owns(&batchv1.CronJob{}).
+		Owns(&batchv1.Job{}).
+		// core/v1
+		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.PersistentVolume{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&corev1.Pod{}).
+		Owns(&corev1.Secret{}).
+		Owns(&corev1.Service{}).
+		Owns(&corev1.ServiceAccount{}).
+		// networking/v1
+		Owns(&networkingv1.Ingress{}).
+		Owns(&networkingv1.NetworkPolicy{}).
+		// policy/v1
+		Owns(&policyv1.PodDisruptionBudget{}).
+		// rbac/v1
+		Owns(&rbacv1.ClusterRole{}).
+		Owns(&rbacv1.ClusterRoleBinding{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{}).
+		Complete(clusterReconciler)
+	Expect(err).NotTo(HaveOccurred())
+
+	By("registering namespace-scoped controller for cross-scope tests")
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&framework.TestApp{}).
-		Owns(&appsv1.Deployment{}).
-		Owns(&corev1.ConfigMap{}).
+		Watches(&rbacv1.ClusterRole{}, handler.EnqueueRequestsFromMapFunc(clusterResourceMapper)).
+		Watches(&rbacv1.ClusterRoleBinding{}, handler.EnqueueRequestsFromMapFunc(clusterResourceMapper)).
+		Watches(&corev1.PersistentVolume{}, handler.EnqueueRequestsFromMapFunc(clusterResourceMapper)).
 		Complete(reconciler)
 	Expect(err).NotTo(HaveOccurred())
 

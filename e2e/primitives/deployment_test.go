@@ -49,33 +49,32 @@ func newBaseDeployment(namespace, name string, replicas int32) *appsv1.Deploymen
 	}
 }
 
-var _ = Describe("Deployment Primitive", func() {
+var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 	var (
-		ns  string
-		key types.NamespacedName
+		ns   string
+		name string
 	)
 
 	BeforeEach(func() {
 		ns = framework.CreateTestNamespace(ctx, k8sClient, "e2e-deploy-")
+		name = ns
 	})
 
 	AfterEach(func() {
-		reconciler.Unregister(key)
+		clusterReconciler.Unregister(name)
+		framework.DeleteClusterTestApp(ctx, k8sClient, name)
 	})
 
 	Context("Creation and Health", func() {
 		It("should create a Deployment and reach Healthy condition", func() {
-			name := "deploy-create"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				dep := newBaseDeployment(ns, "web-server", 1)
 				return deployment.NewBuilder(dep).Build()
 			})
 
-			framework.NewTestApp(ctx, k8sClient, ns, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying the Deployment exists with correct spec")
@@ -86,17 +85,14 @@ var _ = Describe("Deployment Primitive", func() {
 
 			By("verifying owner reference is set")
 			Expect(dep.OwnerReferences).NotTo(BeEmpty())
-			Expect(dep.OwnerReferences[0].Kind).To(Equal("TestApp"))
+			Expect(dep.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
 			Expect(dep.OwnerReferences[0].Name).To(Equal(name))
 		})
 	})
 
 	Context("Mutations", func() {
 		It("should apply feature mutations to the Deployment", func() {
-			name := "deploy-mutate"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				dep := newBaseDeployment(ns, "web-mutated", 1)
 				return deployment.NewBuilder(dep).
 					WithMutation(deployment.Mutation{
@@ -112,9 +108,9 @@ var _ = Describe("Deployment Primitive", func() {
 					Build()
 			})
 
-			framework.NewTestApp(ctx, k8sClient, ns, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying the env var is present on the Deployment")
@@ -135,27 +131,24 @@ var _ = Describe("Deployment Primitive", func() {
 
 	Context("Suspension", func() {
 		It("should scale to zero when suspended and resume when un-suspended", func() {
-			name := "deploy-suspend"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				dep := newBaseDeployment(ns, "web-suspend", 1)
 				return deployment.NewBuilder(dep).Build()
 			})
 
-			app := framework.NewTestApp(ctx, k8sClient, ns, name)
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Healthy state")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
-			By("suspending the TestApp")
-			Expect(k8sClient.Get(ctx, key, app)).To(Succeed())
+			By("suspending the ClusterTestApp")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			app.Spec.Suspended = true
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("waiting for Suspended condition")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Suspended"))
 
 			By("verifying the Deployment is scaled to zero")
@@ -163,13 +156,13 @@ var _ = Describe("Deployment Primitive", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "web-suspend", Namespace: ns}, &dep)).To(Succeed())
 			Expect(*dep.Spec.Replicas).To(Equal(int32(0)))
 
-			By("un-suspending the TestApp")
-			Expect(k8sClient.Get(ctx, key, app)).To(Succeed())
+			By("un-suspending the ClusterTestApp")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			app.Spec.Suspended = false
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("waiting for Healthy state again")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying replicas restored")
@@ -180,13 +173,10 @@ var _ = Describe("Deployment Primitive", func() {
 
 	Context("Updates", func() {
 		It("should propagate image changes on re-reconciliation", func() {
-			name := "deploy-update"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
 			// Track which image to use — starts with nginx:1.27, then switches to nginx:1.26
 			var useUpdatedImage bool
 
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				image := "nginx:1.27"
 				if useUpdatedImage {
 					image = "nginx:1.26"
@@ -196,16 +186,16 @@ var _ = Describe("Deployment Primitive", func() {
 				return deployment.NewBuilder(dep).Build()
 			})
 
-			app := framework.NewTestApp(ctx, k8sClient, ns, name)
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for initial Healthy state")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("switching the desired image and triggering reconciliation")
 			useUpdatedImage = true
-			// Trigger reconciliation by updating the TestApp's metadata
-			Expect(k8sClient.Get(ctx, key, app)).To(Succeed())
+			// Trigger reconciliation by updating the ClusterTestApp's metadata
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
 			}
@@ -219,22 +209,19 @@ var _ = Describe("Deployment Primitive", func() {
 				return dep.Spec.Template.Spec.Containers[0].Image
 			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Equal("nginx:1.26"))
 
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 		})
 	})
 
 	Context("Grace Period — Degraded", func() {
 		It("should report Degraded when partially available after grace period expires", func() {
-			name := "deploy-degraded"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
 			gracePeriod := 5 * time.Second
 
 			// Use pod anti-affinity to prevent both replicas from scheduling on the
 			// same node. Kind clusters have a single node, so only 1 of the 2 pods
-			// will schedule → ReadyReplicas=1, desired=2 → Degraded after grace.
-			reconciler.RegisterComponent(key, func(owner *framework.TestApp) (*component.Component, error) {
+			// will schedule -> ReadyReplicas=1, desired=2 -> Degraded after grace.
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
 				depName := "web-degraded"
 				dep := newBaseDeployment(ns, depName, 2)
 				dep.Spec.Template.Spec.Affinity = &corev1.Affinity{
@@ -263,17 +250,17 @@ var _ = Describe("Deployment Primitive", func() {
 					Build()
 			})
 
-			app := framework.NewTestApp(ctx, k8sClient, ns, name)
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for the initial condition to be set")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				ShouldNot(BeNil())
 
 			By("waiting for grace period to expire")
 			time.Sleep(gracePeriod + 2*time.Second)
 
 			By("triggering re-reconciliation after grace period")
-			Expect(k8sClient.Get(ctx, key, app)).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
 			}
@@ -281,21 +268,18 @@ var _ = Describe("Deployment Primitive", func() {
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("waiting for Degraded condition")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Degraded"))
 		})
 	})
 
 	Context("Grace Period — Down", func() {
 		It("should report Down when no replicas are available after grace period expires", func() {
-			name := "deploy-down"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
 			gracePeriod := 5 * time.Second
 
 			// Use a non-existent image so no pods ever become ready.
-			// After the grace period expires, ReadyReplicas=0 → Down.
-			reconciler.RegisterComponent(key, func(owner *framework.TestApp) (*component.Component, error) {
+			// After the grace period expires, ReadyReplicas=0 -> Down.
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
 				dep := newBaseDeployment(ns, "web-down", 1)
 				dep.Spec.Template.Spec.Containers[0].Image = "does-not-exist:e2e-test"
 
@@ -312,17 +296,17 @@ var _ = Describe("Deployment Primitive", func() {
 					Build()
 			})
 
-			app := framework.NewTestApp(ctx, k8sClient, ns, name)
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for the initial condition to be set")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				ShouldNot(BeNil())
 
 			By("waiting for grace period to expire")
 			time.Sleep(gracePeriod + 2*time.Second)
 
 			By("triggering re-reconciliation after grace period")
-			Expect(k8sClient.Get(ctx, key, app)).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
 			}
@@ -330,17 +314,14 @@ var _ = Describe("Deployment Primitive", func() {
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("waiting for Down condition")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Down"))
 		})
 	})
 
 	Context("Error", func() {
 		It("should report Error condition when resource mutation fails", func() {
-			name := "deploy-error"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				dep := newBaseDeployment(ns, "web-error", 1)
 				return deployment.NewBuilder(dep).
 					WithMutation(deployment.Mutation{
@@ -352,10 +333,10 @@ var _ = Describe("Deployment Primitive", func() {
 					Build()
 			})
 
-			framework.NewTestApp(ctx, k8sClient, ns, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Error condition")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
 		})
 	})

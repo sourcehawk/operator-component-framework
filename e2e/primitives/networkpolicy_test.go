@@ -34,7 +34,7 @@ func newBaseNetworkPolicy(namespace, name string) *networkingv1.NetworkPolicy {
 	}
 }
 
-var _ = Describe("networkpolicy Primitive", Label("networkpolicy"), func() {
+var _ = Describe("NetworkPolicy Primitive", Label("networkpolicy"), func() {
 	var (
 		ns   string
 		name string

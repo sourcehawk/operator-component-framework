@@ -229,9 +229,10 @@ The unstructured primitives are an escape hatch for managing arbitrary Kubernete
 example, Crossplane resources, external CRDs, or any object known only at runtime. One variant exists per
 [lifecycle category](#primitive-categories), each implementing the corresponding interfaces.
 
-Because the framework cannot know the semantics of an unstructured object, **no default handlers are provided**. Only
-the converging status handler is required at build time; suspension and grace handlers are optional and default to safe
-no-ops when omitted.
+Because the framework cannot know the semantics of an unstructured object, it does **not infer any semantic or
+domain-specific defaults**. The builders instead configure generic safe defaults: if you omit a grace handler, the
+primitive treats the resource as Healthy; if you omit suspension handlers, the primitive reports Suspended and the
+suspend mutation is a no-op. Only the converge/operational status handler is required at build time.
 
 The unstructured primitives share a single `Mutator` and use an `UnstructuredContentEditor` for manipulating nested
 fields in the object's content map. See [unstructured.md](primitives/unstructured.md) for full details.

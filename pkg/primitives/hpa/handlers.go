@@ -164,7 +164,7 @@ func DefaultGraceStatusHandler(
 		default:
 			return concepts.GraceStatusWithReason{
 				Status: concepts.GraceStatusDegraded,
-				Reason: conditionReason(scalingActive, "ScalingActive has unrecognized status"),
+				Reason: conditionReason(scalingActive, "ScalingActive is Unknown"),
 			}, nil
 		}
 	}

@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -90,8 +91,14 @@ var _ = Describe("PVC Primitive", Label("pvc"), func() {
 
 			By("verifying owner reference is set")
 			Expect(claim.OwnerReferences).NotTo(BeEmpty())
-			Expect(claim.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(claim.OwnerReferences[0].Name).To(Equal(name))
+			foundOwnerRef := false
+			for _, ref := range claim.OwnerReferences {
+				if ref.Kind == "ClusterTestApp" && ref.Name == name {
+					foundOwnerRef = true
+					break
+				}
+			}
+			Expect(foundOwnerRef).To(BeTrue(), "expected PVC to have ClusterTestApp owner reference for %s", name)
 		})
 	})
 
@@ -126,13 +133,13 @@ var _ = Describe("PVC Primitive", Label("pvc"), func() {
 
 	Context("Updates", func() {
 		It("should propagate label changes on re-reconciliation", func() {
-			var useUpdatedLabels bool
+			var useUpdatedLabels atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBasePVC(ns, "app-data-update", "1Gi")
 				builder := pvc.NewBuilder(obj).
 					WithCustomOperationalStatus(immediateOperationalStatus)
-				if useUpdatedLabels {
+				if useUpdatedLabels.Load() {
 					builder = builder.WithMutation(pvc.Mutation{
 						Name: "update-labels",
 						Mutate: func(m *pvc.Mutator) error {
@@ -159,7 +166,7 @@ var _ = Describe("PVC Primitive", Label("pvc"), func() {
 			Expect(claim.Labels).NotTo(HaveKey("e2e.ocf.io/version"))
 
 			By("switching desired labels and triggering reconciliation")
-			useUpdatedLabels = true
+			useUpdatedLabels.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

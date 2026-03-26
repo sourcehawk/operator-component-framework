@@ -144,6 +144,7 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (re
         Client:   r.Client,
         Scheme:   r.Scheme,
         Recorder: r.Recorder,
+        Metrics:  r.Metrics,
         Owner:    owner,
     }
 

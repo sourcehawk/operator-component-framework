@@ -260,6 +260,7 @@ recCtx := component.ReconcileContext{
     Client:   r.Client,    // sigs.k8s.io/controller-runtime/pkg/client
     Scheme:   r.Scheme,    // *runtime.Scheme
     Recorder: r.Recorder,  // record.EventRecorder
+    Metrics:  r.Metrics,   // component.Recorder (condition metrics)
     Owner:    owner,       // the CRD that owns this component
 }
 
@@ -267,6 +268,10 @@ err = comp.Reconcile(ctx, recCtx)
 ```
 
 Dependencies are passed explicitly so components remain testable and decoupled from global state.
+
+The `Metrics` field is required. The framework records Prometheus metrics for every condition state transition during
+reconciliation. The recorder implementation is provided by
+[go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics).
 
 ## Best Practices
 

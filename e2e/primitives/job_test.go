@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -44,7 +45,7 @@ func newBaseJob(namespace, name string) *batchv1.Job {
 	}
 }
 
-var _ = Describe("job Primitive", Label("job"), func() {
+var _ = Describe("Job Primitive", Label("job"), func() {
 	var (
 		ns   string
 		name string
@@ -128,11 +129,11 @@ var _ = Describe("job Primitive", Label("job"), func() {
 
 	Context("Updates", func() {
 		It("should propagate label changes on re-reconciliation", func() {
-			var useUpdatedLabels bool
+			var useUpdatedLabels atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBaseJob(ns, "task-update")
-				if useUpdatedLabels {
+				if useUpdatedLabels.Load() {
 					obj.Labels = map[string]string{"version": "v2"}
 				} else {
 					obj.Labels = map[string]string{"version": "v1"}
@@ -152,7 +153,7 @@ var _ = Describe("job Primitive", Label("job"), func() {
 			Expect(j.Labels).To(HaveKeyWithValue("version", "v1"))
 
 			By("switching the desired labels and triggering reconciliation")
-			useUpdatedLabels = true
+			useUpdatedLabels.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

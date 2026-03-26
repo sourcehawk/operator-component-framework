@@ -7,6 +7,7 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/pv"
 
 	corev1 "k8s.io/api/core/v1"
@@ -127,15 +128,27 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 			var useUpdatedSpec bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
-				hostPath := "/tmp/e2e-pv-original"
+				obj := newBasePersistentVolume(pvName, "/tmp/e2e-pv-update")
+				builder := pv.NewBuilder(obj)
 				if useUpdatedSpec {
-					hostPath = "/tmp/e2e-pv-updated"
+					builder = builder.WithMutation(pv.Mutation{
+						Name: "set-reclaim-retain",
+						Mutate: func(m *pv.Mutator) error {
+							m.SetReclaimPolicy(corev1.PersistentVolumeReclaimRetain)
+							return nil
+						},
+					}).WithMutation(pv.Mutation{
+						Name: "add-label",
+						Mutate: func(m *pv.Mutator) error {
+							m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+								e.EnsureLabel("e2e.ocf.io/updated", "true")
+								return nil
+							})
+							return nil
+						},
+					})
 				}
-				obj := newBasePersistentVolume(pvName, hostPath)
-				if useUpdatedSpec {
-					obj.Spec.MountOptions = []string{"noexec"}
-				}
-				return pv.NewBuilder(obj).Build()
+				return builder.Build()
 			})
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
@@ -147,7 +160,7 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 			By("verifying initial spec")
 			var pvObj corev1.PersistentVolume
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pvName}, &pvObj)).To(Succeed())
-			Expect(pvObj.Spec.HostPath.Path).To(Equal("/tmp/e2e-pv-original"))
+			Expect(pvObj.Spec.HostPath.Path).To(Equal("/tmp/e2e-pv-update"))
 
 			By("switching desired spec and triggering reconciliation")
 			useUpdatedSpec = true
@@ -158,18 +171,19 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 			app.Annotations["e2e.ocf.io/trigger"] = "update-spec"
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
-			By("verifying updated spec")
-			Eventually(func(g Gomega) string {
+			By("verifying updated reclaim policy")
+			Eventually(func(g Gomega) corev1.PersistentVolumeReclaimPolicy {
 				var updated corev1.PersistentVolume
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pvName}, &updated)).To(Succeed())
-				return updated.Spec.HostPath.Path
-			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Equal("/tmp/e2e-pv-updated"))
+				return updated.Spec.PersistentVolumeReclaimPolicy
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Equal(corev1.PersistentVolumeReclaimRetain))
 
-			Eventually(func(g Gomega) []string {
+			By("verifying updated label")
+			Eventually(func(g Gomega) map[string]string {
 				var updated corev1.PersistentVolume
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pvName}, &updated)).To(Succeed())
-				return updated.Spec.MountOptions
-			}, framework.DefaultTimeout, framework.DefaultPolling).Should(ContainElement("noexec"))
+				return updated.Labels
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(HaveKeyWithValue("e2e.ocf.io/updated", "true"))
 		})
 	})
 

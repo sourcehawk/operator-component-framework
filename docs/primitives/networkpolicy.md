@@ -6,12 +6,12 @@ ingress rules, egress rules, and policy types.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                      |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state              |
-| **Mutation pipeline** | Typed editors for NetworkPolicy spec and object metadata, with a raw escape hatch for free-form access      |
-| **Append semantics**  | Ingress and egress rules have no unique key — `AppendIngressRule`/`AppendEgressRule` append unconditionally |
-| **Data extraction**   | Reads generated or updated values back from the reconciled NetworkPolicy after each sync cycle              |
+| Capability            | Detail                                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state              |
+| **Mutation pipeline** | Typed editors for NetworkPolicy spec and object metadata, with a raw escape hatch for free-form access     |
+| **Append semantics**  | Ingress and egress rules have no unique key. `AppendIngressRule`/`AppendEgressRule` append unconditionally |
+| **Data extraction**   | Reads generated or updated values back from the reconciled NetworkPolicy after each sync cycle             |
 
 ## Building a NetworkPolicy Primitive
 
@@ -44,14 +44,14 @@ resource, err := networkpolicy.NewBuilder(base).
 Mutations are the primary mechanism for modifying a `NetworkPolicy` beyond its baseline. Each mutation is a named
 function that receives a `*Mutator` and records edit intent through typed editors.
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally — prefer this
+The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. Prefer this
 for mutations that should always run and do not need feature-gate evaluation:
 
 ```go
 func HTTPIngressMutation() networkpolicy.Mutation {
     return networkpolicy.Mutation{
         Name: "http-ingress",
-        // Feature is nil — mutation is applied unconditionally.
+        // Feature is nil: mutation is applied unconditionally.
         Mutate: func(m *networkpolicy.Mutator) error {
             m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
                 port := intstr.FromInt32(8080)

@@ -11,7 +11,7 @@ mutation API for managing rules, TLS configuration, and metadata. For an overvie
 | ---------------------- | ---------------------------------------------------------------------------------------------- |
 | **Operational status** | Reports `OperationPending` until the ingress controller assigns an address, then `Operational` |
 | **Grace status**       | Reports `Degraded` until a load balancer IP or hostname is assigned, then `Healthy`            |
-| **Suspension**         | No-op by default — Ingress is left in place; backend returns 502/503                           |
+| **Suspension**         | No-op by default. Ingress is left in place; backend returns 502/503                            |
 | **Mutation pipeline**  | Typed editors for metadata and ingress spec (rules, TLS, class name, default backend)          |
 
 ## Building an Ingress Primitive
@@ -145,8 +145,8 @@ Sets the default backend for traffic that does not match any rule.
 
 #### EnsureRule and RemoveRule
 
-`EnsureRule` upserts a rule by `Host` — if a rule with the same host already exists, it is replaced. `RemoveRule`
-deletes the rule with the given host; it is a no-op if no matching rule exists.
+`EnsureRule` upserts a rule by `Host`. If a rule with the same host already exists, it is replaced. `RemoveRule` deletes
+the rule with the given host; it is a no-op if no matching rule exists.
 
 ```go
 m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
@@ -262,13 +262,13 @@ ingress.NewBuilder(base).
 
 The default suspension strategy is a **no-op**:
 
-- `DefaultDeleteOnSuspendHandler` returns `false` — the Ingress is not deleted.
-- `DefaultSuspendMutationHandler` does nothing — the Ingress spec is not modified.
+- `DefaultDeleteOnSuspendHandler` returns `false`. The Ingress is not deleted.
+- `DefaultSuspendMutationHandler` does nothing. The Ingress spec is not modified.
 - `DefaultSuspensionStatusHandler` immediately reports `Suspended` with reason
   `"Ingress suspended (backend unavailable)"`.
 
 **Rationale**: deleting an Ingress causes the ingress controller (e.g. nginx) to reload its configuration, which affects
-the entire cluster's routing — not just the suspended service. When the backend service is suspended, the Ingress
+the entire cluster's routing, not just the suspended service. When the backend service is suspended, the Ingress
 returning 502/503 is the correct observable behaviour.
 
 ### Custom Suspension

@@ -10,7 +10,7 @@ mutation API for managing PV spec fields and object metadata.
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Integration lifecycle** | Reports `concepts.OperationalStatusOperational`, `concepts.OperationalStatusPending`, or `concepts.OperationalStatusFailing` based on the PV's phase |
 | **Grace status**          | Maps PV phase to grace status: Available/Bound are `Healthy`, Pending is `Degraded`, Released/Failed are `Down`                                      |
-| **Cluster-scoped**        | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources                                                             |
+| **Cluster-scoped**        | No namespace in the identity or builder. PersistentVolumes are cluster-scoped resources                                                              |
 | **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access                                                   |
 | **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle                                                    |
 
@@ -111,10 +111,10 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
 recorded:
 
-| Step | Category       | What it affects                                                     |
-| ---- | -------------- | ------------------------------------------------------------------- |
-| 1    | Metadata edits | Labels and annotations on the `PersistentVolume`                    |
-| 2    | Spec edits     | PV spec fields — storage class, reclaim policy, mount options, etc. |
+| Step | Category       | What it affects                                                    |
+| ---- | -------------- | ------------------------------------------------------------------ |
+| 1    | Metadata edits | Labels and annotations on the `PersistentVolume`                   |
+| 2    | Spec edits     | PV spec fields: storage class, reclaim policy, mount options, etc. |
 
 Within each category, edits are applied in their registration order. Later features observe the PersistentVolume as
 modified by all previous features.

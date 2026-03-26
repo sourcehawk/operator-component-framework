@@ -179,8 +179,8 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 ### Raw Escape Hatch
 
 All editors provide a `.Raw()` method for direct access to the underlying Kubernetes struct when the typed API is
-insufficient. The mutation remains scoped to the editor's target — you cannot accidentally modify unrelated parts of the
-spec.
+insufficient. The mutation remains scoped to the editor's target, so you cannot accidentally modify unrelated parts of
+the spec.
 
 ```go
 m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
@@ -206,7 +206,7 @@ The `Mutator` also exposes convenience wrappers that target all containers at on
 
 Pods cannot be paused. The default behavior deletes the pod when the component is suspended.
 
-- `DefaultDeleteOnSuspendHandler`: returns `true` — pod is deleted on suspend.
+- `DefaultDeleteOnSuspendHandler`: returns `true`. The pod is deleted on suspend.
 - `DefaultSuspendMutationHandler`: no-op (deletion is handled by the framework).
 - `DefaultSuspensionStatusHandler`: always returns `{Suspended, "Pod deleted on suspend"}`.
 

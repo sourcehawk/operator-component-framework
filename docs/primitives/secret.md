@@ -8,7 +8,7 @@ entries and object metadata.
 
 | Capability            | Detail                                                                                           |
 | --------------------- | ------------------------------------------------------------------------------------------------ |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state   |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state    |
 | **Mutation pipeline** | Typed editors for `.data` and `.stringData` entries and object metadata, with a raw escape hatch |
 | **Data extraction**   | Reads generated or updated values back from the reconciled Secret after each sync cycle          |
 
@@ -99,10 +99,10 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
 recorded:
 
-| Step | Category       | What it affects                                      |
-| ---- | -------------- | ---------------------------------------------------- |
-| 1    | Metadata edits | Labels and annotations on the `Secret`               |
-| 2    | Data edits     | `.data` and `.stringData` entries — Set, Remove, Raw |
+| Step | Category       | What it affects                                     |
+| ---- | -------------- | --------------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `Secret`              |
+| 2    | Data edits     | `.data` and `.stringData` entries: Set, Remove, Raw |
 
 Within each category, edits are applied in their registration order. Later edits in the same mutation observe the Secret
 as modified by all earlier edits.
@@ -202,7 +202,7 @@ with this hash so that a secret change triggers a rolling restart.
 
 ### DataHash
 
-`DataHash` hashes a Secret value you already have — for example, one read from the cluster:
+`DataHash` hashes a Secret value you already have, for example one read from the cluster:
 
 ```go
 hash, err := secret.DataHash(s)
@@ -216,8 +216,8 @@ a cluster-read object (where `.stringData` has already been merged into `.data`)
 
 ### Resource.DesiredHash
 
-`DesiredHash` computes the hash of what the operator _will write_ — that is, the base object with all registered
-mutations applied — without performing a cluster read and without a second reconcile cycle:
+`DesiredHash` computes the hash of what the operator _will write_ (the base object with all registered mutations
+applied) without performing a cluster read and without a second reconcile cycle:
 
 ```go
 secretResource, err := secret.NewBuilder(base).

@@ -222,7 +222,7 @@ reason "No nodes match the DaemonSet node selector".
 
 | Status     | Condition                                                                                                                                              |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Healthy`  | `DesiredNumberScheduled == 0` and `ObservedGeneration >= Generation` — no nodes match the selector                                                     |
+| `Healthy`  | `DesiredNumberScheduled == 0` and `ObservedGeneration >= Generation` (no nodes match the selector)                                                     |
 | `Degraded` | `DesiredNumberScheduled == 0` but controller has not observed latest generation, or `DesiredNumberScheduled > 0 && NumberReady >= 1` but below desired |
 | `Down`     | `DesiredNumberScheduled > 0 && NumberReady == 0`                                                                                                       |
 

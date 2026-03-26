@@ -5,7 +5,7 @@ resources. It integrates with the component lifecycle and provides a structured 
 `.aggregationRule`, and object metadata.
 
 ClusterRole is cluster-scoped: it has no namespace. The builder validates that the Name is set and that Namespace is
-empty — setting a namespace on a cluster-scoped resource is rejected.
+empty. Setting a namespace on a cluster-scoped resource is rejected.
 
 > **Ownership limitation:** During reconciliation, the framework attempts to set a controller reference on managed
 > objects, but only when the owner and dependent scopes are compatible. When a namespaced owner manages a cluster-scoped
@@ -18,9 +18,9 @@ empty — setting a namespace on a cluster-scoped resource is rejected.
 
 | Capability            | Detail                                                                                                                     |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state                             |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state                              |
 | **Mutation pipeline** | Typed editors (`PolicyRulesEditor`) for `.rules` and object metadata, with aggregation rule support and a raw escape hatch |
-| **Cluster-scoped**    | No namespace required — identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`                               |
+| **Cluster-scoped**    | No namespace required. Identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`                                |
 | **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRole after each sync cycle                               |
 
 ## Building a ClusterRole Primitive
@@ -124,8 +124,8 @@ features were registered. Within each feature, edits are applied in a fixed cate
 | Step | Category         | What it affects                             |
 | ---- | ---------------- | ------------------------------------------- |
 | 1    | Metadata edits   | Labels and annotations on the `ClusterRole` |
-| 2    | Rules edits      | `.rules` entries — EditRules, AddRule       |
-| 3    | Aggregation rule | `.aggregationRule` — SetAggregationRule     |
+| 2    | Rules edits      | `.rules` entries: EditRules, AddRule        |
+| 3    | Aggregation rule | `.aggregationRule`: SetAggregationRule      |
 
 Within each category, edits are applied in their registration order. For aggregation rules, the last
 `SetAggregationRule` call wins within each feature. Later features observe the ClusterRole as modified by all previous
@@ -286,7 +286,6 @@ boolean conditions.
 
 **Use `SetAggregationRule` for composite roles.** When you want the API server to aggregate rules from multiple
 ClusterRoles based on label selectors, use `SetAggregationRule` instead of managing `.rules` directly. The two
-approaches are mutually exclusive in the Kubernetes API — the API server ignores `.rules` when `.aggregationRule` is
-set.
+approaches are mutually exclusive in the Kubernetes API: the API server ignores `.rules` when `.aggregationRule` is set.
 
 **Register mutations in dependency order.** If mutation B relies on a rule added by mutation A, register A first.

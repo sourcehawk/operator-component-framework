@@ -6,13 +6,13 @@ structured mutation API for managing storage requests and object metadata.
 
 ## Capabilities
 
-| Capability               | Detail                                                                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Operational tracking** | Monitors PVC phase — reports `OperationalStatusOperational` (Bound), `OperationalStatusPending`, or `OperationalStatusFailing` (Lost) |
-| **Grace status**         | Bound is `Healthy`, Lost is `Down`, any other phase is `Degraded`                                                                     |
-| **Suspension**           | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default                                          |
-| **Mutation pipeline**    | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access                                          |
-| **Data extraction**      | Reads bound volume name, capacity, or other status fields after each sync cycle                                                       |
+| Capability               | Detail                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Operational tracking** | Monitors PVC phase. Reports `OperationalStatusOperational` (Bound), `OperationalStatusPending`, or `OperationalStatusFailing` (Lost) |
+| **Grace status**         | Bound is `Healthy`, Lost is `Down`, any other phase is `Degraded`                                                                    |
+| **Suspension**           | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default                                         |
+| **Mutation pipeline**    | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access                                         |
+| **Data extraction**      | Reads bound volume name, capacity, or other status fields after each sync cycle                                                      |
 
 ## Building a PVC Primitive
 
@@ -108,7 +108,7 @@ recorded:
 | Step | Category       | What it affects                                       |
 | ---- | -------------- | ----------------------------------------------------- |
 | 1    | Metadata edits | Labels and annotations on the `PersistentVolumeClaim` |
-| 2    | Spec edits     | PVC spec — storage requests, access modes, etc.       |
+| 2    | Spec edits     | PVC spec: storage requests, access modes, etc.        |
 
 Within each category, edits are applied in their registration order. The PVC primitive groups mutations by feature
 boundary: for each applicable feature (after evaluating version constraints and any `When()` conditions), all of its
@@ -231,8 +231,8 @@ pvc.NewBuilder(base).
 ## Guidance
 
 **Register mutations for storage expansion carefully.** Kubernetes only allows expanding PVC storage (not shrinking).
-Ensure your mutations respect this constraint. The `SetStorageRequest` method does not enforce this — the API server
-will reject invalid requests.
+Ensure your mutations respect this constraint. The `SetStorageRequest` method does not enforce this; the API server will
+reject invalid requests.
 
 **Prefer `WithCustomSuspendDeletionDecision` over deleting PVCs manually.** If you need PVCs to be cleaned up during
 suspension, register a deletion decision handler rather than deleting them in a mutation.

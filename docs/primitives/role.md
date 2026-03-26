@@ -6,11 +6,11 @@ metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                         |
-| --------------------- | ---------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state |
-| **Mutation pipeline** | Typed editors for `.rules` and object metadata, with a raw escape hatch for free-form access   |
-| **Data extraction**   | Reads generated or updated values back from the reconciled Role after each sync cycle          |
+| Capability            | Detail                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state |
+| **Mutation pipeline** | Typed editors for `.rules` and object metadata, with a raw escape hatch for free-form access  |
+| **Data extraction**   | Reads generated or updated values back from the reconciled Role after each sync cycle         |
 
 ## Building a Role Primitive
 
@@ -126,7 +126,7 @@ recorded:
 | Step | Category       | What it affects                    |
 | ---- | -------------- | ---------------------------------- |
 | 1    | Metadata edits | Labels and annotations on the Role |
-| 2    | Rules edits    | `.rules` — SetRules, AddRule, Raw  |
+| 2    | Rules edits    | `.rules`: SetRules, AddRule, Raw   |
 
 Within each category, edits are applied in their registration order. Later features observe the Role as modified by all
 previous features.
@@ -262,7 +262,7 @@ boolean conditions.
 
 **Use `AddRule` for composable permissions.** When multiple features need to contribute rules to the same Role,
 `AddRule` lets each feature add its permissions independently. Using `SetRules` in multiple features means the last
-registration wins — only use that when full replacement is the intended semantics.
+registration wins. Only use that when full replacement is the intended semantics.
 
 **Register mutations in dependency order.** If mutation B relies on rules set by mutation A, register A first.
 

@@ -355,7 +355,7 @@ func AutoscalingMutation(version string) hpa.Mutation {
 ```
 
 Note: although `EditObjectMetadata` is called after `EditHPASpec` in the source, metadata edits are applied first per
-the internal ordering. Order your source calls for readability — the framework handles execution order.
+the internal ordering. Order your source calls for readability; the framework handles execution order.
 
 ## Guidance
 
@@ -371,5 +371,5 @@ selector, and described object where applicable), so repeated calls with the sam
 **HPA deletion on suspend is the default.** The primitive's default `DeleteOnSuspend` decision removes the HPA during
 component suspension (matching the "Suspension (delete)" capability). This prevents the Kubernetes HPA controller from
 scaling the target back up while it is suspended. On resume the framework recreates the HPA with the desired spec. If
-you need the HPA to be retained during suspension — for example, when the scale target is managed externally and will
-not be present — override `WithCustomSuspendDeletionDecision` to return `false`.
+you need the HPA to be retained during suspension (for example, when the scale target is managed externally and will not
+be present), override `WithCustomSuspendDeletionDecision` to return `false`.

@@ -250,7 +250,7 @@ service.NewBuilder(base).
 
 ## Suspension
 
-By default, Services are **unaffected** by suspension — they remain in the cluster when the parent component is
+By default, Services are **unaffected** by suspension. They remain in the cluster when the parent component is
 suspended. The default suspend mutation handler is a no-op, `DefaultDeleteOnSuspendHandler` returns `false`, and the
 default suspension status handler reports `Suspended` immediately (no work required).
 

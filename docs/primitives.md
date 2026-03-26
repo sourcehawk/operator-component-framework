@@ -1,17 +1,17 @@
 # Resource Primitives
 
 The `primitives` package provides reusable, type-safe wrappers for individual Kubernetes objects. Primitives sit between
-the [Component layer](component.md) and raw Kubernetes resources — they handle the complexities of state
-synchronization, mutation, and lifecycle management so operator authors don't have to.
+the [Component layer](component.md) and raw Kubernetes resources. They handle the complexities of state synchronization,
+mutation, and lifecycle management so operator authors don't have to.
 
 ## What a Primitive Is
 
 A primitive wraps a specific Kubernetes kind (e.g., `Deployment`, `ConfigMap`) and encapsulates:
 
-- **Desired state baseline** — the ideal configuration of the resource.
-- **Lifecycle integration** — built-in readiness detection, grace handling, and suspension.
-- **Mutation surfaces** — typed APIs for modifying the resource based on active features or version constraints.
-- **Server-Side Apply** — desired state is applied via SSA, preserving server defaults and fields managed by external
+- **Desired state baseline**: the ideal configuration of the resource.
+- **Lifecycle integration**: built-in readiness detection, grace handling, and suspension.
+- **Mutation surfaces**: typed APIs for modifying the resource based on active features or version constraints.
+- **Server-Side Apply**: desired state is applied via SSA, preserving server defaults and fields managed by external
   controllers.
 
 Each primitive implements the `component.Resource` interface, and may additionally implement one or more
@@ -34,15 +34,15 @@ complex runtime convergence. They are considered `Ready` as long as they exist. 
 Examples: `Deployment`, `StatefulSet`, `DaemonSet`
 
 These resources represent long-running processes that require runtime convergence (pods being scheduled and becoming
-ready). They implement `Alive`, `Graceful`, and `Suspendable` — supporting health tracking, grace periods, and scaling
-to zero.
+ready). They implement `Alive`, `Graceful`, and `Suspendable`, supporting health tracking, grace periods, and scaling to
+zero.
 
 ### Task
 
 Examples: `Job`
 
-These resources represent short-lived operations that run to completion — database migrations, backups, initialization
-steps. They implement `Completable` and `Suspendable`. When suspended, tasks can be paused (if the underlying resource
+These resources represent short-lived operations that run to completion (database migrations, backups, initialization
+steps). They implement `Completable` and `Suspendable`. When suspended, tasks can be paused (if the underlying resource
 supports it) or deleted and recreated when resumed.
 
 ### Integration
@@ -55,13 +55,13 @@ schedules). Their readiness depends on external controllers and may be delayed o
 
 ## Cluster-Scoped Primitives
 
-Some Kubernetes resources are cluster-scoped — they have no namespace. Examples include `ClusterRole`,
+Some Kubernetes resources are cluster-scoped: they have no namespace. Examples include `ClusterRole`,
 `ClusterRoleBinding`, and `PersistentVolume`.
 
 When implementing a primitive for a cluster-scoped kind, the primitive's builder must explicitly call
 `MarkClusterScoped()` on its internal `BaseBuilder` during construction. This changes `ValidateBase()` behavior: instead
 of requiring a non-empty namespace, it rejects a non-empty namespace. The primitive's builder is also responsible for
-providing an identity function that formats the identity string appropriately — typically omitting the namespace segment
+providing an identity function that formats the identity string appropriately, typically omitting the namespace segment
 (e.g., `rbac.authorization.k8s.io/v1/ClusterRole/my-role` rather than including a namespace).
 
 At reconcile time, the component framework automatically detects scope incompatibilities between the owner CRD and
@@ -85,8 +85,8 @@ Custom resource wrappers can implement any subset of these interfaces to opt int
 
 ## Server-Side Apply
 
-The framework reconciles resources using **Server-Side Apply** (SSA). Each primitive builds the desired state — the
-baseline object with all registered mutations applied — and patches it to the cluster using `client.Apply`. Only fields
+The framework reconciles resources using **Server-Side Apply** (SSA). Each primitive builds the desired state (the
+baseline object with all registered mutations applied) and patches it to the cluster using `client.Apply`. Only fields
 the operator declares are sent; server-managed defaults, fields set by other controllers (HPAs, sidecar injectors,
 annotation-based tooling), and values written by webhooks are left untouched.
 
@@ -105,10 +105,10 @@ intent through typed editors, which are applied in a single controlled pass.
 
 This design:
 
-- **Prevents uncontrolled mutation** — changes are staged before any object is touched
-- **Enables composability** — independent features contribute edits without knowing about each other
-- **Guarantees ordering** — features apply in registration order; within a feature, categories apply in a fixed sequence
-- **Avoids error-prone slice manipulation** — editors handle presence operations and stable selection internally
+- **Prevents uncontrolled mutation**: changes are staged before any object is touched
+- **Enables composability**: independent features contribute edits without knowing about each other
+- **Guarantees ordering**: features apply in registration order; within a feature, categories apply in a fixed sequence
+- **Avoids error-prone slice manipulation**: editors handle presence operations and stable selection internally
 
 ## Mutation Editors
 
@@ -120,7 +120,7 @@ Each primitive documents its available editors in its own [Relevant Editors](#bu
 
 ## Container Selectors
 
-Selectors determine which containers an editor targets — important for multi-container pods:
+Selectors determine which containers an editor targets. This is important for multi-container pods:
 
 ```go
 selectors.AllContainers()                    // every container in the pod
@@ -225,7 +225,7 @@ m.EditContainers(selectors.ContainersNamed("web", "api"), func(e *editors.Contai
 | `pkg/primitives/unstructured/integration` | Integration | [unstructured.md](primitives/unstructured.md) |
 | `pkg/primitives/unstructured/task`        | Task        | [unstructured.md](primitives/unstructured.md) |
 
-The unstructured primitives are an escape hatch for managing arbitrary Kubernetes objects that have no Go type — for
+The unstructured primitives are an escape hatch for managing arbitrary Kubernetes objects that have no Go type, for
 example, Crossplane resources, external CRDs, or any object known only at runtime. One variant exists per
 [lifecycle category](#primitive-categories), each implementing the corresponding interfaces.
 
@@ -240,7 +240,7 @@ fields in the object's content map. See [unstructured.md](primitives/unstructure
 ## Implementing a Custom Resource
 
 When the built-in primitives do not cover your use case, you can implement custom resource wrappers for any Kubernetes
-object — including custom CRDs. The framework provides generic building blocks in `pkg/generic` that handle
+object, including custom CRDs. The framework provides generic building blocks in `pkg/generic` that handle
 reconciliation mechanics, mutation sequencing, and suspension, so you only need to provide type-specific logic.
 
 See the [Custom Resource Implementation Guide](custom-resource.md) for a complete walkthrough covering mutator design,

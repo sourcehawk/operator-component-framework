@@ -8,7 +8,7 @@ object metadata.
 
 | Capability            | Detail                                                                                              |
 | --------------------- | --------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state      |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state       |
 | **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a raw escape hatch for free-form access |
 | **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features    |
 | **Data extraction**   | Reads generated or updated values back from the reconciled ConfigMap after each sync cycle          |
@@ -99,10 +99,10 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
 recorded:
 
-| Step | Category       | What it affects                               |
-| ---- | -------------- | --------------------------------------------- |
-| 1    | Metadata edits | Labels and annotations on the `ConfigMap`     |
-| 2    | Data edits     | `.data` entries — Set, Remove, MergeYAML, Raw |
+| Step | Category       | What it affects                              |
+| ---- | -------------- | -------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `ConfigMap`    |
+| 2    | Data edits     | `.data` entries: Set, Remove, MergeYAML, Raw |
 
 Within each category, edits are applied in their registration order. Later features observe the ConfigMap as modified by
 all previous features.
@@ -136,7 +136,7 @@ m.EditData(func(e *editors.ConfigMapDataEditor) error {
 #### SetBinary and RemoveBinary
 
 `SetBinary` sets a raw byte slice in `.binaryData`. `RemoveBinary` deletes a `.binaryData` key; it is a no-op if the key
-is absent. No helpers are provided beyond set and remove — format and encode the value before passing it in.
+is absent. No helpers are provided beyond set and remove. Format and encode the value before passing it in.
 
 ```go
 m.EditData(func(e *editors.ConfigMapDataEditor) error {
@@ -150,7 +150,7 @@ m.EditData(func(e *editors.ConfigMapDataEditor) error {
 
 `MergeYAML` deep-merges a YAML patch string into the existing value at a key in `.data`. Merge semantics:
 
-- If both the existing value and the patch are YAML mappings, their keys are merged recursively — keys present only in
+- If both the existing value and the patch are YAML mappings, their keys are merged recursively. Keys present only in
   the base are preserved, keys present only in the patch are added, and keys present in both are resolved by applying
   `MergeYAML` recursively.
 - For all other types (scalars, sequences, mixed), the patch value wins.
@@ -224,7 +224,7 @@ restart.
 
 ### DataHash
 
-`DataHash` hashes a ConfigMap value you already have — for example, one read from the cluster:
+`DataHash` hashes a ConfigMap value you already have, for example one read from the cluster:
 
 ```go
 hash, err := configmap.DataHash(cm)
@@ -235,8 +235,8 @@ so it is deterministic regardless of insertion order. Metadata fields (labels, a
 
 ### Resource.DesiredHash
 
-`DesiredHash` computes the hash of what the operator _will write_ — that is, the base object with all registered
-mutations applied — without performing a cluster read and without a second reconcile cycle:
+`DesiredHash` computes the hash of what the operator _will write_ (the base object with all registered mutations
+applied) without performing a cluster read and without a second reconcile cycle:
 
 ```go
 cmResource, err := configmap.NewBuilder(base).
@@ -247,7 +247,7 @@ cmResource, err := configmap.NewBuilder(base).
 hash, err := cmResource.DesiredHash()
 ```
 
-The hash covers only operator-controlled fields — only changes to operator-owned content will change the hash.
+The hash covers only operator-controlled fields. Only changes to operator-owned content will change the hash.
 
 ### Annotating a Deployment pod template (single-pass pattern)
 
@@ -357,6 +357,6 @@ boolean conditions.
 
 **Use `MergeYAML` for composable config files.** When multiple features need to contribute to the same YAML entry,
 `MergeYAML` lets each feature contribute its section independently. Using `SetEntry` in multiple features for the same
-key means the last registration wins — only use that when replacement is the intended semantics.
+key means the last registration wins. Only use that when replacement is the intended semantics.
 
 **Register mutations in dependency order.** If mutation B relies on an entry set by mutation A, register A first.

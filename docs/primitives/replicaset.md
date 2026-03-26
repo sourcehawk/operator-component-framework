@@ -4,7 +4,7 @@ The `replicaset` primitive is the framework's workload abstraction for managing 
 integrates fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and
 metadata.
 
-ReplicaSets are rarely managed directly — operators typically use Deployments. This primitive is provided for operators
+ReplicaSets are rarely managed directly; operators typically use Deployments. This primitive is provided for operators
 that own ReplicaSets explicitly (e.g. custom rollout controllers).
 
 ## Capabilities

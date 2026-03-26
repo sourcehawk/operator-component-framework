@@ -1,7 +1,7 @@
 # Job Primitive
 
 The `job` primitive is the framework's built-in task abstraction for managing Kubernetes `Job` resources. It integrates
-fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and metadata —
+fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and metadata,
 following the same pod-template mutation pattern as the Deployment primitive.
 
 ## Capabilities

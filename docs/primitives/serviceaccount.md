@@ -8,7 +8,7 @@ secrets, the automount token flag, and object metadata.
 
 | Capability            | Detail                                                                                                    |
 | --------------------- | --------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state            |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state             |
 | **Mutation pipeline** | Direct mutator methods for `.imagePullSecrets` and `.automountServiceAccountToken`, plus metadata editors |
 | **Data extraction**   | Reads generated or updated values back from the reconciled ServiceAccount after each sync cycle           |
 
@@ -96,11 +96,11 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
 recorded:
 
-| Step | Category                | What it affects                                                    |
-| ---- | ----------------------- | ------------------------------------------------------------------ |
-| 1    | Metadata edits          | Labels and annotations on the `ServiceAccount`                     |
-| 2    | Image pull secret edits | `.imagePullSecrets` — EnsureImagePullSecret, RemoveImagePullSecret |
-| 3    | Automount edits         | `.automountServiceAccountToken` — SetAutomountServiceAccountToken  |
+| Step | Category                | What it affects                                                   |
+| ---- | ----------------------- | ----------------------------------------------------------------- |
+| 1    | Metadata edits          | Labels and annotations on the `ServiceAccount`                    |
+| 2    | Image pull secret edits | `.imagePullSecrets`: EnsureImagePullSecret, RemoveImagePullSecret |
+| 3    | Automount edits         | `.automountServiceAccountToken`: SetAutomountServiceAccountToken  |
 
 Within each category, edits are applied in their registration order. Later features observe the ServiceAccount as
 modified by all previous features.
@@ -125,7 +125,7 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ### EnsureImagePullSecret
 
-Adds a named image pull secret to `.imagePullSecrets` if not already present. Idempotent — calling it with an
+Adds a named image pull secret to `.imagePullSecrets` if not already present. Idempotent: calling it with an
 already-present name is a no-op.
 
 ```go

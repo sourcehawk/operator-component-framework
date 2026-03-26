@@ -1,7 +1,7 @@
 # Unstructured Primitives
 
 The `unstructured` primitives are an escape hatch for managing arbitrary Kubernetes objects that have no Go type
-definition available at compile time — Crossplane resources, external CRDs, or any object known only at runtime.
+definition available at compile time: Crossplane resources, external CRDs, or any object known only at runtime.
 
 Four variants are provided, one per [lifecycle category](../primitives.md#primitive-categories):
 
@@ -24,7 +24,7 @@ omitted. Calling `Build()` without the required handler returns an error.
 
 | Variant         | Required at `Build()` | Optional                                                 |
 | --------------- | --------------------- | -------------------------------------------------------- |
-| **Static**      | _(none)_              | —                                                        |
+| **Static**      | _(none)_              | All optional                                             |
 | **Workload**    | `ConvergingStatus`    | `GraceStatus` (defaults to Healthy), suspension handlers |
 | **Integration** | `OperationalStatus`   | `GraceStatus` (defaults to Healthy), suspension handlers |
 | **Task**        | `ConvergingStatus`    | Suspension handlers                                      |
@@ -141,8 +141,8 @@ func RegionMutation(version, region string) unstruct.Mutation {
 
 Within each feature, mutations execute in the following order:
 
-1. **Metadata edits** — labels and annotations via `ObjectMetaEditor`
-2. **Content edits** — nested fields via `UnstructuredContentEditor`
+1. **Metadata edits**: labels and annotations via `ObjectMetaEditor`
+2. **Content edits**: nested fields via `UnstructuredContentEditor`
 
 Features are applied in registration order. Later features observe the object as modified by all previous features.
 

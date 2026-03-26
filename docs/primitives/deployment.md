@@ -79,7 +79,7 @@ func TracingMutation(version string, enabled bool) deployment.Mutation {
 
 ### Version-gated mutations
 
-Pass a `[]feature.VersionConstraint` to gate on a semver range. `VersionConstraint` is an interface — implement it using
+Pass a `[]feature.VersionConstraint` to gate on a semver range. `VersionConstraint` is an interface. Implement it using
 the `github.com/Masterminds/semver/v3` library or any other mechanism:
 
 ```go
@@ -228,8 +228,8 @@ m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
 ### Raw Escape Hatch
 
 All editors provide a `.Raw()` method for direct access to the underlying Kubernetes struct when the typed API is
-insufficient. The mutation remains scoped to the editor's target — you cannot accidentally modify unrelated parts of the
-spec.
+insufficient. The mutation remains scoped to the editor's target, so you cannot accidentally modify unrelated parts of
+the spec.
 
 ```go
 m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
@@ -269,7 +269,7 @@ func LoggingSidecarMutation(version string) deployment.Mutation {
             // Step 2: configure it (evaluated after step 1, step 6)
             m.EditContainers(selectors.ContainerNamed("logger"), func(e *editors.ContainerEditor) error {
                 e.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "info"})
-                // Volume mounts are not in the typed API — use Raw()
+                // Volume mounts are not in the typed API, so use Raw()
                 e.Raw().VolumeMounts = append(e.Raw().VolumeMounts, corev1.VolumeMount{
                     Name:      "varlog",
                     MountPath: "/var/log",
@@ -293,7 +293,7 @@ func LoggingSidecarMutation(version string) deployment.Mutation {
 ```
 
 Note: although `EditPodSpec` is called after `EnsureContainer` in the source, it is applied in step 4 (before container
-presence in step 5) per the internal ordering. Order your source calls for readability — the framework handles execution
+presence in step 5) per the internal ordering. Order your source calls for readability; the framework handles execution
 order.
 
 ## Guidance

@@ -6,11 +6,11 @@ policies and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                         |
-| --------------------- | ---------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state |
-| **Mutation pipeline** | Typed editors for PDB spec and object metadata, with a raw escape hatch for free-form access   |
-| **Data extraction**   | Reads generated or updated values back from the reconciled PDB after each sync cycle           |
+| Capability            | Detail                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state |
+| **Mutation pipeline** | Typed editors for PDB spec and object metadata, with a raw escape hatch for free-form access  |
+| **Data extraction**   | Reads generated or updated values back from the reconciled PDB after each sync cycle          |
 
 ## Building a PDB Primitive
 
@@ -136,7 +136,7 @@ m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 #### SetMinAvailable and SetMaxUnavailable
 
 `SetMinAvailable` sets the minimum number of pods that must remain available during a disruption. `SetMaxUnavailable`
-sets the maximum number of pods that can be unavailable. Both accept `intstr.IntOrString` — either an integer count or a
+sets the maximum number of pods that can be unavailable. Both accept `intstr.IntOrString`, either an integer count or a
 percentage string (e.g. `"50%"`).
 
 These fields are mutually exclusive in the Kubernetes API. Use `ClearMinAvailable` or `ClearMaxUnavailable` to remove

@@ -11,18 +11,28 @@ version-gated feature mutations.
 
 ## Overview
 
-Kubernetes operators tend to accumulate complexity over time: reconciliation functions grow large, lifecycle logic is
-duplicated across resources, status reporting becomes inconsistent, and version-compatibility code gets tangled into
-orchestration. The Operator Component Framework addresses these problems through a clear layered architecture.
+Every Kubernetes operator starts simple: a reconciler, a few resources, some status updates. Then reality sets in. The
+reconciler grows into a monolith where creation, update, health-checking, suspension, and version-compatibility logic
+are all interleaved in a single function. Lifecycle behavior gets copy-pasted across resources because there is no
+shared abstraction for "a deployment that can be suspended" or "a job that runs to completion." Status reporting drifts:
+one resource sets a condition, another logs a warning, a third does nothing. And when you need to support multiple
+product versions, compatibility shims get wired directly into orchestration code, making it impossible to reason about
+what the baseline behavior actually is.
 
-The framework organizes operator logic into three composable layers:
+The Operator Component Framework exists because these problems are structural, not incidental. They cannot be solved by
+writing more careful code in the same flat reconciler model. They require a different organizational unit for operator
+logic.
 
-- **Components** — logical feature units that reconcile multiple resources together and report a single user-facing
-  condition.
-- **Resource Primitives** — reusable, type-safe wrappers for individual Kubernetes objects with built-in lifecycle
-  semantics.
-- **Feature Mutations** — composable, version-gated modifications that keep baseline resource definitions clean while
-  managing optional and historical behavior explicitly.
+The framework introduces three composable layers that separate concerns that operators routinely conflate:
+
+- **Components** are logical feature units that reconcile multiple resources together and report a single user-facing
+  condition. A component is the answer to "what does this feature need, and is it healthy?"
+- **Resource Primitives** are reusable, type-safe wrappers for individual Kubernetes objects with built-in lifecycle
+  semantics. A primitive knows how to create, update, suspend, and report health for its resource, so your reconciler
+  does not have to.
+- **Feature Mutations** are composable, version-gated modifications that keep baseline resource definitions clean.
+  Instead of scattering `if version < X` checks throughout your reconciler, mutations declare their applicability and
+  are applied in a predictable sequence.
 
 ## Mental Model
 
@@ -45,7 +55,7 @@ Controller
 - **Structured reconciliation** with predictable, phased lifecycle management
 - **Condition aggregation** across multiple resources into a single component condition
 - **Grace period support** to avoid premature degraded status during normal operations like rolling updates
-- **Suspension handling** with configurable behavior — scale to zero, delete, or custom logic
+- **Suspension handling** with configurable behavior (scale to zero, delete, or custom logic)
 - **Version-gated mutations** to apply backward-compatibility patches only when needed
 - **Composable mutation layers** that stack without interfering with each other
 - **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`,
@@ -170,7 +180,7 @@ func TracingFeature(version string, enabled bool) deployment.Mutation {
 }
 ```
 
-Mutations are applied in registration order. Each mutation is independent — multiple mutations can target the same
+Mutations are applied in registration order. Each mutation is independent: multiple mutations can target the same
 resource without interfering with each other, and the framework guarantees a consistent application sequence.
 
 ## Resource Lifecycle Interfaces
@@ -188,7 +198,7 @@ Resource primitives implement behavioral interfaces that the component layer use
 
 ## Implementing a Custom Resource
 
-You can wrap any Kubernetes object — including custom CRDs — by implementing the `Resource` interface:
+You can wrap any Kubernetes object, including custom CRDs, by implementing the `Resource` interface:
 
 ```go
 type Resource interface {
@@ -205,7 +215,7 @@ type Resource interface {
 
 Optionally implement any of the lifecycle interfaces (`Alive`, `Suspendable`, etc.) to participate in condition
 aggregation. The framework provides generic building blocks in `pkg/generic` that handle reconciliation mechanics,
-mutation sequencing, and suspension — so you can wrap any custom CRD without reimplementing these from scratch.
+mutation sequencing, and suspension so you can wrap any custom CRD without reimplementing these from scratch.
 
 See the [Custom Resource Implementation Guide](docs/custom-resource.md) for a complete walkthrough.
 
@@ -216,31 +226,6 @@ See the [Custom Resource Implementation Guide](docs/custom-resource.md) for a co
 | [Component Framework](docs/component.md)    | Reconciliation lifecycle, condition model, grace periods, suspension    |
 | [Resource Primitives](docs/primitives.md)   | Primitive categories, Server-Side Apply, mutation system                |
 | [Custom Resources](docs/custom-resource.md) | Implementing custom resource wrappers using the generic building blocks |
-
-## Project Structure
-
-```
-pkg/
-├── component/          # Component framework: builder, reconciliation, conditions
-│   └── concepts/       # Lifecycle interface definitions (Alive, Suspendable, …)
-├── generic/            # Generic resource types, builders, and mutation helpers
-├── primitives/
-│   └── deployment/     # Deployment primitive: builder, mutator, editors
-├── feature/            # Feature and version-constraint types
-├── mutation/
-│   ├── editors/        # Typed mutation APIs (DeploymentSpec, PodSpec, Container, …)
-│   └── selectors/      # Container selectors (ByName, ByIndex, All)
-└── recording/          # Event recording helpers
-
-examples/
-└── deployment-primitive/
-
-docs/
-├── component.md
-├── primitives.md
-├── custom-resource.md
-└── primitives/deployment.md
-```
 
 ## Contributing
 

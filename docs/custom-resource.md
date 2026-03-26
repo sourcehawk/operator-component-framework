@@ -10,9 +10,9 @@ generics with type-specific logic.
 ## When to Implement a Custom Resource
 
 The built-in primitives cover common Kubernetes types (Deployments, ConfigMaps, Services, etc.) and are highly
-customizable — you can override status handlers, suspension logic, mutation behavior, and data extractors without
-leaving the primitive API. Implement a custom resource when the Kubernetes type you need to manage has no corresponding
-built-in primitive:
+customizable: you can override status handlers, suspension logic, mutation behavior, and data extractors without leaving
+the primitive API. Implement a custom resource when the Kubernetes type you need to manage has no corresponding built-in
+primitive:
 
 - A **custom CRD** defined by your project or a third-party operator
 - A **standard Kubernetes type** not yet covered by the built-in set
@@ -91,7 +91,7 @@ type FeatureMutator interface {
 ```
 
 `Apply()` executes all recorded mutations against the underlying object. `NextFeature()` advances to a new feature scope
-— the framework calls it between each registered mutation to maintain per-feature ordering boundaries.
+The framework calls it between each registered mutation to maintain per-feature ordering boundaries.
 
 #### The Plan-and-Apply Pattern
 
@@ -182,7 +182,7 @@ resource category.
 
 #### Workload Handlers
 
-A workload resource requires a convergence status handler — `Build()` returns an error if it is not set. All other
+A workload resource requires a convergence status handler. `Build()` returns an error if it is not set. All other
 handlers (grace, suspension status, suspension mutation, delete-on-suspend) default to safe no-ops at the generic layer:
 grace defaults to Healthy, suspension status to Suspended, suspension mutation is a no-op, and delete-on-suspend returns
 false. Register custom handlers only when your CRD needs domain-specific behavior:
@@ -267,7 +267,7 @@ func DefaultSuspendMutationHandler(m *Mutator) error {
     return nil
 }
 
-// DefaultDeleteOnSuspendHandler returns false — keep the resource, just scale down.
+// DefaultDeleteOnSuspendHandler returns false: keep the resource, just scale down.
 func DefaultDeleteOnSuspendHandler(_ *examplev1.GameServer) bool {
     return false
 }

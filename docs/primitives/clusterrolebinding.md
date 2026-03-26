@@ -6,12 +6,12 @@ managing `.subjects` entries and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension — the resource is reconciled to desired state               |
-| **Cluster-scoped**    | Cluster-scoped resource — Build() validates Name and requires metadata.namespace to be empty (errors if set) |
-| **Mutation pipeline** | Typed editors for `.subjects` entries and object metadata, with a raw escape hatch for free-form access      |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRoleBinding after each sync cycle          |
+| Capability            | Detail                                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state               |
+| **Cluster-scoped**    | Cluster-scoped resource. Build() validates Name and requires metadata.namespace to be empty (errors if set) |
+| **Mutation pipeline** | Typed editors for `.subjects` entries and object metadata, with a raw escape hatch for free-form access     |
+| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRoleBinding after each sync cycle         |
 
 ## Building a ClusterRoleBinding Primitive
 
@@ -93,10 +93,10 @@ All version constraints and `When()` conditions must be satisfied for a mutation
 Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
 recorded:
 
-| Step | Category       | What it affects                                         |
-| ---- | -------------- | ------------------------------------------------------- |
-| 1    | Metadata edits | Labels and annotations on the `ClusterRoleBinding`      |
-| 2    | Subject edits  | `.subjects` entries — Add, Remove, EnsureServiceAccount |
+| Step | Category       | What it affects                                        |
+| ---- | -------------- | ------------------------------------------------------ |
+| 1    | Metadata edits | Labels and annotations on the `ClusterRoleBinding`     |
+| 2    | Subject edits  | `.subjects` entries: Add, Remove, EnsureServiceAccount |
 
 Within each category, edits are applied in their registration order. Later features observe the ClusterRoleBinding as
 modified by all previous features.

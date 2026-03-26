@@ -27,7 +27,7 @@ func newBaseSecret(namespace, name string, data map[string][]byte) *corev1.Secre
 	}
 }
 
-var _ = Describe("secret Primitive", Label("secret"), func() {
+var _ = Describe("Secret Primitive", Label("secret"), func() {
 	var (
 		ns   string
 		name string

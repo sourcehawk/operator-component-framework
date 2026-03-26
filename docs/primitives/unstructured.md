@@ -192,7 +192,7 @@ The identity string is derived from the object's GVK, namespace, and name:
 - **Namespaced**: `{group}/{version}/{kind}/{namespace}/{name}`
 - **Cluster-scoped**: `{group}/{version}/{kind}/{name}`
 
-For namespaced resources with an empty namespace, `"default"` is used.
+Namespaced resources must have a non-empty namespace set on the object; `Build()` rejects empty namespaces.
 
 ## Data Extraction
 

@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -72,12 +73,18 @@ var _ = Describe("service Primitive", Label("service"), func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-svc", Namespace: ns}, &svc)).To(Succeed())
 			Expect(svc.Spec.Selector).To(HaveKeyWithValue("app", "app-svc"))
 			Expect(svc.Spec.Ports).To(HaveLen(1))
-			Expect(svc.Spec.Ports[0].Port).To(Equal(int32(80)))
+			Expect(svc.Spec.Ports).To(ContainElement(HaveField("Port", Equal(int32(80)))))
 
 			By("verifying owner reference is set")
 			Expect(svc.OwnerReferences).NotTo(BeEmpty())
-			Expect(svc.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(svc.OwnerReferences[0].Name).To(Equal(name))
+			foundOwnerRef := false
+			for _, ref := range svc.OwnerReferences {
+				if ref.Kind == "ClusterTestApp" && ref.Name == name {
+					foundOwnerRef = true
+					break
+				}
+			}
+			Expect(foundOwnerRef).To(BeTrue(), "expected Service to have owner reference with Kind %q and Name %q", "ClusterTestApp", name)
 		})
 	})
 
@@ -120,11 +127,11 @@ var _ = Describe("service Primitive", Label("service"), func() {
 
 	Context("Updates", func() {
 		It("should propagate spec changes on re-reconciliation", func() {
-			var useUpdatedSpec bool
+			var useUpdatedSpec atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				svc := newBaseService(ns, "app-svc-update")
-				if useUpdatedSpec {
+				if useUpdatedSpec.Load() {
 					svc.Spec.Ports = []corev1.ServicePort{
 						{
 							Name:       "https",
@@ -146,10 +153,10 @@ var _ = Describe("service Primitive", Label("service"), func() {
 			By("verifying initial port")
 			var svc corev1.Service
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-svc-update", Namespace: ns}, &svc)).To(Succeed())
-			Expect(svc.Spec.Ports[0].Port).To(Equal(int32(80)))
+			Expect(svc.Spec.Ports).To(ContainElement(HaveField("Port", Equal(int32(80)))))
 
 			By("switching desired spec and triggering reconciliation")
-			useUpdatedSpec = true
+			useUpdatedSpec.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
@@ -158,11 +165,11 @@ var _ = Describe("service Primitive", Label("service"), func() {
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("verifying updated port")
-			Eventually(func(g Gomega) int32 {
+			Eventually(func(g Gomega) {
 				var updated corev1.Service
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-svc-update", Namespace: ns}, &updated)).To(Succeed())
-				return updated.Spec.Ports[0].Port
-			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Equal(int32(443)))
+				g.Expect(updated.Spec.Ports).To(ContainElement(HaveField("Port", Equal(int32(443)))))
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
 		})
 	})
 

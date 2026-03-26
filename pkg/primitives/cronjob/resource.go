@@ -14,6 +14,7 @@ import (
 // It implements several component interfaces to integrate with the operator-component-framework:
 //   - component.Resource: for basic identity and mutation behavior.
 //   - component.Operational: for operational status tracking.
+//   - component.Graceful: for health assessment after grace period expiry.
 //   - component.Suspendable: for controlled suspension via spec.suspend.
 //   - component.DataExtractable: for exporting information after successful reconciliation.
 type Resource struct {
@@ -48,6 +49,16 @@ func (r *Resource) Mutate(current client.Object) error {
 // scheduled at least once.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
+}
+
+// GraceStatus reports the health of the CronJob after the component's grace period
+// has expired.
+//
+// By default, it uses DefaultGraceStatusHandler, which considers the CronJob
+// degraded until it has been scheduled at least once, and healthy once
+// LastScheduleTime is set.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
 }
 
 // DeleteOnSuspend determines whether the CronJob should be deleted from the

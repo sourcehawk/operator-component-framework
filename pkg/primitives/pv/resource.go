@@ -13,10 +13,8 @@ import (
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - component.Operational: for tracking whether the PV is operationally ready.
+//   - component.Graceful: for assessing health after the grace period expires.
 //   - component.DataExtractable: for exporting values after successful reconciliation.
-//
-// PersistentVolume resources use the Integration lifecycle: they report an
-// OperationalStatus rather than an Alive/Grace status, and do not support suspension.
 type Resource struct {
 	base *generic.IntegrationResource[*corev1.PersistentVolume, *Mutator]
 }
@@ -54,6 +52,16 @@ func (r *Resource) Mutate(current client.Object) error {
 // operational when its phase is Available or Bound.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
+}
+
+// GraceStatus reports the health of the PersistentVolume after the component's
+// grace period has expired.
+//
+// By default, it uses DefaultGraceStatusHandler, which considers a PV healthy
+// when its phase is Available or Bound, degraded when Pending, and down when
+// Released or Failed.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
 }
 
 // ExtractData executes all registered data extractor functions against a deep copy

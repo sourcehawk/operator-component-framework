@@ -1,14 +1,15 @@
 # PersistentVolumeClaim Primitive
 
 The `pvc` primitive is the framework's built-in integration abstraction for managing Kubernetes `PersistentVolumeClaim`
-resources. It integrates with the component lifecycle and provides a structured mutation API for managing storage
-requests and object metadata.
+resources. It integrates with the component lifecycle as an Operational, Graceful, Suspendable resource and provides a
+structured mutation API for managing storage requests and object metadata.
 
 ## Capabilities
 
 | Capability               | Detail                                                                                                                                |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Operational tracking** | Monitors PVC phase — reports `OperationalStatusOperational` (Bound), `OperationalStatusPending`, or `OperationalStatusFailing` (Lost) |
+| **Grace status**         | Bound is `Healthy`, Lost is `Down`, any other phase is `Degraded`                                                                     |
 | **Suspension**           | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default                                          |
 | **Mutation pipeline**    | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access                                          |
 | **Data extraction**      | Reads bound volume name, capacity, or other status fields after each sync cycle                                                       |
@@ -202,6 +203,30 @@ PVCs have no runtime state to wind down, so:
 
 Override these handlers if you need custom suspension behavior, such as adding annotations when suspended or deleting
 PVCs that use ephemeral storage.
+
+## Grace Status
+
+The default grace status handler maps the PVC phase to a grace status after the grace period expires:
+
+| PVC Phase | Status     | Meaning                       |
+| --------- | ---------- | ----------------------------- |
+| `Bound`   | `Healthy`  | PVC is bound to a volume      |
+| `Lost`    | `Down`     | PVC has lost its bound volume |
+| Other     | `Degraded` | PVC is not yet bound          |
+
+Override with `WithCustomGraceStatus`:
+
+```go
+pvc.NewBuilder(base).
+    WithCustomGraceStatus(func(p *corev1.PersistentVolumeClaim) (concepts.GraceStatusWithReason, error) {
+        status, err := pvc.DefaultGraceStatusHandler(p)
+        if err != nil {
+            return status, err
+        }
+        // Add custom logic
+        return status, nil
+    })
+```
 
 ## Guidance
 

@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -60,6 +61,24 @@ func ingressAlwaysOperational(_ concepts.ConvergingOperation, _ *networkingv1.In
 	return concepts.OperationalStatusWithReason{
 		Status: concepts.OperationalStatusOperational,
 		Reason: "E2E: immediately operational",
+	}, nil
+}
+
+// alwaysPendingIngress is a custom operational status handler that always
+// reports the Ingress as pending, simulating a resource that never converges.
+func alwaysPendingIngress(_ concepts.ConvergingOperation, _ *networkingv1.Ingress) (concepts.OperationalStatusWithReason, error) {
+	return concepts.OperationalStatusWithReason{
+		Status: concepts.OperationalStatusPending,
+		Reason: "E2E: always pending",
+	}, nil
+}
+
+// degradedGraceIngress is a custom grace status handler that always reports
+// Degraded, simulating a resource that is partially functional after grace expiry.
+func degradedGraceIngress(_ *networkingv1.Ingress) (concepts.GraceStatusWithReason, error) {
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusDegraded,
+		Reason: "E2E: always degraded on grace expiry",
 	}, nil
 }
 
@@ -221,6 +240,52 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 			By("waiting for Healthy state again")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+		})
+	})
+
+	Context("Grace Period — Degraded", func() {
+		It("should report Degraded after grace period expires for a non-converging resource", func() {
+			gracePeriod := 5 * time.Second
+
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
+				ing := newBaseIngress(ns, "app-ingress-grace")
+
+				res, err := ingress.NewBuilder(ing).
+					WithCustomOperationalStatus(alwaysPendingIngress).
+					WithCustomGraceStatus(degradedGraceIngress).
+					Build()
+				if err != nil {
+					return nil, err
+				}
+
+				return component.NewComponentBuilder().
+					WithName("e2e-grace").
+					WithConditionType("E2EReady").
+					WithResource(res, component.ResourceOptions{}).
+					WithGracePeriod(gracePeriod).
+					Build()
+			})
+
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			By("waiting for the initial condition to be set")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				ShouldNot(BeNil())
+
+			By("waiting for grace period to expire")
+			time.Sleep(gracePeriod + 2*time.Second)
+
+			By("triggering re-reconciliation after grace period")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
+			if app.Annotations == nil {
+				app.Annotations = map[string]string{}
+			}
+			app.Annotations["e2e.ocf.io/trigger"] = "grace-check"
+			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+
+			By("waiting for Degraded condition")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Degraded"))
 		})
 	})
 

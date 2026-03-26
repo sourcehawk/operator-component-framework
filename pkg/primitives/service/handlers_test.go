@@ -143,6 +143,132 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 	}
 }
 
+func TestDefaultGraceStatusHandler(t *testing.T) {
+	tests := []struct {
+		name       string
+		svc        *corev1.Service
+		wantStatus concepts.GraceStatus
+		wantReason string
+	}{
+		{
+			name: "LoadBalancer with no ingress is degraded",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeLoadBalancer,
+				},
+				Status: corev1.ServiceStatus{},
+			},
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: "Awaiting load balancer IP/hostname assignment",
+		},
+		{
+			name: "LoadBalancer with empty ingress slice is degraded",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeLoadBalancer,
+				},
+				Status: corev1.ServiceStatus{
+					LoadBalancer: corev1.LoadBalancerStatus{
+						Ingress: []corev1.LoadBalancerIngress{},
+					},
+				},
+			},
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: "Awaiting load balancer IP/hostname assignment",
+		},
+		{
+			name: "LoadBalancer with ingress entry without IP or hostname is degraded",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeLoadBalancer,
+				},
+				Status: corev1.ServiceStatus{
+					LoadBalancer: corev1.LoadBalancerStatus{
+						Ingress: []corev1.LoadBalancerIngress{
+							{},
+						},
+					},
+				},
+			},
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: "Awaiting load balancer IP/hostname assignment",
+		},
+		{
+			name: "LoadBalancer with ingress IP is healthy",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeLoadBalancer,
+				},
+				Status: corev1.ServiceStatus{
+					LoadBalancer: corev1.LoadBalancerStatus{
+						Ingress: []corev1.LoadBalancerIngress{
+							{IP: "203.0.113.10"},
+						},
+					},
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "Load balancer IP/hostname assigned",
+		},
+		{
+			name: "LoadBalancer with ingress hostname is healthy",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeLoadBalancer,
+				},
+				Status: corev1.ServiceStatus{
+					LoadBalancer: corev1.LoadBalancerStatus{
+						Ingress: []corev1.LoadBalancerIngress{
+							{Hostname: "abc123.elb.amazonaws.com"},
+						},
+					},
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "Load balancer IP/hostname assigned",
+		},
+		{
+			name: "ClusterIP is immediately healthy",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeClusterIP,
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "Service is healthy",
+		},
+		{
+			name: "NodePort is immediately healthy",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeNodePort,
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "Service is healthy",
+		},
+		{
+			name: "ExternalName is immediately healthy",
+			svc: &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeExternalName,
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "Service is healthy",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := DefaultGraceStatusHandler(tt.svc)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, got.Status)
+			assert.Equal(t, tt.wantReason, got.Reason)
+		})
+	}
+}
+
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	svc := &corev1.Service{}
 	assert.False(t, DefaultDeleteOnSuspendHandler(svc))

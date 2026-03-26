@@ -68,6 +68,24 @@ func DefaultSuspensionStatusHandler(cj *batchv1.CronJob) (concepts.SuspensionSta
 	}, nil
 }
 
+// DefaultGraceStatusHandler provides the default health assessment of a CronJob when the
+// component's grace period has expired.
+//
+// It always reports Healthy. A CronJob is a passive scheduler — once it exists and is not
+// suspended, it is functioning correctly regardless of whether it has fired yet. The schedule
+// interval may be longer than the grace period (e.g. monthly), so waiting for the first
+// execution would produce false degradation signals.
+//
+// This function is used as the default handler by the Resource if no custom handler is
+// registered via Builder.WithCustomGraceStatus. It can be reused within custom handlers
+// to augment the default behavior.
+func DefaultGraceStatusHandler(_ *batchv1.CronJob) (concepts.GraceStatusWithReason, error) {
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusHealthy,
+		Reason: "CronJob is a passive scheduler and is considered healthy once it exists",
+	}, nil
+}
+
 // DefaultDeleteOnSuspendHandler provides the default decision of whether to delete the CronJob
 // when the parent component is suspended.
 //

@@ -55,6 +55,14 @@ func (b *IntegrationBuilder[T, M]) WithCustomOperationalStatus(
 	return b
 }
 
+// WithCustomGraceStatus overrides the integration grace status handler.
+func (b *IntegrationBuilder[T, M]) WithCustomGraceStatus(
+	handler func(T) (concepts.GraceStatusWithReason, error),
+) *IntegrationBuilder[T, M] {
+	b.res.GraceStatusHandler = handler
+	return b
+}
+
 // WithCustomSuspendStatus overrides the integration suspension status handler.
 func (b *IntegrationBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),

@@ -1,0 +1,192 @@
+//go:build e2e
+
+package primitives
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/sourcehawk/operator-component-framework/e2e/framework"
+	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured/task"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	uns "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+
+	. "github.com/onsi/ginkgo/v2" //nolint:revive
+	. "github.com/onsi/gomega"    //nolint:revive
+)
+
+func unstructuredAlwaysCompleted(_ concepts.ConvergingOperation, _ *uns.Unstructured) (concepts.CompletionStatusWithReason, error) {
+	return concepts.CompletionStatusWithReason{
+		Status: concepts.CompletionStatusCompleted,
+		Reason: "e2e: always completed",
+	}, nil
+}
+
+func unstructuredAlwaysPendingTask(_ concepts.ConvergingOperation, _ *uns.Unstructured) (concepts.CompletionStatusWithReason, error) {
+	return concepts.CompletionStatusWithReason{
+		Status: concepts.CompletionStatusPending,
+		Reason: "e2e: always pending",
+	}, nil
+}
+
+var _ = Describe("Unstructured Task Primitive", Label("unstructured-task"), func() {
+	var (
+		ns   string
+		name string
+	)
+
+	BeforeEach(func() {
+		ns = framework.CreateTestNamespace(ctx, k8sClient, "e2e-unstruct-task-")
+		name = ns
+	})
+
+	AfterEach(func() {
+		clusterReconciler.Unregister(name)
+		framework.DeleteClusterTestApp(ctx, k8sClient, name)
+	})
+
+	Context("Creation", func() {
+		It("should create an unstructured ConfigMap and reach Healthy condition", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				obj := newUnstructuredConfigMap(ns, "task-create", map[string]string{
+					"step": "init",
+				})
+				return task.NewBuilder(obj).
+					WithCustomConvergeStatus(unstructuredAlwaysCompleted).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+
+			By("verifying the ConfigMap exists with correct data")
+			var obj uns.Unstructured
+			obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"})
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "task-create", Namespace: ns}, &obj)).To(Succeed())
+
+			data, found, err := uns.NestedStringMap(obj.Object, "data")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(data).To(HaveKeyWithValue("step", "init"))
+		})
+	})
+
+	Context("Mutations", func() {
+		It("should apply content edit mutations to the unstructured ConfigMap", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				obj := newUnstructuredConfigMap(ns, "task-mutated", map[string]string{
+					"base-key": "base-value",
+				})
+				return task.NewBuilder(obj).
+					WithCustomConvergeStatus(unstructuredAlwaysCompleted).
+					WithMutation(unstruct.Mutation{
+						Name: "add-content",
+						Mutate: func(m *unstruct.Mutator) error {
+							m.EditContent(func(e *editors.UnstructuredContentEditor) error {
+								return e.SetNestedString("injected-value", "data", "injected-key")
+							})
+							return nil
+						},
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+
+			By("verifying both base and mutated data are present")
+			var obj uns.Unstructured
+			obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"})
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "task-mutated", Namespace: ns}, &obj)).To(Succeed())
+
+			data, found, err := uns.NestedStringMap(obj.Object, "data")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(data).To(HaveKeyWithValue("base-key", "base-value"))
+			Expect(data).To(HaveKeyWithValue("injected-key", "injected-value"))
+		})
+	})
+
+	Context("Grace Period — Down", func() {
+		It("should report Down after grace period expires for a non-completing resource", func() {
+			gracePeriod := 5 * time.Second
+
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
+				obj := newUnstructuredConfigMap(ns, "task-grace", map[string]string{
+					"status": "pending",
+				})
+
+				res, err := task.NewBuilder(obj).
+					WithCustomConvergeStatus(unstructuredAlwaysPendingTask).
+					Build()
+				if err != nil {
+					return nil, err
+				}
+
+				return component.NewComponentBuilder().
+					WithName("e2e-grace").
+					WithConditionType("E2EReady").
+					WithResource(res, component.ResourceOptions{}).
+					WithGracePeriod(gracePeriod).
+					Build()
+			})
+
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			By("waiting for the initial condition to be set")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				ShouldNot(BeNil())
+
+			By("waiting for grace period to expire")
+			time.Sleep(gracePeriod + 2*time.Second)
+
+			By("triggering re-reconciliation after grace period")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
+			if app.Annotations == nil {
+				app.Annotations = map[string]string{}
+			}
+			app.Annotations["e2e.ocf.io/trigger"] = "grace-check"
+			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+
+			By("waiting for Down condition")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Down"))
+		})
+	})
+
+	Context("Error", func() {
+		It("should report Error condition when resource mutation fails", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				obj := newUnstructuredConfigMap(ns, "task-error", map[string]string{
+					"key": "value",
+				})
+				return task.NewBuilder(obj).
+					WithCustomConvergeStatus(unstructuredAlwaysCompleted).
+					WithMutation(unstruct.Mutation{
+						Name: "failing-mutation",
+						Mutate: func(m *unstruct.Mutator) error {
+							return fmt.Errorf("intentional e2e mutation failure")
+						},
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			By("waiting for Error condition")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
+		})
+	})
+})

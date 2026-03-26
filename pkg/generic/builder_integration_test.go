@@ -45,6 +45,9 @@ func TestIntegrationBuilder(t *testing.T) {
 			WithCustomOperationalStatus(func(_ concepts.ConvergingOperation, _ *corev1.Service) (concepts.OperationalStatusWithReason, error) {
 				return concepts.OperationalStatusWithReason{}, nil
 			}).
+			WithCustomGraceStatus(func(_ *corev1.Service) (concepts.GraceStatusWithReason, error) {
+				return concepts.GraceStatusWithReason{}, nil
+			}).
 			WithCustomSuspendStatus(func(_ *corev1.Service) (concepts.SuspensionStatusWithReason, error) {
 				return concepts.SuspensionStatusWithReason{}, nil
 			}).
@@ -57,6 +60,7 @@ func TestIntegrationBuilder(t *testing.T) {
 
 		res, _ := builder.Build()
 		assert.NotNil(t, res.OperationalStatusHandler, "OperationalStatusHandler not set")
+		assert.NotNil(t, res.GraceStatusHandler, "GraceStatusHandler not set")
 		assert.NotNil(t, res.SuspendStatusHandler, "SuspendStatusHandler not set")
 		assert.NotNil(t, res.SuspendMutationHandler, "SuspendMutationHandler not set")
 		assert.NotNil(t, res.DeleteOnSuspendHandler, "DeleteOnSuspendHandler not set")

@@ -74,3 +74,69 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultGraceStatusHandler(t *testing.T) {
+	tests := []struct {
+		name       string
+		phase      corev1.PersistentVolumePhase
+		wantStatus concepts.GraceStatus
+		wantReason string
+	}{
+		{
+			name:       "available",
+			phase:      corev1.VolumeAvailable,
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "PersistentVolume is available",
+		},
+		{
+			name:       "bound",
+			phase:      corev1.VolumeBound,
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "PersistentVolume is bound to a claim",
+		},
+		{
+			name:       "pending",
+			phase:      corev1.VolumePending,
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: "PersistentVolume is pending",
+		},
+		{
+			name:       "released",
+			phase:      corev1.VolumeReleased,
+			wantStatus: concepts.GraceStatusDown,
+			wantReason: "PersistentVolume has been released and is not yet reclaimed",
+		},
+		{
+			name:       "failed",
+			phase:      corev1.VolumeFailed,
+			wantStatus: concepts.GraceStatusDown,
+			wantReason: "PersistentVolume reclamation has failed",
+		},
+		{
+			name:       "unknown phase",
+			phase:      corev1.PersistentVolumePhase("Unknown"),
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: `PersistentVolume phase is "Unknown"`,
+		},
+		{
+			name:       "empty phase",
+			phase:      "",
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: `PersistentVolume phase is ""`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pv := &corev1.PersistentVolume{
+				Status: corev1.PersistentVolumeStatus{
+					Phase: tt.phase,
+				},
+			}
+			got, err := DefaultGraceStatusHandler(pv)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, got.Status)
+			assert.Equal(t, tt.wantReason, got.Reason)
+		})
+	}
+}

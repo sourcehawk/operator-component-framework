@@ -146,6 +146,75 @@ func TestDefaultOperationalStatusHandler_UsesConditionMessage(t *testing.T) {
 	assert.Equal(t, "scaling is active and healthy", got.Reason)
 }
 
+func TestDefaultGraceStatusHandler(t *testing.T) {
+	tests := []struct {
+		name       string
+		hpa        *autoscalingv2.HorizontalPodAutoscaler
+		wantStatus concepts.GraceStatus
+	}{
+		{
+			name: "healthy when ScalingActive is True",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+					Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+						{
+							Type:    autoscalingv2.ScalingActive,
+							Status:  corev1.ConditionTrue,
+							Message: "the HPA was able to successfully calculate a replica count",
+						},
+					},
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+		},
+		{
+			name: "down when AbleToScale is False",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+					Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+						{
+							Type:    autoscalingv2.AbleToScale,
+							Status:  corev1.ConditionFalse,
+							Message: "the HPA controller was unable to update the target scale",
+						},
+					},
+				},
+			},
+			wantStatus: concepts.GraceStatusDown,
+		},
+		{
+			name: "down when ScalingActive is False",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+					Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+						{
+							Type:    autoscalingv2.ScalingActive,
+							Status:  corev1.ConditionFalse,
+							Message: "the HPA target is missing",
+						},
+					},
+				},
+			},
+			wantStatus: concepts.GraceStatusDown,
+		},
+		{
+			name: "degraded when no conditions",
+			hpa: &autoscalingv2.HorizontalPodAutoscaler{
+				Status: autoscalingv2.HorizontalPodAutoscalerStatus{},
+			},
+			wantStatus: concepts.GraceStatusDegraded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := DefaultGraceStatusHandler(tt.hpa)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, got.Status)
+		})
+	}
+}
+
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
 	assert.True(t, DefaultDeleteOnSuspendHandler(hpa))

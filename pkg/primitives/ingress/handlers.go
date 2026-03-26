@@ -31,6 +31,31 @@ func DefaultOperationalStatusHandler(
 	}, nil
 }
 
+// DefaultGraceStatusHandler provides a default health assessment of the Ingress
+// after the component's grace period has expired.
+//
+// It categorizes the current state into:
+//   - GraceStatusHealthy: At least one IP or hostname is assigned in Status.LoadBalancer.Ingress.
+//   - GraceStatusDegraded: No load balancer address has been assigned yet.
+//
+// This function is used as the default handler by the Resource if no custom handler is registered via
+// Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment the default behavior.
+func DefaultGraceStatusHandler(ing *networkingv1.Ingress) (concepts.GraceStatusWithReason, error) {
+	for _, lb := range ing.Status.LoadBalancer.Ingress {
+		if lb.IP != "" || lb.Hostname != "" {
+			return concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusHealthy,
+				Reason: "Ingress has been assigned an address",
+			}, nil
+		}
+	}
+
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusDegraded,
+		Reason: "Awaiting load balancer address assignment",
+	}, nil
+}
+
 // DefaultDeleteOnSuspendHandler provides the default decision of whether to delete
 // the Ingress when the parent component is suspended.
 //

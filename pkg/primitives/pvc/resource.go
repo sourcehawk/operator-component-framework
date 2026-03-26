@@ -13,6 +13,7 @@ import (
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - concepts.Operational: for tracking whether the PVC is bound and operational.
+//   - concepts.Graceful: for health assessment after the component's grace period expires.
 //   - concepts.Suspendable: for controlled suspension (e.g. retaining the PVC while suspending consumers).
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
@@ -55,6 +56,15 @@ func (r *Resource) Mutate(current client.Object) error {
 // to determine if it is Bound (operational), Pending, or Lost (failing).
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
+}
+
+// GraceStatus reports the health of the PVC after the component's grace period
+// has expired.
+//
+// By default, it uses DefaultGraceStatusHandler, which considers a Bound PVC
+// healthy, a Lost PVC down, and all other phases degraded.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
 }
 
 // DeleteOnSuspend determines whether the PVC should be deleted from the cluster

@@ -91,6 +91,16 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.O
 	return r.base.ConvergingStatus(op)
 }
 
+// GraceStatus reports the health of the Service after the component's grace period
+// has expired.
+//
+// By default, it uses DefaultGraceStatusHandler, which considers LoadBalancer services
+// degraded until an ingress IP or hostname is assigned, and all other service types
+// immediately healthy.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
+}
+
 // DeleteOnSuspend determines whether the Service should be deleted from the
 // cluster when the parent component is suspended.
 //

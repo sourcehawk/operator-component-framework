@@ -39,6 +39,7 @@ func NewBuilder(cj *batchv1.CronJob) *Builder {
 
 	base.
 		WithCustomOperationalStatus(DefaultOperationalStatusHandler).
+		WithCustomGraceStatus(DefaultGraceStatusHandler).
 		WithCustomSuspendStatus(DefaultSuspensionStatusHandler).
 		WithCustomSuspendMutation(DefaultSuspendMutationHandler).
 		WithCustomSuspendDeletionDecision(DefaultDeleteOnSuspendHandler)
@@ -62,6 +63,22 @@ func (b *Builder) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, *batchv1.CronJob) (concepts.OperationalStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomOperationalStatus(handler)
+	return b
+}
+
+// WithCustomGraceStatus overrides the default logic for assessing the health of
+// the CronJob when the component's grace period has expired.
+//
+// The default behavior uses DefaultGraceStatusHandler, which considers the
+// CronJob degraded until it has been scheduled at least once, and healthy
+// once LastScheduleTime is set.
+//
+// If you want to augment the default behavior, you can call DefaultGraceStatusHandler
+// within your custom handler.
+func (b *Builder) WithCustomGraceStatus(
+	handler func(*batchv1.CronJob) (concepts.GraceStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomGraceStatus(handler)
 	return b
 }
 

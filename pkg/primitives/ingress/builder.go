@@ -39,6 +39,7 @@ func NewBuilder(ing *networkingv1.Ingress) *Builder {
 
 	base.
 		WithCustomOperationalStatus(DefaultOperationalStatusHandler).
+		WithCustomGraceStatus(DefaultGraceStatusHandler).
 		WithCustomSuspendStatus(DefaultSuspensionStatusHandler).
 		WithCustomSuspendMutation(DefaultSuspendMutationHandler).
 		WithCustomSuspendDeletionDecision(DefaultDeleteOnSuspendHandler)
@@ -69,6 +70,23 @@ func (b *Builder) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, *networkingv1.Ingress) (concepts.OperationalStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomOperationalStatus(handler)
+	return b
+}
+
+// WithCustomGraceStatus overrides how the Ingress reports its health after the
+// component's grace period has expired.
+//
+// The default behavior uses DefaultGraceStatusHandler.
+//
+// This is used to provide more granular feedback in the component's status
+// about the severity of a load balancer assignment delay.
+//
+// If you want to augment the default behavior, you can call DefaultGraceStatusHandler
+// within your custom handler.
+func (b *Builder) WithCustomGraceStatus(
+	handler func(*networkingv1.Ingress) (concepts.GraceStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomGraceStatus(handler)
 	return b
 }
 

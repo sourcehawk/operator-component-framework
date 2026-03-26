@@ -14,6 +14,7 @@ import (
 // It implements the following component lifecycle interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - concepts.Operational: for tracking whether the ingress has been assigned an address.
+//   - concepts.Graceful: for health assessment after the component's grace period has expired.
 //   - concepts.Suspendable: for controlled suspension when the parent component is suspended.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
@@ -56,6 +57,19 @@ func (r *Resource) Mutate(current client.Object) error {
 // until the ingress controller has assigned at least one IP or hostname, then Operational.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
+}
+
+// GraceStatus provides a health assessment of the Ingress after the component's
+// grace period has expired.
+//
+// By default, it uses DefaultGraceStatusHandler, which categorizes the current state into:
+//   - GraceStatusHealthy: At least one IP or hostname is assigned in Status.LoadBalancer.Ingress.
+//   - GraceStatusDegraded: No load balancer address has been assigned yet.
+//
+// This information is surfaced through the component's health reporting, allowing
+// operators to understand the severity of a load balancer assignment delay.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
 }
 
 // DeleteOnSuspend determines whether the Ingress should be deleted from the

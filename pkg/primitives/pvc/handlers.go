@@ -44,6 +44,41 @@ func DefaultOperationalStatusHandler(
 	}
 }
 
+// DefaultGraceStatusHandler provides the default health assessment of a PVC when the
+// component's grace period has expired.
+//
+// It maps the PVC's Status.Phase to a grace health status:
+//   - Bound → Healthy
+//   - Lost → Down
+//   - All other phases (Pending, empty, etc.) → Degraded
+//
+// This function is used as the default handler by the Resource if no custom handler is
+// registered via Builder.WithCustomGraceStatus. It can be reused within custom handlers
+// to augment the default behavior.
+func DefaultGraceStatusHandler(pvc *corev1.PersistentVolumeClaim) (concepts.GraceStatusWithReason, error) {
+	switch pvc.Status.Phase {
+	case corev1.ClaimBound:
+		reason := "PVC is bound"
+		if pvc.Spec.VolumeName != "" {
+			reason = fmt.Sprintf("PVC is bound to volume %s", pvc.Spec.VolumeName)
+		}
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusHealthy,
+			Reason: reason,
+		}, nil
+	case corev1.ClaimLost:
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDown,
+			Reason: "PVC has lost its bound volume",
+		}, nil
+	default:
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: "Waiting for PVC to be bound",
+		}, nil
+	}
+}
+
 // DefaultDeleteOnSuspendHandler provides the default decision of whether to delete
 // the PVC when the parent component is suspended.
 //

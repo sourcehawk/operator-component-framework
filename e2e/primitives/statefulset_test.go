@@ -123,9 +123,7 @@ var _ = Describe("StatefulSet Primitive", Label("statefulset"), func() {
 			Expect(sts.Spec.ServiceName).To(Equal(stsName))
 
 			By("verifying owner reference is set")
-			Expect(sts.OwnerReferences).NotTo(BeEmpty())
-			Expect(sts.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(sts.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(sts.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

@@ -147,9 +147,7 @@ var _ = Describe("HPA Primitive", Label("hpa"), func() {
 			Expect(h.Spec.MaxReplicas).To(Equal(int32(5)))
 
 			By("verifying owner reference is set")
-			Expect(h.OwnerReferences).NotTo(BeEmpty())
-			Expect(h.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(h.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(h.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

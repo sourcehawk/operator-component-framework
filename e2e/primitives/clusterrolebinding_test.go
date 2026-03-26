@@ -81,9 +81,7 @@ var _ = Describe("ClusterRoleBinding Primitive", Label("clusterrolebinding"), fu
 			Expect(crb.Subjects[0].Namespace).To(Equal(ns))
 
 			By("verifying owner reference is set")
-			Expect(crb.OwnerReferences).NotTo(BeEmpty())
-			Expect(crb.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(crb.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(crb.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

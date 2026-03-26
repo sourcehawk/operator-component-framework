@@ -37,13 +37,8 @@ dist/
 tmp/
 
 # Ai slob
+.ai/scripts
 .junie
-CLAUDE.md
 .claude
-CONTEXT.md
-primitive-prompts
-push-primitive-pr.sh
-review-cycle.sh
-run-parallel-sessions.sh
-prompt-primitives.sh
 .context
+CLAUDE.md

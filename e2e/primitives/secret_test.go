@@ -66,9 +66,7 @@ var _ = Describe("Secret Primitive", Label("secret"), func() {
 			Expect(s.Data).To(HaveKeyWithValue("other-key", []byte("other-value")))
 
 			By("verifying owner reference is set")
-			Expect(s.OwnerReferences).NotTo(BeEmpty())
-			Expect(s.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(s.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(s.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

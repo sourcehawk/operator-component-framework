@@ -54,9 +54,9 @@ func newBaseIngress(namespace, name string) *networkingv1.Ingress {
 	}
 }
 
-// alwaysOperational overrides the default handler which waits for a LoadBalancer
-// address — kind has no ingress controller so we skip that check.
-func alwaysOperational(_ concepts.ConvergingOperation, _ *networkingv1.Ingress) (concepts.OperationalStatusWithReason, error) {
+// ingressAlwaysOperational overrides the default handler which waits for a
+// LoadBalancer address — kind has no ingress controller so we skip that check.
+func ingressAlwaysOperational(_ concepts.ConvergingOperation, _ *networkingv1.Ingress) (concepts.OperationalStatusWithReason, error) {
 	return concepts.OperationalStatusWithReason{
 		Status: concepts.OperationalStatusOperational,
 		Reason: "E2E: immediately operational",
@@ -84,7 +84,7 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				ing := newBaseIngress(ns, "app-ingress")
 				return ingress.NewBuilder(ing).
-					WithCustomOperationalStatus(alwaysOperational).
+					WithCustomOperationalStatus(ingressAlwaysOperational).
 					Build()
 			})
 
@@ -101,9 +101,7 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 			Expect(ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name).To(Equal("web"))
 
 			By("verifying owner reference is set")
-			Expect(ing.OwnerReferences).NotTo(BeEmpty())
-			Expect(ing.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(ing.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(ing.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 
@@ -112,7 +110,7 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				ing := newBaseIngress(ns, "app-ingress-mutated")
 				return ingress.NewBuilder(ing).
-					WithCustomOperationalStatus(alwaysOperational).
+					WithCustomOperationalStatus(ingressAlwaysOperational).
 					WithMutation(ingress.Mutation{
 						Name: "add-tls",
 						Mutate: func(m *ingress.Mutator) error {
@@ -153,7 +151,7 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 					ing.Spec.Rules[0].Host = "updated.example.com"
 				}
 				return ingress.NewBuilder(ing).
-					WithCustomOperationalStatus(alwaysOperational).
+					WithCustomOperationalStatus(ingressAlwaysOperational).
 					Build()
 			})
 
@@ -192,7 +190,7 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				ing := newBaseIngress(ns, "app-ingress-suspend")
 				return ingress.NewBuilder(ing).
-					WithCustomOperationalStatus(alwaysOperational).
+					WithCustomOperationalStatus(ingressAlwaysOperational).
 					Build()
 			})
 
@@ -231,7 +229,7 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				ing := newBaseIngress(ns, "app-ingress-error")
 				return ingress.NewBuilder(ing).
-					WithCustomOperationalStatus(alwaysOperational).
+					WithCustomOperationalStatus(ingressAlwaysOperational).
 					WithMutation(ingress.Mutation{
 						Name: "failing-mutation",
 						Mutate: func(m *ingress.Mutator) error {

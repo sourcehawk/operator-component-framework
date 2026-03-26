@@ -74,15 +74,7 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 			Expect(p.Spec.Containers[0].Name).To(Equal("app"))
 
 			By("verifying owner reference is set")
-			Expect(p.OwnerReferences).NotTo(BeEmpty())
-			var ownerRefFound bool
-			for _, or := range p.OwnerReferences {
-				if or.Kind == "ClusterTestApp" && or.Name == name {
-					ownerRefFound = true
-					break
-				}
-			}
-			Expect(ownerRefFound).To(BeTrue(), fmt.Sprintf("expected owner reference with Kind=ClusterTestApp and Name=%s", name))
+			expectOwnerReference(p.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

@@ -63,9 +63,7 @@ var _ = Describe("ConfigMap Primitive", Label("configmap"), func() {
 			Expect(cm.Data).To(HaveKeyWithValue("setting-b", "value-b"))
 
 			By("verifying owner reference is set")
-			Expect(cm.OwnerReferences).NotTo(BeEmpty())
-			Expect(cm.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(cm.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(cm.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

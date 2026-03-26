@@ -76,15 +76,7 @@ var _ = Describe("Service Primitive", Label("service"), func() {
 			Expect(svc.Spec.Ports).To(ContainElement(HaveField("Port", Equal(int32(80)))))
 
 			By("verifying owner reference is set")
-			Expect(svc.OwnerReferences).NotTo(BeEmpty())
-			foundOwnerRef := false
-			for _, ref := range svc.OwnerReferences {
-				if ref.Kind == "ClusterTestApp" && ref.Name == name {
-					foundOwnerRef = true
-					break
-				}
-			}
-			Expect(foundOwnerRef).To(BeTrue(), fmt.Sprintf("expected Service to have owner reference with Kind %q and Name %q", "ClusterTestApp", name))
+			expectOwnerReference(svc.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

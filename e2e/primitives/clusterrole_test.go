@@ -72,9 +72,7 @@ var _ = Describe("ClusterRole Primitive", Label("clusterrole"), func() {
 			Expect(cr.Rules[0].Verbs).To(ConsistOf("get", "list", "watch"))
 
 			By("verifying owner reference is set")
-			Expect(cr.OwnerReferences).NotTo(BeEmpty())
-			Expect(cr.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(cr.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(cr.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

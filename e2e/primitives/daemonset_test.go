@@ -83,9 +83,7 @@ var _ = Describe("DaemonSet Primitive", Label("daemonset"), func() {
 			Expect(ds.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.27"))
 
 			By("verifying owner reference is set")
-			Expect(ds.OwnerReferences).NotTo(BeEmpty())
-			Expect(ds.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(ds.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(ds.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

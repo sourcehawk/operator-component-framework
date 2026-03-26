@@ -84,9 +84,7 @@ var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 			Expect(dep.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.27"))
 
 			By("verifying owner reference is set")
-			Expect(dep.OwnerReferences).NotTo(BeEmpty())
-			Expect(dep.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(dep.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(dep.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

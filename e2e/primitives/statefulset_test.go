@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
@@ -71,17 +72,22 @@ func newHeadlessService(namespace, name string) *corev1.Service {
 
 var _ = Describe("StatefulSet Primitive", Label("statefulset"), func() {
 	var (
-		ns   string
-		name string
+		ns              string
+		name            string
+		createdServices []*corev1.Service
 	)
 
 	BeforeEach(func() {
 		ns = framework.CreateTestNamespace(ctx, k8sClient, "e2e-statefulset-")
 		name = ns
+		createdServices = nil
 	})
 
 	AfterEach(func() {
 		clusterReconciler.Unregister(name)
+		for _, svc := range createdServices {
+			_ = k8sClient.Delete(ctx, svc) //nolint:errcheck
+		}
 		framework.DeleteClusterTestApp(ctx, k8sClient, name)
 	})
 
@@ -91,6 +97,7 @@ var _ = Describe("StatefulSet Primitive", Label("statefulset"), func() {
 	createHeadlessService := func(svcName string) {
 		svc := newHeadlessService(ns, svcName)
 		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
+		createdServices = append(createdServices, svc)
 	}
 
 	Context("Creation and Health", func() {
@@ -169,11 +176,11 @@ var _ = Describe("StatefulSet Primitive", Label("statefulset"), func() {
 			stsName := "web-update"
 			createHeadlessService(stsName)
 
-			var useUpdatedImage bool
+			var useUpdatedImage atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				image := "nginx:1.27"
-				if useUpdatedImage {
+				if useUpdatedImage.Load() {
 					image = "nginx:1.26"
 				}
 				sts := newBaseStatefulSet(ns, stsName, 1)
@@ -188,7 +195,7 @@ var _ = Describe("StatefulSet Primitive", Label("statefulset"), func() {
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("switching the desired image and triggering reconciliation")
-			useUpdatedImage = true
+			useUpdatedImage.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

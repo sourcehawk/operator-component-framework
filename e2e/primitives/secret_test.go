@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -47,8 +48,8 @@ var _ = Describe("Secret Primitive", Label("secret"), func() {
 		It("should create a Secret and reach Healthy condition", func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				s := newBaseSecret(ns, "app-secret", map[string][]byte{
-					"username": []byte("admin"),
-					"password": []byte("s3cret"),
+					"app-key":   []byte("app-value"),
+					"other-key": []byte("other-value"),
 				})
 				return secret.NewBuilder(s).Build()
 			})
@@ -61,8 +62,8 @@ var _ = Describe("Secret Primitive", Label("secret"), func() {
 			By("verifying the Secret exists with correct data")
 			var s corev1.Secret
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-secret", Namespace: ns}, &s)).To(Succeed())
-			Expect(s.Data).To(HaveKeyWithValue("username", []byte("admin")))
-			Expect(s.Data).To(HaveKeyWithValue("password", []byte("s3cret")))
+			Expect(s.Data).To(HaveKeyWithValue("app-key", []byte("app-value")))
+			Expect(s.Data).To(HaveKeyWithValue("other-key", []byte("other-value")))
 
 			By("verifying owner reference is set")
 			Expect(s.OwnerReferences).NotTo(BeEmpty())
@@ -103,11 +104,11 @@ var _ = Describe("Secret Primitive", Label("secret"), func() {
 
 	Context("Updates", func() {
 		It("should propagate data changes on re-reconciliation", func() {
-			var useUpdatedData bool
+			var useUpdatedData atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				data := map[string][]byte{"key": []byte("original")}
-				if useUpdatedData {
+				if useUpdatedData.Load() {
 					data = map[string][]byte{"key": []byte("updated"), "new-key": []byte("new-value")}
 				}
 				s := newBaseSecret(ns, "app-secret-update", data)
@@ -126,7 +127,7 @@ var _ = Describe("Secret Primitive", Label("secret"), func() {
 			Expect(s.Data).To(HaveKeyWithValue("key", []byte("original")))
 
 			By("switching desired data and triggering reconciliation")
-			useUpdatedData = true
+			useUpdatedData.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

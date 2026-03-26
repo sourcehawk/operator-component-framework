@@ -59,7 +59,7 @@ Controller
 go get github.com/sourcehawk/operator-component-framework
 ```
 
-Requires Go 1.21+ and a project using [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime).
+Requires Go 1.25.6+ and a project using [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime).
 
 ## Quick Start
 

@@ -117,13 +117,17 @@ var _ = Describe("Role Primitive", Label("role"), func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-role-mutated", Namespace: ns}, &r)).To(Succeed())
 			Expect(r.Rules).To(HaveLen(2))
 
-			var resources [][]string
-			for _, rule := range r.Rules {
-				resources = append(resources, rule.Resources)
-			}
-			Expect(resources).To(ConsistOf(
-				Equal([]string{"configmaps"}),
-				Equal([]string{"secrets"}),
+			Expect(r.Rules).To(ConsistOf(
+				Equal(rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Resources: []string{"configmaps"},
+					Verbs:     []string{"get"},
+				}),
+				Equal(rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Resources: []string{"secrets"},
+					Verbs:     []string{"get", "list"},
+				}),
 			))
 		})
 	})
@@ -185,17 +189,18 @@ var _ = Describe("Role Primitive", Label("role"), func() {
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-role-update", Namespace: ns}, &updated)).To(Succeed())
 				g.Expect(updated.Rules).To(HaveLen(2))
 
-				var resources [][]string
-				var verbs [][]string
-				for _, rule := range updated.Rules {
-					resources = append(resources, rule.Resources)
-					verbs = append(verbs, rule.Verbs)
-				}
-				g.Expect(resources).To(ConsistOf(
-					Equal([]string{"pods"}),
-					Equal([]string{"deployments"}),
+				g.Expect(updated.Rules).To(ConsistOf(
+					Equal(rbacv1.PolicyRule{
+						APIGroups: []string{""},
+						Resources: []string{"pods"},
+						Verbs:     []string{"get", "list", "watch"},
+					}),
+					Equal(rbacv1.PolicyRule{
+						APIGroups: []string{"apps"},
+						Resources: []string{"deployments"},
+						Verbs:     []string{"get"},
+					}),
 				))
-				g.Expect(verbs).To(ContainElement(ConsistOf("get", "list", "watch")))
 			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
 		})
 	})

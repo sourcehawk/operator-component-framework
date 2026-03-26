@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -112,11 +113,11 @@ var _ = Describe("NetworkPolicy Primitive", Label("networkpolicy"), func() {
 
 	Context("Updates", func() {
 		It("should propagate spec changes on re-reconciliation", func() {
-			var useUpdatedSpec bool
+			var useUpdatedSpec atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				np := newBaseNetworkPolicy(ns, "updatable-policy")
-				if useUpdatedSpec {
+				if useUpdatedSpec.Load() {
 					np.Spec.PodSelector = metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "updated"},
 					}
@@ -141,7 +142,7 @@ var _ = Describe("NetworkPolicy Primitive", Label("networkpolicy"), func() {
 			Expect(np.Spec.PodSelector.MatchLabels).To(BeEmpty())
 
 			By("switching desired spec and triggering reconciliation")
-			useUpdatedSpec = true
+			useUpdatedSpec.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

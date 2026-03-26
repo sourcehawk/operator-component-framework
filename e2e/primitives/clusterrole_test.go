@@ -26,7 +26,7 @@ func newBaseClusterRole(name string, rules []rbacv1.PolicyRule) *rbacv1.ClusterR
 	}
 }
 
-var _ = Describe("ClusterRole Primitive", Label("ClusterRole"), func() {
+var _ = Describe("ClusterRole Primitive", Label("clusterrole"), func() {
 	var (
 		ns   string
 		name string

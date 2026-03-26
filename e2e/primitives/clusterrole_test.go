@@ -26,7 +26,7 @@ func newBaseClusterRole(name string, rules []rbacv1.PolicyRule) *rbacv1.ClusterR
 	}
 }
 
-var _ = Describe("clusterrole Primitive", Label("clusterrole"), func() {
+var _ = Describe("ClusterRole Primitive", Label("ClusterRole"), func() {
 	var (
 		ns   string
 		name string
@@ -113,9 +113,13 @@ var _ = Describe("clusterrole Primitive", Label("clusterrole"), func() {
 			var cr rbacv1.ClusterRole
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: crName}, &cr)).To(Succeed())
 			Expect(cr.Rules).To(HaveLen(2))
-			Expect(cr.Rules[0].Resources).To(ContainElement("pods"))
-			Expect(cr.Rules[1].Resources).To(ContainElement("secrets"))
-			Expect(cr.Rules[1].Verbs).To(ConsistOf("get", "list"))
+			Expect(cr.Rules).To(ContainElement(SatisfyAll(
+				HaveField("Resources", ContainElement("pods")),
+			)))
+			Expect(cr.Rules).To(ContainElement(SatisfyAll(
+				HaveField("Resources", ContainElement("secrets")),
+				HaveField("Verbs", ConsistOf("get", "list")),
+			)))
 		})
 	})
 

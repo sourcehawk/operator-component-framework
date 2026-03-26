@@ -39,6 +39,7 @@ func NewBuilder(pv *corev1.PersistentVolume) *Builder {
 	)
 	base.MarkClusterScoped()
 	base.WithCustomOperationalStatus(DefaultOperationalStatusHandler)
+	base.WithCustomGraceStatus(DefaultGraceStatusHandler)
 
 	return &Builder{base: base}
 }
@@ -64,6 +65,22 @@ func (b *Builder) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, *corev1.PersistentVolume) (concepts.OperationalStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomOperationalStatus(handler)
+	return b
+}
+
+// WithCustomGraceStatus overrides the default logic for assessing the health of
+// the PersistentVolume when the component's grace period has expired.
+//
+// The default behavior uses DefaultGraceStatusHandler, which considers a PV
+// healthy when its phase is Available or Bound, degraded when Pending, and down
+// when Released or Failed.
+//
+// If you want to augment the default behavior, you can call DefaultGraceStatusHandler
+// within your custom handler.
+func (b *Builder) WithCustomGraceStatus(
+	handler func(*corev1.PersistentVolume) (concepts.GraceStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomGraceStatus(handler)
 	return b
 }
 

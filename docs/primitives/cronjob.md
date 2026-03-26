@@ -1,14 +1,15 @@
 # CronJob Primitive
 
 The `cronjob` primitive is the framework's built-in integration abstraction for managing Kubernetes `CronJob` resources.
-It integrates with the component lifecycle through the Operational and Suspendable concepts, and provides a rich
-mutation API for managing the CronJob schedule, job template, pod spec, and containers.
+It integrates with the component lifecycle through the Operational, Graceful, and Suspendable concepts, and provides a
+rich mutation API for managing the CronJob schedule, job template, pod spec, and containers.
 
 ## Capabilities
 
 | Capability               | Detail                                                                                      |
 | ------------------------ | ------------------------------------------------------------------------------------------- |
 | **Operational tracking** | Reports `OperationPending` (never scheduled) or `Operational` (has scheduled at least once) |
+| **Grace status**         | Always reports `Healthy` — a CronJob is a passive scheduler and is healthy once it exists   |
 | **Suspension**           | Sets `spec.suspend = true`; reports `Suspending` (active jobs running) / `Suspended`        |
 | **Mutation pipeline**    | Typed editors for metadata, CronJob spec, Job spec, pod spec, and containers                |
 
@@ -215,6 +216,22 @@ The CronJob primitive reports operational status based on the CronJob's scheduli
 | `Operational`      | `Status.LastScheduleTime != nil` |
 
 Failures are reported on the spawned Job resources, not on the CronJob itself.
+
+## Grace Status
+
+The default grace status handler always reports `Healthy`. A CronJob is a passive scheduler — once it exists and is not
+suspended, it is functioning correctly regardless of whether it has fired yet. The schedule interval may be longer than
+the grace period (e.g. monthly), so waiting for the first execution would produce false degradation signals.
+
+Override with `WithCustomGraceStatus` if your CronJob has specific health requirements:
+
+```go
+cronjob.NewBuilder(base).
+    WithCustomGraceStatus(func(cj *batchv1.CronJob) (concepts.GraceStatusWithReason, error) {
+        // Custom logic based on your CronJob's semantics
+        return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
+    })
+```
 
 ## Suspension
 

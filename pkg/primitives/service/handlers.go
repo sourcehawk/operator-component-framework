@@ -85,3 +85,40 @@ func DefaultSuspensionStatusHandler(_ *corev1.Service) (concepts.SuspensionStatu
 		Reason: "Service unaffected by suspension",
 	}, nil
 }
+
+// DefaultGraceStatusHandler provides the default health assessment of a Service when the
+// component's grace period has expired.
+//
+// For LoadBalancer services, it reports Degraded if no ingress entries with an IP or
+// hostname have been assigned to Status.LoadBalancer.Ingress, indicating that the
+// external endpoint is not yet available. Once at least one ingress entry contains an
+// IP or hostname, it reports Healthy.
+//
+// For all other service types (ClusterIP, NodePort, ExternalName, headless), it
+// immediately reports Healthy because these types are functional as soon as they exist.
+//
+// This function is used as the default handler by the Resource if no custom handler is
+// registered via Builder.WithCustomGraceStatus. It can be reused within custom handlers
+// to augment the default behavior.
+func DefaultGraceStatusHandler(svc *corev1.Service) (concepts.GraceStatusWithReason, error) {
+	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		for _, ing := range svc.Status.LoadBalancer.Ingress {
+			if ing.IP != "" || ing.Hostname != "" {
+				return concepts.GraceStatusWithReason{
+					Status: concepts.GraceStatusHealthy,
+					Reason: "Load balancer IP/hostname assigned",
+				}, nil
+			}
+		}
+
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: "Awaiting load balancer IP/hostname assignment",
+		}, nil
+	}
+
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusHealthy,
+		Reason: "Service is healthy",
+	}, nil
+}

@@ -1,14 +1,16 @@
 # Ingress Primitive
 
 The `ingress` primitive is the framework's built-in integration abstraction for managing Kubernetes `Ingress` resources.
-It integrates with the component lifecycle and provides a structured mutation API for managing rules, TLS configuration,
-and metadata. For an overview of all built-in primitives, see [Primitives](../primitives.md).
+It integrates with the component lifecycle as an Operational, Graceful, Suspendable resource and provides a structured
+mutation API for managing rules, TLS configuration, and metadata. For an overview of all built-in primitives, see
+[Primitives](../primitives.md).
 
 ## Capabilities
 
 | Capability             | Detail                                                                                         |
 | ---------------------- | ---------------------------------------------------------------------------------------------- |
 | **Operational status** | Reports `OperationPending` until the ingress controller assigns an address, then `Operational` |
+| **Grace status**       | Reports `Degraded` until a load balancer IP or hostname is assigned, then `Healthy`            |
 | **Suspension**         | No-op by default — Ingress is left in place; backend returns 502/503                           |
 | **Mutation pipeline**  | Typed editors for metadata and ingress spec (rules, TLS, class name, default backend)          |
 
@@ -230,6 +232,29 @@ The handler iterates over `Status.LoadBalancer.Ingress` entries and requires at 
 
 Override with `WithCustomOperationalStatus` for more complex health checks (e.g. verifying specific annotations set by
 cloud providers).
+
+## Grace Status
+
+The default grace status handler inspects `Status.LoadBalancer.Ingress` to assess health after the grace period expires:
+
+| Status     | Condition                                                |
+| ---------- | -------------------------------------------------------- |
+| `Healthy`  | At least one entry with a non-empty `IP` or `Hostname`   |
+| `Degraded` | No entries, or all entries lack both `IP` and `Hostname` |
+
+Override with `WithCustomGraceStatus`:
+
+```go
+ingress.NewBuilder(base).
+    WithCustomGraceStatus(func(ing *networkingv1.Ingress) (concepts.GraceStatusWithReason, error) {
+        status, err := ingress.DefaultGraceStatusHandler(ing)
+        if err != nil {
+            return status, err
+        }
+        // Add custom logic
+        return status, nil
+    })
+```
 
 ## Suspension
 

@@ -1,6 +1,9 @@
+//nolint:dupl
 package generic
 
 import (
+	"errors"
+
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -29,6 +32,15 @@ func NewWorkloadBuilder[T client.Object, M FeatureMutator](
 		res: res,
 	}
 	b.InitBase(obj, identityFunc, newMutator)
+
+	// Default grace status: report Healthy.
+	b.res.GraceStatusHandler = func(_ T) (concepts.GraceStatusWithReason, error) {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusHealthy,
+			Reason: "default grace status",
+		}, nil
+	}
+
 	b.res.BaseResource = *b.BaseRes
 	return b
 }
@@ -90,10 +102,15 @@ func (b *WorkloadBuilder[T, M]) WithCustomSuspendDeletionDecision(
 }
 
 // Build validates the workload builder configuration and returns the initialized resource.
+//
+// It returns an error if the converging status handler has not been set.
 func (b *WorkloadBuilder[T, M]) Build() (*WorkloadResource[T, M], error) {
 	b.res.BaseResource = *b.BaseRes
 	if err := b.ValidateBase(); err != nil {
 		return nil, err
+	}
+	if b.res.ConvergingStatusHandler == nil {
+		return nil, errors.New("converging status handler is required")
 	}
 	return b.res, nil
 }

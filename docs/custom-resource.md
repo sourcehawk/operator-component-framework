@@ -44,12 +44,12 @@ Each piece wraps a corresponding generic type from `pkg/generic`:
 The framework defines four resource categories. Each maps to a generic resource type with different lifecycle
 interfaces:
 
-| Category        | Generic Type                  | Lifecycle Interfaces                                  | Use When                                               |
-| --------------- | ----------------------------- | ----------------------------------------------------- | ------------------------------------------------------ |
-| **Workload**    | `generic.WorkloadResource`    | `Alive`, `Graceful`, `Suspendable`, `DataExtractable` | Long-running processes with replica-based health       |
-| **Static**      | `generic.StaticResource`      | `DataExtractable`                                     | Configuration objects with no runtime health semantics |
-| **Task**        | `generic.TaskResource`        | `Completable`, `Suspendable`, `DataExtractable`       | Run-to-completion workloads                            |
-| **Integration** | `generic.IntegrationResource` | `Operational`, `Suspendable`, `DataExtractable`       | External dependency objects (services, ingresses)      |
+| Category        | Generic Type                  | Lifecycle Interfaces                                        | Use When                                               |
+| --------------- | ----------------------------- | ----------------------------------------------------------- | ------------------------------------------------------ |
+| **Workload**    | `generic.WorkloadResource`    | `Alive`, `Graceful`, `Suspendable`, `DataExtractable`       | Long-running processes with replica-based health       |
+| **Static**      | `generic.StaticResource`      | `DataExtractable`                                           | Configuration objects with no runtime health semantics |
+| **Task**        | `generic.TaskResource`        | `Completable`, `Suspendable`, `DataExtractable`             | Run-to-completion workloads                            |
+| **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `DataExtractable` | External dependency objects (services, ingresses)      |
 
 Pick the category that matches your CRD's lifecycle. A CRD that manages a long-running process and needs health tracking
 is a **Workload**. A CRD that represents static configuration is **Static**. The rest of this guide uses Workload as the
@@ -182,9 +182,10 @@ resource category.
 
 #### Workload Handlers
 
-A workload resource typically provides convergence, grace, suspension status, and suspension mutation handlers. Which
-handlers you register is up to your builder — handlers left nil will cause the framework to return an error only if that
-lifecycle interface is actually exercised during reconciliation:
+A workload resource requires a convergence status handler — `Build()` returns an error if it is not set. All other
+handlers (grace, suspension status, suspension mutation, delete-on-suspend) default to safe no-ops at the generic layer:
+grace defaults to Healthy, suspension status to Suspended, suspension mutation is a no-op, and delete-on-suspend returns
+false. Register custom handlers only when your CRD needs domain-specific behavior:
 
 ```go
 package gameserver
@@ -274,26 +275,26 @@ func DefaultDeleteOnSuspendHandler(_ *examplev1.GameServer) bool {
 
 #### Status Constants Reference
 
-| Category    | Status Type                      | Constant Name                   | String Value        |
-| ----------- | -------------------------------- | ------------------------------- | ------------------- |
-| Workload    | `concepts.AliveConvergingStatus` | `AliveConvergingStatusHealthy`  | `Healthy`           |
-|             |                                  | `AliveConvergingStatusCreating` | `Creating`          |
-|             |                                  | `AliveConvergingStatusUpdating` | `Updating`          |
-|             |                                  | `AliveConvergingStatusScaling`  | `Scaling`           |
-|             |                                  | `AliveConvergingStatusFailing`  | `Failing`           |
-| Workload    | `concepts.GraceStatus`           | `GraceStatusHealthy`            | `Healthy`           |
-|             |                                  | `GraceStatusDegraded`           | `Degraded`          |
-|             |                                  | `GraceStatusDown`               | `Down`              |
-| Task        | `concepts.CompletionStatus`      | `CompletionStatusCompleted`     | `Completed`         |
-|             |                                  | `CompletionStatusRunning`       | `TaskRunning`       |
-|             |                                  | `CompletionStatusPending`       | `TaskPending`       |
-|             |                                  | `CompletionStatusFailing`       | `TaskFailing`       |
-| Integration | `concepts.OperationalStatus`     | `OperationalStatusOperational`  | `Operational`       |
-|             |                                  | `OperationalStatusPending`      | `OperationPending`  |
-|             |                                  | `OperationalStatusFailing`      | `OperationFailing`  |
-| All         | `concepts.SuspensionStatus`      | `SuspensionStatusPending`       | `PendingSuspension` |
-|             |                                  | `SuspensionStatusSuspending`    | `Suspending`        |
-|             |                                  | `SuspensionStatusSuspended`     | `Suspended`         |
+| Category              | Status Type                      | Constant Name                   | String Value        |
+| --------------------- | -------------------------------- | ------------------------------- | ------------------- |
+| Workload              | `concepts.AliveConvergingStatus` | `AliveConvergingStatusHealthy`  | `Healthy`           |
+|                       |                                  | `AliveConvergingStatusCreating` | `Creating`          |
+|                       |                                  | `AliveConvergingStatusUpdating` | `Updating`          |
+|                       |                                  | `AliveConvergingStatusScaling`  | `Scaling`           |
+|                       |                                  | `AliveConvergingStatusFailing`  | `Failing`           |
+| Workload, Integration | `concepts.GraceStatus`           | `GraceStatusHealthy`            | `Healthy`           |
+|                       |                                  | `GraceStatusDegraded`           | `Degraded`          |
+|                       |                                  | `GraceStatusDown`               | `Down`              |
+| Task                  | `concepts.CompletionStatus`      | `CompletionStatusCompleted`     | `Completed`         |
+|                       |                                  | `CompletionStatusRunning`       | `TaskRunning`       |
+|                       |                                  | `CompletionStatusPending`       | `TaskPending`       |
+|                       |                                  | `CompletionStatusFailing`       | `TaskFailing`       |
+| Integration           | `concepts.OperationalStatus`     | `OperationalStatusOperational`  | `Operational`       |
+|                       |                                  | `OperationalStatusPending`      | `OperationPending`  |
+|                       |                                  | `OperationalStatusFailing`      | `OperationFailing`  |
+| All                   | `concepts.SuspensionStatus`      | `SuspensionStatusPending`       | `PendingSuspension` |
+|                       |                                  | `SuspensionStatusSuspending`    | `Suspending`        |
+|                       |                                  | `SuspensionStatusSuspended`     | `Suspended`         |
 
 ### 4. Implement the Builder
 
@@ -401,12 +402,16 @@ func (b *Builder) Build() (*Resource, error) {
 
 #### Builder Pattern Guidelines
 
-- **Register defaults in the constructor.** Every handler your resource intends to support should have a default
-  registered in `NewBuilder`. Callers override only what they need.
+- **Only the convergence handler is required.** The generic builder's `Build()` returns an error if the convergence
+  status handler is not set (`ConvergingStatus` for workload/task, `OperationalStatus` for integration). Grace and
+  suspension handlers default to safe no-ops at the generic layer, so you only need to override them if your CRD has
+  domain-specific behavior for those lifecycle phases.
+- **Register domain-specific defaults in the constructor.** Override the generic defaults where your CRD has meaningful
+  semantics (e.g., a grace handler that inspects replica counts, a suspension handler that scales to zero).
 - **Return `*Builder` from every method.** This enables the fluent chaining pattern used throughout the framework.
 - **Validate in `Build()`.** The generic builder's `Build()` validates that the object has a name, namespace (for
-  namespaced resources), identity function, and mutator factory. Add any custom validation after calling the generic
-  build.
+  namespaced resources), identity function, mutator factory, and convergence handler. Add any custom validation after
+  calling the generic build.
 
 ### 5. Implement the Resource
 
@@ -427,10 +432,10 @@ import (
 //
 // It implements:
 //   - component.Resource (Identity, Object, Mutate)
-//   - component.Alive (ConvergingStatus)
-//   - component.Graceful (GraceStatus)
-//   - component.Suspendable (DeleteOnSuspend, Suspend, SuspensionStatus)
-//   - component.DataExtractable (ExtractData)
+//   - concepts.Alive (ConvergingStatus)
+//   - concepts.Graceful (GraceStatus)
+//   - concepts.Suspendable (DeleteOnSuspend, Suspend, SuspensionStatus)
+//   - concepts.DataExtractable (ExtractData)
 type Resource struct {
     base *generic.WorkloadResource[*examplev1.GameServer, *Mutator]
 }
@@ -479,7 +484,7 @@ Which methods to include depends on your resource category:
 | Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData` |
 | Static      | `Identity`, `Object`, `Mutate`, `ExtractData`                                                                                      |
 | Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData`                |
-| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData`                |
+| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData` |
 
 ### 6. Define Feature Mutations
 
@@ -593,7 +598,9 @@ converging status handler reports `Completed`, `Running`, `Pending`, or `Failing
 ### Integration Resources
 
 Integration resources use `concepts.OperationalStatusWithReason` for convergence. The status handler reports
-`Operational`, `Pending`, or `Failing`.
+`Operational`, `Pending`, or `Failing`. They also implement `Graceful` for health assessment after grace period expiry,
+with a default handler that reports Healthy. The resource wrapper should include `GraceStatus` alongside the other
+methods.
 
 ---
 

@@ -10,6 +10,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func integrationOperationalHandler(_ concepts.ConvergingOperation, _ *corev1.Service) (concepts.OperationalStatusWithReason, error) {
+	return concepts.OperationalStatusWithReason{}, nil
+}
+
 func TestIntegrationBuilder(t *testing.T) {
 	obj := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -21,7 +25,8 @@ func TestIntegrationBuilder(t *testing.T) {
 	newMutator := func(s *corev1.Service) *mockMutator { return &mockMutator{service: s} }
 
 	t.Run("successful build", func(t *testing.T) {
-		builder := NewIntegrationBuilder(obj, identityFunc, newMutator)
+		builder := NewIntegrationBuilder(obj, identityFunc, newMutator).
+			WithCustomOperationalStatus(integrationOperationalHandler)
 		res, err := builder.Build()
 		require.NoError(t, err)
 		assert.Equal(t, obj, res.DesiredObject)
@@ -35,15 +40,18 @@ func TestIntegrationBuilder(t *testing.T) {
 				return nil
 			},
 		}
-		builder := NewIntegrationBuilder(obj, identityFunc, newMutator).WithMutation(mut)
+		builder := NewIntegrationBuilder(obj, identityFunc, newMutator).
+			WithCustomOperationalStatus(integrationOperationalHandler).
+			WithMutation(mut)
 		res, _ := builder.Build()
 		assert.Len(t, res.Mutations, 1)
 	})
 
 	t.Run("with handlers", func(t *testing.T) {
 		builder := NewIntegrationBuilder(obj, identityFunc, newMutator).
-			WithCustomOperationalStatus(func(_ concepts.ConvergingOperation, _ *corev1.Service) (concepts.OperationalStatusWithReason, error) {
-				return concepts.OperationalStatusWithReason{}, nil
+			WithCustomOperationalStatus(integrationOperationalHandler).
+			WithCustomGraceStatus(func(_ *corev1.Service) (concepts.GraceStatusWithReason, error) {
+				return concepts.GraceStatusWithReason{}, nil
 			}).
 			WithCustomSuspendStatus(func(_ *corev1.Service) (concepts.SuspensionStatusWithReason, error) {
 				return concepts.SuspensionStatusWithReason{}, nil
@@ -57,16 +65,34 @@ func TestIntegrationBuilder(t *testing.T) {
 
 		res, _ := builder.Build()
 		assert.NotNil(t, res.OperationalStatusHandler, "OperationalStatusHandler not set")
+		assert.NotNil(t, res.GraceStatusHandler, "GraceStatusHandler not set")
 		assert.NotNil(t, res.SuspendStatusHandler, "SuspendStatusHandler not set")
 		assert.NotNil(t, res.SuspendMutationHandler, "SuspendMutationHandler not set")
 		assert.NotNil(t, res.DeleteOnSuspendHandler, "DeleteOnSuspendHandler not set")
+	})
+
+	t.Run("defaults are set without explicit handlers", func(t *testing.T) {
+		builder := NewIntegrationBuilder(obj, identityFunc, newMutator).
+			WithCustomOperationalStatus(integrationOperationalHandler)
+		res, err := builder.Build()
+		require.NoError(t, err)
+		assert.NotNil(t, res.GraceStatusHandler, "GraceStatusHandler should have a default")
+		assert.NotNil(t, res.SuspendStatusHandler, "SuspendStatusHandler should have a default")
+		assert.NotNil(t, res.SuspendMutationHandler, "SuspendMutationHandler should have a default")
+	})
+
+	t.Run("build fails without operational status handler", func(t *testing.T) {
+		builder := NewIntegrationBuilder(obj, identityFunc, newMutator)
+		_, err := builder.Build()
+		assert.EqualError(t, err, "operational status handler is required")
 	})
 
 	t.Run("cluster-scoped build succeeds without namespace", func(t *testing.T) {
 		clusterObj := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
 		}
-		builder := NewIntegrationBuilder(clusterObj, identityFunc, newMutator)
+		builder := NewIntegrationBuilder(clusterObj, identityFunc, newMutator).
+			WithCustomOperationalStatus(integrationOperationalHandler)
 		builder.MarkClusterScoped()
 		res, err := builder.Build()
 		require.NoError(t, err)

@@ -5,6 +5,7 @@ package primitives
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -57,6 +58,25 @@ func immediatelyOperational(_ concepts.ConvergingOperation, _ *batchv1.CronJob) 
 	return concepts.OperationalStatusWithReason{
 		Status: concepts.OperationalStatusOperational,
 		Reason: "e2e: immediately operational",
+	}, nil
+}
+
+// alwaysPendingCronJob always reports the CronJob as pending so it never
+// converges, allowing the grace period to expire.
+func alwaysPendingCronJob(
+	_ concepts.ConvergingOperation, _ *batchv1.CronJob,
+) (concepts.OperationalStatusWithReason, error) {
+	return concepts.OperationalStatusWithReason{
+		Status: concepts.OperationalStatusPending,
+		Reason: "e2e: always pending",
+	}, nil
+}
+
+// degradedGraceCronJob reports the CronJob as degraded when the grace period expires.
+func degradedGraceCronJob(_ *batchv1.CronJob) (concepts.GraceStatusWithReason, error) {
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusDegraded,
+		Reason: "e2e: degraded after grace",
 	}, nil
 }
 
@@ -226,6 +246,52 @@ var _ = Describe("CronJob Primitive", Label("cronjob"), func() {
 			if cj.Spec.Suspend != nil {
 				Expect(*cj.Spec.Suspend).To(BeFalse())
 			}
+		})
+	})
+
+	Context("Grace Period — Degraded", func() {
+		It("should report Degraded after grace period expires for a non-converging resource", func() {
+			gracePeriod := 5 * time.Second
+
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
+				obj := newBaseCronJob(ns, "cron-grace")
+
+				res, err := cronjob.NewBuilder(obj).
+					WithCustomOperationalStatus(alwaysPendingCronJob).
+					WithCustomGraceStatus(degradedGraceCronJob).
+					Build()
+				if err != nil {
+					return nil, err
+				}
+
+				return component.NewComponentBuilder().
+					WithName("e2e-grace").
+					WithConditionType("E2EReady").
+					WithResource(res, component.ResourceOptions{}).
+					WithGracePeriod(gracePeriod).
+					Build()
+			})
+
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			By("waiting for the initial condition to be set")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				ShouldNot(BeNil())
+
+			By("waiting for grace period to expire")
+			time.Sleep(gracePeriod + 2*time.Second)
+
+			By("triggering re-reconciliation after grace period")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
+			if app.Annotations == nil {
+				app.Annotations = map[string]string{}
+			}
+			app.Annotations["e2e.ocf.io/trigger"] = "grace-check"
+			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+
+			By("waiting for Degraded condition")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Degraded"))
 		})
 	})
 

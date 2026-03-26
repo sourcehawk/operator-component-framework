@@ -12,9 +12,9 @@ import (
 //
 // It implements several component interfaces to integrate with the operator-component-framework:
 //   - component.Resource: for basic identity and mutation behavior.
-//   - component.Completable: for run-to-completion tracking.
-//   - component.Suspendable: for controlled deactivation (suspend or delete).
-//   - component.DataExtractable: for exporting information after successful reconciliation.
+//   - concepts.Completable: for run-to-completion tracking.
+//   - concepts.Suspendable: for controlled deactivation (suspend or delete).
+//   - concepts.DataExtractable: for exporting information after successful reconciliation.
 //
 // This resource handles the lifecycle of a Job, including initial creation,
 // updates via feature mutations, and completion status monitoring.

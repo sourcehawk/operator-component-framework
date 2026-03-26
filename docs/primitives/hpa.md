@@ -2,13 +2,14 @@
 
 The `hpa` primitive is the framework's built-in integration abstraction for managing Kubernetes
 `HorizontalPodAutoscaler` resources (`autoscaling/v2`). It integrates with the component lifecycle as an Operational,
-Suspendable resource and provides a structured mutation API for configuring autoscaling behavior.
+Graceful, Suspendable resource and provides a structured mutation API for configuring autoscaling behavior.
 
 ## Capabilities
 
 | Capability              | Detail                                                                                                        |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------- |
 | **Operational status**  | Inspects `ScalingActive` and `AbleToScale` conditions to report `Operational`, `Pending`, or `Failing`        |
+| **Grace status**        | Inspects `ScalingActive` and `AbleToScale` conditions to report `Healthy`, `Degraded`, or `Down`              |
 | **Suspension (delete)** | Deletes the HPA on suspend to prevent it from scaling the target back up; recreated on resume                 |
 | **Mutation pipeline**   | Typed editors for HPA spec (metrics, scale target, behavior) and object metadata                              |
 | **Data extraction**     | Allows custom extraction from the reconciled HPA object via a registered data extractor (`WithDataExtractor`) |
@@ -239,6 +240,33 @@ Override with `WithCustomOperationalStatus`:
 hpa.NewBuilder(base).
     WithCustomOperationalStatus(func(op concepts.ConvergingOperation, h *autoscalingv2.HorizontalPodAutoscaler) (concepts.OperationalStatusWithReason, error) {
         status, err := hpa.DefaultOperationalStatusHandler(op, h)
+        if err != nil {
+            return status, err
+        }
+        // Add custom logic
+        return status, nil
+    })
+```
+
+## Grace Status
+
+The default grace status handler inspects `Status.Conditions` to assess health after the grace period expires:
+
+| Status     | Condition                                               |
+| ---------- | ------------------------------------------------------- |
+| `Healthy`  | `ScalingActive` is `True`                               |
+| `Degraded` | Conditions absent, or `ScalingActive` is `Unknown`      |
+| `Down`     | `ScalingActive` is `False`, or `AbleToScale` is `False` |
+
+`AbleToScale = False` takes precedence over `ScalingActive = True` because an HPA that cannot actually scale is not
+healthy regardless of what the scaling-active condition reports.
+
+Override with `WithCustomGraceStatus`:
+
+```go
+hpa.NewBuilder(base).
+    WithCustomGraceStatus(func(h *autoscalingv2.HorizontalPodAutoscaler) (concepts.GraceStatusWithReason, error) {
+        status, err := hpa.DefaultGraceStatusHandler(h)
         if err != nil {
             return status, err
         }

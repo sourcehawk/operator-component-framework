@@ -143,6 +143,25 @@ func TestDefaultSuspensionStatusHandler(t *testing.T) {
 	}
 }
 
+func TestDefaultGraceStatusHandler(t *testing.T) {
+	t.Run("healthy when never scheduled", func(t *testing.T) {
+		got, err := DefaultGraceStatusHandler(&batchv1.CronJob{})
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+	})
+
+	t.Run("healthy when scheduled", func(t *testing.T) {
+		cj := &batchv1.CronJob{
+			Status: batchv1.CronJobStatus{
+				LastScheduleTime: &metav1.Time{Time: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)},
+			},
+		}
+		got, err := DefaultGraceStatusHandler(cj)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+	})
+}
+
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	cj := &batchv1.CronJob{}
 	assert.False(t, DefaultDeleteOnSuspendHandler(cj))

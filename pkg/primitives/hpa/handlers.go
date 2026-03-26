@@ -124,6 +124,65 @@ func DefaultSuspensionStatusHandler(
 	}, nil
 }
 
+// DefaultGraceStatusHandler is the default logic for determining the grace status
+// of a HorizontalPodAutoscaler after the allowed grace period has expired.
+//
+// It inspects Status.Conditions to classify the HPA's health:
+//   - GraceStatusHealthy: condition ScalingActive is True.
+//   - GraceStatusDown: condition AbleToScale is False, or condition ScalingActive is False.
+//   - GraceStatusDegraded: ScalingActive is Unknown, missing, or no conditions are present.
+//
+// This function is used as the default handler by the Resource if no custom handler is registered
+// via Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment
+// the default behavior.
+func DefaultGraceStatusHandler(
+	hpa *autoscalingv2.HorizontalPodAutoscaler,
+) (concepts.GraceStatusWithReason, error) {
+	scalingActive := findCondition(hpa.Status.Conditions, autoscalingv2.ScalingActive)
+	ableToScale := findCondition(hpa.Status.Conditions, autoscalingv2.AbleToScale)
+
+	// Check for down conditions first
+	if ableToScale != nil && ableToScale.Status == corev1.ConditionFalse {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDown,
+			Reason: conditionReason(ableToScale, "AbleToScale is False"),
+		}, nil
+	}
+
+	if scalingActive != nil {
+		switch scalingActive.Status {
+		case corev1.ConditionTrue:
+			return concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusHealthy,
+				Reason: conditionReason(scalingActive, "ScalingActive is True"),
+			}, nil
+		case corev1.ConditionFalse:
+			return concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDown,
+				Reason: conditionReason(scalingActive, "ScalingActive is False"),
+			}, nil
+		default:
+			return concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDegraded,
+				Reason: conditionReason(scalingActive, "ScalingActive is Unknown"),
+			}, nil
+		}
+	}
+
+	// No conditions or ScalingActive missing
+	if len(hpa.Status.Conditions) == 0 {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: "Waiting for HPA conditions to be populated",
+		}, nil
+	}
+
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusDegraded,
+		Reason: "Waiting for ScalingActive condition on HPA",
+	}, nil
+}
+
 // findCondition returns the first condition matching the given type, or nil.
 func findCondition(
 	conditions []autoscalingv2.HorizontalPodAutoscalerCondition,

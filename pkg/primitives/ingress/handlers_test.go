@@ -113,6 +113,50 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 	}
 }
 
+func TestDefaultGraceStatusHandler(t *testing.T) {
+	t.Run("degraded with no ingress entries", func(t *testing.T) {
+		ing := &networkingv1.Ingress{
+			Status: networkingv1.IngressStatus{},
+		}
+		got, err := DefaultGraceStatusHandler(ing)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
+		assert.Equal(t, "Awaiting load balancer address assignment", got.Reason)
+	})
+
+	t.Run("healthy with IP assigned", func(t *testing.T) {
+		ing := &networkingv1.Ingress{
+			Status: networkingv1.IngressStatus{
+				LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+					Ingress: []networkingv1.IngressLoadBalancerIngress{
+						{IP: "10.0.0.1"},
+					},
+				},
+			},
+		}
+		got, err := DefaultGraceStatusHandler(ing)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "Ingress has been assigned an address", got.Reason)
+	})
+
+	t.Run("healthy with hostname assigned", func(t *testing.T) {
+		ing := &networkingv1.Ingress{
+			Status: networkingv1.IngressStatus{
+				LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+					Ingress: []networkingv1.IngressLoadBalancerIngress{
+						{Hostname: "lb.example.com"},
+					},
+				},
+			},
+		}
+		got, err := DefaultGraceStatusHandler(ing)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "Ingress has been assigned an address", got.Reason)
+	})
+}
+
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	ing := &networkingv1.Ingress{}
 	assert.False(t, DefaultDeleteOnSuspendHandler(ing))

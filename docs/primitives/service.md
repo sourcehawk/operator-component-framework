@@ -1,8 +1,8 @@
 # Service Primitive
 
 The `service` primitive is the framework's built-in integration abstraction for managing Kubernetes `Service` resources.
-It integrates with the component lifecycle and provides a structured mutation API for managing ports, selectors, and
-service configuration.
+It integrates with the component lifecycle as an Operational, Graceful, Suspendable resource and provides a structured
+mutation API for managing ports, selectors, and service configuration.
 
 ## Capabilities
 
@@ -10,6 +10,7 @@ service configuration.
 | ------------------------ | --------------------------------------------------------------------------------------------- |
 | **Operational tracking** | Monitors LoadBalancer ingress assignment; reports `Operational` or `Pending`                  |
 | **Suspension**           | Unaffected by suspension by default; customizable via handlers to delete or mutate on suspend |
+| **Grace status**         | LoadBalancer with no ingress reports `Degraded`; non-LoadBalancer or has ingress is `Healthy` |
 | **Mutation pipeline**    | Typed editors for metadata and service spec, with a raw escape hatch for free-form access     |
 | **Data extraction**      | Reads generated or updated values (ClusterIP, LoadBalancer ingress) after each sync cycle     |
 
@@ -217,6 +218,34 @@ resource, err := service.NewBuilder(base).
         return service.DefaultOperationalStatusHandler(op, svc)
     }).
     Build()
+```
+
+## Grace Status
+
+The default grace status handler inspects the Service type and load balancer status to assess health after the grace
+period expires:
+
+| Service Type   | Condition                                 | Status     |
+| -------------- | ----------------------------------------- | ---------- |
+| `LoadBalancer` | `Status.LoadBalancer.Ingress` has entries | `Healthy`  |
+| `LoadBalancer` | `Status.LoadBalancer.Ingress` is empty    | `Degraded` |
+| `ClusterIP`    | Always                                    | `Healthy`  |
+| `NodePort`     | Always                                    | `Healthy`  |
+| `ExternalName` | Always                                    | `Healthy`  |
+| Headless       | Always                                    | `Healthy`  |
+
+Override with `WithCustomGraceStatus`:
+
+```go
+service.NewBuilder(base).
+    WithCustomGraceStatus(func(svc *corev1.Service) (concepts.GraceStatusWithReason, error) {
+        status, err := service.DefaultGraceStatusHandler(svc)
+        if err != nil {
+            return status, err
+        }
+        // Add custom logic
+        return status, nil
+    })
 ```
 
 ## Suspension

@@ -12,10 +12,11 @@ import (
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for reporting operational status based on HPA conditions.
-//   - component.Suspendable: for default delete-on-suspend behaviour that removes the HPA to
+//   - concepts.Operational: for reporting operational status based on HPA conditions.
+//   - concepts.Graceful: for reporting health after the allowed grace period has expired.
+//   - concepts.Suspendable: for default delete-on-suspend behaviour that removes the HPA to
 //     prevent it from scaling the target back up during suspension.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]
 }
@@ -49,6 +50,14 @@ func (r *Resource) Mutate(current client.Object) error {
 // to determine if the autoscaler is active, pending, or failing.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
+}
+
+// GraceStatus reports the HPA's health after the allowed grace period has expired.
+//
+// By default, it uses DefaultGraceStatusHandler, which inspects HPA conditions
+// to determine if the autoscaler is healthy, degraded, or down.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
 }
 
 // DeleteOnSuspend determines whether the HPA should be deleted from the cluster

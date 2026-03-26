@@ -21,6 +21,7 @@ type IntegrationResource[T client.Object, M FeatureMutator] struct {
 	BaseResource[T, M]
 
 	OperationalStatusHandler func(concepts.ConvergingOperation, T) (concepts.OperationalStatusWithReason, error)
+	GraceStatusHandler       func(T) (concepts.GraceStatusWithReason, error)
 }
 
 // ConvergingStatus reports the integration's operational status using the configured handler.
@@ -31,4 +32,12 @@ func (r *IntegrationResource[T, M]) ConvergingStatus(
 		return concepts.OperationalStatusWithReason{}, fmt.Errorf("operational status handler is not configured")
 	}
 	return r.OperationalStatusHandler(op, r.DesiredObject)
+}
+
+// GraceStatus reports the integration's grace status using the configured handler.
+func (r *IntegrationResource[T, M]) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	if r.GraceStatusHandler == nil {
+		return concepts.GraceStatusWithReason{}, fmt.Errorf("grace status handler is not configured")
+	}
+	return r.GraceStatusHandler(r.DesiredObject)
 }

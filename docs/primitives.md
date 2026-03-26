@@ -50,8 +50,8 @@ supports it) or deleted and recreated when resumed.
 Examples: `Service`, `Ingress`, `Gateway`, `CronJob`
 
 These resources define integration points with external or cluster-level systems (networking, load balancers, DNS,
-schedules). Their readiness depends on external controllers and may be delayed or partial. They implement `Operational`
-and/or `Suspendable`.
+schedules). Their readiness depends on external controllers and may be delayed or partial. They implement `Operational`,
+`Graceful`, and/or `Suspendable`.
 
 ## Cluster-Scoped Primitives
 
@@ -72,14 +72,14 @@ in the component documentation for details on owner reference behavior and garba
 
 Primitives implement behavioral interfaces that the component layer uses for status aggregation:
 
-| Interface         | Status values reported                                   | Typical use                               |
-| ----------------- | -------------------------------------------------------- | ----------------------------------------- |
-| `Alive`           | `Healthy`, `Creating`, `Updating`, `Scaling`, `Failing`  | Deployments, StatefulSets, DaemonSets     |
-| `Graceful`        | `Healthy`, `Degraded`, `Down`                            | Workloads with slow or stalled rollouts   |
-| `Suspendable`     | `PendingSuspension`, `Suspending`, `Suspended`           | Any resource with a deactivation behavior |
-| `Completable`     | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` | Jobs and task primitives                  |
-| `Operational`     | `Operational`, `OperationPending`, `OperationFailing`    | Services, Ingresses, CronJobs             |
-| `DataExtractable` | _(no status, side-effecting)_                            | Resources that expose post-sync data      |
+| Interface         | Status values reported                                   | Typical use                                      |
+| ----------------- | -------------------------------------------------------- | ------------------------------------------------ |
+| `Alive`           | `Healthy`, `Creating`, `Updating`, `Scaling`, `Failing`  | Deployments, StatefulSets, DaemonSets            |
+| `Graceful`        | `Healthy`, `Degraded`, `Down`                            | Workloads and integrations with slow convergence |
+| `Suspendable`     | `PendingSuspension`, `Suspending`, `Suspended`           | Any resource with a deactivation behavior        |
+| `Completable`     | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` | Jobs and task primitives                         |
+| `Operational`     | `Operational`, `OperationPending`, `OperationFailing`    | Services, Ingresses, CronJobs                    |
+| `DataExtractable` | _(no status, side-effecting)_                            | Resources that expose post-sync data             |
 
 Custom resource wrappers can implement any subset of these interfaces to opt into the corresponding component behaviors.
 
@@ -215,6 +215,27 @@ m.EditContainers(selectors.ContainersNamed("web", "api"), func(e *editors.Contai
     return nil
 })
 ```
+
+## Unstructured Primitives
+
+| Primitive                                 | Category    | Documentation                                 |
+| ----------------------------------------- | ----------- | --------------------------------------------- |
+| `pkg/primitives/unstructured/static`      | Static      | [unstructured.md](primitives/unstructured.md) |
+| `pkg/primitives/unstructured/workload`    | Workload    | [unstructured.md](primitives/unstructured.md) |
+| `pkg/primitives/unstructured/integration` | Integration | [unstructured.md](primitives/unstructured.md) |
+| `pkg/primitives/unstructured/task`        | Task        | [unstructured.md](primitives/unstructured.md) |
+
+The unstructured primitives are an escape hatch for managing arbitrary Kubernetes objects that have no Go type — for
+example, Crossplane resources, external CRDs, or any object known only at runtime. One variant exists per
+[lifecycle category](#primitive-categories), each implementing the corresponding interfaces.
+
+Because the framework cannot know the semantics of an unstructured object, it does **not infer any semantic or
+domain-specific defaults**. The builders instead configure generic safe defaults: if you omit a grace handler, the
+primitive treats the resource as Healthy; if you omit suspension handlers, the primitive reports Suspended and the
+suspend mutation is a no-op. Only the converge/operational status handler is required at build time.
+
+The unstructured primitives share a single `Mutator` and use an `UnstructuredContentEditor` for manipulating nested
+fields in the object's content map. See [unstructured.md](primitives/unstructured.md) for full details.
 
 ## Implementing a Custom Resource
 

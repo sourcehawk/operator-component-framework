@@ -10,6 +10,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func taskConvergeHandler(_ concepts.ConvergingOperation, _ *batchv1.Job) (concepts.CompletionStatusWithReason, error) {
+	return concepts.CompletionStatusWithReason{}, nil
+}
+
 func TestTaskBuilder(t *testing.T) {
 	obj := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -21,7 +25,8 @@ func TestTaskBuilder(t *testing.T) {
 	newMutator := func(j *batchv1.Job) *mockMutator { return &mockMutator{job: j} }
 
 	t.Run("successful build", func(t *testing.T) {
-		builder := NewTaskBuilder(obj, identityFunc, newMutator)
+		builder := NewTaskBuilder(obj, identityFunc, newMutator).
+			WithCustomConvergeStatus(taskConvergeHandler)
 		res, err := builder.Build()
 		require.NoError(t, err)
 		assert.Equal(t, obj, res.DesiredObject)
@@ -35,16 +40,16 @@ func TestTaskBuilder(t *testing.T) {
 				return nil
 			},
 		}
-		builder := NewTaskBuilder(obj, identityFunc, newMutator).WithMutation(mut)
+		builder := NewTaskBuilder(obj, identityFunc, newMutator).
+			WithCustomConvergeStatus(taskConvergeHandler).
+			WithMutation(mut)
 		res, _ := builder.Build()
 		assert.Len(t, res.Mutations, 1)
 	})
 
 	t.Run("with handlers", func(t *testing.T) {
 		builder := NewTaskBuilder(obj, identityFunc, newMutator).
-			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *batchv1.Job) (concepts.CompletionStatusWithReason, error) {
-				return concepts.CompletionStatusWithReason{}, nil
-			}).
+			WithCustomConvergeStatus(taskConvergeHandler).
 			WithCustomSuspendStatus(func(_ *batchv1.Job) (concepts.SuspensionStatusWithReason, error) {
 				return concepts.SuspensionStatusWithReason{}, nil
 			}).
@@ -62,11 +67,27 @@ func TestTaskBuilder(t *testing.T) {
 		assert.NotNil(t, res.DeleteOnSuspendHandler, "DeleteOnSuspendHandler not set")
 	})
 
+	t.Run("defaults are set without explicit handlers", func(t *testing.T) {
+		builder := NewTaskBuilder(obj, identityFunc, newMutator).
+			WithCustomConvergeStatus(taskConvergeHandler)
+		res, err := builder.Build()
+		require.NoError(t, err)
+		assert.NotNil(t, res.SuspendStatusHandler, "SuspendStatusHandler should have a default")
+		assert.NotNil(t, res.SuspendMutationHandler, "SuspendMutationHandler should have a default")
+	})
+
+	t.Run("build fails without converge status handler", func(t *testing.T) {
+		builder := NewTaskBuilder(obj, identityFunc, newMutator)
+		_, err := builder.Build()
+		assert.EqualError(t, err, "converging status handler is required")
+	})
+
 	t.Run("cluster-scoped build succeeds without namespace", func(t *testing.T) {
 		clusterObj := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
 		}
-		builder := NewTaskBuilder(clusterObj, identityFunc, newMutator)
+		builder := NewTaskBuilder(clusterObj, identityFunc, newMutator).
+			WithCustomConvergeStatus(taskConvergeHandler)
 		builder.MarkClusterScoped()
 		res, err := builder.Build()
 		require.NoError(t, err)

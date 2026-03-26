@@ -77,6 +77,74 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 	}
 }
 
+func TestDefaultGraceStatusHandler(t *testing.T) {
+	tests := []struct {
+		name       string
+		pvc        *corev1.PersistentVolumeClaim
+		wantStatus concepts.GraceStatus
+		wantReason string
+	}{
+		{
+			name: "bound with volume name",
+			pvc: &corev1.PersistentVolumeClaim{
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "pv-001",
+				},
+				Status: corev1.PersistentVolumeClaimStatus{
+					Phase: corev1.ClaimBound,
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "PVC is bound to volume pv-001",
+		},
+		{
+			name: "bound without volume name",
+			pvc: &corev1.PersistentVolumeClaim{
+				Status: corev1.PersistentVolumeClaimStatus{
+					Phase: corev1.ClaimBound,
+				},
+			},
+			wantStatus: concepts.GraceStatusHealthy,
+			wantReason: "PVC is bound",
+		},
+		{
+			name: "lost",
+			pvc: &corev1.PersistentVolumeClaim{
+				Status: corev1.PersistentVolumeClaimStatus{
+					Phase: corev1.ClaimLost,
+				},
+			},
+			wantStatus: concepts.GraceStatusDown,
+			wantReason: "PVC has lost its bound volume",
+		},
+		{
+			name: "pending",
+			pvc: &corev1.PersistentVolumeClaim{
+				Status: corev1.PersistentVolumeClaimStatus{
+					Phase: corev1.ClaimPending,
+				},
+			},
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: "Waiting for PVC to be bound",
+		},
+		{
+			name:       "empty phase",
+			pvc:        &corev1.PersistentVolumeClaim{},
+			wantStatus: concepts.GraceStatusDegraded,
+			wantReason: "Waiting for PVC to be bound",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := DefaultGraceStatusHandler(tt.pvc)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, got.Status)
+			assert.Equal(t, tt.wantReason, got.Reason)
+		})
+	}
+}
+
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	pvc := &corev1.PersistentVolumeClaim{}
 	assert.False(t, DefaultDeleteOnSuspendHandler(pvc))

@@ -52,9 +52,10 @@ func normalizeProtocol(p corev1.Protocol) corev1.Protocol {
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for tracking whether the Service is operational.
-//   - component.Suspendable: for participating in the component suspension lifecycle.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Operational: for tracking whether the Service is operational.
+//   - concepts.Graceful: for health assessment after the component's grace period expires.
+//   - concepts.Suspendable: for participating in the component suspension lifecycle.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*corev1.Service, *Mutator]
 }
@@ -89,6 +90,16 @@ func (r *Resource) Mutate(current client.Object) error {
 // types immediately operational.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.OperationalStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
+}
+
+// GraceStatus reports the health of the Service after the component's grace period
+// has expired.
+//
+// By default, it uses DefaultGraceStatusHandler, which considers LoadBalancer services
+// degraded until an ingress IP or hostname is assigned, and all other service types
+// immediately healthy.
+func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return r.base.GraceStatus()
 }
 
 // DeleteOnSuspend determines whether the Service should be deleted from the

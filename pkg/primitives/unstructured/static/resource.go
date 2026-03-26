@@ -1,0 +1,48 @@
+// Package static provides an unstructured resource primitive for static
+// Kubernetes objects that do not model convergence health, grace periods,
+// or suspension.
+package static
+
+import (
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
+	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
+	uns "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// Resource is a high-level abstraction for managing a static unstructured
+// Kubernetes object within a controller's reconciliation loop.
+//
+// It implements the following interfaces:
+//   - component.Resource: for basic identity and mutation behaviour.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
+//
+// Static unstructured resources do not model convergence health, grace periods,
+// or suspension. Use the workload, integration, or task unstructured variants
+// for resources that require those concepts.
+type Resource struct {
+	base *generic.StaticResource[*uns.Unstructured, *unstruct.Mutator]
+}
+
+// Identity returns a unique identifier for the resource derived from its GVK,
+// namespace, and name.
+func (r *Resource) Identity() string {
+	return r.base.Identity()
+}
+
+// Object returns a deep copy of the underlying unstructured Kubernetes object.
+func (r *Resource) Object() (client.Object, error) {
+	return r.base.Object()
+}
+
+// Mutate transforms the current state of the unstructured object into the
+// desired state by applying all registered feature mutations.
+func (r *Resource) Mutate(current client.Object) error {
+	return r.base.Mutate(current)
+}
+
+// ExtractData executes all registered data extractor functions against a deep
+// copy of the reconciled object.
+func (r *Resource) ExtractData() error {
+	return r.base.ExtractData()
+}

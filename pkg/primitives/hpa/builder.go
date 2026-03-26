@@ -39,6 +39,7 @@ func NewBuilder(hpa *autoscalingv2.HorizontalPodAutoscaler) *Builder {
 
 	base.
 		WithCustomOperationalStatus(DefaultOperationalStatusHandler).
+		WithCustomGraceStatus(DefaultGraceStatusHandler).
 		WithCustomSuspendStatus(DefaultSuspensionStatusHandler).
 		WithCustomSuspendMutation(DefaultSuspendMutationHandler).
 		WithCustomSuspendDeletionDecision(DefaultDeleteOnSuspendHandler)
@@ -67,6 +68,18 @@ func (b *Builder) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, *autoscalingv2.HorizontalPodAutoscaler) (concepts.OperationalStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomOperationalStatus(handler)
+	return b
+}
+
+// WithCustomGraceStatus overrides the default logic for determining the
+// HPA's grace status after the allowed grace period has expired.
+//
+// The default behavior uses DefaultGraceStatusHandler, which inspects HPA
+// conditions (ScalingActive, AbleToScale) to determine health.
+func (b *Builder) WithCustomGraceStatus(
+	handler func(*autoscalingv2.HorizontalPodAutoscaler) (concepts.GraceStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomGraceStatus(handler)
 	return b
 }
 

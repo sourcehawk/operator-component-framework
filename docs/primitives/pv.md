@@ -1,14 +1,15 @@
 # PersistentVolume Primitive
 
 The `pv` primitive is the framework's built-in integration abstraction for managing Kubernetes `PersistentVolume`
-resources. It integrates with the component lifecycle and provides a structured mutation API for managing PV spec fields
-and object metadata.
+resources. It integrates with the component lifecycle as an Operational, Graceful resource and provides a structured
+mutation API for managing PV spec fields and object metadata.
 
 ## Capabilities
 
 | Capability                | Detail                                                                                                                                               |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Integration lifecycle** | Reports `concepts.OperationalStatusOperational`, `concepts.OperationalStatusPending`, or `concepts.OperationalStatusFailing` based on the PV's phase |
+| **Grace status**          | Maps PV phase to grace status: Available/Bound are `Healthy`, Pending is `Degraded`, Released/Failed are `Down`                                      |
 | **Cluster-scoped**        | No namespace in the identity or builder — PersistentVolumes are cluster-scoped resources                                                             |
 | **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access                                                   |
 | **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle                                                    |
@@ -199,6 +200,32 @@ status:
 | Failed    | OperationalStatusFailing     | PV reclamation has failed              |
 
 Override with `WithCustomOperationalStatus` when your PV requires different readiness logic.
+
+## Grace Status
+
+The default grace status handler maps the PV phase to a grace status after the grace period expires:
+
+| PV Phase  | Status     | Meaning                                |
+| --------- | ---------- | -------------------------------------- |
+| Available | `Healthy`  | PV is ready for binding                |
+| Bound     | `Healthy`  | PV is bound to a PersistentVolumeClaim |
+| Pending   | `Degraded` | PV is waiting to become available      |
+| Released  | `Down`     | PV was released, not yet reclaimed     |
+| Failed    | `Down`     | PV reclamation has failed              |
+
+Override with `WithCustomGraceStatus`:
+
+```go
+pv.NewBuilder(base).
+    WithCustomGraceStatus(func(p *corev1.PersistentVolume) (concepts.GraceStatusWithReason, error) {
+        status, err := pv.DefaultGraceStatusHandler(p)
+        if err != nil {
+            return status, err
+        }
+        // Add custom logic
+        return status, nil
+    })
+```
 
 ## Full Example: Storage-Tier PersistentVolume
 

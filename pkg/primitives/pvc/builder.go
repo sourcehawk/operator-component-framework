@@ -38,6 +38,7 @@ func NewBuilder(pvc *corev1.PersistentVolumeClaim) *Builder {
 
 	base.
 		WithCustomOperationalStatus(DefaultOperationalStatusHandler).
+		WithCustomGraceStatus(DefaultGraceStatusHandler).
 		WithCustomSuspendStatus(DefaultSuspensionStatusHandler).
 		WithCustomSuspendMutation(DefaultSuspendMutationHandler).
 		WithCustomSuspendDeletionDecision(DefaultDeleteOnSuspendHandler)
@@ -67,6 +68,21 @@ func (b *Builder) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, *corev1.PersistentVolumeClaim) (concepts.OperationalStatusWithReason, error),
 ) *Builder {
 	b.base.WithCustomOperationalStatus(handler)
+	return b
+}
+
+// WithCustomGraceStatus overrides the default logic for assessing the health of
+// the PVC when the component's grace period has expired.
+//
+// The default behavior uses DefaultGraceStatusHandler, which considers a Bound
+// PVC healthy, a Lost PVC down, and all other phases degraded.
+//
+// If you want to augment the default behavior, you can call DefaultGraceStatusHandler
+// within your custom handler.
+func (b *Builder) WithCustomGraceStatus(
+	handler func(*corev1.PersistentVolumeClaim) (concepts.GraceStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomGraceStatus(handler)
 	return b
 }
 

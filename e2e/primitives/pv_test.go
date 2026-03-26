@@ -52,8 +52,8 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 	AfterEach(func() {
 		clusterReconciler.Unregister(name)
 		framework.DeleteClusterTestApp(ctx, k8sClient, name)
-		// Clean up PVs since they are cluster-scoped and not garbage-collected via owner refs cross-scope
-		for _, suffix := range []string{"create", "mutated", "update"} {
+		// Explicitly clean up cluster-scoped PVs to avoid leaking test resources and relying on GC timing
+		for _, suffix := range []string{"create", "mutated", "update", "error"} {
 			pvObj := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: name + "-" + suffix}}
 			_ = k8sClient.Delete(ctx, pvObj) //nolint:errcheck
 		}
@@ -91,6 +91,7 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 			pvName := name + "-mutated"
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBasePersistentVolume(pvName, "/tmp/e2e-pv-mutated")
+				obj.Spec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimDelete
 				return pv.NewBuilder(obj).
 					WithMutation(pv.Mutation{
 						Name: "set-reclaim-policy",
@@ -129,6 +130,7 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBasePersistentVolume(pvName, "/tmp/e2e-pv-update")
+				obj.Spec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimDelete
 				builder := pv.NewBuilder(obj)
 				if useUpdatedSpec {
 					builder = builder.WithMutation(pv.Mutation{
@@ -161,6 +163,7 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 			var pvObj corev1.PersistentVolume
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pvName}, &pvObj)).To(Succeed())
 			Expect(pvObj.Spec.HostPath.Path).To(Equal("/tmp/e2e-pv-update"))
+			Expect(pvObj.Spec.PersistentVolumeReclaimPolicy).To(Equal(corev1.PersistentVolumeReclaimDelete))
 
 			By("switching desired spec and triggering reconciliation")
 			useUpdatedSpec = true
@@ -189,7 +192,7 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 
 	Context("Error", func() {
 		It("should report Error condition when mutation fails", func() {
-			pvName := name + "-create"
+			pvName := name + "-error"
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBasePersistentVolume(pvName, "/tmp/e2e-pv-error")
 				return pv.NewBuilder(obj).

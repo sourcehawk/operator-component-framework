@@ -40,7 +40,7 @@ func newBasePersistentVolume(name, hostPath string) *corev1.PersistentVolume {
 	}
 }
 
-var _ = Describe("pv Primitive", Label("pv"), func() {
+var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 	var (
 		ns   string
 		name string

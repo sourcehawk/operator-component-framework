@@ -15,6 +15,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -261,11 +262,11 @@ var _ = Describe("HPA Primitive", Label("hpa"), func() {
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Suspended"))
 
 			By("verifying the HPA is deleted")
-			Eventually(func() bool {
+			Eventually(func(g Gomega) {
 				var h autoscalingv2.HorizontalPodAutoscaler
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: "app-hpa-suspend", Namespace: ns}, &h)
-				return err != nil
-			}, framework.DefaultTimeout, framework.DefaultPolling).Should(BeTrue())
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected NotFound, got: %v", err)
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
 
 			By("un-suspending the ClusterTestApp")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())

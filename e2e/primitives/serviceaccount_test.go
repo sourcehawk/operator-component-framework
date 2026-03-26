@@ -26,7 +26,7 @@ func newBaseServiceAccount(namespace, name string) *corev1.ServiceAccount {
 	}
 }
 
-var _ = Describe("serviceaccount Primitive", Label("serviceaccount"), func() {
+var _ = Describe("ServiceAccount Primitive", Label("serviceaccount"), func() {
 	var (
 		ns   string
 		name string

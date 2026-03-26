@@ -182,7 +182,9 @@ resource category.
 
 #### Workload Handlers
 
-A workload resource requires convergence, grace, suspension status, and suspension mutation handlers:
+A workload resource typically provides convergence, grace, suspension status, and suspension mutation handlers. Which
+handlers you register is up to your builder — handlers left nil will cause the framework to return an error only if that
+lifecycle interface is actually exercised during reconciliation:
 
 ```go
 package gameserver
@@ -272,13 +274,26 @@ func DefaultDeleteOnSuspendHandler(_ *examplev1.GameServer) bool {
 
 #### Status Constants Reference
 
-| Category    | Status Type                      | Constants                                               |
-| ----------- | -------------------------------- | ------------------------------------------------------- |
-| Workload    | `concepts.AliveConvergingStatus` | `Healthy`, `Creating`, `Updating`, `Scaling`, `Failing` |
-| Workload    | `concepts.GraceStatus`           | `Healthy`, `Degraded`, `Down`                           |
-| Task        | `concepts.CompletionStatus`      | `Completed`, `Running`, `Pending`, `Failing`            |
-| Integration | `concepts.OperationalStatus`     | `Operational`, `Pending`, `Failing`                     |
-| All         | `concepts.SuspensionStatus`      | `Pending`, `Suspending`, `Suspended`                    |
+| Category    | Status Type                      | Constant Name                   | String Value        |
+| ----------- | -------------------------------- | ------------------------------- | ------------------- |
+| Workload    | `concepts.AliveConvergingStatus` | `AliveConvergingStatusHealthy`  | `Healthy`           |
+|             |                                  | `AliveConvergingStatusCreating` | `Creating`          |
+|             |                                  | `AliveConvergingStatusUpdating` | `Updating`          |
+|             |                                  | `AliveConvergingStatusScaling`  | `Scaling`           |
+|             |                                  | `AliveConvergingStatusFailing`  | `Failing`           |
+| Workload    | `concepts.GraceStatus`           | `GraceStatusHealthy`            | `Healthy`           |
+|             |                                  | `GraceStatusDegraded`           | `Degraded`          |
+|             |                                  | `GraceStatusDown`               | `Down`              |
+| Task        | `concepts.CompletionStatus`      | `CompletionStatusCompleted`     | `Completed`         |
+|             |                                  | `CompletionStatusRunning`       | `TaskRunning`       |
+|             |                                  | `CompletionStatusPending`       | `TaskPending`       |
+|             |                                  | `CompletionStatusFailing`       | `TaskFailing`       |
+| Integration | `concepts.OperationalStatus`     | `OperationalStatusOperational`  | `Operational`       |
+|             |                                  | `OperationalStatusPending`      | `OperationPending`  |
+|             |                                  | `OperationalStatusFailing`      | `OperationFailing`  |
+| All         | `concepts.SuspensionStatus`      | `SuspensionStatusPending`       | `PendingSuspension` |
+|             |                                  | `SuspensionStatusSuspending`    | `Suspending`        |
+|             |                                  | `SuspensionStatusSuspended`     | `Suspended`         |
 
 ### 4. Implement the Builder
 
@@ -386,8 +401,8 @@ func (b *Builder) Build() (*Resource, error) {
 
 #### Builder Pattern Guidelines
 
-- **Register defaults in the constructor.** Every required handler should have a default registered in `NewBuilder`.
-  Callers override only what they need.
+- **Register defaults in the constructor.** Every handler your resource intends to support should have a default
+  registered in `NewBuilder`. Callers override only what they need.
 - **Return `*Builder` from every method.** This enables the fluent chaining pattern used throughout the framework.
 - **Validate in `Build()`.** The generic builder's `Build()` validates that the object has a name, namespace (for
   namespaced resources), identity function, and mutator factory. Add any custom validation after calling the generic
@@ -459,7 +474,7 @@ func (r *Resource) ExtractData() error {
 
 Which methods to include depends on your resource category:
 
-| Category    | Required Methods                                                                                                                   |
+| Category    | Typical Methods                                                                                                                    |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData` |
 | Static      | `Identity`, `Object`, `Mutate`, `ExtractData`                                                                                      |

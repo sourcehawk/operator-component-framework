@@ -13,6 +13,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -80,8 +81,14 @@ var _ = Describe("job Primitive", Label("job"), func() {
 
 			By("verifying owner reference is set")
 			Expect(j.OwnerReferences).NotTo(BeEmpty())
-			Expect(j.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(j.OwnerReferences[0].Name).To(Equal(name))
+			foundOwnerRef := false
+			for _, oref := range j.OwnerReferences {
+				if oref.Kind == "ClusterTestApp" && oref.Name == name {
+					foundOwnerRef = true
+					break
+				}
+			}
+			Expect(foundOwnerRef).To(BeTrue(), "expected owner reference with kind %q and name %q", "ClusterTestApp", name)
 		})
 	})
 
@@ -93,11 +100,10 @@ var _ = Describe("job Primitive", Label("job"), func() {
 					WithMutation(job.Mutation{
 						Name: "add-env",
 						Mutate: func(m *job.Mutator) error {
-							m.EditContainers(selectors.AllContainers(), func(e *editors.ContainerEditor) error {
+							return m.EditContainers(selectors.AllContainers(), func(e *editors.ContainerEditor) error {
 								e.EnsureEnvVar(corev1.EnvVar{Name: "E2E_TEST", Value: "true"})
 								return nil
 							})
-							return nil
 						},
 					}).
 					Build()
@@ -113,14 +119,10 @@ var _ = Describe("job Primitive", Label("job"), func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "task-mutated", Namespace: ns}, &j)).To(Succeed())
 
 			envVars := j.Spec.Template.Spec.Containers[0].Env
-			var found bool
-			for _, ev := range envVars {
-				if ev.Name == "E2E_TEST" && ev.Value == "true" {
-					found = true
-					break
-				}
-			}
-			Expect(found).To(BeTrue(), "expected E2E_TEST env var on container")
+			Expect(envVars).To(
+				ContainElement(corev1.EnvVar{Name: "E2E_TEST", Value: "true"}),
+				"expected E2E_TEST env var on container",
+			)
 		})
 	})
 
@@ -189,6 +191,13 @@ var _ = Describe("job Primitive", Label("job"), func() {
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Suspended"))
 
+			By("verifying the Job is deleted")
+			Eventually(func() bool {
+				var j batchv1.Job
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "task-suspend", Namespace: ns}, &j)
+				return apierrors.IsNotFound(err)
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(BeTrue(), "expected Job to be deleted when suspended")
+
 			By("un-suspending the ClusterTestApp")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			app.Spec.Suspended = false
@@ -197,6 +206,10 @@ var _ = Describe("job Primitive", Label("job"), func() {
 			By("waiting for Healthy state again")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+
+			By("verifying the Job is recreated")
+			var recreated batchv1.Job
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "task-suspend", Namespace: ns}, &recreated)).To(Succeed())
 		})
 	})
 

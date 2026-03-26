@@ -164,9 +164,11 @@ kind-set-context: ## Set kubectl context to the E2E kind cluster.
 e2e: ginkgo ## Run E2E tests (requires active kind cluster).
 	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/...
 
+PRIMITIVE ?=
+
 .PHONY: e2e-primitives
-e2e-primitives: ginkgo ## Run primitive E2E tests only.
-	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/primitives/...
+e2e-primitives: ginkgo ## Run primitive E2E tests only. Use PRIMITIVE=<name> to filter.
+	$(GINKGO) -v --timeout 10m --tags e2e $(if $(PRIMITIVE),--focus "$(PRIMITIVE)") ./e2e/primitives/...
 
 .PHONY: e2e-component
 e2e-component: ginkgo ## Run component E2E tests only.

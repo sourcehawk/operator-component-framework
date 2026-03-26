@@ -24,10 +24,10 @@ import (
 )
 
 var (
-	ctx        context.Context
-	cancel     context.CancelFunc
-	k8sClient  client.Client
-	reconciler *framework.E2EReconciler
+	ctx               context.Context
+	cancel            context.CancelFunc
+	k8sClient         client.Client
+	clusterReconciler *framework.ClusterE2EReconciler
 )
 
 func TestE2EComponent(t *testing.T) {
@@ -59,19 +59,19 @@ var _ = BeforeSuite(func() {
 		Controller:              "e2e-component",
 		OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("e2e_component"),
 	}
-	reconciler = framework.NewE2EReconciler(
+	clusterReconciler = framework.NewClusterE2EReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		recorder,
 		metrics,
 	)
 
-	By("registering controller")
+	By("registering cluster-scoped controller")
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&framework.TestApp{}).
+		For(&framework.ClusterTestApp{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.ConfigMap{}).
-		Complete(reconciler)
+		Complete(clusterReconciler)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("starting manager")

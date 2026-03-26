@@ -27,24 +27,23 @@ func newBaseConfigMap(namespace, name string, data map[string]string) *corev1.Co
 
 var _ = Describe("ConfigMap Primitive", func() {
 	var (
-		ns  string
-		key types.NamespacedName
+		ns   string
+		name string
 	)
 
 	BeforeEach(func() {
 		ns = framework.CreateTestNamespace(ctx, k8sClient, "e2e-cm-")
+		name = ns
 	})
 
 	AfterEach(func() {
-		reconciler.Unregister(key)
+		clusterReconciler.Unregister(name)
+		framework.DeleteClusterTestApp(ctx, k8sClient, name)
 	})
 
 	Context("Creation", func() {
 		It("should create a ConfigMap and reach Healthy condition", func() {
-			name := "cm-create"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				cm := newBaseConfigMap(ns, "app-config", map[string]string{
 					"setting-a": "value-a",
 					"setting-b": "value-b",
@@ -52,9 +51,9 @@ var _ = Describe("ConfigMap Primitive", func() {
 				return configmap.NewBuilder(cm).Build()
 			})
 
-			framework.NewTestApp(ctx, k8sClient, ns, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying the ConfigMap exists with correct data")
@@ -65,17 +64,14 @@ var _ = Describe("ConfigMap Primitive", func() {
 
 			By("verifying owner reference is set")
 			Expect(cm.OwnerReferences).NotTo(BeEmpty())
-			Expect(cm.OwnerReferences[0].Kind).To(Equal("TestApp"))
+			Expect(cm.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
 			Expect(cm.OwnerReferences[0].Name).To(Equal(name))
 		})
 	})
 
 	Context("Mutations", func() {
 		It("should apply data mutations to the ConfigMap", func() {
-			name := "cm-mutate"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				cm := newBaseConfigMap(ns, "app-config-mutated", map[string]string{
 					"base-key": "base-value",
 				})
@@ -90,9 +86,9 @@ var _ = Describe("ConfigMap Primitive", func() {
 					Build()
 			})
 
-			framework.NewTestApp(ctx, k8sClient, ns, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying both base and mutated data are present")
@@ -105,12 +101,9 @@ var _ = Describe("ConfigMap Primitive", func() {
 
 	Context("Updates", func() {
 		It("should propagate data changes on re-reconciliation", func() {
-			name := "cm-update"
-			key = types.NamespacedName{Namespace: ns, Name: name}
-
 			var useUpdatedData bool
 
-			reconciler.RegisterResource(key, func(owner *framework.TestApp) (component.Resource, error) {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				data := map[string]string{"key": "original"}
 				if useUpdatedData {
 					data = map[string]string{"key": "updated", "new-key": "new-value"}
@@ -119,10 +112,10 @@ var _ = Describe("ConfigMap Primitive", func() {
 				return configmap.NewBuilder(cm).Build()
 			})
 
-			app := framework.NewTestApp(ctx, k8sClient, ns, name)
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for initial Healthy state")
-			Eventually(framework.GetCondition(ctx, k8sClient, key, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("verifying initial data")
@@ -132,7 +125,7 @@ var _ = Describe("ConfigMap Primitive", func() {
 
 			By("switching desired data and triggering reconciliation")
 			useUpdatedData = true
-			Expect(k8sClient.Get(ctx, key, app)).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
 			}

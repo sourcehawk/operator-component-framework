@@ -7,7 +7,6 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -91,12 +90,11 @@ func (r *ClusterE2EReconciler) Reconcile(ctx context.Context, req reconcile.Requ
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// ClusterTestApp is cluster-scoped so the key is just the name.
-	key := types.NamespacedName{Name: owner.Name}.String()
-
+	// ClusterTestApp is cluster-scoped so use the bare name as the key,
+	// matching the string callers pass to RegisterResource/RegisterComponent.
 	r.mu.RLock()
-	compFactory, hasComp := r.componentFactories[key]
-	resFactory, hasRes := r.resourceFactories[key]
+	compFactory, hasComp := r.componentFactories[owner.Name]
+	resFactory, hasRes := r.resourceFactories[owner.Name]
 	r.mu.RUnlock()
 
 	var comp *component.Component

@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -105,37 +106,45 @@ func InstallCRDs(cfg *rest.Config) error {
 	return nil
 }
 
-// InstallCRD applies the TestApp CRD definition and waits until it is established.
-func InstallCRD(cfg *rest.Config) error {
-	cs, err := apiextensionsclient.NewForConfig(cfg)
-	if err != nil {
-		return fmt.Errorf("creating apiextensions client: %w", err)
-	}
-	return installCRD(cs, TestAppCRD)
-}
-
 func installCRD(cs apiextensionsclient.Interface, crd *apiextensionsv1.CustomResourceDefinition) error {
 	ctx := context.Background()
-	existing, err := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
-		ctx, crd.Name, metav1.GetOptions{},
+
+	// Work on a copy so we never mutate the shared package-level CRD globals
+	// (e.g. TestAppCRD, ClusterTestAppCRD) which would cause data races when
+	// e2e packages run in parallel.
+	local := crd.DeepCopy()
+
+	_, err := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
+		ctx, local.Name, metav1.GetOptions{},
 	)
 	switch {
 	case apierrors.IsNotFound(err):
 		_, err = cs.ApiextensionsV1().CustomResourceDefinitions().Create(
-			ctx, crd, metav1.CreateOptions{},
+			ctx, local, metav1.CreateOptions{},
 		)
 		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return fmt.Errorf("creating CRD %s: %w", crd.Name, err)
+			return fmt.Errorf("creating CRD %s: %w", local.Name, err)
 		}
 	case err != nil:
-		return fmt.Errorf("getting CRD %s: %w", crd.Name, err)
+		return fmt.Errorf("getting CRD %s: %w", local.Name, err)
 	default:
-		crd.ResourceVersion = existing.ResourceVersion
-		_, err = cs.ApiextensionsV1().CustomResourceDefinitions().Update(
-			ctx, crd, metav1.UpdateOptions{},
-		)
+		// Use a retry-on-conflict loop so concurrent installers (parallel
+		// e2e suites) don't fail with a stale-ResourceVersion error.
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			latest, getErr := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
+				ctx, local.Name, metav1.GetOptions{},
+			)
+			if getErr != nil {
+				return getErr
+			}
+			local.ResourceVersion = latest.ResourceVersion
+			_, updateErr := cs.ApiextensionsV1().CustomResourceDefinitions().Update(
+				ctx, local, metav1.UpdateOptions{},
+			)
+			return updateErr
+		})
 		if err != nil {
-			return fmt.Errorf("updating CRD %s: %w", crd.Name, err)
+			return fmt.Errorf("updating CRD %s: %w", local.Name, err)
 		}
 	}
 
@@ -143,7 +152,7 @@ func installCRD(cs apiextensionsclient.Interface, crd *apiextensionsv1.CustomRes
 	return wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 30*time.Second, true,
 		func(ctx context.Context) (bool, error) {
 			fetched, err := cs.ApiextensionsV1().CustomResourceDefinitions().Get(
-				ctx, crd.Name, metav1.GetOptions{},
+				ctx, local.Name, metav1.GetOptions{},
 			)
 			if err != nil {
 				return false, err

@@ -17,12 +17,15 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
 	. "github.com/onsi/gomega"    //nolint:revive
@@ -39,6 +42,22 @@ var (
 func TestE2EPrimitives(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "E2E Primitives Suite")
+}
+
+// clusterResourceMapper maps a cluster-scoped resource back to the owning
+// namespace-scoped TestApp using labels. This enables the namespace-scoped
+// controller to receive reconcile events when cluster-scoped resources it
+// manages are created or changed.
+func clusterResourceMapper(_ context.Context, obj client.Object) []reconcile.Request {
+	labels := obj.GetLabels()
+	ns := labels["e2e.ocf.io/owner-namespace"]
+	name := labels["e2e.ocf.io/owner-name"]
+	if ns == "" || name == "" {
+		return nil
+	}
+	return []reconcile.Request{
+		{NamespacedName: types.NamespacedName{Namespace: ns, Name: name}},
+	}
 }
 
 var _ = BeforeSuite(func() {
@@ -78,9 +97,9 @@ var _ = BeforeSuite(func() {
 		metrics,
 	)
 
-	By("registering namespace-scoped controller")
+	By("registering cluster-scoped controller")
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&framework.TestApp{}).
+		For(&framework.ClusterTestApp{}).
 		// apps/v1
 		Owns(&appsv1.DaemonSet{}).
 		Owns(&appsv1.Deployment{}).
@@ -93,6 +112,7 @@ var _ = BeforeSuite(func() {
 		Owns(&batchv1.Job{}).
 		// core/v1
 		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.PersistentVolume{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Secret{}).
@@ -104,18 +124,20 @@ var _ = BeforeSuite(func() {
 		// policy/v1
 		Owns(&policyv1.PodDisruptionBudget{}).
 		// rbac/v1
-		Owns(&rbacv1.Role{}).
-		Owns(&rbacv1.RoleBinding{}).
-		Complete(reconciler)
-	Expect(err).NotTo(HaveOccurred())
-
-	By("registering cluster-scoped controller")
-	err = ctrl.NewControllerManagedBy(mgr).
-		For(&framework.ClusterTestApp{}).
-		Owns(&corev1.PersistentVolume{}).
 		Owns(&rbacv1.ClusterRole{}).
 		Owns(&rbacv1.ClusterRoleBinding{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Complete(clusterReconciler)
+	Expect(err).NotTo(HaveOccurred())
+
+	By("registering namespace-scoped controller for cross-scope tests")
+	err = ctrl.NewControllerManagedBy(mgr).
+		For(&framework.TestApp{}).
+		Watches(&rbacv1.ClusterRole{}, handler.EnqueueRequestsFromMapFunc(clusterResourceMapper)).
+		Watches(&rbacv1.ClusterRoleBinding{}, handler.EnqueueRequestsFromMapFunc(clusterResourceMapper)).
+		Watches(&corev1.PersistentVolume{}, handler.EnqueueRequestsFromMapFunc(clusterResourceMapper)).
+		Complete(reconciler)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("starting manager")

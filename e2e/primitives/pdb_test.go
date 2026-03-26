@@ -37,7 +37,7 @@ func newBasePDB(namespace, name string) *policyv1.PodDisruptionBudget {
 	}
 }
 
-var _ = Describe("pdb Primitive", Label("pdb"), func() {
+var _ = Describe("PodDisruptionBudget Primitive", Label("pdb"), func() {
 	var (
 		ns   string
 		name string

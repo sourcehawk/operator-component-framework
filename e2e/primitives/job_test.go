@@ -62,7 +62,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 	})
 
 	Context("Creation and Health", func() {
-		It("should create a Job and reach Completed condition", func() {
+		It("should create a Job and reach Healthy condition", func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBaseJob(ns, "task-create")
 				return job.NewBuilder(obj).Build()
@@ -144,7 +144,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			By("waiting for initial Completed state")
+			By("waiting for initial Healthy state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
@@ -180,7 +180,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			By("waiting for Completed state")
+			By("waiting for Healthy state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
@@ -205,7 +205,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 			app.Spec.Suspended = false
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
-			By("waiting for Completed state again")
+			By("waiting for Healthy state again")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 

@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -126,7 +127,7 @@ var _ = Describe("ClusterRole Primitive", Label("clusterrole"), func() {
 	Context("Updates", func() {
 		It("should propagate rule changes on re-reconciliation", func() {
 			crName := "e2e-cr-update-" + ns
-			var useUpdatedRules bool
+			var useUpdatedRules atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				rules := []rbacv1.PolicyRule{
@@ -136,7 +137,7 @@ var _ = Describe("ClusterRole Primitive", Label("clusterrole"), func() {
 						Verbs:     []string{"get"},
 					},
 				}
-				if useUpdatedRules {
+				if useUpdatedRules.Load() {
 					rules = []rbacv1.PolicyRule{
 						{
 							APIGroups: []string{""},
@@ -162,7 +163,7 @@ var _ = Describe("ClusterRole Primitive", Label("clusterrole"), func() {
 			Expect(cr.Rules[0].Verbs).To(ConsistOf("get"))
 
 			By("switching desired rules and triggering reconciliation")
-			useUpdatedRules = true
+			useUpdatedRules.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

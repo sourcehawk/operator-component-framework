@@ -40,7 +40,7 @@ func newBaseService(namespace, name string) *corev1.Service {
 	}
 }
 
-var _ = Describe("service Primitive", Label("service"), func() {
+var _ = Describe("Service Primitive", Label("service"), func() {
 	var (
 		ns   string
 		name string

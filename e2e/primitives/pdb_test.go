@@ -74,8 +74,14 @@ var _ = Describe("pdb Primitive", Label("pdb"), func() {
 
 			By("verifying owner reference is set")
 			Expect(p.OwnerReferences).NotTo(BeEmpty())
-			Expect(p.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(p.OwnerReferences[0].Name).To(Equal(name))
+			foundOwnerRef := false
+			for _, ref := range p.OwnerReferences {
+				if ref.Kind == "ClusterTestApp" && ref.Name == name {
+					foundOwnerRef = true
+					break
+				}
+			}
+			Expect(foundOwnerRef).To(BeTrue(), fmt.Sprintf("expected OwnerReferences to contain ClusterTestApp %s", name))
 		})
 	})
 
@@ -87,11 +93,13 @@ var _ = Describe("pdb Primitive", Label("pdb"), func() {
 					WithMutation(pdb.Mutation{
 						Name: "set-max-unavailable",
 						Mutate: func(m *pdb.Mutator) error {
-							m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
+							if err := m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 								e.ClearMinAvailable()
 								e.SetMaxUnavailable(intstr.FromString("25%"))
 								return nil
-							})
+							}); err != nil {
+								return fmt.Errorf("failed to edit PodDisruptionBudget spec: %w", err)
+							}
 							return nil
 						},
 					}).

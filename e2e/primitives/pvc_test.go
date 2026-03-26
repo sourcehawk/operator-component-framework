@@ -8,6 +8,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/pvc"
 
 	corev1 "k8s.io/api/core/v1"
@@ -124,18 +125,26 @@ var _ = Describe("PVC Primitive", Label("pvc"), func() {
 	})
 
 	Context("Updates", func() {
-		It("should propagate storage changes on re-reconciliation", func() {
-			var useUpdatedStorage bool
+		It("should propagate label changes on re-reconciliation", func() {
+			var useUpdatedLabels bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
-				storage := "1Gi"
-				if useUpdatedStorage {
-					storage = "5Gi"
+				obj := newBasePVC(ns, "app-data-update", "1Gi")
+				builder := pvc.NewBuilder(obj).
+					WithCustomOperationalStatus(immediateOperationalStatus)
+				if useUpdatedLabels {
+					builder = builder.WithMutation(pvc.Mutation{
+						Name: "update-labels",
+						Mutate: func(m *pvc.Mutator) error {
+							m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
+								e.EnsureLabel("e2e.ocf.io/version", "v2")
+								return nil
+							})
+							return nil
+						},
+					})
 				}
-				obj := newBasePVC(ns, "app-data-update", storage)
-				return pvc.NewBuilder(obj).
-					WithCustomOperationalStatus(immediateOperationalStatus).
-					Build()
+				return builder.Build()
 			})
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
@@ -144,26 +153,26 @@ var _ = Describe("PVC Primitive", Label("pvc"), func() {
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
-			By("verifying initial storage request")
+			By("verifying label is initially absent")
 			var claim corev1.PersistentVolumeClaim
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-data-update", Namespace: ns}, &claim)).To(Succeed())
-			Expect(claim.Spec.Resources.Requests[corev1.ResourceStorage]).To(Equal(resource.MustParse("1Gi")))
+			Expect(claim.Labels).NotTo(HaveKey("e2e.ocf.io/version"))
 
-			By("switching desired storage and triggering reconciliation")
-			useUpdatedStorage = true
+			By("switching desired labels and triggering reconciliation")
+			useUpdatedLabels = true
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
 			}
-			app.Annotations["e2e.ocf.io/trigger"] = "update-storage"
+			app.Annotations["e2e.ocf.io/trigger"] = "update-labels"
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
-			By("verifying updated storage request")
-			Eventually(func(g Gomega) resource.Quantity {
+			By("verifying updated label")
+			Eventually(func(g Gomega) string {
 				var updated corev1.PersistentVolumeClaim
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-data-update", Namespace: ns}, &updated)).To(Succeed())
-				return updated.Spec.Resources.Requests[corev1.ResourceStorage]
-			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Equal(resource.MustParse("5Gi")))
+				return updated.Labels["e2e.ocf.io/version"]
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Equal("v2"))
 		})
 	})
 

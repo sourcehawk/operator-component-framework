@@ -12,6 +12,6 @@ import "sigs.k8s.io/controller-runtime/pkg/client"
 //
 // Unlike workload, task, and integration resources, it does not support convergence
 // status, grace status, or suspension behavior.
-type StaticResource[T client.Object, M MutatorApplier] struct {
+type StaticResource[T client.Object, M FeatureMutator] struct {
 	BaseResource[T, M]
 }

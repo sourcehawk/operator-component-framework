@@ -17,7 +17,7 @@ import (
 //
 // Concrete integration packages are expected to wrap this type and provide kind-specific
 // identity and status logic.
-type IntegrationResource[T client.Object, M MutatorApplier] struct {
+type IntegrationResource[T client.Object, M FeatureMutator] struct {
 	BaseResource[T, M]
 
 	OperationalStatusHandler func(concepts.ConvergingOperation, T) (concepts.OperationalStatusWithReason, error)

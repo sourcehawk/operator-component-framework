@@ -11,7 +11,7 @@ import (
 //
 // It captures the common framework concepts while leaving kind-specific defaults and wrappers
 // to the concrete task packages.
-type TaskBuilder[T client.Object, M MutatorApplier] struct {
+type TaskBuilder[T client.Object, M FeatureMutator] struct {
 	BaseBuilder[T, M]
 	res *TaskResource[T, M]
 }
@@ -20,7 +20,7 @@ type TaskBuilder[T client.Object, M MutatorApplier] struct {
 //
 // The provided object is treated as the desired base state. The mutator factory is used to
 // construct the typed mutator during Mutate.
-func NewTaskBuilder[T client.Object, M MutatorApplier](
+func NewTaskBuilder[T client.Object, M FeatureMutator](
 	obj T,
 	identityFunc func(T) string,
 	newMutator func(T) M,

@@ -8,7 +8,7 @@ import (
 
 // IntegrationBuilder configures a generic internal integration resource for Kubernetes primitives
 // such as Services, Ingresses, and Gateways.
-type IntegrationBuilder[T client.Object, M MutatorApplier] struct {
+type IntegrationBuilder[T client.Object, M FeatureMutator] struct {
 	BaseBuilder[T, M]
 	res *IntegrationResource[T, M]
 }
@@ -17,7 +17,7 @@ type IntegrationBuilder[T client.Object, M MutatorApplier] struct {
 //
 // The provided object is treated as the desired base state. The mutator factory is used to
 // construct the typed mutator during Mutate.
-func NewIntegrationBuilder[T client.Object, M MutatorApplier](
+func NewIntegrationBuilder[T client.Object, M FeatureMutator](
 	obj T,
 	identityFunc func(T) string,
 	newMutator func(T) M,

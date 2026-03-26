@@ -7,14 +7,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// MutatorApplier is implemented by workload mutators that can apply their planned changes
+// MutatorApplier is implemented by mutators that can apply their planned changes
 // to the underlying Kubernetes object.
 type MutatorApplier interface {
 	Apply() error
 }
 
-// FeatureMutator is implemented by workload mutators that support feature-scoped mutation planning.
-// The interface is exported so that primitive mutators in external packages can satisfy it.
+// FeatureMutator is the required interface for mutators used with the generic resource types.
+// It extends MutatorApplier with NextFeature, which the framework calls between each registered
+// mutation to maintain per-feature ordering boundaries.
 type FeatureMutator interface {
 	MutatorApplier
 	NextFeature()
@@ -31,7 +32,7 @@ type FeatureMutator interface {
 //
 // Concrete workload packages are expected to wrap this type and provide kind-specific
 // identity and status logic.
-type WorkloadResource[T client.Object, M MutatorApplier] struct {
+type WorkloadResource[T client.Object, M FeatureMutator] struct {
 	BaseResource[T, M]
 
 	ConvergingStatusHandler func(concepts.ConvergingOperation, T) (concepts.AliveStatusWithReason, error)

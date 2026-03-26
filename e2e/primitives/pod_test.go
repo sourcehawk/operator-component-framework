@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
@@ -170,11 +171,11 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 
 	Context("Updates", func() {
 		It("should propagate image changes on re-reconciliation", func() {
-			var useUpdatedImage bool
+			var useUpdatedImage atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				image := "nginx:1.27"
-				if useUpdatedImage {
+				if useUpdatedImage.Load() {
 					image = "nginx:1.26"
 				}
 				p := newBasePod(ns, "web-update")
@@ -189,7 +190,7 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("switching the desired image and triggering reconciliation")
-			useUpdatedImage = true
+			useUpdatedImage.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
@@ -246,9 +247,13 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			By("waiting for the initial condition to be set")
-			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
-				ShouldNot(BeNil())
+			By("waiting for the Pod to be running before starting grace period")
+			Eventually(func(g Gomega) {
+				var podObj corev1.Pod
+				err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "web-degraded"}, &podObj)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(podObj.Status.Phase).To(Equal(corev1.PodRunning))
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
 
 			By("waiting for grace period to expire")
 			time.Sleep(gracePeriod + 2*time.Second)

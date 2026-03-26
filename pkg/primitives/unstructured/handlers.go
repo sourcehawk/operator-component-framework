@@ -16,7 +16,7 @@ func DefaultSuspendMutationHandler(_ *Mutator) error {
 func DefaultSuspensionStatusHandler(_ *uns.Unstructured) (concepts.SuspensionStatusWithReason, error) {
 	return concepts.SuspensionStatusWithReason{
 		Status: concepts.SuspensionStatusSuspended,
-		Reason: "no suspension status handler configured",
+		Reason: "default suspension status",
 	}, nil
 }
 
@@ -25,6 +25,6 @@ func DefaultSuspensionStatusHandler(_ *uns.Unstructured) (concepts.SuspensionSta
 func DefaultGraceStatusHandler(_ *uns.Unstructured) (concepts.GraceStatusWithReason, error) {
 	return concepts.GraceStatusWithReason{
 		Status: concepts.GraceStatusHealthy,
-		Reason: "no grace status handler configured",
+		Reason: "default grace status",
 	}, nil
 }

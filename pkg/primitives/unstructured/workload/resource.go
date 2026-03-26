@@ -14,15 +14,15 @@ import (
 // Resource is a high-level abstraction for managing a long-running unstructured
 // Kubernetes workload within a controller's reconciliation loop.
 //
-// It implements the following component interfaces:
+// It implements the following interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Alive: for health and readiness tracking.
-//   - component.Graceful: for health assessment during rollouts.
-//   - component.Suspendable: for graceful scale-down or temporary deactivation.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Alive: for health and readiness tracking.
+//   - concepts.Graceful: for health assessment during rollouts.
+//   - concepts.Suspendable: for graceful scale-down or temporary deactivation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
-// No default handlers are provided. All status handlers must be explicitly
-// registered via the Builder before calling Build().
+// The converging status handler is required; all other handlers default to
+// safe no-ops when omitted.
 type Resource struct {
 	base *generic.WorkloadResource[*uns.Unstructured, *unstruct.Mutator]
 }

@@ -75,7 +75,10 @@ func (e *UnstructuredContentEditor) SetNestedStringMap(value map[string]string, 
 // EnsureNestedStringMapEntry adds or updates a single entry in a nested
 // string map. If the map does not exist at the given path it is created.
 func (e *UnstructuredContentEditor) EnsureNestedStringMapEntry(key, value string, fields ...string) error {
-	existing, _, _ := unstructured.NestedStringMap(e.content, fields...)
+	existing, _, err := unstructured.NestedStringMap(e.content, fields...)
+	if err != nil {
+		return err
+	}
 	if existing == nil {
 		existing = make(map[string]string)
 	}

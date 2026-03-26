@@ -14,12 +14,12 @@ import (
 // Resource is a high-level abstraction for managing an unstructured Kubernetes
 // integration object within a controller's reconciliation loop.
 //
-// It implements the following component interfaces:
+// It implements the following interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for operational status tracking.
-//   - component.Graceful: for health assessment during grace periods.
-//   - component.Suspendable: for graceful deactivation.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Operational: for operational status tracking.
+//   - concepts.Graceful: for health assessment during grace periods.
+//   - concepts.Suspendable: for graceful deactivation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // The operational status handler is required. All other handlers default to
 // safe no-ops when omitted.

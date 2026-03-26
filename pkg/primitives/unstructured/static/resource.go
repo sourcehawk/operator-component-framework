@@ -13,9 +13,9 @@ import (
 // Resource is a high-level abstraction for managing a static unstructured
 // Kubernetes object within a controller's reconciliation loop.
 //
-// It implements the following component interfaces:
+// It implements the following interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // Static unstructured resources do not model convergence health, grace periods,
 // or suspension. Use the workload, integration, or task unstructured variants

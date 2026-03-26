@@ -14,9 +14,8 @@ import (
 // integration Resource.
 //
 // It provides a fluent API for registering mutations, status handlers, and
-// data extractors. Unlike typed integration primitives, no default handlers are
-// registered. The operational status handler is required; all other handlers
-// are optional and default to safe no-ops when omitted.
+// data extractors. The operational status handler is required; all other
+// handlers default to safe no-ops when omitted.
 type Builder struct {
 	base         *generic.IntegrationBuilder[*uns.Unstructured, *unstruct.Mutator]
 	clusterScope bool

@@ -5,18 +5,20 @@ definition available at compile time — Crossplane resources, external CRDs, or
 
 Four variants are provided, one per [lifecycle category](../primitives.md#primitive-categories):
 
-| Package                               | Category    | Lifecycle Interfaces                                        |
-| ------------------------------------- | ----------- | ----------------------------------------------------------- |
-| `primitives/unstructured/static`      | Static      | `DataExtractable`                                           |
-| `primitives/unstructured/workload`    | Workload    | `Alive`, `Graceful`, `Suspendable`, `DataExtractable`       |
-| `primitives/unstructured/integration` | Integration | `Operational`, `Graceful`, `Suspendable`, `DataExtractable` |
-| `primitives/unstructured/task`        | Task        | `Completable`, `Suspendable`, `DataExtractable`             |
+| Package                                   | Category    | Lifecycle Interfaces                                        |
+| ----------------------------------------- | ----------- | ----------------------------------------------------------- |
+| `pkg/primitives/unstructured/static`      | Static      | `DataExtractable`                                           |
+| `pkg/primitives/unstructured/workload`    | Workload    | `Alive`, `Graceful`, `Suspendable`, `DataExtractable`       |
+| `pkg/primitives/unstructured/integration` | Integration | `Operational`, `Graceful`, `Suspendable`, `DataExtractable` |
+| `pkg/primitives/unstructured/task`        | Task        | `Completable`, `Suspendable`, `DataExtractable`             |
 
-## No Default Handlers
+## No Semantic Defaults
 
-Because the framework cannot know the semantics of an unstructured object, **no default status or suspension handlers
-are provided**. Only the converging status handler is required at build time; all other handlers are optional and
-default to safe no-ops when omitted. Calling `Build()` without the required handler returns an error.
+Because the framework cannot know the semantics of an unstructured object, **no domain-specific status or suspension
+behavior is inferred**. The unstructured builders only configure generic safe defaults: grace status defaults to
+`Healthy`, suspension status to `Suspended`, and suspension mutations are no-ops. Only the converging or operational
+status handler is required at build time; all other handlers are optional and fall back to these safe defaults when
+omitted. Calling `Build()` without the required handler returns an error.
 
 ### Required Handlers per Variant
 
@@ -67,7 +69,7 @@ import (
 resource, err := workload.NewBuilder(obj).
     WithCustomConvergeStatus(func(op concepts.ConvergingOperation, o *uns.Unstructured) (concepts.AliveStatusWithReason, error) {
         // Inspect o.Object to determine health
-        ready, _, _ := unstructured.NestedBool(o.Object, "status", "ready")
+        ready, _, _ := uns.NestedBool(o.Object, "status", "ready")
         if ready {
             return concepts.AliveStatusWithReason{
                 Status: concepts.AliveConvergingStatusHealthy,
@@ -198,7 +200,7 @@ All four variants support data extraction. Extractors receive a value copy of th
 
 ```go
 builder.WithDataExtractor(func(obj uns.Unstructured) error {
-    ip, found, _ := unstructured.NestedString(obj.Object, "status", "atProvider", "ipAddress")
+    ip, found, _ := uns.NestedString(obj.Object, "status", "atProvider", "ipAddress")
     if found {
         myComponent.DatabaseIP = ip
     }
@@ -215,5 +217,5 @@ builder.WithDataExtractor(func(obj uns.Unstructured) error {
   handlers you provide are the only source of lifecycle semantics. Inspect `obj.Object` fields to determine status.
 - **Use typed primitives when possible.** Unstructured primitives trade compile-time safety for runtime flexibility.
   Prefer typed primitives for standard Kubernetes resources.
-- **Test your handlers.** Without default handlers as a safety net, handler correctness is entirely on the operator
-  author. Write table-driven tests covering all status transitions.
+- **Test your handlers.** Without domain-specific defaults as a safety net, handler correctness is entirely on the
+  operator author. Write table-driven tests covering all status transitions.

@@ -69,9 +69,9 @@ func (b *Builder) WithCustomOperationalStatus(
 // WithCustomGraceStatus overrides the default logic for assessing the health of
 // the CronJob when the component's grace period has expired.
 //
-// The default behavior uses DefaultGraceStatusHandler, which considers the
-// CronJob degraded until it has been scheduled at least once, and healthy
-// once LastScheduleTime is set.
+// The default behavior uses DefaultGraceStatusHandler, which always reports
+// Healthy. A CronJob is a passive scheduler — once it exists and is not
+// suspended, it is functioning correctly regardless of whether it has fired yet.
 //
 // If you want to augment the default behavior, you can call DefaultGraceStatusHandler
 // within your custom handler.

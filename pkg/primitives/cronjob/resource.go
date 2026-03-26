@@ -54,9 +54,9 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.O
 // GraceStatus reports the health of the CronJob after the component's grace period
 // has expired.
 //
-// By default, it uses DefaultGraceStatusHandler, which considers the CronJob
-// degraded until it has been scheduled at least once, and healthy once
-// LastScheduleTime is set.
+// By default, it uses DefaultGraceStatusHandler, which always reports Healthy.
+// A CronJob is a passive scheduler — once it exists and is not suspended, it is
+// functioning correctly regardless of whether it has fired yet.
 func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	return r.base.GraceStatus()
 }

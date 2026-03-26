@@ -13,14 +13,14 @@ import (
 // Resource is a high-level abstraction for managing an unstructured Kubernetes
 // task object within a controller's reconciliation loop.
 //
-// It implements the following component interfaces:
+// It implements the following interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Completable: for completion status tracking.
-//   - component.Suspendable: for graceful deactivation.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Completable: for completion status tracking.
+//   - concepts.Suspendable: for graceful deactivation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
-// No default handlers are provided. All status handlers must be explicitly
-// registered via the Builder before calling Build().
+// The converging status handler is required; all other handlers default to
+// safe no-ops when omitted.
 type Resource struct {
 	base *generic.TaskResource[*uns.Unstructured, *unstruct.Mutator]
 }

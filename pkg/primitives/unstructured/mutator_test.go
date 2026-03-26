@@ -158,10 +158,12 @@ func TestMutator_Apply_ErrorStopsExecution(t *testing.T) {
 		return assert.AnError
 	})
 
+	secondCalled := false
 	m.EditContent(func(_ *editors.UnstructuredContentEditor) error {
-		t.Fatal("should not be called after error")
+		secondCalled = true
 		return nil
 	})
 
 	assert.Error(t, m.Apply())
+	assert.False(t, secondCalled, "second edit should not be called after error")
 }

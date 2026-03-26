@@ -1,8 +1,6 @@
 package integration
 
 import (
-	"errors"
-
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
@@ -19,8 +17,6 @@ import (
 type Builder struct {
 	base         *generic.IntegrationBuilder[*uns.Unstructured, *unstruct.Mutator]
 	clusterScope bool
-
-	hasOperationalStatus bool
 }
 
 // NewBuilder initializes a new Builder with the provided unstructured object.
@@ -31,17 +27,13 @@ type Builder struct {
 func NewBuilder(obj *uns.Unstructured) *Builder {
 	placeholder := func(_ *uns.Unstructured) string { return "" }
 
-	base := generic.NewIntegrationBuilder[*uns.Unstructured, *unstruct.Mutator](
-		obj,
-		placeholder,
-		unstruct.NewMutator,
-	)
-
-	base.WithCustomGraceStatus(unstruct.DefaultGraceStatusHandler)
-	base.WithCustomSuspendMutation(unstruct.DefaultSuspendMutationHandler)
-	base.WithCustomSuspendStatus(unstruct.DefaultSuspensionStatusHandler)
-
-	return &Builder{base: base}
+	return &Builder{
+		base: generic.NewIntegrationBuilder[*uns.Unstructured, *unstruct.Mutator](
+			obj,
+			placeholder,
+			unstruct.NewMutator,
+		),
+	}
 }
 
 // MarkClusterScoped marks the resource as cluster-scoped.
@@ -62,7 +54,6 @@ func (b *Builder) WithMutation(m unstruct.Mutation) *Builder {
 func (b *Builder) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, *uns.Unstructured) (concepts.OperationalStatusWithReason, error),
 ) *Builder {
-	b.hasOperationalStatus = true
 	b.base.WithCustomOperationalStatus(handler)
 	return b
 }
@@ -118,20 +109,10 @@ func (b *Builder) WithDataExtractor(extractor func(uns.Unstructured) error) *Bui
 //
 // It returns an error if the operational status handler has not been set.
 func (b *Builder) Build() (*Resource, error) {
-	if err := b.validateHandlers(); err != nil {
-		return nil, err
-	}
 	b.base.BaseRes.IdentityFunc = unstruct.MakeIdentityFunc(b.clusterScope)
 	genericRes, err := b.base.Build()
 	if err != nil {
 		return nil, err
 	}
 	return &Resource{base: genericRes}, nil
-}
-
-func (b *Builder) validateHandlers() error {
-	if !b.hasOperationalStatus {
-		return errors.New("operational status handler is required")
-	}
-	return nil
 }

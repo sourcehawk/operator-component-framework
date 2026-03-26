@@ -22,7 +22,7 @@ func TestMakeIdentityFunc_Namespaced(t *testing.T) {
 	assert.Equal(t, "example.com/v1alpha1/Database/production/my-db", fn(obj))
 }
 
-func TestMakeIdentityFunc_Namespaced_DefaultNamespace(t *testing.T) {
+func TestMakeIdentityFunc_Namespaced_EmptyNamespace(t *testing.T) {
 	obj := &uns.Unstructured{}
 	obj.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   "example.com",
@@ -31,8 +31,10 @@ func TestMakeIdentityFunc_Namespaced_DefaultNamespace(t *testing.T) {
 	})
 	obj.SetName("test")
 
+	// Empty namespace is passed through as-is. In practice, ValidateBase
+	// rejects empty namespaces for non-cluster-scoped resources at build time.
 	fn := MakeIdentityFunc(false)
-	assert.Equal(t, "example.com/v1/Widget/default/test", fn(obj))
+	assert.Equal(t, "example.com/v1/Widget//test", fn(obj))
 }
 
 func TestMakeIdentityFunc_ClusterScoped(t *testing.T) {

@@ -28,6 +28,13 @@ type BaseBuilder[T client.Object, M FeatureMutator] struct {
 }
 
 // InitBase initializes the base resource configuration.
+//
+// Safe defaults are configured for suspension handlers so that custom resource
+// wrappers built on the generic layer do not need to set them explicitly:
+//   - SuspendMutationHandler: no-op (does nothing on suspend)
+//   - SuspendStatusHandler: reports Suspended immediately
+//
+// DeleteOnSuspend defaults to false via a nil-check in BaseResource.DeleteOnSuspend.
 func (b *BaseBuilder[T, M]) InitBase(
 	obj T,
 	identityFunc func(T) string,
@@ -37,6 +44,15 @@ func (b *BaseBuilder[T, M]) InitBase(
 		DesiredObject: obj,
 		IdentityFunc:  identityFunc,
 		NewMutator:    newMutator,
+		SuspendMutationHandler: func(_ M) error {
+			return nil
+		},
+		SuspendStatusHandler: func(_ T) (concepts.SuspensionStatusWithReason, error) {
+			return concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: "default suspension status",
+			}, nil
+		},
 	}
 }
 

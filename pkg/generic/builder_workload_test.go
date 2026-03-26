@@ -10,6 +10,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func workloadConvergeHandler(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
+	return concepts.AliveStatusWithReason{}, nil
+}
+
 func TestWorkloadBuilder(t *testing.T) {
 	obj := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -21,7 +25,8 @@ func TestWorkloadBuilder(t *testing.T) {
 	newMutator := func(d *appsv1.Deployment) *mockMutator { return &mockMutator{deployment: d} }
 
 	t.Run("successful build", func(t *testing.T) {
-		builder := NewWorkloadBuilder(obj, identityFunc, newMutator)
+		builder := NewWorkloadBuilder(obj, identityFunc, newMutator).
+			WithCustomConvergeStatus(workloadConvergeHandler)
 		res, err := builder.Build()
 		require.NoError(t, err)
 		assert.Equal(t, obj, res.DesiredObject)
@@ -35,16 +40,16 @@ func TestWorkloadBuilder(t *testing.T) {
 				return nil
 			},
 		}
-		builder := NewWorkloadBuilder(obj, identityFunc, newMutator).WithMutation(mut)
+		builder := NewWorkloadBuilder(obj, identityFunc, newMutator).
+			WithCustomConvergeStatus(workloadConvergeHandler).
+			WithMutation(mut)
 		res, _ := builder.Build()
 		assert.Len(t, res.Mutations, 1)
 	})
 
 	t.Run("with handlers", func(t *testing.T) {
 		builder := NewWorkloadBuilder(obj, identityFunc, newMutator).
-			WithCustomConvergeStatus(func(_ concepts.ConvergingOperation, _ *appsv1.Deployment) (concepts.AliveStatusWithReason, error) {
-				return concepts.AliveStatusWithReason{}, nil
-			}).
+			WithCustomConvergeStatus(workloadConvergeHandler).
 			WithCustomGraceStatus(func(_ *appsv1.Deployment) (concepts.GraceStatusWithReason, error) {
 				return concepts.GraceStatusWithReason{}, nil
 			}).
@@ -66,11 +71,28 @@ func TestWorkloadBuilder(t *testing.T) {
 		assert.NotNil(t, res.DeleteOnSuspendHandler, "DeleteOnSuspendHandler not set")
 	})
 
+	t.Run("defaults are set without explicit handlers", func(t *testing.T) {
+		builder := NewWorkloadBuilder(obj, identityFunc, newMutator).
+			WithCustomConvergeStatus(workloadConvergeHandler)
+		res, err := builder.Build()
+		require.NoError(t, err)
+		assert.NotNil(t, res.GraceStatusHandler, "GraceStatusHandler should have a default")
+		assert.NotNil(t, res.SuspendStatusHandler, "SuspendStatusHandler should have a default")
+		assert.NotNil(t, res.SuspendMutationHandler, "SuspendMutationHandler should have a default")
+	})
+
+	t.Run("build fails without converge status handler", func(t *testing.T) {
+		builder := NewWorkloadBuilder(obj, identityFunc, newMutator)
+		_, err := builder.Build()
+		assert.EqualError(t, err, "converging status handler is required")
+	})
+
 	t.Run("cluster-scoped build succeeds without namespace", func(t *testing.T) {
 		clusterObj := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-obj"},
 		}
-		builder := NewWorkloadBuilder(clusterObj, identityFunc, newMutator)
+		builder := NewWorkloadBuilder(clusterObj, identityFunc, newMutator).
+			WithCustomConvergeStatus(workloadConvergeHandler)
 		builder.MarkClusterScoped()
 		res, err := builder.Build()
 		require.NoError(t, err)

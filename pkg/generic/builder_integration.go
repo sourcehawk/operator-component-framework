@@ -2,6 +2,8 @@
 package generic
 
 import (
+	"errors"
+
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -27,6 +29,15 @@ func NewIntegrationBuilder[T client.Object, M FeatureMutator](
 		res: res,
 	}
 	b.InitBase(obj, identityFunc, newMutator)
+
+	// Default grace status: report Healthy.
+	b.res.GraceStatusHandler = func(_ T) (concepts.GraceStatusWithReason, error) {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusHealthy,
+			Reason: "default grace status",
+		}, nil
+	}
+
 	b.res.BaseResource = *b.BaseRes
 	return b
 }
@@ -88,10 +99,15 @@ func (b *IntegrationBuilder[T, M]) WithCustomSuspendDeletionDecision(
 }
 
 // Build validates the integration builder configuration and returns the initialized resource.
+//
+// It returns an error if the operational status handler has not been set.
 func (b *IntegrationBuilder[T, M]) Build() (*IntegrationResource[T, M], error) {
 	b.res.BaseResource = *b.BaseRes
 	if err := b.ValidateBase(); err != nil {
 		return nil, err
+	}
+	if b.res.OperationalStatusHandler == nil {
+		return nil, errors.New("operational status handler is required")
 	}
 	return b.res, nil
 }

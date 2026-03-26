@@ -13,6 +13,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/pod"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -73,8 +74,14 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 
 			By("verifying owner reference is set")
 			Expect(p.OwnerReferences).NotTo(BeEmpty())
-			Expect(p.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(p.OwnerReferences[0].Name).To(Equal(name))
+			var ownerRefFound bool
+			for _, or := range p.OwnerReferences {
+				if or.Kind == "ClusterTestApp" && or.Name == name {
+					ownerRefFound = true
+					break
+				}
+			}
+			Expect(ownerRefFound).To(BeTrue(), fmt.Sprintf("expected owner reference with Kind=ClusterTestApp and Name=%s", name))
 		})
 	})
 
@@ -142,7 +149,7 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 			By("verifying the Pod is deleted")
 			var p corev1.Pod
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: "web-suspend", Namespace: ns}, &p)
-			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsNotFound(err)).To(BeTrue(), "expected NotFound error but got: %v", err)
 
 			By("un-suspending the ClusterTestApp")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
@@ -263,7 +270,7 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 
 			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
 				p := newBasePod(ns, "web-down")
-				p.Spec.Containers[0].Image = "does-not-exist:e2e-test"
+				p.Spec.Containers[0].Image = "invalid.invalid/does-not-exist:e2e-test"
 
 				res, err := pod.NewBuilder(p).Build()
 				if err != nil {

@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
 	. "github.com/onsi/gomega"    //nolint:revive
@@ -55,7 +57,7 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 		// Explicitly clean up cluster-scoped PVs to avoid leaking test resources and relying on GC timing
 		for _, suffix := range []string{"create", "mutated", "update", "error"} {
 			pvObj := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: name + "-" + suffix}}
-			_ = k8sClient.Delete(ctx, pvObj) //nolint:errcheck
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, pvObj))).To(Succeed())
 		}
 	})
 
@@ -126,13 +128,13 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 	Context("Updates", func() {
 		It("should propagate spec changes on re-reconciliation", func() {
 			pvName := name + "-update"
-			var useUpdatedSpec bool
+			var useUpdatedSpec atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBasePersistentVolume(pvName, "/tmp/e2e-pv-update")
 				obj.Spec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimDelete
 				builder := pv.NewBuilder(obj)
-				if useUpdatedSpec {
+				if useUpdatedSpec.Load() {
 					builder = builder.WithMutation(pv.Mutation{
 						Name: "set-reclaim-retain",
 						Mutate: func(m *pv.Mutator) error {
@@ -166,7 +168,7 @@ var _ = Describe("pv Primitive", Label("pv"), func() {
 			Expect(pvObj.Spec.PersistentVolumeReclaimPolicy).To(Equal(corev1.PersistentVolumeReclaimDelete))
 
 			By("switching desired spec and triggering reconciliation")
-			useUpdatedSpec = true
+			useUpdatedSpec.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}

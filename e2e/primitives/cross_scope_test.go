@@ -19,7 +19,7 @@ import (
 	. "github.com/onsi/gomega"    //nolint:revive
 )
 
-var _ = Describe("Cross-Scope Resource Management", func() {
+var _ = Describe("Cross-Scope Resource Management", Label("cross-scope"), func() {
 	var (
 		ns      string
 		key     types.NamespacedName
@@ -36,7 +36,7 @@ var _ = Describe("Cross-Scope Resource Management", func() {
 		reconciler.Unregister(key)
 	})
 
-	Context("ClusterRole", func() {
+	Context("ClusterRole", Label("clusterrole"), func() {
 		var crName string
 
 		BeforeEach(func() {
@@ -85,7 +85,7 @@ var _ = Describe("Cross-Scope Resource Management", func() {
 		})
 	})
 
-	Context("ClusterRoleBinding", func() {
+	Context("ClusterRoleBinding", Label("clusterrolebinding"), func() {
 		var crbName string
 
 		BeforeEach(func() {
@@ -140,7 +140,7 @@ var _ = Describe("Cross-Scope Resource Management", func() {
 		})
 	})
 
-	Context("PersistentVolume", func() {
+	Context("PersistentVolume", Label("persistentvolume"), func() {
 		var pvName string
 
 		BeforeEach(func() {

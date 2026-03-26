@@ -49,7 +49,7 @@ func newBaseDeployment(namespace, name string, replicas int32) *appsv1.Deploymen
 	}
 }
 
-var _ = Describe("Deployment Primitive", func() {
+var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 	var (
 		ns   string
 		name string

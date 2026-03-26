@@ -149,8 +149,12 @@ KIND_CLUSTER_NAME ?= ocf-e2e
 KIND_IMAGE ?= kindest/node:v1.31.0
 
 .PHONY: kind-create
-kind-create: ## Create a kind cluster for E2E tests.
-	kind create cluster --name $(KIND_CLUSTER_NAME) --image $(KIND_IMAGE) --wait 60s
+kind-create: ## Create a kind cluster for E2E tests (skips if it already exists).
+	@if kind get clusters 2>/dev/null | grep -q '^$(KIND_CLUSTER_NAME)$$'; then \
+		echo "Kind cluster '$(KIND_CLUSTER_NAME)' already exists, skipping creation."; \
+	else \
+		kind create cluster --name $(KIND_CLUSTER_NAME) --image $(KIND_IMAGE) --wait 60s; \
+	fi
 
 .PHONY: kind-delete
 kind-delete: ## Delete the kind E2E cluster.
@@ -161,17 +165,17 @@ kind-set-context: ## Set kubectl context to the E2E kind cluster.
 	kubectl config use-context kind-$(KIND_CLUSTER_NAME)
 
 .PHONY: e2e
-e2e: ginkgo ## Run E2E tests (requires active kind cluster).
+e2e: ginkgo kind-create kind-set-context ## Run all E2E tests (creates kind cluster if needed).
 	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/...
 
 PRIMITIVE ?=
 
 .PHONY: e2e-primitives
-e2e-primitives: ginkgo ## Run primitive E2E tests only. Use PRIMITIVE=<name> to filter.
-	$(GINKGO) -v --timeout 10m --tags e2e $(if $(PRIMITIVE),--focus "$(PRIMITIVE)") ./e2e/primitives/...
+e2e-primitives: ginkgo kind-create kind-set-context ## Run primitive E2E tests only. Use PRIMITIVE=<name> to filter.
+	$(GINKGO) -v --timeout 10m --tags e2e $(if $(PRIMITIVE),--label-filter "$(PRIMITIVE)") ./e2e/primitives/...
 
 .PHONY: e2e-component
-e2e-component: ginkgo ## Run component E2E tests only.
+e2e-component: ginkgo kind-create kind-set-context ## Run component E2E tests only.
 	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/component/...
 
 .PHONY: e2e-full

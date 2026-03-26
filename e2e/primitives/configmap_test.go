@@ -25,7 +25,7 @@ func newBaseConfigMap(namespace, name string, data map[string]string) *corev1.Co
 	}
 }
 
-var _ = Describe("ConfigMap Primitive", func() {
+var _ = Describe("ConfigMap Primitive", Label("configmap"), func() {
 	var (
 		ns   string
 		name string

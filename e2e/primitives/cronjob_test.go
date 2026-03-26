@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
@@ -14,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
 	. "github.com/onsi/gomega"    //nolint:revive
@@ -27,6 +29,7 @@ func newBaseCronJob(namespace, name string) *batchv1.CronJob {
 		},
 		Spec: batchv1.CronJobSpec{
 			Schedule: "* * * * *",
+			Suspend:  ptr.To(true),
 			JobTemplate: batchv1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
 					Template: corev1.PodTemplateSpec{
@@ -95,8 +98,14 @@ var _ = Describe("CronJob Primitive", Label("cronjob"), func() {
 
 			By("verifying owner reference is set")
 			Expect(cj.OwnerReferences).NotTo(BeEmpty())
-			Expect(cj.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(cj.OwnerReferences[0].Name).To(Equal(name))
+			foundOwnerRef := false
+			for _, ref := range cj.OwnerReferences {
+				if ref.Kind == "ClusterTestApp" && ref.Name == name {
+					foundOwnerRef = true
+					break
+				}
+			}
+			Expect(foundOwnerRef).To(BeTrue(), fmt.Sprintf("expected owner reference with Kind=%q and Name=%q", "ClusterTestApp", name))
 		})
 	})
 
@@ -139,11 +148,11 @@ var _ = Describe("CronJob Primitive", Label("cronjob"), func() {
 
 	Context("Updates", func() {
 		It("should propagate schedule changes on re-reconciliation", func() {
-			var useUpdatedSchedule bool
+			var useUpdatedSchedule atomic.Bool
 
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				cj := newBaseCronJob(ns, "cron-update")
-				if useUpdatedSchedule {
+				if useUpdatedSchedule.Load() {
 					cj.Spec.Schedule = "*/5 * * * *"
 				}
 				return cronjob.NewBuilder(cj).
@@ -163,7 +172,7 @@ var _ = Describe("CronJob Primitive", Label("cronjob"), func() {
 			Expect(cj.Spec.Schedule).To(Equal("* * * * *"))
 
 			By("switching the desired schedule and triggering reconciliation")
-			useUpdatedSchedule = true
+			useUpdatedSchedule.Store(true)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
 			if app.Annotations == nil {
 				app.Annotations = map[string]string{}
@@ -184,6 +193,7 @@ var _ = Describe("CronJob Primitive", Label("cronjob"), func() {
 		It("should suspend the CronJob when owner is suspended and resume when un-suspended", func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				cj := newBaseCronJob(ns, "cron-suspend")
+				cj.Spec.Suspend = ptr.To(false) // override base suspend so we can test suspension transitions
 				return cronjob.NewBuilder(cj).
 					WithCustomOperationalStatus(immediatelyOperational).
 					Build()

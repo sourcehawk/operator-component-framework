@@ -62,7 +62,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 	})
 
 	Context("Creation and Health", func() {
-		It("should create a Job and reach Healthy condition", func() {
+		It("should create a Job and reach Completed condition", func() {
 			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
 				obj := newBaseJob(ns, "task-create")
 				return job.NewBuilder(obj).Build()
@@ -71,7 +71,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
-				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Completed"))
 
 			By("verifying the Job exists with correct spec")
 			var j batchv1.Job
@@ -113,7 +113,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
-				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Completed"))
 
 			By("verifying the env var is present on the Job")
 			var j batchv1.Job
@@ -143,9 +143,9 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			By("waiting for initial Healthy state")
+			By("waiting for initial Completed state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
-				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Completed"))
 
 			By("verifying initial labels")
 			var j batchv1.Job
@@ -179,9 +179,9 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
-			By("waiting for Healthy state")
+			By("waiting for Completed state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
-				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Completed"))
 
 			By("suspending the ClusterTestApp")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
@@ -204,9 +204,9 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 			app.Spec.Suspended = false
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
-			By("waiting for Healthy state again")
+			By("waiting for Completed state again")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
-				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Completed"))
 
 			By("verifying the Job is recreated")
 			var recreated batchv1.Job

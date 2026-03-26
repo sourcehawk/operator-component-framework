@@ -50,7 +50,7 @@ func immediateOperationalStatus(
 	}, nil
 }
 
-var _ = Describe("pvc Primitive", Label("pvc"), func() {
+var _ = Describe("PVC Primitive", Label("pvc"), func() {
 	var (
 		ns   string
 		name string

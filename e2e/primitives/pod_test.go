@@ -247,6 +247,10 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 
 			app := framework.NewClusterTestApp(ctx, k8sClient, name)
 
+			By("waiting for component condition to be created")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				ShouldNot(BeNil())
+
 			By("waiting for the Pod to be running before starting grace period")
 			Eventually(func(g Gomega) {
 				var podObj corev1.Pod

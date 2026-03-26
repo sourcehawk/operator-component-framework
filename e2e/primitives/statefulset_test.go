@@ -69,7 +69,7 @@ func newHeadlessService(namespace, name string) *corev1.Service {
 	}
 }
 
-var _ = Describe("statefulset Primitive", Label("statefulset"), func() {
+var _ = Describe("StatefulSet Primitive", Label("statefulset"), func() {
 	var (
 		ns   string
 		name string

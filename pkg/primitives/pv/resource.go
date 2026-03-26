@@ -12,9 +12,9 @@ import (
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for tracking whether the PV is operationally ready.
-//   - component.Graceful: for assessing health after the grace period expires.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Operational: for tracking whether the PV is operationally ready.
+//   - concepts.Graceful: for assessing health after the grace period expires.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*corev1.PersistentVolume, *Mutator]
 }

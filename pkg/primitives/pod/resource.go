@@ -12,9 +12,9 @@ import (
 //
 // It implements several component interfaces to integrate with the operator-component-framework:
 //   - component.Resource: for basic identity and mutation behavior.
-//   - component.Alive: for health and readiness tracking.
-//   - component.Suspendable: for deletion-based deactivation.
-//   - component.DataExtractable: for exporting information after successful reconciliation.
+//   - concepts.Alive: for health and readiness tracking.
+//   - concepts.Suspendable: for deletion-based deactivation.
+//   - concepts.DataExtractable: for exporting information after successful reconciliation.
 //
 // This resource handles the lifecycle of a Pod, including initial creation,
 // updates via feature mutations, and status monitoring.

@@ -12,11 +12,11 @@ import (
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for reporting operational status based on HPA conditions.
-//   - component.Graceful: for reporting health after the allowed grace period has expired.
-//   - component.Suspendable: for default delete-on-suspend behaviour that removes the HPA to
+//   - concepts.Operational: for reporting operational status based on HPA conditions.
+//   - concepts.Graceful: for reporting health after the allowed grace period has expired.
+//   - concepts.Suspendable: for default delete-on-suspend behaviour that removes the HPA to
 //     prevent it from scaling the target back up during suspension.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]
 }

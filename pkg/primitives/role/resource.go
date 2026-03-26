@@ -12,7 +12,7 @@ import (
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // Role resources are static: they do not model convergence health, grace periods,
 // or suspension. Use a workload or task primitive for resources that require those concepts.

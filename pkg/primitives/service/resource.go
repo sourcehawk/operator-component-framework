@@ -52,9 +52,10 @@ func normalizeProtocol(p corev1.Protocol) corev1.Protocol {
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-//   - component.Operational: for tracking whether the Service is operational.
-//   - component.Suspendable: for participating in the component suspension lifecycle.
-//   - component.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.Operational: for tracking whether the Service is operational.
+//   - concepts.Graceful: for health assessment after the component's grace period expires.
+//   - concepts.Suspendable: for participating in the component suspension lifecycle.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*corev1.Service, *Mutator]
 }

@@ -13,10 +13,10 @@ import (
 //
 // It implements several component interfaces to integrate with the operator-component-framework:
 //   - component.Resource: for basic identity and mutation behavior.
-//   - component.Operational: for operational status tracking.
-//   - component.Graceful: for health assessment after grace period expiry.
-//   - component.Suspendable: for controlled suspension via spec.suspend.
-//   - component.DataExtractable: for exporting information after successful reconciliation.
+//   - concepts.Operational: for operational status tracking.
+//   - concepts.Graceful: for health assessment after grace period expiry.
+//   - concepts.Suspendable: for controlled suspension via spec.suspend.
+//   - concepts.DataExtractable: for exporting information after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*batchv1.CronJob, *Mutator]
 }

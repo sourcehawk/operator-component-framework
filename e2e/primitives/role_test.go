@@ -28,7 +28,7 @@ func newBaseRole(namespace, name string, rules []rbacv1.PolicyRule) *rbacv1.Role
 	}
 }
 
-var _ = Describe("role Primitive", Label("role"), func() {
+var _ = Describe("Role Primitive", Label("role"), func() {
 	var (
 		ns   string
 		name string
@@ -175,9 +175,7 @@ var _ = Describe("role Primitive", Label("role"), func() {
 				var updated rbacv1.Role
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-role-update", Namespace: ns}, &updated)).To(Succeed())
 				return updated.Rules
-			}, framework.DefaultTimeout, framework.DefaultPolling).Should(And(
-				HaveLen(2),
-			))
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(HaveLen(2))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-role-update", Namespace: ns}, &r)).To(Succeed())
 			Expect(r.Rules[0].Verbs).To(Equal([]string{"get", "list", "watch"}))

@@ -101,10 +101,11 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 					WithMutation(job.Mutation{
 						Name: "add-env",
 						Mutate: func(m *job.Mutator) error {
-							return m.EditContainers(selectors.AllContainers(), func(e *editors.ContainerEditor) error {
+							m.EditContainers(selectors.AllContainers(), func(e *editors.ContainerEditor) error {
 								e.EnsureEnvVar(corev1.EnvVar{Name: "E2E_TEST", Value: "true"})
 								return nil
 							})
+							return nil
 						},
 					}).
 					Build()

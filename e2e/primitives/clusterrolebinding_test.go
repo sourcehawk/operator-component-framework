@@ -39,7 +39,7 @@ func newBaseClusterRoleBinding(name, roleRefName, saName, saNamespace string) *r
 	}
 }
 
-var _ = Describe("clusterrolebinding Primitive", Label("clusterrolebinding"), func() {
+var _ = Describe("ClusterRoleBinding Primitive", Label("clusterrolebinding"), func() {
 	var (
 		ns   string
 		name string

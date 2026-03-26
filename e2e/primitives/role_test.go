@@ -71,9 +71,10 @@ var _ = Describe("Role Primitive", Label("role"), func() {
 			Expect(r.Rules[0].Verbs).To(Equal([]string{"get", "list"}))
 
 			By("verifying owner reference is set")
-			Expect(r.OwnerReferences).NotTo(BeEmpty())
-			Expect(r.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(r.OwnerReferences[0].Name).To(Equal(name))
+			controllerRef := metav1.GetControllerOf(&r)
+			Expect(controllerRef).NotTo(BeNil())
+			Expect(controllerRef.Kind).To(Equal("ClusterTestApp"))
+			Expect(controllerRef.Name).To(Equal(name))
 		})
 	})
 
@@ -114,8 +115,15 @@ var _ = Describe("Role Primitive", Label("role"), func() {
 			var r rbacv1.Role
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-role-mutated", Namespace: ns}, &r)).To(Succeed())
 			Expect(r.Rules).To(HaveLen(2))
-			Expect(r.Rules[0].Resources).To(Equal([]string{"configmaps"}))
-			Expect(r.Rules[1].Resources).To(Equal([]string{"secrets"}))
+
+			var resources [][]string
+			for _, rule := range r.Rules {
+				resources = append(resources, rule.Resources)
+			}
+			Expect(resources).To(ConsistOf(
+				Equal([]string{"configmaps"}),
+				Equal([]string{"secrets"}),
+			))
 		})
 	})
 
@@ -171,15 +179,23 @@ var _ = Describe("Role Primitive", Label("role"), func() {
 			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("verifying updated rules")
-			Eventually(func(g Gomega) []rbacv1.PolicyRule {
+			Eventually(func(g Gomega) {
 				var updated rbacv1.Role
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-role-update", Namespace: ns}, &updated)).To(Succeed())
-				return updated.Rules
-			}, framework.DefaultTimeout, framework.DefaultPolling).Should(HaveLen(2))
+				g.Expect(updated.Rules).To(HaveLen(2))
 
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-role-update", Namespace: ns}, &r)).To(Succeed())
-			Expect(r.Rules[0].Verbs).To(Equal([]string{"get", "list", "watch"}))
-			Expect(r.Rules[1].Resources).To(Equal([]string{"deployments"}))
+				var resources [][]string
+				var verbs [][]string
+				for _, rule := range updated.Rules {
+					resources = append(resources, rule.Resources)
+					verbs = append(verbs, rule.Verbs)
+				}
+				g.Expect(resources).To(ConsistOf(
+					Equal([]string{"pods"}),
+					Equal([]string{"deployments"}),
+				))
+				g.Expect(verbs).To(ContainElement(ConsistOf("get", "list", "watch")))
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
 		})
 	})
 

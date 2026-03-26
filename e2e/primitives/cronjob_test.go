@@ -97,15 +97,7 @@ var _ = Describe("CronJob Primitive", Label("cronjob"), func() {
 			Expect(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Image).To(Equal("busybox:1.36"))
 
 			By("verifying owner reference is set")
-			Expect(cj.OwnerReferences).NotTo(BeEmpty())
-			foundOwnerRef := false
-			for _, ref := range cj.OwnerReferences {
-				if ref.Kind == "ClusterTestApp" && ref.Name == name {
-					foundOwnerRef = true
-					break
-				}
-			}
-			Expect(foundOwnerRef).To(BeTrue(), fmt.Sprintf("expected owner reference with Kind=%q and Name=%q", "ClusterTestApp", name))
+			expectOwnerReference(cj.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

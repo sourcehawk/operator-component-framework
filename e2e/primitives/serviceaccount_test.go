@@ -59,9 +59,7 @@ var _ = Describe("ServiceAccount Primitive", Label("serviceaccount"), func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-sa", Namespace: ns}, &sa)).To(Succeed())
 
 			By("verifying owner reference is set")
-			Expect(sa.OwnerReferences).NotTo(BeEmpty())
-			Expect(sa.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(sa.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(sa.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

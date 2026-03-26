@@ -73,15 +73,7 @@ var _ = Describe("PodDisruptionBudget Primitive", Label("pdb"), func() {
 			Expect(p.Spec.Selector.MatchLabels).To(HaveKeyWithValue("app", "app-pdb"))
 
 			By("verifying owner reference is set")
-			Expect(p.OwnerReferences).NotTo(BeEmpty())
-			foundOwnerRef := false
-			for _, ref := range p.OwnerReferences {
-				if ref.Kind == "ClusterTestApp" && ref.Name == name {
-					foundOwnerRef = true
-					break
-				}
-			}
-			Expect(foundOwnerRef).To(BeTrue(), fmt.Sprintf("expected OwnerReferences to contain ClusterTestApp %s", name))
+			expectOwnerReference(p.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

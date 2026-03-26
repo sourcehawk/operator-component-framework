@@ -84,9 +84,7 @@ var _ = Describe("ReplicaSet Primitive", Label("replicaset"), func() {
 			Expect(rs.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.27"))
 
 			By("verifying owner reference is set")
-			Expect(rs.OwnerReferences).NotTo(BeEmpty())
-			Expect(rs.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(rs.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(rs.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

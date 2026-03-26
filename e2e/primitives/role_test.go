@@ -72,10 +72,7 @@ var _ = Describe("Role Primitive", Label("role"), func() {
 			Expect(r.Rules[0].Verbs).To(Equal([]string{"get", "list"}))
 
 			By("verifying owner reference is set")
-			controllerRef := metav1.GetControllerOf(&r)
-			Expect(controllerRef).NotTo(BeNil())
-			Expect(controllerRef.Kind).To(Equal("ClusterTestApp"))
-			Expect(controllerRef.Name).To(Equal(name))
+			expectOwnerReference(r.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

@@ -70,9 +70,7 @@ var _ = Describe("NetworkPolicy Primitive", Label("networkpolicy"), func() {
 			Expect(np.Spec.Ingress).To(HaveLen(1))
 
 			By("verifying owner reference is set")
-			Expect(np.OwnerReferences).NotTo(BeEmpty())
-			Expect(np.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(np.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(np.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

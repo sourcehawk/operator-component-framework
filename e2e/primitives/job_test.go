@@ -81,15 +81,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 			Expect(j.Spec.Template.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyNever))
 
 			By("verifying owner reference is set")
-			Expect(j.OwnerReferences).NotTo(BeEmpty())
-			foundOwnerRef := false
-			for _, oref := range j.OwnerReferences {
-				if oref.Kind == "ClusterTestApp" && oref.Name == name {
-					foundOwnerRef = true
-					break
-				}
-			}
-			Expect(foundOwnerRef).To(BeTrue(), "expected owner reference with kind %q and name %q", "ClusterTestApp", name)
+			expectOwnerReference(j.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

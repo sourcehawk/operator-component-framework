@@ -78,9 +78,7 @@ var _ = Describe("rolebinding Primitive", Label("rolebinding"), func() {
 			Expect(rb.Subjects[0].Name).To(Equal("default"))
 
 			By("verifying owner reference is set")
-			Expect(rb.OwnerReferences).NotTo(BeEmpty())
-			Expect(rb.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(rb.OwnerReferences[0].Name).To(Equal(name))
+			expectOwnerReference(rb.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

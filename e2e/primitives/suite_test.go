@@ -17,6 +17,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -152,6 +153,20 @@ var _ = BeforeSuite(func() {
 
 	k8sClient = mgr.GetClient()
 })
+
+// expectOwnerReference asserts that the given object has an OwnerReference
+// with the specified kind and name.
+func expectOwnerReference(obj metav1.ObjectMeta, kind, name string) {
+	ExpectWithOffset(1, obj.OwnerReferences).NotTo(BeEmpty())
+	found := false
+	for _, ref := range obj.OwnerReferences {
+		if ref.Kind == kind && ref.Name == name {
+			found = true
+			break
+		}
+	}
+	ExpectWithOffset(1, found).To(BeTrue(), "expected owner reference with Kind=%q and Name=%q", kind, name)
+}
 
 var _ = AfterSuite(func() {
 	if cancel != nil {

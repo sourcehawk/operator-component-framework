@@ -90,15 +90,7 @@ var _ = Describe("PVC Primitive", Label("pvc"), func() {
 			Expect(storageReq.String()).To(Equal("1Gi"))
 
 			By("verifying owner reference is set")
-			Expect(claim.OwnerReferences).NotTo(BeEmpty())
-			foundOwnerRef := false
-			for _, ref := range claim.OwnerReferences {
-				if ref.Kind == "ClusterTestApp" && ref.Name == name {
-					foundOwnerRef = true
-					break
-				}
-			}
-			Expect(foundOwnerRef).To(BeTrue(), "expected PVC to have ClusterTestApp owner reference for %s", name)
+			expectOwnerReference(claim.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

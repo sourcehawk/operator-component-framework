@@ -81,10 +81,8 @@ var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 			Expect(pvObj.Spec.AccessModes).To(ContainElement(corev1.ReadWriteOnce))
 			Expect(pvObj.Spec.HostPath.Path).To(Equal("/tmp/e2e-pv-create"))
 
-			By("verifying owner reference is set with Kind ClusterTestApp")
-			Expect(pvObj.OwnerReferences).NotTo(BeEmpty())
-			Expect(pvObj.OwnerReferences[0].Kind).To(Equal("ClusterTestApp"))
-			Expect(pvObj.OwnerReferences[0].Name).To(Equal(name))
+			By("verifying owner reference is set")
+			expectOwnerReference(pvObj.ObjectMeta, "ClusterTestApp", name)
 		})
 	})
 

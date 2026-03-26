@@ -84,7 +84,7 @@ var _ = Describe("Service Primitive", Label("service"), func() {
 					break
 				}
 			}
-			Expect(foundOwnerRef).To(BeTrue(), "expected Service to have owner reference with Kind %q and Name %q", "ClusterTestApp", name)
+			Expect(foundOwnerRef).To(BeTrue(), fmt.Sprintf("expected Service to have owner reference with Kind %q and Name %q", "ClusterTestApp", name))
 		})
 	})
 
@@ -168,7 +168,9 @@ var _ = Describe("Service Primitive", Label("service"), func() {
 			Eventually(func(g Gomega) {
 				var updated corev1.Service
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "app-svc-update", Namespace: ns}, &updated)).To(Succeed())
+				g.Expect(updated.Spec.Ports).To(HaveLen(1))
 				g.Expect(updated.Spec.Ports).To(ContainElement(HaveField("Port", Equal(int32(443)))))
+				g.Expect(updated.Spec.Ports).To(Not(ContainElement(HaveField("Port", Equal(int32(80))))))
 			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
 		})
 	})

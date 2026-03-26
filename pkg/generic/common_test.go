@@ -24,6 +24,8 @@ func (m *mockMutator) Apply() error {
 	return nil
 }
 
+func (m *mockMutator) NextFeature() {}
+
 // alwaysEnabled is a MutationFeature that always reports enabled.
 type alwaysEnabled struct{}
 
@@ -42,7 +44,7 @@ type genericBuilder[T any] interface {
 	Build() (T, error)
 }
 
-func runBuilderValidationTests[T any, O client.Object, M MutatorApplier](
+func runBuilderValidationTests[T any, O client.Object, M FeatureMutator](
 	t *testing.T,
 	obj O,
 	identityFunc func(O) string,

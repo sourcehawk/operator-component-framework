@@ -3,8 +3,8 @@ package configmap
 import (
 	"fmt"
 
-	"github.com/sourcehawk/operator-component-framework/internal/generic"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	corev1 "k8s.io/api/core/v1"
 )
 

@@ -8,7 +8,7 @@ import (
 )
 
 // BaseResource provides shared behavior for all generic internal resource implementations.
-type BaseResource[T client.Object, M MutatorApplier] struct {
+type BaseResource[T client.Object, M FeatureMutator] struct {
 	DesiredObject T
 
 	IdentityFunc func(T) string

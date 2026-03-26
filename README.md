@@ -204,16 +204,18 @@ type Resource interface {
 ```
 
 Optionally implement any of the lifecycle interfaces (`Alive`, `Suspendable`, etc.) to participate in condition
-aggregation.
+aggregation. The framework provides generic building blocks in `pkg/generic` that handle reconciliation mechanics,
+mutation sequencing, and suspension — so you can wrap any custom CRD without reimplementing these from scratch.
 
-See the [examples directory](examples/) for complete implementations.
+See the [Custom Resource Implementation Guide](docs/custom-resource.md) for a complete walkthrough.
 
 ## Documentation
 
-| Document                                  | Description                                                          |
-| ----------------------------------------- | -------------------------------------------------------------------- |
-| [Component Framework](docs/component.md)  | Reconciliation lifecycle, condition model, grace periods, suspension |
-| [Resource Primitives](docs/primitives.md) | Primitive categories, Server-Side Apply, mutation system             |
+| Document                                    | Description                                                             |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| [Component Framework](docs/component.md)    | Reconciliation lifecycle, condition model, grace periods, suspension    |
+| [Resource Primitives](docs/primitives.md)   | Primitive categories, Server-Side Apply, mutation system                |
+| [Custom Resources](docs/custom-resource.md) | Implementing custom resource wrappers using the generic building blocks |
 
 ## Project Structure
 
@@ -221,6 +223,7 @@ See the [examples directory](examples/) for complete implementations.
 pkg/
 ├── component/          # Component framework: builder, reconciliation, conditions
 │   └── concepts/       # Lifecycle interface definitions (Alive, Suspendable, …)
+├── generic/            # Generic resource types, builders, and mutation helpers
 ├── primitives/
 │   └── deployment/     # Deployment primitive: builder, mutator, editors
 ├── feature/            # Feature and version-constraint types
@@ -230,12 +233,12 @@ pkg/
 └── recording/          # Event recording helpers
 
 examples/
-├── deployment-primitive/
-└── custom-resource-implementation/
+└── deployment-primitive/
 
 docs/
 ├── component.md
 ├── primitives.md
+├── custom-resource.md
 └── primitives/deployment.md
 ```
 

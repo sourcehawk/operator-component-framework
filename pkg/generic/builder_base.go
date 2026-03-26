@@ -22,7 +22,7 @@ func isNil(i any) bool {
 }
 
 // BaseBuilder provides shared behavior for all generic internal resource builders.
-type BaseBuilder[T client.Object, M MutatorApplier] struct {
+type BaseBuilder[T client.Object, M FeatureMutator] struct {
 	BaseRes      *BaseResource[T, M]
 	clusterScope bool
 }

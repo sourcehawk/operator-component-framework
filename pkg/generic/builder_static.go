@@ -8,7 +8,7 @@ import "sigs.k8s.io/controller-runtime/pkg/client"
 //
 // It captures the common framework concepts for static desired-state resources while
 // leaving concrete identity behavior to the caller.
-type StaticBuilder[T client.Object, M MutatorApplier] struct {
+type StaticBuilder[T client.Object, M FeatureMutator] struct {
 	BaseBuilder[T, M]
 	res *StaticResource[T, M]
 }
@@ -18,7 +18,7 @@ type StaticBuilder[T client.Object, M MutatorApplier] struct {
 // The provided object is treated as the desired base state. The identity function
 // must return a stable framework identity for the object. The mutator factory
 // constructs a typed mutator during each Mutate call.
-func NewStaticBuilder[T client.Object, M MutatorApplier](
+func NewStaticBuilder[T client.Object, M FeatureMutator](
 	obj T,
 	identityFunc func(T) string,
 	newMutator func(T) M,

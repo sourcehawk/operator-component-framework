@@ -18,7 +18,7 @@ import (
 //
 // Concrete task packages are expected to wrap this type and provide kind-specific
 // identity and status logic.
-type TaskResource[T client.Object, M MutatorApplier] struct {
+type TaskResource[T client.Object, M FeatureMutator] struct {
 	BaseResource[T, M]
 
 	ConvergingStatusHandler func(concepts.ConvergingOperation, T) (concepts.CompletionStatusWithReason, error)

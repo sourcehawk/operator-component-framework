@@ -218,21 +218,9 @@ m.EditContainers(selectors.ContainersNamed("web", "api"), func(e *editors.Contai
 
 ## Implementing a Custom Resource
 
-When the built-in primitives do not cover your use case, implement the `component.Resource` interface directly:
+When the built-in primitives do not cover your use case, you can implement custom resource wrappers for any Kubernetes
+object — including custom CRDs. The framework provides generic building blocks in `pkg/generic` that handle
+reconciliation mechanics, mutation sequencing, and suspension, so you only need to provide type-specific logic.
 
-```go
-type Resource interface {
-    Object() (client.Object, error)
-    Mutate(current client.Object) error
-    Identity() string
-}
-```
-
-Then implement whichever lifecycle interfaces your resource needs (`Alive`, `Suspendable`, etc.). See the
-[examples directory](../examples/) for complete implementations.
-
-Custom resources are appropriate when:
-
-- You are managing a custom CRD with specialized health or readiness logic
-- The resource has unusual lifecycle semantics (e.g., must be deleted and recreated rather than updated in place)
-- You need mutation behavior not covered by the standard editors
+See the [Custom Resource Implementation Guide](custom-resource.md) for a complete walkthrough covering mutator design,
+status handlers, builders, and component registration.

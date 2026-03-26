@@ -10,7 +10,7 @@ import (
 // It handles:
 //  1. Feature mutations
 //  2. Optional suspension mutations
-func ApplyMutations[T client.Object, M MutatorApplier](
+func ApplyMutations[T client.Object, M FeatureMutator](
 	current client.Object,
 	newMutator func(T) M,
 	mutations []Mutation[M],
@@ -23,7 +23,6 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 	}
 
 	mutator := newMutator(currentTyped)
-	fm, isFeatureMutator := any(mutator).(FeatureMutator)
 
 	// The constructor creates the initial feature scope. After each mutation,
 	// advance to the next scope so the following mutation gets its own boundary.
@@ -33,9 +32,7 @@ func ApplyMutations[T client.Object, M MutatorApplier](
 			return zero, fmt.Errorf("failed to apply mutation intent for %s: %w", mutation.Name, err)
 		}
 
-		if isFeatureMutator {
-			fm.NextFeature()
-		}
+		mutator.NextFeature()
 	}
 
 	if err := mutator.Apply(); err != nil {

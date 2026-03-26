@@ -2,8 +2,8 @@
 package ingress
 
 import (
-	"github.com/sourcehawk/operator-component-framework/internal/generic"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	networkingv1 "k8s.io/api/networking/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

@@ -3,9 +3,9 @@ package hpa
 import (
 	"fmt"
 
-	"github.com/sourcehawk/operator-component-framework/internal/generic"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 

@@ -3,8 +3,8 @@ package rolebinding
 import (
 	"fmt"
 
-	"github.com/sourcehawk/operator-component-framework/internal/generic"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 

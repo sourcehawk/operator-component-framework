@@ -2,7 +2,7 @@
 package pdb
 
 import (
-	"github.com/sourcehawk/operator-component-framework/internal/generic"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	policyv1 "k8s.io/api/policy/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

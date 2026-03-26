@@ -98,7 +98,7 @@ var _ = Describe("DaemonSet Primitive", Label("daemonset"), func() {
 						Name: "add-label",
 						Mutate: func(m *daemonset.Mutator) error {
 							m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
-								e.EnsureLabels(map[string]string{"e2e-mutation": "applied"})
+								e.EnsureLabel("e2e-mutation", "applied")
 								return nil
 							})
 							return nil

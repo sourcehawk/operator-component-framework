@@ -188,14 +188,14 @@ resource without interfering with each other, and the framework guarantees a con
 
 Resource primitives implement behavioral interfaces that the component layer uses for status aggregation:
 
-| Interface         | Behavior                                          | Example resources                       |
-| ----------------- | ------------------------------------------------- | --------------------------------------- |
-| `Alive`           | Observable health with rolling-update awareness   | Deployments, StatefulSets, DaemonSets   |
-| `Graceful`        | Time-bounded convergence with degradation         | Workloads with slow rollouts            |
-| `Suspendable`     | Controlled deactivation (scale to zero or delete) | Workloads, task primitives              |
-| `Completable`     | Run-to-completion tracking                        | Jobs                                    |
-| `Operational`     | External dependency readiness                     | Services, Ingresses, Gateways, CronJobs |
-| `DataExtractable` | Post-reconciliation data harvest                  | Any resource exposing status fields     |
+| Interface         | Behavior                                          | Example resources                            |
+| ----------------- | ------------------------------------------------- | -------------------------------------------- |
+| `Alive`           | Observable health with rolling-update awareness   | Deployments, StatefulSets, DaemonSets        |
+| `Graceful`        | Time-bounded convergence with degradation         | Workloads or integrations with slow rollouts |
+| `Suspendable`     | Controlled deactivation (scale to zero or delete) | Workloads, task primitives                   |
+| `Completable`     | Run-to-completion tracking                        | Jobs                                         |
+| `Operational`     | External dependency readiness                     | Services, Ingresses, Gateways, CronJobs      |
+| `DataExtractable` | Post-reconciliation data harvest                  | Any resource exposing status fields          |
 
 ## Implementing a Custom Resource
 

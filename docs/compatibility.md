@@ -24,14 +24,15 @@ dependencies alone.
 
 ## How Compatibility Is Tested
 
-The [compatibility workflow](../.github/workflows/compatibility.yml) runs weekly and on demand. For each version
-combination in the matrix, it:
+The [compatibility workflow](../.github/workflows/compatibility.yml) runs weekly on a schedule, on manual dispatch, and
+on pull requests labeled `compatibility`. For each version combination in the matrix, it:
 
-1. Swaps the `controller-runtime` and `k8s.io/*` dependencies to the target versions using `go get`.
-2. Runs `go mod tidy` to resolve transitive dependencies.
-3. Verifies that the entire module compiles (`go build ./...`).
-4. Builds all examples (`make build-examples`).
-5. Runs the full unit and envtest test suite (`make test`).
+1. Swaps the `controller-runtime` and `k8s.io/*` dependencies to the target versions using `go get`, then runs
+   `go mod tidy` to resolve transitive dependencies. This step is skipped for the primary (current `go.mod`) entry,
+   which is tested as-is.
+2. Verifies that the entire module compiles (`go build ./...`).
+3. Builds all examples (`make build-examples`).
+4. Runs the full unit and envtest test suite (`make test`).
 
 The Makefile automatically detects the correct envtest binary version from the `k8s.io/api` module version, so no manual
 configuration is needed when testing against different Kubernetes versions.

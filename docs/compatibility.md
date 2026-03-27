@@ -8,10 +8,6 @@ The framework is tested against the following version combinations:
 | --------- | ------------------ | --------- | ---------- | ---- | ------- |
 | main      | v0.23.x            | v0.35.x   | 1.35       | 1.25 | Primary |
 | main      | v0.22.x            | v0.34.x   | 1.34       | 1.25 | Tested  |
-| main      | v0.21.x            | v0.33.x   | 1.33       | 1.25 | Tested  |
-| main      | v0.20.x            | v0.32.x   | 1.32       | 1.25 | Tested  |
-| main      | v0.19.x            | v0.31.x   | 1.31       | 1.25 | Tested  |
-| main      | v0.18.x            | v0.30.x   | 1.30       | 1.25 | Tested  |
 
 **Primary** is the version combination used in `go.mod` and in the main CI pipeline. **Tested** versions are verified
 weekly by the compatibility CI workflow.
@@ -19,9 +15,12 @@ weekly by the compatibility CI workflow.
 ## Version Policy
 
 The framework targets the latest stable controller-runtime release as its primary dependency. Compatibility is tested
-against the five prior controller-runtime minor versions, back to v0.18 (Kubernetes 1.30). When a new Kubernetes minor
-version is released and controller-runtime publishes a matching release, the oldest tested version is dropped from the
-matrix but may still be supported.
+against prior controller-runtime minor versions where transitive dependencies remain compatible. When a new Kubernetes
+minor version is released and controller-runtime publishes a matching release, the matrix is updated accordingly.
+
+Versions v0.21 and below are incompatible due to multiple transitive dependency module path migrations in the Kubernetes
+ecosystem (`structured-merge-diff` v4 to v6, `yaml` package path changes) that cannot be resolved by swapping direct
+dependencies alone.
 
 ## How Compatibility Is Tested
 
@@ -49,11 +48,11 @@ To prevent this, add `replace` directives to your `go.mod` that pin the versions
 ```go
 // go.mod
 replace (
-    sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.0
-    k8s.io/api => k8s.io/api v0.31.0
-    k8s.io/apimachinery => k8s.io/apimachinery v0.31.0
-    k8s.io/client-go => k8s.io/client-go v0.31.0
-    k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.31.0
+    sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.22.0
+    k8s.io/api => k8s.io/api v0.34.0
+    k8s.io/apimachinery => k8s.io/apimachinery v0.34.0
+    k8s.io/client-go => k8s.io/client-go v0.34.0
+    k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.0
 )
 ```
 

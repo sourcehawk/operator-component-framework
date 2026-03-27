@@ -69,7 +69,8 @@ Controller
 go get github.com/sourcehawk/operator-component-framework
 ```
 
-Requires Go 1.25.6+ and a project using [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime).
+Requires Go 1.25.6+ and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) v0.22 or later. See
+[Compatibility](docs/compatibility.md) for the full support matrix.
 
 ## Quick Start
 
@@ -227,6 +228,7 @@ See the [Custom Resource Implementation Guide](docs/custom-resource.md) for a co
 | [Component Framework](docs/component.md)    | Reconciliation lifecycle, condition model, grace periods, suspension    |
 | [Resource Primitives](docs/primitives.md)   | Primitive categories, Server-Side Apply, mutation system                |
 | [Custom Resources](docs/custom-resource.md) | Implementing custom resource wrappers using the generic building blocks |
+| [Compatibility](docs/compatibility.md)      | Supported Kubernetes and controller-runtime versions, version policy    |
 
 ## Contributing
 
@@ -237,8 +239,8 @@ Contributions are welcome. Please open an issue to discuss significant changes b
 3. Commit your changes
 4. Open a pull request against `main`
 
-All new code should include tests. The project uses [Ginkgo](https://github.com/onsi/ginkgo) and
-[Gomega](https://github.com/onsi/gomega) for testing.
+All new code should include tests. The project uses [testify](https://github.com/stretchr/testify),
+[Ginkgo](https://github.com/onsi/ginkgo) and [Gomega](https://github.com/onsi/gomega) for testing.
 
 ```bash
 go test ./...

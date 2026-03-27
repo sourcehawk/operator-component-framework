@@ -65,8 +65,7 @@ jobs:
             k8s.io/api@${{ matrix.k8s-version }} \
             k8s.io/apimachinery@${{ matrix.k8s-version }} \
             k8s.io/client-go@${{ matrix.k8s-version }} \
-            k8s.io/apiextensions-apiserver@${{ matrix.k8s-version }} \
-            k8s.io/utils@latest
+            k8s.io/apiextensions-apiserver@${{ matrix.k8s-version }}
           go mod tidy
 
       - name: Verify compilation

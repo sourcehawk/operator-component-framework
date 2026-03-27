@@ -239,8 +239,8 @@ Contributions are welcome. Please open an issue to discuss significant changes b
 3. Commit your changes
 4. Open a pull request against `main`
 
-All new code should include tests. The project uses [testify](https://github.com/stretchr/testify), [Ginkgo](https://github.com/onsi/ginkgo) and
-[Gomega](https://github.com/onsi/gomega) for testing.
+All new code should include tests. The project uses [testify](https://github.com/stretchr/testify),
+[Ginkgo](https://github.com/onsi/ginkgo) and [Gomega](https://github.com/onsi/gomega) for testing.
 
 ```bash
 go test ./...

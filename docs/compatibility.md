@@ -44,25 +44,21 @@ When you `go get` this framework, Go's [Minimum Version Selection](https://go.de
 framework's `go.mod`. If you are already on newer versions, Go will keep yours. But if you are on older versions, MVS
 will bump them.
 
-To prevent this and stay on your current versions, pin them in your `go.mod` **after** adding the framework:
+To prevent this, add `replace` directives to your `go.mod` that pin the versions you need:
 
-```bash
-# 1. Add the framework
-go get github.com/sourcehawk/operator-component-framework@latest
-
-# 2. Pin your desired controller-runtime and k8s versions
-go get sigs.k8s.io/controller-runtime@v0.19.0 \
-  k8s.io/api@v0.31.0 \
-  k8s.io/apimachinery@v0.31.0 \
-  k8s.io/client-go@v0.31.0 \
-  k8s.io/apiextensions-apiserver@v0.31.0
-
-# 3. Clean up
-go mod tidy
+```go
+// go.mod
+replace (
+    sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.0
+    k8s.io/api => k8s.io/api v0.31.0
+    k8s.io/apimachinery => k8s.io/apimachinery v0.31.0
+    k8s.io/client-go => k8s.io/client-go v0.31.0
+    k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.31.0
+)
 ```
 
-The `go get` calls in step 2 write explicit `require` directives into your `go.mod`, which override MVS for those
-modules. As long as those directives remain, future `go get` of the framework will not bump them.
+`replace` directives override MVS regardless of what the framework's `go.mod` declares. After adding the directives, run
+`go mod tidy` to update the dependency graph.
 
 This works because the framework's public API surface uses abstract interfaces (`client.Object`, `client.Client`) that
 remain stable across controller-runtime minor versions. The compatibility CI verifies that this downgrade path compiles

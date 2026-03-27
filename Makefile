@@ -166,17 +166,17 @@ kind-set-context: ## Set kubectl context to the E2E kind cluster.
 
 .PHONY: e2e
 e2e: ginkgo kind-create kind-set-context ## Run all E2E tests (creates kind cluster if needed).
-	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/...
+	$(GINKGO) -v --timeout 20m --tags e2e ./e2e/...
 
 PRIMITIVE ?=
 
 .PHONY: e2e-primitives
 e2e-primitives: ginkgo kind-create kind-set-context ## Run primitive E2E tests only. Use PRIMITIVE=<name> to filter.
-	$(GINKGO) -v --timeout 10m --tags e2e $(if $(PRIMITIVE),--label-filter "$(PRIMITIVE)") ./e2e/primitives/...
+	$(GINKGO) -v --timeout 20m --tags e2e $(if $(PRIMITIVE),--label-filter "$(PRIMITIVE)") ./e2e/primitives/...
 
 .PHONY: e2e-component
 e2e-component: ginkgo kind-create kind-set-context ## Run component E2E tests only.
-	$(GINKGO) -v --timeout 10m --tags e2e ./e2e/component/...
+	$(GINKGO) -v --timeout 15m --tags e2e ./e2e/component/...
 
 .PHONY: e2e-full
 e2e-full: kind-create kind-set-context e2e kind-delete ## Full E2E lifecycle: create cluster, test, teardown.

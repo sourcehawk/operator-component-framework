@@ -8,14 +8,11 @@ reports their aggregate health through one condition on the owner CRD.
 
 ## Why Components Exist
 
-In complex operators, reconciliation logic tends to become fragmented:
+In complex operators, the same reconciliation patterns get reimplemented for every feature. Each controller coordinates
+its own resources, manages its own lifecycle (rollout, suspension, degradation), and reports status in its own way. The
+logic is duplicated but never identical, because there is no shared structure enforcing consistency.
 
-- Controllers coordinate dozens of unrelated resources in a single function
-- Lifecycle logic (rollouts, suspension, degradation) is reimplemented for every feature
-- Status reporting varies across features, making it hard to reason about overall health
-
-Most teams do try to organize. Controllers handle orchestration, resource construction moves into `pkg/`, and concerns
-get split into separate files:
+Most teams do try to organize. Resource construction moves into `pkg/` and concerns get split into separate files:
 
 ```
 controllers/
@@ -31,12 +28,12 @@ pkg/
     └── configmap.go
 ```
 
-This works until version-specific behavior and feature flags enter the picture. A probe format changed in v1.3? That
-logic lands in `pkg/frontend/deployment.go` behind an `if version < "1.3"` check. A tracing sidecar is feature-gated?
-That goes in the same file, or maybe in the controller, or maybe in a new `pkg/frontend/features.go`. It depends on who
-wrote it last. Over time, baseline resource definitions become unreadable under layers of conditional logic, version
-checks live in both the controller and the resource packages, and adding a new mutation means understanding every
-existing one to avoid conflicts.
+This moves files around but doesn't change the underlying problem. Each controller still reimplements the same lifecycle
+patterns in slightly different ways. Version-specific behavior and feature flags compound things further: a probe format
+changes in v1.3, so `pkg/frontend/deployment.go` gains an `if version < "1.3"` branch. A tracing sidecar is
+feature-gated, so that lands in the same file, or the controller, or a new `features.go`, wherever the last author
+decided. Conditional logic accumulates until the only way to know what a resource actually looks like is to run the
+operator and inspect the output.
 
 The component model replaces this with a layout where each concern has exactly one home:
 
@@ -65,10 +62,11 @@ pkg/components/
         └── rate_limiting_test.go
 ```
 
-Resource definitions describe the baseline desired state with no conditional logic. Feature mutations live alongside
-their tests, each one independently readable and testable. Lifecycle behavior (suspension, health reporting, grace
-periods) is handled by the framework, not reimplemented per controller. Adding a feature means adding a file, not
-editing code across the tree.
+Lifecycle behavior (rollout, suspension, status reporting) is handled by the framework, so controllers no longer
+reimplement it independently. Version-specific behavior and feature flags are expressed as isolated mutations, each in
+its own file with its own tests, rather than conditional branches layered into resource definitions. The baseline
+definition for each resource is always the canonical desired state, readable on its own without tracing through every
+mutation that might apply to it.
 
 ## Building a Component
 

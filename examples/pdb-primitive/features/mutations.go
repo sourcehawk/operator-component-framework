@@ -13,7 +13,7 @@ import (
 func VersionLabelMutation(version string) pdb.Mutation {
 	return pdb.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *pdb.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -30,7 +30,7 @@ func VersionLabelMutation(version string) pdb.Mutation {
 func StrictAvailabilityMutation(version string, metricsEnabled bool) pdb.Mutation {
 	return pdb.Mutation{
 		Name:    "strict-availability",
-		Feature: feature.NewResourceFeature(version, nil).When(metricsEnabled),
+		Feature: feature.NewVersionGate(version, nil).When(metricsEnabled),
 		Mutate: func(m *pdb.Mutator) error {
 			m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 				e.ClearMinAvailable()

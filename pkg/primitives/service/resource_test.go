@@ -71,7 +71,7 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "add-port",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 					e.EnsurePort(corev1.ServicePort{Name: "metrics", Port: 9090})
@@ -102,7 +102,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "first-mutation",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				callOrder = append(callOrder, "first")
 				m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
@@ -114,7 +114,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		}).
 		WithMutation(Mutation{
 			Name:    "second-mutation",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(_ *Mutator) error {
 				if len(callOrder) == 1 && callOrder[0] == "first" {
 					observedFirstBeforeSecond = true

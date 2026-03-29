@@ -26,7 +26,7 @@ func (m *mockMutator) Apply() error {
 
 func (m *mockMutator) NextFeature() {}
 
-// alwaysEnabled is a MutationFeature that always reports enabled.
+// alwaysEnabled is a feature.Gate that always reports enabled.
 type alwaysEnabled struct{}
 
 func (alwaysEnabled) Enabled() (bool, error) { return true, nil }

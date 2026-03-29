@@ -22,7 +22,7 @@ func (e *errorConstraint) Enabled(_ string) (bool, error) {
 	return false, fmt.Errorf("unexpected error")
 }
 
-func TestResourceFeature_Enabled(t *testing.T) {
+func TestVersionGate_Enabled(t *testing.T) {
 	// Setup features
 	f1 := &mockConstraint{enabled: true}
 	f2 := &mockConstraint{enabled: false}
@@ -136,10 +136,10 @@ func TestResourceFeature_Enabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rf := NewResourceFeature(tt.currentVersion, tt.semverConstraints)
+			rf := NewVersionGate(tt.currentVersion, tt.semverConstraints)
 			for _, truth := range tt.truths {
 				res := rf.When(truth)
-				assert.Same(t, rf, res, "When should return the ResourceFeature pointer for chaining")
+				assert.Same(t, rf, res, "When should return the VersionGate pointer for chaining")
 			}
 			enabled, err := rf.Enabled()
 			if tt.wantErr {
@@ -152,8 +152,8 @@ func TestResourceFeature_Enabled(t *testing.T) {
 	}
 }
 
-func TestResourceFeature_WhenChaining(t *testing.T) {
-	rf := NewResourceFeature("8.1.0", nil).
+func TestVersionGate_WhenChaining(t *testing.T) {
+	rf := NewVersionGate("8.1.0", nil).
 		When(true).
 		When(true).
 		When(false)
@@ -184,7 +184,7 @@ func TestMutation_ApplyIntent(t *testing.T) {
 			name: "feature enabled, mutation applied",
 			mutation: Mutation[*testObj]{
 				Name:    "set-value",
-				Feature: NewResourceFeature("8.1.0", []VersionConstraint{fEnabled}),
+				Feature: NewVersionGate("8.1.0", []VersionConstraint{fEnabled}),
 				Mutate: func(obj *testObj) error {
 					obj.Value = newValue
 					return nil
@@ -197,7 +197,7 @@ func TestMutation_ApplyIntent(t *testing.T) {
 			name: "feature disabled, mutation not applied",
 			mutation: Mutation[*testObj]{
 				Name:    "set-value",
-				Feature: NewResourceFeature("8.1.0", []VersionConstraint{fDisabled}),
+				Feature: NewVersionGate("8.1.0", []VersionConstraint{fDisabled}),
 				Mutate: func(obj *testObj) error {
 					obj.Value = newValue
 					return nil
@@ -235,7 +235,7 @@ func TestMutation_ApplyIntent(t *testing.T) {
 			name: "feature enabled but mutate is nil, returns error",
 			mutation: Mutation[*testObj]{
 				Name:    "nil-mutate",
-				Feature: NewResourceFeature("8.1.0", []VersionConstraint{fEnabled}),
+				Feature: NewVersionGate("8.1.0", []VersionConstraint{fEnabled}),
 				Mutate:  nil,
 			},
 			initial:   &testObj{Value: "old-value"},
@@ -247,7 +247,7 @@ func TestMutation_ApplyIntent(t *testing.T) {
 			name: "feature constraint returns error, ApplyIntent returns error",
 			mutation: Mutation[*testObj]{
 				Name:    "error-feature",
-				Feature: NewResourceFeature("8.1.0", []VersionConstraint{&errorConstraint{}}),
+				Feature: NewVersionGate("8.1.0", []VersionConstraint{&errorConstraint{}}),
 				Mutate: func(obj *testObj) error {
 					obj.Value = newValue
 					return nil

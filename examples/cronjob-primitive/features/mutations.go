@@ -15,7 +15,7 @@ import (
 func TracingFeature(enabled bool) cronjob.Mutation {
 	return cronjob.Mutation{
 		Name:    "Tracing",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *cronjob.Mutator) error {
 			m.EnsureContainerEnvVar(corev1.EnvVar{
 				Name:  "JAEGER_AGENT_HOST",
@@ -34,7 +34,7 @@ func TracingFeature(enabled bool) cronjob.Mutation {
 func MetricsFeature(enabled bool) cronjob.Mutation {
 	return cronjob.Mutation{
 		Name:    "Metrics",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *cronjob.Mutator) error {
 			m.EditPodTemplateMetadata(func(meta *editors.ObjectMetaEditor) error {
 				meta.EnsureAnnotation("prometheus.io/scrape", "true")
@@ -50,7 +50,7 @@ func MetricsFeature(enabled bool) cronjob.Mutation {
 func VersionFeature(version string) cronjob.Mutation {
 	return cronjob.Mutation{
 		Name:    "Version",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *cronjob.Mutator) error {
 			m.EditContainers(selectors.ContainerNamed("worker"), func(ce *editors.ContainerEditor) error {
 				ce.Raw().Image = fmt.Sprintf("my-worker:%s", version)

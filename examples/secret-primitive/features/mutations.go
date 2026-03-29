@@ -15,7 +15,7 @@ import (
 func BaseCredentialsMutation(version string) secret.Mutation {
 	return secret.Mutation{
 		Name:    "base-credentials",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *secret.Mutator) error {
 			m.SetStringData("username", "REPLACE_ME")
 			m.SetStringData("password", "REPLACE_ME")
@@ -29,7 +29,7 @@ func BaseCredentialsMutation(version string) secret.Mutation {
 func VersionLabelMutation(version string) secret.Mutation {
 	return secret.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *secret.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -45,7 +45,7 @@ func VersionLabelMutation(version string) secret.Mutation {
 func TracingTokenMutation(version string, enableTracing bool) secret.Mutation {
 	return secret.Mutation{
 		Name:    "tracing-token",
-		Feature: feature.NewResourceFeature(version, nil).When(enableTracing),
+		Feature: feature.NewVersionGate(version, nil).When(enableTracing),
 		Mutate: func(m *secret.Mutator) error {
 			m.SetStringData("otel-auth-token", "REPLACE_ME")
 			return nil
@@ -58,7 +58,7 @@ func TracingTokenMutation(version string, enableTracing bool) secret.Mutation {
 func MetricsTokenMutation(version string, enableMetrics bool) secret.Mutation {
 	return secret.Mutation{
 		Name:    "metrics-token",
-		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
+		Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
 		Mutate: func(m *secret.Mutator) error {
 			m.SetStringData("metrics-auth-token", "REPLACE_ME")
 			return nil

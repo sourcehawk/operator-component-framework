@@ -62,7 +62,7 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "add-rule",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.AddRule(rbacv1.PolicyRule{
 					APIGroups: []string{"apps"},
@@ -90,7 +90,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "feature-a",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.AddRule(rbacv1.PolicyRule{
 					APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get"},
@@ -100,7 +100,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		}).
 		WithMutation(Mutation{
 			Name:    "feature-b",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.AddRule(rbacv1.PolicyRule{
 					APIGroups: []string{""}, Resources: []string{"configmaps"}, Verbs: []string{"get"},

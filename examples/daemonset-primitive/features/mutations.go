@@ -15,7 +15,7 @@ import (
 func TracingFeature(enabled bool) daemonset.Mutation {
 	return daemonset.Mutation{
 		Name:    "Tracing",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *daemonset.Mutator) error {
 			m.EnsureContainer(corev1.Container{
 				Name:  "jaeger-agent",
@@ -36,7 +36,7 @@ func TracingFeature(enabled bool) daemonset.Mutation {
 func MetricsFeature(enabled bool, port int) daemonset.Mutation {
 	return daemonset.Mutation{
 		Name:    "Metrics",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *daemonset.Mutator) error {
 			m.EnsureContainer(corev1.Container{
 				Name:  "prometheus-exporter",
@@ -58,7 +58,7 @@ func MetricsFeature(enabled bool, port int) daemonset.Mutation {
 func VersionFeature(version string) daemonset.Mutation {
 	return daemonset.Mutation{
 		Name:    "Version",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *daemonset.Mutator) error {
 			m.EditContainers(selectors.ContainerNamed("agent"), func(ce *editors.ContainerEditor) error {
 				ce.Raw().Image = fmt.Sprintf("my-agent:%s", version)

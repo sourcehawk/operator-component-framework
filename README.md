@@ -170,7 +170,7 @@ import (
 func TracingFeature(version string, enabled bool) deployment.Mutation {
     return deployment.Mutation{
         Name:    "enable-tracing",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *deployment.Mutator) error {
             m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
                 e.EnsureEnvVar(corev1.EnvVar{Name: "TRACING_ENABLED", Value: "true"})

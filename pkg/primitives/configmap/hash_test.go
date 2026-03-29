@@ -175,7 +175,7 @@ func TestDesiredHash_NoSideEffects(t *testing.T) {
 	// A subsequent reconciliation must produce the same result as the first.
 	r := newHashTestResource(t, nil, Mutation{
 		Name:    "set-key",
-		Feature: feature.NewResourceFeature("1.0.0", nil),
+		Feature: feature.NewVersionGate("1.0.0", nil),
 		Mutate: func(m *Mutator) error {
 			m.SetEntry("key", "value")
 			return nil
@@ -198,12 +198,12 @@ func TestDesiredHash_NoSideEffects(t *testing.T) {
 func TestDesiredHash_ChangesWhenMutationChangesContent(t *testing.T) {
 	r1 := newHashTestResource(t, nil, Mutation{
 		Name:    "set-key",
-		Feature: feature.NewResourceFeature("1.0.0", nil),
+		Feature: feature.NewVersionGate("1.0.0", nil),
 		Mutate:  func(m *Mutator) error { m.SetEntry("key", "v1"); return nil },
 	})
 	r2 := newHashTestResource(t, nil, Mutation{
 		Name:    "set-key",
-		Feature: feature.NewResourceFeature("1.0.0", nil),
+		Feature: feature.NewVersionGate("1.0.0", nil),
 		Mutate:  func(m *Mutator) error { m.SetEntry("key", "v2"); return nil },
 	})
 
@@ -217,19 +217,19 @@ func TestDesiredHash_ChangesWhenMutationChangesContent(t *testing.T) {
 func TestDesiredHash_DisabledMutationDoesNotAffectHash(t *testing.T) {
 	base := newHashTestResource(t, nil, Mutation{
 		Name:    "always",
-		Feature: feature.NewResourceFeature("1.0.0", nil),
+		Feature: feature.NewVersionGate("1.0.0", nil),
 		Mutate:  func(m *Mutator) error { m.SetEntry("key", "value"); return nil },
 	})
 
 	withDisabled := newHashTestResource(t, nil,
 		Mutation{
 			Name:    "always",
-			Feature: feature.NewResourceFeature("1.0.0", nil),
+			Feature: feature.NewVersionGate("1.0.0", nil),
 			Mutate:  func(m *Mutator) error { m.SetEntry("key", "value"); return nil },
 		},
 		Mutation{
 			Name:    "disabled",
-			Feature: feature.NewResourceFeature("1.0.0", nil).When(false),
+			Feature: feature.NewVersionGate("1.0.0", nil).When(false),
 			Mutate:  func(m *Mutator) error { m.SetEntry("extra", "skipped"); return nil },
 		},
 	)
@@ -245,7 +245,7 @@ func TestDesiredHash_MetadataOnlyMutationDoesNotAffectHash(t *testing.T) {
 	withoutLabel := newHashTestResource(t, map[string]string{"key": "value"})
 	withLabel := newHashTestResource(t, map[string]string{"key": "value"}, Mutation{
 		Name:    "label",
-		Feature: feature.NewResourceFeature("1.0.0", nil),
+		Feature: feature.NewVersionGate("1.0.0", nil),
 		Mutate: func(m *Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", "1.0.0")

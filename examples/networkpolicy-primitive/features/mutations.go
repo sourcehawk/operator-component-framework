@@ -52,7 +52,7 @@ func HTTPIngressMutation() networkpolicy.Mutation {
 func MetricsIngressMutation(version string, enableMetrics bool) networkpolicy.Mutation {
 	return networkpolicy.Mutation{
 		Name:    "metrics-ingress",
-		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
+		Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
 		Mutate: func(m *networkpolicy.Mutator) error {
 			m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 				port := intstr.FromInt32(9090)

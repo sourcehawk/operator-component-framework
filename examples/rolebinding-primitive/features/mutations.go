@@ -13,7 +13,7 @@ import (
 func BaseSubjectsMutation(version, saName, saNamespace string) rolebinding.Mutation {
 	return rolebinding.Mutation{
 		Name:    "base-subjects",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *rolebinding.Mutator) error {
 			m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 				e.EnsureSubject(rbacv1.Subject{
@@ -33,7 +33,7 @@ func BaseSubjectsMutation(version, saName, saNamespace string) rolebinding.Mutat
 func VersionLabelMutation(version string) rolebinding.Mutation {
 	return rolebinding.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *rolebinding.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -49,7 +49,7 @@ func VersionLabelMutation(version string) rolebinding.Mutation {
 func MonitoringSubjectMutation(version string, enableMonitoring bool) rolebinding.Mutation {
 	return rolebinding.Mutation{
 		Name:    "monitoring-subject",
-		Feature: feature.NewResourceFeature(version, nil).When(enableMonitoring),
+		Feature: feature.NewVersionGate(version, nil).When(enableMonitoring),
 		Mutate: func(m *rolebinding.Mutator) error {
 			m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 				e.EnsureSubject(rbacv1.Subject{

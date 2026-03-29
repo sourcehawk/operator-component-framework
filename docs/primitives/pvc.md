@@ -51,7 +51,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyStorageMutation(version string) pvc.Mutation {
     return pvc.Mutation{
         Name:    "storage-expansion",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *pvc.Mutator) error {
             m.SetStorageRequest(resource.MustParse("20Gi"))
             return nil
@@ -69,7 +69,7 @@ another, register the dependency first.
 func LargeStorageMutation(version string, needsLargeStorage bool) pvc.Mutation {
     return pvc.Mutation{
         Name:    "large-storage",
-        Feature: feature.NewResourceFeature(version, nil).When(needsLargeStorage),
+        Feature: feature.NewVersionGate(version, nil).When(needsLargeStorage),
         Mutate: func(m *pvc.Mutator) error {
             m.SetStorageRequest(resource.MustParse("100Gi"))
             return nil
@@ -86,7 +86,7 @@ var v2Constraint = mustSemverConstraint(">= 2.0.0")
 func V2StorageMutation(version string) pvc.Mutation {
     return pvc.Mutation{
         Name: "v2-storage",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{v2Constraint},
         ),

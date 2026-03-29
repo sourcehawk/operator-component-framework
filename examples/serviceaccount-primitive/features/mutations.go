@@ -41,7 +41,7 @@ func ImagePullSecretMutation(_ string) serviceaccount.Mutation {
 func PrivateRegistryMutation(version string, usePrivateRegistry bool) serviceaccount.Mutation {
 	return serviceaccount.Mutation{
 		Name:    "private-registry",
-		Feature: feature.NewResourceFeature(version, nil).When(usePrivateRegistry),
+		Feature: feature.NewVersionGate(version, nil).When(usePrivateRegistry),
 		Mutate: func(m *serviceaccount.Mutator) error {
 			m.EnsureImagePullSecret("private-registry-creds")
 			return nil
@@ -54,7 +54,7 @@ func PrivateRegistryMutation(version string, usePrivateRegistry bool) serviceacc
 func DisableAutomountMutation(version string, disableAutomount bool) serviceaccount.Mutation {
 	return serviceaccount.Mutation{
 		Name:    "disable-automount",
-		Feature: feature.NewResourceFeature(version, nil).When(disableAutomount),
+		Feature: feature.NewVersionGate(version, nil).When(disableAutomount),
 		Mutate: func(m *serviceaccount.Mutator) error {
 			v := false
 			m.SetAutomountServiceAccountToken(&v)

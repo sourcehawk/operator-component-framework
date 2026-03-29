@@ -44,7 +44,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) secret.Mutation {
     return secret.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *secret.Mutator) error {
             m.SetData("feature-flag", []byte("enabled"))
             return nil
@@ -62,7 +62,7 @@ another, register the dependency first.
 func TLSSecretMutation(version string, tlsEnabled bool) secret.Mutation {
     return secret.Mutation{
         Name:    "tls-secret",
-        Feature: feature.NewResourceFeature(version, nil).When(tlsEnabled),
+        Feature: feature.NewVersionGate(version, nil).When(tlsEnabled),
         Mutate: func(m *secret.Mutator) error {
             m.SetData("tls.crt", certBytes)
             m.SetData("tls.key", keyBytes)
@@ -80,7 +80,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyTokenMutation(version string) secret.Mutation {
     return secret.Mutation{
         Name: "legacy-token",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -269,7 +269,7 @@ comp, err := component.NewComponentBuilder().
 func ChecksumAnnotationMutation(version, secretHash string) deployment.Mutation {
     return deployment.Mutation{
         Name:    "secret-checksum",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *deployment.Mutator) error {
             m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
                 e.EnsureAnnotation("checksum/secret", secretHash)
@@ -287,8 +287,8 @@ reconcile cycle, the pod template annotation changes, and Kubernetes triggers a 
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on an entry set by mutation A, register A first.
 

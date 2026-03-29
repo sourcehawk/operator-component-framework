@@ -15,7 +15,7 @@ import (
 func TracingFeature(enabled bool) job.Mutation {
 	return job.Mutation{
 		Name:    "Tracing",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *job.Mutator) error {
 			m.EnsureContainerEnvVar(corev1.EnvVar{
 				Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -35,7 +35,7 @@ func TracingFeature(enabled bool) job.Mutation {
 func RetryPolicyFeature(version string) job.Mutation {
 	return job.Mutation{
 		Name:    "RetryPolicy",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *job.Mutator) error {
 			m.EditJobSpec(func(e *editors.JobSpecEditor) error {
 				e.SetBackoffLimit(3)
@@ -52,7 +52,7 @@ func RetryPolicyFeature(version string) job.Mutation {
 func VersionFeature(version string) job.Mutation {
 	return job.Mutation{
 		Name:    "Version",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *job.Mutator) error {
 			m.EditContainers(selectors.ContainerNamed("migrate"), func(ce *editors.ContainerEditor) error {
 				ce.Raw().Image = fmt.Sprintf("my-app-migration:%s", version)

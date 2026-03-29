@@ -191,7 +191,7 @@ import (
 resource, err := deployment.NewBuilder(base).
     WithMutation(deployment.Mutation{
         Name:    "add-proxy-sidecar",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *deployment.Mutator) error {
             m.EnsureContainer(corev1.Container{
                 Name:  "proxy",

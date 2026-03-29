@@ -45,7 +45,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) configmap.Mutation {
     return configmap.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *configmap.Mutator) error {
             m.SetEntry("feature-flag", "enabled")
             return nil
@@ -63,7 +63,7 @@ another, register the dependency first.
 func TLSConfigMutation(version string, tlsEnabled bool) configmap.Mutation {
     return configmap.Mutation{
         Name:    "tls-config",
-        Feature: feature.NewResourceFeature(version, nil).When(tlsEnabled),
+        Feature: feature.NewVersionGate(version, nil).When(tlsEnabled),
         Mutate: func(m *configmap.Mutator) error {
             m.SetEntry("tls_mode", "strict")
             return nil
@@ -80,7 +80,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyAuthMutation(version string) configmap.Mutation {
     return configmap.Mutation{
         Name: "legacy-auth",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -288,7 +288,7 @@ comp, err := component.NewComponentBuilder().
 func ChecksumAnnotationMutation(version, configHash string) deployment.Mutation {
     return deployment.Mutation{
         Name:    "config-checksum",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *deployment.Mutator) error {
             m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
                 e.EnsureAnnotation("checksum/config", configHash)
@@ -309,7 +309,7 @@ same reconcile cycle, the pod template annotation changes, and Kubernetes trigge
 func BaseConfigMutation(version string) configmap.Mutation {
     return configmap.Mutation{
         Name:    "base-config",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *configmap.Mutator) error {
             m.EditData(func(e *editors.ConfigMapDataEditor) error {
                 return e.MergeYAML("app.yaml", `
@@ -326,7 +326,7 @@ server:
 func MetricsFeatureMutation(version string, enabled bool) configmap.Mutation {
     return configmap.Mutation{
         Name:    "metrics-feature",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *configmap.Mutator) error {
             m.EditData(func(e *editors.ConfigMapDataEditor) error {
                 return e.MergeYAML("app.yaml", `
@@ -352,8 +352,8 @@ only the base config is written. Neither mutation needs to know about the other.
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Use `MergeYAML` for composable config files.** When multiple features need to contribute to the same YAML entry,
 `MergeYAML` lets each feature contribute its section independently. Using `SetEntry` in multiple features for the same

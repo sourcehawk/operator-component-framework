@@ -99,6 +99,69 @@ Each resource is registered with a `ResourceOptions` struct that controls how th
 | `ResourceOptions{Delete: true}`                                  | **Delete-only**: removed from the cluster if present; does not contribute to health                                                      |
 | `ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}` | The resource's health does not contribute to the component condition. The component can become Ready regardless of this resource's state |
 
+### Building Resource Options with Feature Gating
+
+When a resource's lifecycle depends on a feature gate or runtime conditions, use `ResourceOptionsBuilder` to construct
+the options declaratively. The builder integrates with the [feature system](../pkg/feature/) so that entire resources
+can be conditionally created or deleted based on feature state.
+
+```go
+opts, err := component.NewResourceOptionsBuilder().
+    WithFeatureGate(metricsFeature).
+    Auxiliary().
+    Build()
+if err != nil {
+    return err
+}
+
+builder.WithResource(exporterService, opts)
+```
+
+The builder evaluates all conditions at `Build()` time and produces a plain `ResourceOptions` value. The `WithResource`
+signature is unchanged.
+
+**Methods:**
+
+| Method                            | Effect                                                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `WithFeatureGate(f feature.Gate)` | Gates the resource on a feature. When disabled, the resource is deleted.                                                        |
+| `WithTruth(truth bool)`           | Adds a boolean condition (AND logic). If any truth is false, the resource is deleted. Calls are additive.                       |
+| `Auxiliary()`                     | Sets participation mode to `Auxiliary` (resource does not affect component health).                                             |
+| `ReadOnly()`                      | Marks the resource as read-only. If the resource is also gated by a disabled feature, deletion takes precedence over read-only. |
+
+For the common case of gating a resource on a single feature, use the convenience function:
+
+```go
+opts, err := component.ResourceOptionsFor(tracingFeature)
+```
+
+**Resolution rules:**
+
+1. If the feature is non-nil and evaluates to disabled, the resource is deleted.
+2. If any truth condition is false, the resource is deleted.
+3. Deletion takes precedence over read-only mode.
+4. Participation mode is preserved regardless of deletion state.
+
+**Example: mixed feature-gated and static resources:**
+
+```go
+tracingOpts, err := component.ResourceOptionsFor(
+    feature.NewVersionGate(owner.Spec.Version, nil).When(owner.Spec.TracingEnabled),
+)
+if err != nil {
+    return err
+}
+
+comp, err := component.NewComponentBuilder().
+    WithName("api-server").
+    WithConditionType("ApiServerReady").
+    WithResource(apiDeployment, component.ResourceOptions{}).
+    WithResource(jaegerSidecar, tracingOpts).
+    Build()
+```
+
+When `TracingEnabled` is true, the Jaeger sidecar is created and managed. When false, it is deleted from the cluster.
+
 ## Reconciliation Lifecycle
 
 `comp.Reconcile(ctx, recCtx)` runs a six-phase process on every call:

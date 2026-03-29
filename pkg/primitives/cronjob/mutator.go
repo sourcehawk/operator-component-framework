@@ -9,7 +9,7 @@ import (
 )
 
 // Mutation defines a mutation that is applied to a CronJob Mutator
-// only if its associated feature.ResourceFeature is enabled.
+// only if its associated feature.VersionGate is enabled.
 type Mutation feature.Mutation[*Mutator]
 
 type containerEdit struct {

@@ -53,7 +53,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) pod.Mutation {
     return pod.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *pod.Mutator) error {
             // record edits here
             return nil
@@ -73,7 +73,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func DebugMutation(version string, enabled bool) pod.Mutation {
     return pod.Mutation{
         Name:    "debug-mode",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *pod.Mutator) error {
             m.EnsureContainerEnvVar(corev1.EnvVar{Name: "DEBUG", Value: "true"})
             return nil
@@ -213,8 +213,8 @@ Pods cannot be paused. The default behavior deletes the pod when the component i
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
 The internal ordering within each mutation handles intra-mutation dependencies automatically.

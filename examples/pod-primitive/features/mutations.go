@@ -18,7 +18,7 @@ import (
 func TracingFeature(enabled bool) pod.Mutation {
 	return pod.Mutation{
 		Name:    "Tracing",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *pod.Mutator) error {
 			m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
 				meta.EnsureLabel("sidecar.jaegertracing.io/inject", "true")
@@ -35,7 +35,7 @@ func TracingFeature(enabled bool) pod.Mutation {
 func VersionFeature(version string) pod.Mutation {
 	return pod.Mutation{
 		Name:    "Version",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *pod.Mutator) error {
 			m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
 				meta.EnsureLabel("app.kubernetes.io/version", version)

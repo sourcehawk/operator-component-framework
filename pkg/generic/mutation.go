@@ -2,8 +2,8 @@ package generic
 
 import "github.com/sourcehawk/operator-component-framework/pkg/feature"
 
-// MutationFeature is an alias for [feature.MutationFeature].
-type MutationFeature = feature.MutationFeature
+// Gate is an alias for [feature.Gate].
+type Gate = feature.Gate
 
 // Mutation is an alias for [feature.Mutation].
 //

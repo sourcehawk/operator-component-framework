@@ -30,27 +30,18 @@ func (r *ExampleController) Reconcile(ctx context.Context, owner *ExampleApp) er
 		return err
 	}
 
-	// 2. Build resource options gated on the tracing flag.
-	//    When EnableTracing is false, the resource is deleted from the cluster.
-	deployOpts, err := component.NewResourceOptionsBuilder().
-		WithTruth(owner.Spec.EnableTracing).
-		Build()
-	if err != nil {
-		return err
-	}
-
-	// 3. Build the component that manages the deployment.
+	// 2. Build the component that manages the deployment.
 	comp, err := component.NewComponentBuilder().
 		WithName("example-app").
 		WithConditionType("AppReady").
-		WithResource(deployResource, deployOpts).
+		WithResource(deployResource, component.ResourceOptions{}).
 		Suspend(owner.Spec.Suspended).
 		Build()
 	if err != nil {
 		return err
 	}
 
-	// 4. Execute the component reconciliation.
+	// 3. Execute the component reconciliation.
 	resCtx := component.ReconcileContext{
 		Client:   r.Client,
 		Scheme:   r.Scheme,

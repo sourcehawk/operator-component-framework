@@ -113,8 +113,8 @@ func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {
 // gated by a single feature.Gate.
 //
 // When the feature is enabled, the resource is created with default options
-// (required participation, read-write). When disabled, the resource is
-// marked for deletion.
+// (read-write, participation mode deferred to WithResource defaults). When
+// disabled, the resource is marked for deletion.
 //
 // A nil feature is treated as unconditionally enabled.
 //

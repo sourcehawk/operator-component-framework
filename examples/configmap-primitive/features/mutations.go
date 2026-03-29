@@ -12,7 +12,7 @@ import (
 func BaseConfigMutation(version string) configmap.Mutation {
 	return configmap.Mutation{
 		Name:    "base-config",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *configmap.Mutator) error {
 			m.MergeYAML("app.yaml", `
 server:
@@ -29,7 +29,7 @@ server:
 func VersionLabelMutation(version string) configmap.Mutation {
 	return configmap.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *configmap.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -46,7 +46,7 @@ func VersionLabelMutation(version string) configmap.Mutation {
 func TracingConfigMutation(version string, enableTracing bool) configmap.Mutation {
 	return configmap.Mutation{
 		Name:    "tracing-config",
-		Feature: feature.NewResourceFeature(version, nil).When(enableTracing),
+		Feature: feature.NewVersionGate(version, nil).When(enableTracing),
 		Mutate: func(m *configmap.Mutator) error {
 			m.MergeYAML("app.yaml", `
 tracing:
@@ -64,7 +64,7 @@ tracing:
 func MetricsConfigMutation(version string, enableMetrics bool) configmap.Mutation {
 	return configmap.Mutation{
 		Name:    "metrics-config",
-		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
+		Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
 		Mutate: func(m *configmap.Mutator) error {
 			m.MergeYAML("app.yaml", `
 metrics:

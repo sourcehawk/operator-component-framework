@@ -503,7 +503,7 @@ import (
 func HighCapacityMode(version string) gameserver.Mutation {
     return gameserver.Mutation{
         Name:    "high-capacity-mode",
-        Feature: feature.NewResourceFeature(version, myVersionConstraints),
+        Feature: feature.NewVersionGate(version, myVersionConstraints),
         Mutate: func(m *gameserver.Mutator) error {
             m.SetMaxPlayers(200)
             return nil
@@ -515,7 +515,7 @@ func HighCapacityMode(version string) gameserver.Mutation {
 func CompetitiveMode(version string, enabled bool) gameserver.Mutation {
     return gameserver.Mutation{
         Name:    "competitive-mode",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *gameserver.Mutator) error {
             m.SetMaxPlayers(10)
             return nil
@@ -606,10 +606,10 @@ methods.
 
 ## Reference
 
-| Package                  | Contains                                                               |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `pkg/generic`            | Generic resource types, builders, `ApplyMutations` helper              |
-| `pkg/feature`            | `Mutation`, `MutationFeature`, `ResourceFeature`, `NewResourceFeature` |
-| `pkg/component/concepts` | Lifecycle interfaces and status type constants                         |
-| `pkg/component`          | Component builder, `ResourceOptions`, reconciliation                   |
-| `pkg/primitives/*`       | Built-in implementations to use as reference                           |
+| Package                  | Contains                                                  |
+| ------------------------ | --------------------------------------------------------- |
+| `pkg/generic`            | Generic resource types, builders, `ApplyMutations` helper |
+| `pkg/feature`            | `Mutation`, `Gate`, `VersionGate`, `NewVersionGate`       |
+| `pkg/component/concepts` | Lifecycle interfaces and status type constants            |
+| `pkg/component`          | Component builder, `ResourceOptions`, reconciliation      |
+| `pkg/primitives/*`       | Built-in implementations to use as reference              |

@@ -49,7 +49,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) service.Mutation {
     return service.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *service.Mutator) error {
             // record edits here
             return nil
@@ -69,7 +69,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func NodePortMutation(version string, enabled bool) service.Mutation {
     return service.Mutation{
         Name:    "nodeport",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *service.Mutator) error {
             m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
                 e.SetType(corev1.ServiceTypeNodePort)
@@ -91,7 +91,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyPortMutation(version string) service.Mutation {
     return service.Mutation{
         Name: "legacy-port",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -291,7 +291,7 @@ resource, err := service.NewBuilder(base).
 func BaseServiceMutation(version string) service.Mutation {
     return service.Mutation{
         Name:    "base-service",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *service.Mutator) error {
             m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
                 e.EnsurePort(corev1.ServicePort{
@@ -309,7 +309,7 @@ func BaseServiceMutation(version string) service.Mutation {
 func MetricsPortMutation(version string, enabled bool) service.Mutation {
     return service.Mutation{
         Name:    "metrics-port",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *service.Mutator) error {
             m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
                 e.EnsurePort(corev1.ServicePort{
@@ -336,8 +336,8 @@ port is configured. Neither mutation needs to know about the other.
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a port added by mutation A, register A first.
 

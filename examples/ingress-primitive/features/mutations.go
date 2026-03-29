@@ -12,7 +12,7 @@ import (
 func VersionAnnotation(version string) ingress.Mutation {
 	return ingress.Mutation{
 		Name:    "Version",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *ingress.Mutator) error {
 			m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
 				meta.EnsureAnnotation("app.kubernetes.io/version", version)
@@ -27,7 +27,7 @@ func VersionAnnotation(version string) ingress.Mutation {
 func TLSFeature(enabled bool, appName string) ingress.Mutation {
 	return ingress.Mutation{
 		Name:    "TLS",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *ingress.Mutator) error {
 			m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
 				e.EnsureTLS(networkingv1.IngressTLS{

@@ -13,7 +13,7 @@ import (
 func VersionLabelMutation(version string) pvc.Mutation {
 	return pvc.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *pvc.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -29,7 +29,7 @@ func VersionLabelMutation(version string) pvc.Mutation {
 func LargeStorageMutation(version string, needsLargeStorage bool) pvc.Mutation {
 	return pvc.Mutation{
 		Name:    "large-storage",
-		Feature: feature.NewResourceFeature(version, nil).When(needsLargeStorage),
+		Feature: feature.NewVersionGate(version, nil).When(needsLargeStorage),
 		Mutate: func(m *pvc.Mutator) error {
 			m.SetStorageRequest(resource.MustParse("50Gi"))
 			return nil
@@ -42,7 +42,7 @@ func LargeStorageMutation(version string, needsLargeStorage bool) pvc.Mutation {
 func StorageAnnotationMutation(version string, storageClass string) pvc.Mutation {
 	return pvc.Mutation{
 		Name:    "storage-annotation",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *pvc.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureAnnotation("storage/class-hint", storageClass)

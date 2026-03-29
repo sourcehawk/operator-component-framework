@@ -14,7 +14,7 @@ import (
 func VersionLabelMutation(version string) pv.Mutation {
 	return pv.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *pv.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -30,7 +30,7 @@ func VersionLabelMutation(version string) pv.Mutation {
 func RetainPolicyMutation(version string, enabled bool) pv.Mutation {
 	return pv.Mutation{
 		Name:    "retain-policy",
-		Feature: feature.NewResourceFeature(version, nil).When(enabled),
+		Feature: feature.NewVersionGate(version, nil).When(enabled),
 		Mutate: func(m *pv.Mutator) error {
 			m.SetReclaimPolicy(corev1.PersistentVolumeReclaimRetain)
 			return nil
@@ -43,7 +43,7 @@ func RetainPolicyMutation(version string, enabled bool) pv.Mutation {
 func MountOptionsMutation(version string, enabled bool) pv.Mutation {
 	return pv.Mutation{
 		Name:    "mount-options",
-		Feature: feature.NewResourceFeature(version, nil).When(enabled),
+		Feature: feature.NewVersionGate(version, nil).When(enabled),
 		Mutate: func(m *pv.Mutator) error {
 			m.SetMountOptions([]string{"hard", "nfsvers=4.1"})
 			return nil

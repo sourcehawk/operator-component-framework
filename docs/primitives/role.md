@@ -48,7 +48,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) role.Mutation {
     return role.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *role.Mutator) error {
             m.EditRules(func(e *editors.PolicyRulesEditor) error {
                 e.AddRule(rbacv1.PolicyRule{
@@ -73,7 +73,7 @@ another, register the dependency first.
 func SecretAccessMutation(version string, enabled bool) role.Mutation {
     return role.Mutation{
         Name:    "secret-access",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *role.Mutator) error {
             m.EditRules(func(e *editors.PolicyRulesEditor) error {
                 e.AddRule(rbacv1.PolicyRule{
@@ -97,7 +97,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyRoleMutation(version string) role.Mutation {
     return role.Mutation{
         Name: "legacy-role",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -214,7 +214,7 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 func BaseRuleMutation(version string) role.Mutation {
     return role.Mutation{
         Name:    "base-rules",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *role.Mutator) error {
             m.EditRules(func(e *editors.PolicyRulesEditor) error {
                 e.SetRules([]rbacv1.PolicyRule{
@@ -230,7 +230,7 @@ func BaseRuleMutation(version string) role.Mutation {
 func SecretAccessMutation(version string, enabled bool) role.Mutation {
     return role.Mutation{
         Name:    "secret-access",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *role.Mutator) error {
             m.EditRules(func(e *editors.PolicyRulesEditor) error {
                 e.AddRule(rbacv1.PolicyRule{
@@ -257,8 +257,8 @@ the base rules are applied. Neither mutation needs to know about the other.
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Use `AddRule` for composable permissions.** When multiple features need to contribute rules to the same Role,
 `AddRule` lets each feature add its permissions independently. Using `SetRules` in multiple features means the last

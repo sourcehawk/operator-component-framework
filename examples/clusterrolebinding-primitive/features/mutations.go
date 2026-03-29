@@ -12,7 +12,7 @@ import (
 func VersionLabelMutation(version string) clusterrolebinding.Mutation {
 	return clusterrolebinding.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *clusterrolebinding.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -28,7 +28,7 @@ func VersionLabelMutation(version string) clusterrolebinding.Mutation {
 func MonitoringSubjectMutation(version string, enableMetrics bool) clusterrolebinding.Mutation {
 	return clusterrolebinding.Mutation{
 		Name:    "monitoring-subject",
-		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
+		Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
 		Mutate: func(m *clusterrolebinding.Mutator) error {
 			m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 				e.EnsureServiceAccount("monitoring-agent", "monitoring")

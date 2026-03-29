@@ -14,7 +14,7 @@ import (
 func CPUMetricFeature(version string, targetUtilization int32) hpa.Mutation {
 	return hpa.Mutation{
 		Name:    "CPUMetric",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *hpa.Mutator) error {
 			m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 				e.EnsureMetric(autoscalingv2.MetricSpec{
@@ -44,7 +44,7 @@ func CPUMetricFeature(version string, targetUtilization int32) hpa.Mutation {
 func MemoryMetricFeature(enabled bool, targetUtilization int32) hpa.Mutation {
 	return hpa.Mutation{
 		Name:    "MemoryMetric",
-		Feature: feature.NewResourceFeature("any", nil).When(enabled),
+		Feature: feature.NewVersionGate("any", nil).When(enabled),
 		Mutate: func(m *hpa.Mutator) error {
 			m.EditHPASpec(func(e *editors.HPASpecEditor) error {
 				e.EnsureMetric(autoscalingv2.MetricSpec{

@@ -53,7 +53,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MySubjectMutation(version string) clusterrolebinding.Mutation {
     return clusterrolebinding.Mutation{
         Name:    "my-subjects",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *clusterrolebinding.Mutator) error {
             m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
                 e.EnsureServiceAccount("my-sa", "default")
@@ -74,7 +74,7 @@ another, register the dependency first.
 func ConditionalSubjectMutation(version string, addExtraSubject bool) clusterrolebinding.Mutation {
     return clusterrolebinding.Mutation{
         Name:    "conditional-subject",
-        Feature: feature.NewResourceFeature(version, nil).When(addExtraSubject),
+        Feature: feature.NewVersionGate(version, nil).When(addExtraSubject),
         Mutate: func(m *clusterrolebinding.Mutator) error {
             m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
                 e.EnsureServiceAccount("extra-sa", "monitoring")
@@ -188,8 +188,8 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Cluster-scoped resources have no namespace.** Unlike namespaced primitives, ClusterRoleBinding does not require or
 validate a namespace. The identity format is `rbac.authorization.k8s.io/v1/ClusterRoleBinding/<name>`.

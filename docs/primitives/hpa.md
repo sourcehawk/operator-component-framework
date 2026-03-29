@@ -52,7 +52,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func CPUMetricMutation(version string) hpa.Mutation {
     return hpa.Mutation{
         Name:    "cpu-metric",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *hpa.Mutator) error {
             // record edits here
             return nil
@@ -72,7 +72,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func CustomMetricsMutation(version string, enabled bool) hpa.Mutation {
     return hpa.Mutation{
         Name:    "custom-metrics",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *hpa.Mutator) error {
             m.EditHPASpec(func(e *editors.HPASpecEditor) error {
                 e.EnsureMetric(autoscalingv2.MetricSpec{
@@ -103,7 +103,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyScalingMutation(version string) hpa.Mutation {
     return hpa.Mutation{
         Name: "legacy-scaling",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -303,7 +303,7 @@ hpa.NewBuilder(base).
 func AutoscalingMutation(version string) hpa.Mutation {
     return hpa.Mutation{
         Name:    "autoscaling-config",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *hpa.Mutator) error {
             m.EditHPASpec(func(e *editors.HPASpecEditor) error {
                 e.SetMinReplicas(ptr.To(int32(2)))
@@ -360,8 +360,8 @@ the internal ordering. Order your source calls for readability; the framework ha
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a metric added by mutation A, register A first.
 

@@ -53,7 +53,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func AddServiceAccountMutation(version, saName, saNamespace string) rolebinding.Mutation {
     return rolebinding.Mutation{
         Name:    "add-service-account",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *rolebinding.Mutator) error {
             m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
                 e.EnsureSubject(rbacv1.Subject{
@@ -75,7 +75,7 @@ func AddServiceAccountMutation(version, saName, saNamespace string) rolebinding.
 func MonitoringSubjectMutation(version string, enabled bool) rolebinding.Mutation {
     return rolebinding.Mutation{
         Name:    "monitoring-subject",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *rolebinding.Mutator) error {
             m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
                 e.EnsureSubject(rbacv1.Subject{
@@ -99,7 +99,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacySubjectMutation(version string) rolebinding.Mutation {
     return rolebinding.Mutation{
         Name: "legacy-subject",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -195,8 +195,8 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 a `roleRef`, delete and recreate the RoleBinding.
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Use `EnsureSubject` for idempotent subject management.** `EnsureSubject` upserts by Kind+Name+Namespace, making it
 safe to call on every reconciliation without creating duplicates.

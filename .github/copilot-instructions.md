@@ -33,7 +33,7 @@ Verify the real API before using or documenting it. Key packages:
 - `pkg/primitives/` — kubernetes primitive resource wrappers with builders and mutators
 - `pkg/mutation/editors/` — available methods per editor type
 - `pkg/mutation/selectors/` — available container selectors
-- `pkg/feature/feature.go` — `NewResourceFeature`, `Mutation[T]`
+- `pkg/feature/feature.go` — `NewVersionGate`, `Mutation[T]`
 
 When changing a public API, also check `examples/` for real usage patterns and to identify what else needs updating.
 

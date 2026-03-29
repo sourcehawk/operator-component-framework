@@ -64,7 +64,7 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "set-max-unavailable",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
 					e.SetMaxUnavailable(intstr.FromInt32(1))
@@ -87,7 +87,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "feature-a",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 					e.EnsureLabel("order", "a")
@@ -98,7 +98,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		}).
 		WithMutation(Mutation{
 			Name:    "feature-b",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 					e.EnsureLabel("order", "b")

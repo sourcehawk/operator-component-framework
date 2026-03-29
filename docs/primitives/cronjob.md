@@ -60,7 +60,7 @@ that receives a `*Mutator` and records edit intent through typed editors.
 func MyScheduleMutation(version string) cronjob.Mutation {
     return cronjob.Mutation{
         Name:    "my-schedule",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *cronjob.Mutator) error {
             m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
                 e.SetSchedule("0 */6 * * *")
@@ -81,7 +81,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func TimeZoneMutation(version string, enabled bool) cronjob.Mutation {
     return cronjob.Mutation{
         Name:    "timezone",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *cronjob.Mutator) error {
             m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
                 e.SetTimeZone("America/New_York")

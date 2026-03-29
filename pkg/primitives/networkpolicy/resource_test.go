@@ -69,7 +69,7 @@ func TestResource_Mutate(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "test-mutation",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
 					e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
@@ -113,7 +113,7 @@ func TestResource_Mutate_DisabledFeature(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "disabled-mutation",
-			Feature: feature.NewResourceFeature("v1", nil).When(false),
+			Feature: feature.NewVersionGate("v1", nil).When(false),
 			Mutate: func(m *Mutator) error {
 				m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 					e.EnsureLabel("should-not", "appear")

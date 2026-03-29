@@ -57,7 +57,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) pv.Mutation {
     return pv.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *pv.Mutator) error {
             m.SetStorageClassName("fast-ssd")
             return nil
@@ -75,7 +75,7 @@ another, register the dependency first.
 func RetainPolicyMutation(version string, retainEnabled bool) pv.Mutation {
     return pv.Mutation{
         Name:    "retain-policy",
-        Feature: feature.NewResourceFeature(version, nil).When(retainEnabled),
+        Feature: feature.NewVersionGate(version, nil).When(retainEnabled),
         Mutate: func(m *pv.Mutator) error {
             m.SetReclaimPolicy(corev1.PersistentVolumeReclaimRetain)
             return nil
@@ -92,7 +92,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyStorageClassMutation(version string) pv.Mutation {
     return pv.Mutation{
         Name: "legacy-storage-class",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -233,7 +233,7 @@ pv.NewBuilder(base).
 func StorageClassMutation(version string) pv.Mutation {
     return pv.Mutation{
         Name:    "storage-class",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *pv.Mutator) error {
             m.SetStorageClassName("fast-ssd")
             m.SetReclaimPolicy(corev1.PersistentVolumeReclaimRetain)
@@ -245,7 +245,7 @@ func StorageClassMutation(version string) pv.Mutation {
 func TierLabelMutation(version, tier string) pv.Mutation {
     return pv.Mutation{
         Name:    "tier-label",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *pv.Mutator) error {
             m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
                 e.EnsureLabel("storage-tier", tier)

@@ -1,11 +1,12 @@
-// Package feature provides mechanisms for version-gated feature mutations.
+// Package feature provides gating mechanisms for conditional mutations and resource lifecycle control.
 package feature
 
 import "fmt"
 
-// MutationFeature is an optional feature gate for a Mutation.
-// If Enabled returns false, the mutation is not applied.
-type MutationFeature interface {
+// Gate is an optional gate for a Mutation or resource.
+// If Enabled returns false, the associated mutation is not applied,
+// or the associated resource is marked for deletion.
+type Gate interface {
 	Enabled() (bool, error)
 }
 
@@ -18,7 +19,7 @@ type Mutation[T any] struct {
 	// Name is a human-readable identifier used for error reporting.
 	Name string
 	// Feature gates this mutation. If nil, the mutation is applied unconditionally.
-	Feature MutationFeature
+	Feature Gate
 	// Mutate is the function that applies the changes to the object.
 	Mutate func(T) error
 }
@@ -48,67 +49,68 @@ func (m *Mutation[T]) ApplyIntent(obj T) error {
 }
 
 // VersionConstraint defines a condition based on a semantic version.
-// Implementations should report whether a feature is enabled for the given version string.
+// Implementations should report whether the constraint is satisfied for the given version string.
 type VersionConstraint interface {
-	// Enabled reports whether the feature is enabled for the given version string.
+	// Enabled reports whether the constraint is satisfied for the given version string.
 	Enabled(version string) (bool, error)
 }
 
-// ResourceFeature represents the conditions under which a feature mutation applies.
+// VersionGate is a Gate implementation that combines semantic version constraints
+// with boolean conditions.
 //
-// A ResourceFeature is enabled only when all registered semver constraints match
+// A VersionGate is enabled only when all registered semver constraints match
 // the current version and all additional truth conditions added via When are true.
-type ResourceFeature struct {
+type VersionGate struct {
 	current            string
 	versionConstraints []VersionConstraint
 
 	// requiredTruths contains additional boolean conditions that must all be true
-	// for the feature to apply.
+	// for the gate to be enabled.
 	requiredTruths []bool
 }
 
-// NewResourceFeature creates a new ResourceFeature for the given current version
+// NewVersionGate creates a new VersionGate for the given current version
 // and semver constraints.
 //
 // Nil constraints are ignored.
-func NewResourceFeature(currentVersion string, versionConstraints []VersionConstraint) *ResourceFeature {
-	var features []VersionConstraint
+func NewVersionGate(currentVersion string, versionConstraints []VersionConstraint) *VersionGate {
+	var constraints []VersionConstraint
 
 	for _, constraint := range versionConstraints {
 		if constraint != nil {
-			features = append(features, constraint)
+			constraints = append(constraints, constraint)
 		}
 	}
 
-	return &ResourceFeature{
+	return &VersionGate{
 		current:            currentVersion,
-		versionConstraints: features,
+		versionConstraints: constraints,
 	}
 }
 
-// When adds a boolean condition that must be true for the feature to be enabled.
+// When adds a boolean condition that must be true for the gate to be enabled.
 //
 // Calls are additive: all values passed through When must be true for Enabled()
 // to return true.
-func (f *ResourceFeature) When(truth bool) *ResourceFeature {
-	f.requiredTruths = append(f.requiredTruths, truth)
-	return f
+func (v *VersionGate) When(truth bool) *VersionGate {
+	v.requiredTruths = append(v.requiredTruths, truth)
+	return v
 }
 
-// Enabled reports whether the feature should apply.
+// Enabled reports whether the gate is enabled.
 //
-// A feature is enabled only if:
-// - all When conditions are true
-// - all version constraints match the current version.
-func (f *ResourceFeature) Enabled() (bool, error) {
-	for _, truth := range f.requiredTruths {
+// The gate is enabled only if:
+//   - all When conditions are true
+//   - all version constraints match the current version.
+func (v *VersionGate) Enabled() (bool, error) {
+	for _, truth := range v.requiredTruths {
 		if !truth {
 			return false, nil
 		}
 	}
 
-	for _, constraint := range f.versionConstraints {
-		enabled, err := constraint.Enabled(f.current)
+	for _, constraint := range v.versionConstraints {
+		enabled, err := constraint.Enabled(v.current)
 		if err != nil {
 			return false, err
 		}

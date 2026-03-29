@@ -48,7 +48,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) pdb.Mutation {
     return pdb.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *pdb.Mutator) error {
             // record edits here
             return nil
@@ -66,7 +66,7 @@ another, register the dependency first.
 func StrictAvailabilityMutation(version string, enabled bool) pdb.Mutation {
     return pdb.Mutation{
         Name:    "strict-availability",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *pdb.Mutator) error {
             m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.ClearMinAvailable()
@@ -87,7 +87,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyPDBMutation(version string) pdb.Mutation {
     return pdb.Mutation{
         Name: "legacy-pdb",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -207,7 +207,7 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 func BasePDBMutation(version string) pdb.Mutation {
     return pdb.Mutation{
         Name:    "base-pdb",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *pdb.Mutator) error {
             m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
                 e.EnsureLabel("app.kubernetes.io/version", version)
@@ -221,7 +221,7 @@ func BasePDBMutation(version string) pdb.Mutation {
 func StrictAvailabilityMutation(version string, enabled bool) pdb.Mutation {
     return pdb.Mutation{
         Name:    "strict-availability",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *pdb.Mutator) error {
             m.EditSpec(func(e *editors.PodDisruptionBudgetSpecEditor) error {
                 e.ClearMinAvailable()
@@ -246,8 +246,8 @@ needs to know about the other.
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **`MinAvailable` and `MaxUnavailable` are mutually exclusive.** When switching between them, always clear the opposing
 field first. The typed API makes this explicit with `ClearMinAvailable` and `ClearMaxUnavailable`.

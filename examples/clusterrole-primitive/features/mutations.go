@@ -44,7 +44,7 @@ func VersionLabelMutation(version string) clusterrole.Mutation {
 func SecretAccessMutation(version string, needsSecrets bool) clusterrole.Mutation {
 	return clusterrole.Mutation{
 		Name:    "secret-access",
-		Feature: feature.NewResourceFeature(version, nil).When(needsSecrets),
+		Feature: feature.NewVersionGate(version, nil).When(needsSecrets),
 		Mutate: func(m *clusterrole.Mutator) error {
 			m.AddRule(rbacv1.PolicyRule{
 				APIGroups: []string{""},
@@ -61,7 +61,7 @@ func SecretAccessMutation(version string, needsSecrets bool) clusterrole.Mutatio
 func DeploymentAccessMutation(version string, manageDeployments bool) clusterrole.Mutation {
 	return clusterrole.Mutation{
 		Name:    "deployment-access",
-		Feature: feature.NewResourceFeature(version, nil).When(manageDeployments),
+		Feature: feature.NewVersionGate(version, nil).When(manageDeployments),
 		Mutate: func(m *clusterrole.Mutator) error {
 			m.AddRule(rbacv1.PolicyRule{
 				APIGroups: []string{"apps"},

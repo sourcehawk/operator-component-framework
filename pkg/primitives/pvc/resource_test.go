@@ -71,7 +71,7 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "increase-storage",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.SetStorageRequest(resource.MustParse("50Gi"))
 				return nil
@@ -93,7 +93,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "feature-a",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.SetStorageRequest(resource.MustParse("20Gi"))
 				return nil
@@ -101,7 +101,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		}).
 		WithMutation(Mutation{
 			Name:    "feature-b",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.SetStorageRequest(resource.MustParse("30Gi"))
 				return nil

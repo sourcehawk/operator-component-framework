@@ -51,7 +51,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) job.Mutation {
     return job.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *job.Mutator) error {
             // record edits here
             return nil
@@ -71,7 +71,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func TracingMutation(version string, enabled bool) job.Mutation {
     return job.Mutation{
         Name:    "tracing",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *job.Mutator) error {
             m.EnsureContainerEnvVar(corev1.EnvVar{
                 Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -93,7 +93,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyMigrationMutation(version string) job.Mutation {
     return job.Mutation{
         Name: "legacy-migration-format",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -240,8 +240,8 @@ resource, err := job.NewBuilder(base).
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
 The internal ordering within each mutation handles intra-mutation dependencies automatically.

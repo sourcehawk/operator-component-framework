@@ -81,7 +81,7 @@ func TestResource_Mutate(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "test-mutation",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EnsureContainerEnvVar(corev1.EnvVar{Name: "FOO", Value: "BAR"})
 				return nil
@@ -120,7 +120,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "feature-a",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 					e.Raw().Image = "v2"
@@ -131,7 +131,7 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 		}).
 		WithMutation(Mutation{
 			Name:    "feature-b",
-			Feature: feature.NewResourceFeature("v1", nil).When(true),
+			Feature: feature.NewVersionGate("v1", nil).When(true),
 			Mutate: func(m *Mutator) error {
 				m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
 					if e.Raw().Image == "v2" {

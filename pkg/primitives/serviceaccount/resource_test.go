@@ -78,7 +78,7 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	res, err := NewBuilder(desired).
 		WithMutation(Mutation{
 			Name:    "add-pull-secret",
-			Feature: feature.NewResourceFeature("1.0.0", nil),
+			Feature: feature.NewVersionGate("1.0.0", nil),
 			Mutate: func(m *Mutator) error {
 				m.EnsureImagePullSecret("my-registry")
 				return nil

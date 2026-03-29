@@ -50,7 +50,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) replicaset.Mutation {
     return replicaset.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *replicaset.Mutator) error {
             // record edits here
             return nil
@@ -69,7 +69,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func TracingMutation(version string, enabled bool) replicaset.Mutation {
     return replicaset.Mutation{
         Name:    "tracing",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *replicaset.Mutator) error {
             m.EnsureContainer(corev1.Container{
                 Name:  "jaeger-agent",

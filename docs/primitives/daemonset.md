@@ -50,7 +50,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) daemonset.Mutation {
     return daemonset.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *daemonset.Mutator) error {
             // record edits here
             return nil
@@ -70,7 +70,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func MonitoringMutation(version string, enabled bool) daemonset.Mutation {
     return daemonset.Mutation{
         Name:    "monitoring",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *daemonset.Mutator) error {
             m.EnsureContainer(corev1.Container{
                 Name:  "metrics-exporter",
@@ -232,8 +232,8 @@ failure. The generation check ensures the controller has observed the latest spe
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
 The internal ordering within each mutation handles intra-mutation dependencies automatically.

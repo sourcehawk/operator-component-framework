@@ -41,7 +41,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) serviceaccount.Mutation {
     return serviceaccount.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *serviceaccount.Mutator) error {
             m.EnsureImagePullSecret("my-registry")
             return nil
@@ -59,7 +59,7 @@ another, register the dependency first.
 func PrivateRegistryMutation(version string, usePrivateRegistry bool) serviceaccount.Mutation {
     return serviceaccount.Mutation{
         Name:    "private-registry",
-        Feature: feature.NewResourceFeature(version, nil).When(usePrivateRegistry),
+        Feature: feature.NewVersionGate(version, nil).When(usePrivateRegistry),
         Mutate: func(m *serviceaccount.Mutator) error {
             m.EnsureImagePullSecret("private-registry-creds")
             return nil
@@ -76,7 +76,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyTokenMutation(version string) serviceaccount.Mutation {
     return serviceaccount.Mutation{
         Name: "legacy-token",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -155,7 +155,7 @@ m.SetAutomountServiceAccountToken(&v)
 func BaseImagePullSecretMutation(version string) serviceaccount.Mutation {
     return serviceaccount.Mutation{
         Name:    "base-pull-secret",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *serviceaccount.Mutator) error {
             m.EnsureImagePullSecret("default-registry")
             return nil
@@ -166,7 +166,7 @@ func BaseImagePullSecretMutation(version string) serviceaccount.Mutation {
 func DisableAutomountMutation(version string, disableAutomount bool) serviceaccount.Mutation {
     return serviceaccount.Mutation{
         Name:    "disable-automount",
-        Feature: feature.NewResourceFeature(version, nil).When(disableAutomount),
+        Feature: feature.NewVersionGate(version, nil).When(disableAutomount),
         Mutate: func(m *serviceaccount.Mutator) error {
             v := false
             m.SetAutomountServiceAccountToken(&v)
@@ -187,8 +187,8 @@ field is left at its baseline value. Neither mutation needs to know about the ot
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Use `EnsureImagePullSecret` for idempotent secret registration.** Multiple features can independently ensure their
 required pull secrets without conflicting with each other.

@@ -14,7 +14,7 @@ import (
 func VersionLabelMutation(version string) service.Mutation {
 	return service.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *service.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -29,7 +29,7 @@ func VersionLabelMutation(version string) service.Mutation {
 func MetricsPortMutation(version string, enableMetrics bool) service.Mutation {
 	return service.Mutation{
 		Name:    "metrics-port",
-		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
+		Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
 		Mutate: func(m *service.Mutator) error {
 			m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 				e.EnsurePort(corev1.ServicePort{

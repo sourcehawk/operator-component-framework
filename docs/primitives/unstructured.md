@@ -122,7 +122,7 @@ import (
 func RegionMutation(version, region string) unstruct.Mutation {
     return unstruct.Mutation{
         Name:    "set-region",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *unstruct.Mutator) error {
             m.EditContent(func(e *editors.UnstructuredContentEditor) error {
                 return e.SetNestedString(region, "spec", "forProvider", "region")

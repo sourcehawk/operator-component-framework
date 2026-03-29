@@ -77,7 +77,7 @@ Mutations are applied in the order they are registered with the builder.
 func SecretAccessMutation(version string, needsSecrets bool) clusterrole.Mutation {
     return clusterrole.Mutation{
         Name:    "secret-access",
-        Feature: feature.NewResourceFeature(version, nil).When(needsSecrets),
+        Feature: feature.NewVersionGate(version, nil).When(needsSecrets),
         Mutate: func(m *clusterrole.Mutator) error {
             m.AddRule(rbacv1.PolicyRule{
                 APIGroups: []string{""},
@@ -98,7 +98,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyRBACMutation(version string) clusterrole.Mutation {
     return clusterrole.Mutation{
         Name: "legacy-rbac",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -257,7 +257,7 @@ func CoreRulesMutation() clusterrole.Mutation {
 func CRDAccessMutation(version string, manageCRDs bool) clusterrole.Mutation {
     return clusterrole.Mutation{
         Name:    "crd-access",
-        Feature: feature.NewResourceFeature(version, nil).When(manageCRDs),
+        Feature: feature.NewVersionGate(version, nil).When(manageCRDs),
         Mutate: func(m *clusterrole.Mutator) error {
             m.AddRule(rbacv1.PolicyRule{
                 APIGroups: []string{"apiextensions.k8s.io"},
@@ -281,8 +281,8 @@ written. Neither mutation needs to know about the other.
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Use `SetAggregationRule` for composite roles.** When you want the API server to aggregate rules from multiple
 ClusterRoles based on label selectors, use `SetAggregationRule` instead of managing `.rules` directly. The two

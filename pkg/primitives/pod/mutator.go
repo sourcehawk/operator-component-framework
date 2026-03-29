@@ -8,7 +8,7 @@ import (
 )
 
 // Mutation defines a feature-aware mutation applied by a Pod Mutator.
-// If constructed with a non-nil feature.ResourceFeature, it is applied only
+// If constructed with a non-nil feature.VersionGate, it is applied only
 // when that feature is enabled; if the feature is nil, the mutation is
 // always applied.
 type Mutation feature.Mutation[*Mutator]

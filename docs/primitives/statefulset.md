@@ -58,7 +58,7 @@ with no version constraints and no `When()` conditions is also always enabled:
 func MyFeatureMutation(version string) statefulset.Mutation {
     return statefulset.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewResourceFeature(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil), // always enabled
         Mutate: func(m *statefulset.Mutator) error {
             // record edits here
             return nil
@@ -78,7 +78,7 @@ Use `When(bool)` to gate a mutation on a runtime condition:
 func TracingMutation(version string, enabled bool) statefulset.Mutation {
     return statefulset.Mutation{
         Name:    "tracing",
-        Feature: feature.NewResourceFeature(version, nil).When(enabled),
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *statefulset.Mutator) error {
             m.EnsureInitContainer(corev1.Container{
                 Name:  "init-config",
@@ -100,7 +100,7 @@ var legacyConstraint = mustSemverConstraint("< 2.0.0")
 func LegacyStorageMutation(version string) statefulset.Mutation {
     return statefulset.Mutation{
         Name: "legacy-storage",
-        Feature: feature.NewResourceFeature(
+        Feature: feature.NewVersionGate(
             version,
             []feature.VersionConstraint{legacyConstraint},
         ),
@@ -265,7 +265,7 @@ The `Mutator` also exposes convenience wrappers:
 func DatabaseMutation(version string) statefulset.Mutation {
     return statefulset.Mutation{
         Name:    "database-storage",
-        Feature: feature.NewResourceFeature(version, nil),
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *statefulset.Mutator) error {
             // Configure the StatefulSet spec
             m.EditStatefulSetSpec(func(e *editors.StatefulSetSpecEditor) error {
@@ -305,8 +305,8 @@ func DatabaseMutation(version string) statefulset.Mutation {
 ## Guidance
 
 **`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewResourceFeature(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for
-boolean conditions.
+`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
 The internal ordering within each mutation handles intra-mutation dependencies automatically.

@@ -13,7 +13,7 @@ import (
 func BaseRuleMutation(version string) role.Mutation {
 	return role.Mutation{
 		Name:    "base-rules",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *role.Mutator) error {
 			m.EditRules(func(e *editors.PolicyRulesEditor) error {
 				e.SetRules([]rbacv1.PolicyRule{
@@ -40,7 +40,7 @@ func BaseRuleMutation(version string) role.Mutation {
 func VersionLabelMutation(version string) role.Mutation {
 	return role.Mutation{
 		Name:    "version-label",
-		Feature: feature.NewResourceFeature(version, nil),
+		Feature: feature.NewVersionGate(version, nil),
 		Mutate: func(m *role.Mutator) error {
 			m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 				e.EnsureLabel("app.kubernetes.io/version", version)
@@ -56,7 +56,7 @@ func VersionLabelMutation(version string) role.Mutation {
 func SecretAccessMutation(version string, enableTracing bool) role.Mutation {
 	return role.Mutation{
 		Name:    "secret-access",
-		Feature: feature.NewResourceFeature(version, nil).When(enableTracing),
+		Feature: feature.NewVersionGate(version, nil).When(enableTracing),
 		Mutate: func(m *role.Mutator) error {
 			m.EditRules(func(e *editors.PolicyRulesEditor) error {
 				e.AddRule(rbacv1.PolicyRule{
@@ -76,7 +76,7 @@ func SecretAccessMutation(version string, enableTracing bool) role.Mutation {
 func MetricsAccessMutation(version string, enableMetrics bool) role.Mutation {
 	return role.Mutation{
 		Name:    "metrics-access",
-		Feature: feature.NewResourceFeature(version, nil).When(enableMetrics),
+		Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
 		Mutate: func(m *role.Mutator) error {
 			m.EditRules(func(e *editors.PolicyRulesEditor) error {
 				e.AddRule(rbacv1.PolicyRule{

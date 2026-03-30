@@ -121,6 +121,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 // WithGuard registers a guard precondition that is evaluated before the StatefulSet
 // is applied during reconciliation. If the guard returns Blocked, the StatefulSet and
 // all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(
 	guard func(appsv1.StatefulSet) (concepts.GuardStatusWithReason, error),
 ) *Builder {

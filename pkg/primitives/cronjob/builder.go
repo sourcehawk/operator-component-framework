@@ -111,6 +111,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 // WithGuard registers a guard precondition that is evaluated before the CronJob
 // is applied during reconciliation. If the guard returns Blocked, the CronJob and
 // all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(
 	guard func(batchv1.CronJob) (concepts.GuardStatusWithReason, error),
 ) *Builder {

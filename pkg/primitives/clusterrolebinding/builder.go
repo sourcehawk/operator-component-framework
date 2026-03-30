@@ -57,6 +57,7 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // WithGuard registers a guard precondition that is evaluated before the ClusterRoleBinding
 // is applied during reconciliation. If the guard returns Blocked, the ClusterRoleBinding and
 // all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(rbacv1.ClusterRoleBinding) (concepts.GuardStatusWithReason, error)) *Builder {
 	if guard == nil {
 		b.base.WithGuard(nil)

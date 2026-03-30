@@ -53,6 +53,7 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // WithGuard registers a guard precondition that is evaluated before the PodDisruptionBudget
 // is applied during reconciliation. If the guard returns Blocked, the PodDisruptionBudget and
 // all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error)) *Builder {
 	if guard == nil {
 		b.base.WithGuard(nil)

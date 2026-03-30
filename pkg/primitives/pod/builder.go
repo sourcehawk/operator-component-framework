@@ -142,6 +142,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 // WithGuard registers a guard precondition that is evaluated before the Pod
 // is applied during reconciliation. If the guard returns Blocked, the Pod and
 // all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(
 	guard func(corev1.Pod) (concepts.GuardStatusWithReason, error),
 ) *Builder {

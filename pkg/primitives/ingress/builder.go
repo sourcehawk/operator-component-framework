@@ -131,6 +131,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 // WithGuard registers a guard precondition that is evaluated before the Ingress
 // is applied during reconciliation. If the guard returns Blocked, the Ingress and
 // all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(networkingv1.Ingress) (concepts.GuardStatusWithReason, error)) *Builder {
 	if guard == nil {
 		b.base.WithGuard(nil)

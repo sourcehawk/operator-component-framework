@@ -55,6 +55,13 @@ stopping.
 
 ## Rules for Code Changes
 
+### Evaluate review feedback critically
+
+When tasked with addressing review comments (PR reviews, Copilot suggestions), evaluate each comment against the actual
+codebase, language version, and project context before acting on it. Not every comment is correct. If a suggestion is
+wrong, outdated, or irrelevant, state why it does not apply and move on. Do not implement incorrect suggestions for the
+sake of completeness or "just in case."
+
 ### Clarify before implementing
 
 If a prompt is insufficiently detailed to make a coherent and well-designed change — ambiguous scope, unclear intent, or

@@ -15,6 +15,8 @@ flags, then produces an immutable `Component` ready for reconciliation.
 comp, err := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
+    WithFeatureGate(webFeature).                                     // optional: disable to remove all resources
+    WithPrerequisite(component.DependsOn("DatabaseReady")).   // optional: wait for another component
     WithResource(deployment, component.ResourceOptions{}).
     WithResource(configMap, component.ResourceOptions{ReadOnly: true}).
     WithResource(oldService, component.ResourceOptions{Delete: true}).
@@ -100,15 +102,119 @@ comp, err := component.NewComponentBuilder().
 
 When `TracingEnabled` is true, the Jaeger sidecar is created and managed. When false, it is deleted from the cluster.
 
+## Component Feature Gates
+
+A component-level feature gate controls whether the component is active. When the gate is disabled, the component
+deletes all of its resources and reports a `True` condition with reason `Disabled`. When enabled (or not set), the
+component reconciles normally.
+
+```go
+comp, err := component.NewComponentBuilder().
+    WithName("monitoring-sidecar").
+    WithConditionType("MonitoringReady").
+    WithFeatureGate(monitoringFeature).
+    WithResource(exporterDeployment, component.ResourceOptions{}).
+    WithResource(exporterService, component.ResourceOptions{}).
+    Suspend(owner.Spec.Suspended).
+    Build()
+```
+
+A disabled feature gate takes precedence over suspension. If the gate is disabled and the component is also marked
+suspended, the component is treated as disabled (resources are deleted), not suspended.
+
+The condition when the gate is disabled:
+
+```yaml
+type: MonitoringReady
+status: "True"
+reason: Disabled
+message: "Component is disabled."
+```
+
+The `True` status follows the convention that `True` means "in its expected state", consistent with how a `Suspended`
+component also reports `True`.
+
+## Prerequisites
+
+Prerequisites are initialization barriers that prevent a component from reconciling until a condition is met. Unlike
+resource-level [guards](#guards), prerequisites are evaluated only while the component's condition reason indicates it
+has not yet proceeded past initialization. The barrier remains active while the condition reason is `Unknown`,
+`PrerequisiteNotMet`, `Disabled`, or `FeatureGateError`. Once the reason changes to any other value, the barrier is
+permanently passed and the prerequisite is never re-evaluated.
+
+This makes prerequisites suitable for expressing startup dependencies between components. If a dependency later becomes
+unhealthy, the dependent component continues to reconcile its own resources. Prerequisites answer the question "can this
+component be created?", not "should this component keep running?".
+
+### Registering Prerequisites
+
+Prerequisites are registered on the component builder using `WithPrerequisite`. Multiple prerequisites can be
+registered; all must be satisfied before the component proceeds.
+
+```go
+comp, err := component.NewComponentBuilder().
+    WithName("api-server").
+    WithConditionType("ApiServerReady").
+    WithPrerequisite(component.DependsOn("DatabaseReady")).
+    WithPrerequisite(component.DependsOn("CacheReady")).
+    WithResource(apiDeployment, component.ResourceOptions{}).
+    WithResource(apiService, component.ResourceOptions{}).
+    Suspend(owner.Spec.Suspended).
+    Build()
+```
+
+The built-in `DependsOn` helper checks whether a named condition on the owner object has `Status: True`. The owner is
+read from the `ReconcileContext` passed to `Check`, so no cluster reads are performed.
+
+For custom logic, implement the `Prerequisite` interface:
+
+```go
+type Prerequisite interface {
+    Check(rec ReconcileContext) (PrerequisiteResult, error)
+}
+```
+
+### Prerequisite Behavior
+
+- Prerequisites are evaluated before any resources are reconciled or suspended.
+- The barrier is considered active when the component's condition reason is `Unknown`, `PrerequisiteNotMet`, `Disabled`,
+  or `FeatureGateError`. Any other reason means the component has proceeded past initialization and the barrier is
+  permanently passed.
+- While the barrier is active, suspension is a no-op. No resources exist to suspend.
+- A feature gate check runs before the prerequisite check. If the gate is disabled, prerequisites are not evaluated.
+- Prerequisites are evaluated in registration order. The first unmet prerequisite short-circuits the check.
+- A prerequisite error sets the component condition to `False` with reason `PrerequisiteNotMet`.
+
+### Status Reporting
+
+A blocked prerequisite produces a condition like:
+
+```yaml
+type: ApiServerReady
+status: "False"
+reason: PrerequisiteNotMet
+message:
+  'Prerequisite not met: waiting for condition "DatabaseReady" to become True (currently False: Database is still
+  creating resources)'
+```
+
 ## Reconciliation Lifecycle
 
-`comp.Reconcile(ctx, recCtx)` runs a six-phase process on every call:
+`comp.Reconcile(ctx, recCtx)` runs a multi-phase process on every call:
 
-**Phase 1: Suspension check.** If the component is marked suspended, it calls `Suspend()` on all managed resources that
+**Phase 1: Feature gate check.** If a feature gate is set and disabled, all resources managed by the component are
+deleted and the condition is set to `True/Disabled`. No further processing occurs.
+
+**Phase 2: Prerequisite check.** If prerequisites are registered and the initialization barrier has not yet been passed
+(condition reason is `Unknown`, `PrerequisiteNotMet`, `Disabled`, or `FeatureGateError`), all prerequisites are
+evaluated. If any prerequisite is not met, the condition is set to `False/PrerequisiteNotMet` and no resources are
+reconciled or suspended.
+
+**Phase 3: Suspension check.** If the component is marked suspended, it calls `Suspend()` on all managed resources that
 support suspension (create/update resources, not read-only ones), updates the condition, then processes any pending
 deletions and returns. The remaining phases are skipped.
 
-**Phase 2: Resource reconciliation.** All non-delete resources are processed sequentially in registration order,
+**Phase 4: Resource reconciliation.** All non-delete resources are processed sequentially in registration order,
 regardless of whether they are managed or read-only. For each resource:
 
 1. If the resource has a [guard](#guards), the guard is evaluated first. If blocked, the resource and all subsequent
@@ -122,10 +228,10 @@ regardless of whether they are managed or read-only. For each resource:
 This means a read-only resource registered before a managed resource can extract data that feeds into the managed
 resource's guard or mutations.
 
-**Phase 3: Status aggregation and condition update.** The health of each resource is collected, the grace period is
+**Phase 5: Status aggregation and condition update.** The health of each resource is collected, the grace period is
 consulted, and a single aggregate condition is written to the owner object's status.
 
-**Phase 4: Resource deletion.** Resources registered for deletion are removed from the cluster.
+**Phase 6: Resource deletion.** Resources registered for deletion are removed from the cluster.
 
 ## Cluster-Scoped Resources
 
@@ -217,16 +323,33 @@ Reported during intentional deactivation:
 
 See [Guards](#guards) for details.
 
+### Prerequisite State
+
+| State                | Meaning                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `PrerequisiteNotMet` | A component-level prerequisite is not satisfied; no resources have been reconciled |
+
+See [Prerequisites](#prerequisites) for details.
+
+### Feature Gate State
+
+| State      | Meaning                                                         |
+| ---------- | --------------------------------------------------------------- |
+| `Disabled` | The component's feature gate is disabled; all resources deleted |
+
+See [Component Feature Gates](#component-feature-gates) for details.
+
 ### Condition Priority
 
 When aggregating across multiple resources, the most critical state wins:
 
 1. `Error` / `Down` / `Degraded`: something is wrong
 2. Suspension states: the component is intentionally inactive
-3. `Blocked`: a resource is blocked on a guard precondition
-4. Converging states (`Creating`, `Updating`, `Scaling`, `TaskRunning`, `TaskPending`, `OperationPending`): the
+3. `Disabled`: the component is intentionally removed by a feature gate
+4. `Blocked` / `PrerequisiteNotMet`: a precondition is not met
+5. Converging states (`Creating`, `Updating`, `Scaling`, `TaskRunning`, `TaskPending`, `OperationPending`): the
    component is progressing
-5. `Healthy` / `Completed` / `Operational`: all resources are in their target state
+6. `Healthy` / `Completed` / `Operational`: all resources are in their target state
 
 ## Grace Period
 

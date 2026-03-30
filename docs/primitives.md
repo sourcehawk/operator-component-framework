@@ -237,6 +237,10 @@ resource, err := deployment.NewBuilder(base).
     Build()
 ```
 
+Guards handle dependencies between resources **within** a single component. For dependencies **between** components
+(e.g., "the web interface cannot start until the database is ready"), use [prerequisites](component.md#prerequisites) on
+the component builder instead.
+
 See [Guards](component.md#guards) in the component documentation for the full behavioral contract and a complete example
 showing data extraction feeding into a guard.
 

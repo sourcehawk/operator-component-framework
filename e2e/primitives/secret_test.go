@@ -114,7 +114,7 @@ var _ = Describe("Secret Primitive", Label("secret"), func() {
 				return secret.NewBuilder(s).Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for initial Healthy state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -127,12 +127,12 @@ var _ = Describe("Secret Primitive", Label("secret"), func() {
 
 			By("switching desired data and triggering reconciliation")
 			useUpdatedData.Store(true)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["e2e.ocf.io/trigger"] = "update-data"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["e2e.ocf.io/trigger"] = "update-data"
+			})
 
 			By("verifying updated data")
 			Eventually(func(g Gomega) map[string][]byte {

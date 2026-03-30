@@ -175,6 +175,23 @@ const (
 	// The resource and all resources after it in registration order are waiting.
 	GuardBlocked = Status(concepts.GuardStatusBlocked)
 
+	// PrerequisiteNotMet indicates that a component-level prerequisite has not been satisfied.
+	// The component has not reconciled any resources and is waiting for the prerequisite to be met.
+	// Unlike resource guards, prerequisites are initialization barriers: once the component
+	// passes through to normal reconciliation for the first time, the prerequisite is never
+	// re-evaluated.
+	PrerequisiteNotMet Status = "PrerequisiteNotMet"
+
+	// Disabled indicates that the component's feature gate is disabled.
+	// All resources managed by the component are deleted when the gate is disabled.
+	// The condition status is True because the component is in its expected state.
+	Disabled Status = "Disabled"
+	// FeatureGateError indicates that the component's feature gate check failed
+	// with an error. This is distinct from a generic Error so that the prerequisite
+	// initialization barrier can distinguish pre-prerequisite failures from
+	// post-prerequisite failures.
+	FeatureGateError Status = "FeatureGateError"
+
 	// PendingSuspension indicates that the component is aware of the suspension request but has yet to begin suspension.
 	PendingSuspension = Status(concepts.SuspensionStatusPending)
 	// Suspending indicates that the component is converging towards a suspended state but is not yet fully suspended.
@@ -220,7 +237,7 @@ func (s Status) Priority() int {
 		return 8
 	case AliveScaling:
 		return 9
-	case GuardBlocked:
+	case GuardBlocked, PrerequisiteNotMet:
 		return 10
 	case CompletionFailing:
 		return 11
@@ -228,18 +245,20 @@ func (s Status) Priority() int {
 		return 12
 	case AliveFailing:
 		return 13
-	case Suspended:
+	case Disabled:
 		return 14
-	case Suspending:
+	case Suspended:
 		return 15
-	case PendingSuspension:
+	case Suspending:
 		return 16
-	case Degraded:
+	case PendingSuspension:
 		return 17
-	case Down:
+	case Degraded:
 		return 18
-	case Error:
+	case Down:
 		return 19
+	case Error, FeatureGateError:
+		return 20
 	}
 
 	return 0

@@ -936,6 +936,364 @@ var _ = Describe("Component Reconciler", func() {
 		})
 	})
 
+	Context("Feature Gate", func() {
+		It("should delete all resources and set condition to Disabled when gate is disabled", func() {
+			// Given: pre-create a resource so we can verify deletion
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "gated-cm", Namespace: namespace},
+				Data:       map[string]string{"key": "value"},
+			}
+			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
+
+			res := &MockResource{}
+			res.On("Object").Return(cm, nil)
+			res.On("Identity").Return("ConfigMap/gated-cm")
+
+			gate := &testGate{enabled: false}
+			c, err := NewComponentBuilder().
+				WithName("gate-test").
+				WithConditionType("TestComponentReady").
+				WithFeatureGate(gate).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			// When
+			err = c.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(cond.Reason).To(Equal(string(Disabled)))
+
+			// Verify resource was deleted
+			deletedCm := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "gated-cm", Namespace: namespace}, deletedCm)
+			Expect(err).To(HaveOccurred())
+			Expect(client.IgnoreNotFound(err)).To(Succeed())
+		})
+
+		It("should reconcile normally when gate is enabled", func() {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "enabled-gate-cm", Namespace: namespace},
+				Data:       map[string]string{"key": "value"},
+			}
+
+			res := &MockResource{}
+			res.On("Object").Return(cm, nil)
+			res.On("Identity").Return("ConfigMap/enabled-gate-cm")
+			res.On("Mutate", mock.Anything).Return(nil)
+
+			gate := &testGate{enabled: true}
+			c, err := NewComponentBuilder().
+				WithName("gate-enabled-test").
+				WithConditionType("TestComponentReady").
+				WithFeatureGate(gate).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(cond.Reason).To(Equal(string(Healthy)))
+		})
+
+		It("should take precedence over suspension when gate is disabled", func() {
+			res := &MockSuspendableResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "gate-sus-cm", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("ConfigMap/gate-sus-cm")
+
+			gate := &testGate{enabled: false}
+			c, err := NewComponentBuilder().
+				WithName("gate-sus-test").
+				WithConditionType("TestComponentReady").
+				WithFeatureGate(gate).
+				WithResource(res, ResourceOptions{}).
+				Suspend(true).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(cond.Reason).To(Equal(string(Disabled)))
+		})
+
+		It("should set condition to FeatureGateError when gate evaluation fails", func() {
+			gate := &testGate{err: fmt.Errorf("gate check failed")}
+			c, err := NewComponentBuilder().
+				WithName("gate-err-test").
+				WithConditionType("TestComponentReady").
+				WithFeatureGate(gate).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).To(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(FeatureGateError)))
+		})
+
+		It("should handle deletion of non-existent resources without error", func() {
+			// Resource doesn't exist in the cluster
+			res := &MockResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "nonexistent-cm", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("ConfigMap/nonexistent-cm")
+
+			gate := &testGate{enabled: false}
+			c, err := NewComponentBuilder().
+				WithName("gate-noexist-test").
+				WithConditionType("TestComponentReady").
+				WithFeatureGate(gate).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(Disabled)))
+		})
+	})
+
+	Context("Prerequisite", func() {
+		It("should block reconciliation when prerequisite is not met", func() {
+			res := &MockResource{}
+			res.On("Identity").Return("ConfigMap/prereq-cm")
+
+			prereq := &testPrereq{met: false, reason: "dependency not ready"}
+			c, err := NewComponentBuilder().
+				WithName("prereq-test").
+				WithConditionType("TestComponentReady").
+				WithPrerequisite(prereq).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(string(PrerequisiteNotMet)))
+			Expect(cond.Message).To(Equal("dependency not ready"))
+
+			// Verify resource was NOT processed
+			res.AssertNotCalled(GinkgoT(), "Object")
+		})
+
+		It("should reconcile normally when prerequisite is met", func() {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "prereq-met-cm", Namespace: namespace},
+				Data:       map[string]string{"key": "value"},
+			}
+			res := &MockResource{}
+			res.On("Object").Return(cm, nil)
+			res.On("Identity").Return("ConfigMap/prereq-met-cm")
+			res.On("Mutate", mock.Anything).Return(nil)
+
+			prereq := &testPrereq{met: true}
+			c, err := NewComponentBuilder().
+				WithName("prereq-met-test").
+				WithConditionType("TestComponentReady").
+				WithPrerequisite(prereq).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(cond.Reason).To(Equal(string(Healthy)))
+		})
+
+		It("should not re-evaluate prerequisite after barrier has passed", func() {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "barrier-pass-cm", Namespace: namespace},
+				Data:       map[string]string{"key": "value"},
+			}
+			res := &MockResource{}
+			res.On("Object").Return(cm, nil)
+			res.On("Identity").Return("ConfigMap/barrier-pass-cm")
+			res.On("Mutate", mock.Anything).Return(nil)
+
+			callCount := 0
+			prereq := &testPrereqFunc{
+				checkFn: func() (PrerequisiteResult, error) {
+					callCount++
+					return PrerequisiteResult{Status: PrerequisiteStatusMet}, nil
+				},
+			}
+
+			c, err := NewComponentBuilder().
+				WithName("barrier-pass-test").
+				WithConditionType("TestComponentReady").
+				WithPrerequisite(prereq).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			// First reconcile: prerequisite is checked and passes
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(callCount).To(Equal(1))
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(Healthy)))
+
+			// Second reconcile: barrier should be passed, prerequisite should NOT be re-evaluated
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(callCount).To(Equal(1), "Prerequisite should not have been re-evaluated")
+		})
+
+		It("should block suspension while prerequisite has not passed", func() {
+			res := &MockSuspendableResource{}
+			res.On("Identity").Return("ConfigMap/prereq-sus-cm")
+
+			prereq := &testPrereq{met: false, reason: "dependency not ready"}
+			c, err := NewComponentBuilder().
+				WithName("prereq-sus-test").
+				WithConditionType("TestComponentReady").
+				WithPrerequisite(prereq).
+				WithResource(res, ResourceOptions{}).
+				Suspend(true).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(PrerequisiteNotMet)))
+			// Suspension methods should not have been called
+			res.AssertNotCalled(GinkgoT(), "Suspend")
+		})
+
+		It("should allow suspension after prerequisite has passed", func() {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "prereq-then-sus", Namespace: namespace},
+			}
+			res := &MockSuspendableResource{}
+			res.On("Object").Return(cm, nil)
+			res.On("Identity").Return("ConfigMap/prereq-then-sus")
+			res.On("Mutate", mock.Anything).Return(nil)
+			res.On("Suspend").Return(nil)
+			res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: "Stopped",
+			}, nil)
+			res.On("DeleteOnSuspend").Return(false)
+
+			prereq := &testPrereq{met: true}
+			c, err := NewComponentBuilder().
+				WithName("prereq-then-sus-test").
+				WithConditionType("TestComponentReady").
+				WithPrerequisite(prereq).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			// First reconcile: prerequisite passes, normal reconciliation
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(Healthy)))
+
+			// Second reconcile: suspended, barrier already passed so suspension proceeds
+			c.suspended = true
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+			cond = getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(Suspended)))
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		})
+
+		It("should handle gate disabled while prerequisite is not met", func() {
+			res := &MockResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "gate-prereq-cm", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("ConfigMap/gate-prereq-cm")
+
+			gate := &testGate{enabled: false}
+			prereq := &testPrereq{met: false, reason: "dependency not ready"}
+			c, err := NewComponentBuilder().
+				WithName("gate-prereq-test").
+				WithConditionType("TestComponentReady").
+				WithFeatureGate(gate).
+				WithPrerequisite(prereq).
+				WithResource(res, ResourceOptions{}).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Gate takes precedence
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(Disabled)))
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		})
+
+		It("should set condition to PrerequisiteNotMet when prerequisite check fails", func() {
+			prereq := &testPrereqFunc{
+				checkFn: func() (PrerequisiteResult, error) {
+					return PrerequisiteResult{}, fmt.Errorf("prereq check failed")
+				},
+			}
+			c, err := NewComponentBuilder().
+				WithName("prereq-err-test").
+				WithConditionType("TestComponentReady").
+				WithPrerequisite(prereq).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).To(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(PrerequisiteNotMet)))
+		})
+
+		It("should require all prerequisites to pass", func() {
+			prereq1 := &testPrereq{met: true}
+			prereq2 := &testPrereq{met: false, reason: "second dep not ready"}
+			prereq3 := &testPrereq{met: true}
+
+			c, err := NewComponentBuilder().
+				WithName("multi-prereq-test").
+				WithConditionType("TestComponentReady").
+				WithPrerequisite(prereq1).
+				WithPrerequisite(prereq2).
+				WithPrerequisite(prereq3).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = c.Reconcile(ctx, recCtx)
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(PrerequisiteNotMet)))
+			Expect(cond.Message).To(Equal("second dep not ready"))
+		})
+	})
+
 	Context("Guards", func() {
 		It("should apply resource normally when guard returns unblocked", func() {
 			// Given
@@ -1177,4 +1535,33 @@ type testExtractableResource struct {
 
 func (t *testExtractableResource) ExtractData() error {
 	return t.extractFn()
+}
+
+type testGate struct {
+	enabled bool
+	err     error
+}
+
+func (g *testGate) Enabled() (bool, error) {
+	return g.enabled, g.err
+}
+
+type testPrereq struct {
+	met    bool
+	reason string
+}
+
+func (p *testPrereq) Check(_ ReconcileContext) (PrerequisiteResult, error) {
+	if p.met {
+		return PrerequisiteResult{Status: PrerequisiteStatusMet}, nil
+	}
+	return PrerequisiteResult{Status: PrerequisiteStatusNotMet, Reason: p.reason}, nil
+}
+
+type testPrereqFunc struct {
+	checkFn func() (PrerequisiteResult, error)
+}
+
+func (p *testPrereqFunc) Check(_ ReconcileContext) (PrerequisiteResult, error) {
+	return p.checkFn()
 }

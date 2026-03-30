@@ -147,13 +147,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 func (b *Builder) WithGuard(
 	guard func(appsv1.DaemonSet) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(d *appsv1.DaemonSet) (concepts.GuardStatusWithReason, error) {
-		return guard(*d)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -166,14 +160,7 @@ func (b *Builder) WithGuard(
 func (b *Builder) WithDataExtractor(
 	extractor func(appsv1.DaemonSet) error,
 ) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(d *appsv1.DaemonSet) error {
-			if d == nil {
-				return extractor(appsv1.DaemonSet{})
-			}
-			return extractor(*d.DeepCopy())
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

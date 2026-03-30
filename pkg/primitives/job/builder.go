@@ -132,13 +132,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 func (b *Builder) WithGuard(
 	guard func(batchv1.Job) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(j *batchv1.Job) (concepts.GuardStatusWithReason, error) {
-		return guard(*j)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -151,11 +145,7 @@ func (b *Builder) WithGuard(
 func (b *Builder) WithDataExtractor(
 	extractor func(batchv1.Job) error,
 ) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(j *batchv1.Job) error {
-			return extractor(*j)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

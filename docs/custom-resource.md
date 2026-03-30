@@ -364,8 +364,8 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 }
 
 // WithDataExtractor registers a data extractor to run after reconciliation.
-func (b *Builder) WithDataExtractor(extractor func(*examplev1.GameServer) error) *Builder {
-    b.base.WithDataExtractor(extractor)
+func (b *Builder) WithDataExtractor(extractor func(examplev1.GameServer) error) *Builder {
+    b.base.WithDataExtractor(generic.WrapExtractor(extractor))
     return b
 }
 
@@ -409,9 +409,9 @@ func (b *Builder) WithCustomSuspendDeletionDecision(handler func(*examplev1.Game
 // is applied. If the guard returns Blocked, the resource and all resources after
 // it in the component are skipped. Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(
-    handler func(*examplev1.GameServer) (concepts.GuardStatusWithReason, error),
+    guard func(examplev1.GameServer) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-    b.base.WithGuard(handler)
+    b.base.WithGuard(generic.WrapGuard(guard))
     return b
 }
 

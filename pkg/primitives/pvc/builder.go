@@ -127,13 +127,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 // all resources registered after it are skipped until the guard clears.
 // Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(corev1.PersistentVolumeClaim) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(p *corev1.PersistentVolumeClaim) (concepts.GuardStatusWithReason, error) {
-		return guard(*p)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -146,11 +140,7 @@ func (b *Builder) WithGuard(guard func(corev1.PersistentVolumeClaim) (concepts.G
 //
 // A nil extractor is ignored.
 func (b *Builder) WithDataExtractor(extractor func(corev1.PersistentVolumeClaim) error) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(p *corev1.PersistentVolumeClaim) error {
-			return extractor(*p)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

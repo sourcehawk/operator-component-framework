@@ -63,13 +63,7 @@ func (b *Builder) WithMutation(m unstruct.Mutation) *Builder {
 // all resources registered after it are skipped until the guard clears.
 // Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(uns.Unstructured) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(obj *uns.Unstructured) (concepts.GuardStatusWithReason, error) {
-		return guard(*obj)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -79,11 +73,7 @@ func (b *Builder) WithGuard(guard func(uns.Unstructured) (concepts.GuardStatusWi
 // The extractor receives a value copy of the reconciled object. A nil extractor
 // is ignored.
 func (b *Builder) WithDataExtractor(extractor func(uns.Unstructured) error) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(obj *uns.Unstructured) error {
-			return extractor(*obj)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

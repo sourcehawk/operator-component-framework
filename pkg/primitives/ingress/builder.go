@@ -133,13 +133,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 // all resources registered after it are skipped until the guard clears.
 // Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(networkingv1.Ingress) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(ing *networkingv1.Ingress) (concepts.GuardStatusWithReason, error) {
-		return guard(*ing)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -152,11 +146,7 @@ func (b *Builder) WithGuard(guard func(networkingv1.Ingress) (concepts.GuardStat
 //
 // A nil extractor is ignored.
 func (b *Builder) WithDataExtractor(extractor func(networkingv1.Ingress) error) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(ing *networkingv1.Ingress) error {
-			return extractor(*ing)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

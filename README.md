@@ -78,6 +78,22 @@ Each function returns a `component.Resource` wrapping a single Kubernetes object
 [primitive builders](docs/primitives.md) for common resource types.
 
 ```go
+import (
+    "time"
+
+    appsv1 "k8s.io/api/apps/v1"
+    corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+    "github.com/sourcehawk/operator-component-framework/pkg/component"
+    "github.com/sourcehawk/operator-component-framework/pkg/feature"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/configmap"
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/service"
+)
+
 func NewWebConfig(owner *MyOperatorCR) (component.Resource, error) {
     return configmap.NewBuilder(&corev1.ConfigMap{
         ObjectMeta: metav1.ObjectMeta{Name: "web-config", Namespace: owner.Namespace},
@@ -211,7 +227,7 @@ single component.
 func NewDatabaseConfig(owner *MyOperatorCR, dbHost *string) (component.Resource, error) {
     return configmap.NewBuilder(baseCM).
         WithDataExtractor(func(cm corev1.ConfigMap) error {
-            dbHost = ptr.To(cm.Data["database-host"])
+            *dbHost = cm.Data["database-host"]
             return nil
         }).
         Build()
@@ -220,7 +236,7 @@ func NewDatabaseConfig(owner *MyOperatorCR, dbHost *string) (component.Resource,
 func NewAppDeployment(owner *MyOperatorCR, dbHost *string) (component.Resource, error) {
     return deployment.NewBuilder(baseDep).
         WithGuard(func(_ appsv1.Deployment) (concepts.GuardStatusWithReason, error) {
-            if dbHost != nil && *dbHost == "" {
+            if dbHost == nil || *dbHost == "" {
                 return concepts.GuardStatusWithReason{
                     Status: concepts.GuardStatusBlocked,
                     Reason: "waiting for database host from ConfigMap",
@@ -264,7 +280,6 @@ within a component.
 // Feature-gated: created when enabled, deleted when disabled.
 metricsOpts, _ := component.NewResourceOptionsBuilder().
     WithFeatureGate(metricsGate).
-	When(somethingTrue).
     Auxiliary().
     Build()
 

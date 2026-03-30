@@ -101,13 +101,20 @@ func (r *BaseResource[T, M]) ExtractData() error {
 
 // GuardStatus evaluates the resource's guard precondition.
 // If no guard handler is configured, the resource is unconditionally unblocked.
+// The handler receives a deep copy of the desired object to prevent accidental mutations.
 func (r *BaseResource[T, M]) GuardStatus() (concepts.GuardStatusWithReason, error) {
 	if r.GuardHandler == nil {
 		return concepts.GuardStatusWithReason{
 			Status: concepts.GuardStatusUnblocked,
 		}, nil
 	}
-	return r.GuardHandler(r.DesiredObject)
+
+	copyObj, ok := r.DesiredObject.DeepCopyObject().(T)
+	if !ok {
+		return concepts.GuardStatusWithReason{}, fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
+	}
+
+	return r.GuardHandler(copyObj)
 }
 
 // DeleteOnSuspend reports whether the resource should be deleted when suspended.

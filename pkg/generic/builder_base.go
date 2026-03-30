@@ -64,6 +64,7 @@ func (b *BaseBuilder[T, M]) WithMutation(m Mutation[M]) {
 // WithGuard registers a guard precondition for the resource.
 // The guard is evaluated before each apply during reconciliation. If it returns
 // Blocked, the resource and all resources after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
 func (b *BaseBuilder[T, M]) WithGuard(handler func(T) (concepts.GuardStatusWithReason, error)) {
 	b.BaseRes.GuardHandler = handler
 }

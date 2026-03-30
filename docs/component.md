@@ -92,12 +92,12 @@ if err != nil {
 
 Each resource is registered with a `ResourceOptions` struct that controls how the component interacts with it:
 
-| Option                                                           | Behavior                                                                                                                                 |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `ResourceOptions{}` (default)                                    | **Managed**: created or updated; health contributes to condition                                                                         |
-| `ResourceOptions{ReadOnly: true}`                                | **Read-only**: fetched but never modified; health still contributes                                                                      |
-| `ResourceOptions{Delete: true}`                                  | **Delete-only**: removed from the cluster if present; does not contribute to health                                                      |
-| `ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}` | The resource's health does not contribute to the component condition. The component can become Ready regardless of this resource's state |
+| Option                                                           | Behavior                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ResourceOptions{}` (default)                                    | **Managed**: created or updated; health contributes to condition                                                                                                                                                                                                                                              |
+| `ResourceOptions{ReadOnly: true}`                                | **Read-only**: fetched but never modified; health still contributes                                                                                                                                                                                                                                           |
+| `ResourceOptions{Delete: true}`                                  | **Delete-only**: removed from the cluster if present; does not contribute to health                                                                                                                                                                                                                           |
+| `ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}` | The resource's health does not contribute to the component condition. The component can become Ready regardless of this resource's state. **Exception:** a blocked [guard](#guards) always contributes to the condition regardless of participation mode, because it halts the entire reconciliation pipeline |
 
 ### Building Resource Options with Feature Gating
 
@@ -440,8 +440,10 @@ The guard function receives the resource's object but is not required to use it.
 ### Guard Behavior
 
 - Guards are evaluated in resource registration order, before each resource is applied.
-- When a guard returns `Blocked`, the blocked resource contributes a `Blocked` status to the component condition. All
-  resources after it are skipped entirely.
+- When a guard returns `Blocked`, the blocked resource contributes a `Blocked` status to the component condition
+  regardless of the resource's participation mode. All resources after it are skipped entirely. This override exists
+  because a blocked guard halts the entire pipeline, and subsequent required resources would otherwise be silently
+  absent from health aggregation.
 - On the next reconciliation cycle, if the guard clears (returns `Unblocked`), the resource is applied normally.
 - Guards are **not** evaluated during suspension. The suspension path always proceeds regardless of guard state.
 - A guard evaluation error is treated as a reconciliation failure and sets the component condition to `Error`.

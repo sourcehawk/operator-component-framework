@@ -63,21 +63,21 @@ func TestResourceOptionsBuilder_Build(t *testing.T) {
 			want: ResourceOptions{},
 		},
 		{
-			name: "single truth true creates resource",
+			name: "single When condition true creates resource",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().When(true).Build()
 			},
 			want: ResourceOptions{},
 		},
 		{
-			name: "single truth false marks for deletion",
+			name: "single When condition false marks for deletion",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().When(false).Build()
 			},
 			want: ResourceOptions{Delete: true},
 		},
 		{
-			name: "multiple truths all true creates resource",
+			name: "multiple When conditions all true creates resource",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().
 					When(true).
@@ -88,7 +88,7 @@ func TestResourceOptionsBuilder_Build(t *testing.T) {
 			want: ResourceOptions{},
 		},
 		{
-			name: "multiple truths one false marks for deletion",
+			name: "multiple When conditions one false marks for deletion",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().
 					When(true).
@@ -99,7 +99,7 @@ func TestResourceOptionsBuilder_Build(t *testing.T) {
 			want: ResourceOptions{Delete: true},
 		},
 		{
-			name: "feature enabled with one truth false marks for deletion",
+			name: "feature enabled with one When condition false marks for deletion",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().
 					WithFeatureGate(&enabledFeature{}).
@@ -109,7 +109,7 @@ func TestResourceOptionsBuilder_Build(t *testing.T) {
 			want: ResourceOptions{Delete: true},
 		},
 		{
-			name: "feature disabled ignores truths",
+			name: "feature disabled ignores When conditions",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().
 					WithFeatureGate(&disabledFeature{}).

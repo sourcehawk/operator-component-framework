@@ -76,7 +76,7 @@ opts, err := component.ResourceOptionsFor(tracingFeature)
 **Resolution rules:**
 
 1. If the feature is non-nil and evaluates to disabled, the resource is deleted.
-2. If any truth condition is false, the resource is deleted.
+2. If any When condition evaluates to false, the resource is deleted.
 3. Deletion takes precedence over read-only mode.
 4. Participation mode is preserved regardless of deletion state.
 

@@ -61,8 +61,8 @@ func (b *ResourceOptionsBuilder) Auxiliary() *ResourceOptionsBuilder {
 // ReadOnly marks the resource as read-only. The component will fetch the
 // resource's current state but will not create or update it.
 //
-// If the resource is also gated by a disabled feature or a false When
-// condition, deletion takes precedence over read-only mode.
+// If the resource is also gated by a disabled feature or a When condition
+// that evaluates to false, deletion takes precedence over read-only mode.
 func (b *ResourceOptionsBuilder) ReadOnly() *ResourceOptionsBuilder {
 	b.readOnly = true
 	return b
@@ -77,7 +77,7 @@ func (b *ResourceOptionsBuilder) ReadOnly() *ResourceOptionsBuilder {
 //
 // Resolution rules:
 //   - If the feature is non-nil and Enabled() returns false, Delete is true.
-//   - If any When condition is false, Delete is true.
+//   - If any When condition evaluates to false, Delete is true.
 //   - If Delete is true, ReadOnly is forced to false (deletion takes precedence).
 //   - ParticipationMode is preserved regardless of deletion state.
 func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {

@@ -35,18 +35,26 @@ Controller
 
 ## Features
 
-- **Structured reconciliation** with predictable, phased lifecycle management
-- **Condition aggregation** across multiple resources into a single component condition
-- **Grace period support** to avoid premature degraded status during normal operations like rolling updates
-- **Suspension handling** with configurable behavior (scale to zero, delete, or custom logic)
-- **Version-gated mutations** to apply backward-compatibility patches only when needed
-- **Composable mutation layers** that stack without interfering with each other
-- **Resource guards** for gating resources on preconditions before they are applied
-- **Component prerequisites** for expressing startup dependencies between components
-- **Component feature gates** to conditionally enable or disable entire components
-- **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`,
-  `DataExtractable`, `Guardable`) covering the full range of Kubernetes workload types
-- **Typed mutation editors** for kubernetes resource primitives
+**Reconciliation and health**
+
+- **Predictable status management** with consistent condition reporting aggregated from all managed resources
+- **Grace periods** allow time for resources to converge before reporting degraded or down status
+- **Suspend and resume** entire components with configurable behavior (scale to zero, delete, or custom logic)
+- **Lifecycle-aware primitives** for deployments, jobs, services, and more, each reporting health in a way that fits its
+  category
+
+**Feature management**
+
+- **Version-gated mutations** apply patches only when a version constraint matches, keeping the baseline clean
+- **Stackable mutations** that compose independently on the same resource without conflicts
+- **Typed editors and selectors** for modifying containers, pod specs, metadata, and other resource fields safely
+- **Feature gates** to enable or disable entire components or individual resources based on flags or version ranges
+
+**Orchestration**
+
+- **Resource guards** block a resource (and everything after it) until a precondition is met
+- **Data extraction** harvests values from one resource and makes them available to subsequent guards and mutations
+- **Prerequisites** express startup ordering between components (e.g., "wait for the database before starting the API")
 - **Metrics and event recording** integrations out of the box
 
 ## Installation
@@ -60,99 +68,74 @@ Requires Go 1.25.6+ and [controller-runtime](https://github.com/kubernetes-sigs/
 
 ## Quick Start
 
-The following example builds a component that manages a single `Deployment`, with an optional tracing feature applied as
-a mutation.
+The following example builds a component that manages a ConfigMap, Deployment, and Service together. Each resource is
+built by its own function, mutations are defined separately, and a component function composes everything into a single
+reconcilable unit.
+
+### Resource builders
+
+Each function returns a `component.Resource` wrapping a single Kubernetes object. The framework provides typed
+[primitive builders](docs/primitives.md) for common resource types.
 
 ```go
 import (
     "time"
+
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
     "github.com/sourcehawk/operator-component-framework/pkg/component"
+    "github.com/sourcehawk/operator-component-framework/pkg/feature"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/configmap"
     "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+    "github.com/sourcehawk/operator-component-framework/pkg/primitives/service"
 )
 
-func buildWebInterfaceComponent(owner *MyOperatorCR) (*component.Component, error) {
-    // 1. Define the baseline resource
+func NewWebConfig(owner *MyOperatorCR) (component.Resource, error) {
+    return configmap.NewBuilder(&corev1.ConfigMap{
+        ObjectMeta: metav1.ObjectMeta{Name: "web-config", Namespace: owner.Namespace},
+        Data:       map[string]string{"log-level": owner.Spec.LogLevel},
+    }).Build()
+}
+
+func NewWebDeployment(owner *MyOperatorCR) (component.Resource, error) {
     dep := &appsv1.Deployment{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      "web-server",
-            Namespace: owner.Namespace,
-        },
+        ObjectMeta: metav1.ObjectMeta{Name: "web-server", Namespace: owner.Namespace},
         Spec: appsv1.DeploymentSpec{
-            Selector: &metav1.LabelSelector{
-                MatchLabels: map[string]string{"app": "web-server"},
-            },
+            Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web-server"}},
             Template: corev1.PodTemplateSpec{
-                ObjectMeta: metav1.ObjectMeta{
-                    Labels: map[string]string{"app": "web-server"},
-                },
-                Spec: corev1.PodSpec{
-                    Containers: []corev1.Container{
-                        {Name: "app", Image: "my-app:latest"},
-                    },
-                },
+                ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "web-server"}},
+                Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "my-app:latest"}}},
             },
         },
     }
-
-    // 2. Build a resource primitive, applying optional feature mutations
-    res, err := deployment.NewBuilder(dep).
+    return deployment.NewBuilder(dep).
         WithMutation(TracingFeature(owner.Spec.Version, owner.Spec.TracingEnabled)).
-        Build()
-    if err != nil {
-        return nil, err
-    }
-
-    // 3. Assemble the component
-    return component.NewComponentBuilder().
-        WithName("web-interface").
-        WithConditionType("WebInterfaceReady").
-        WithResource(res, component.ResourceOptions{}).
-        WithGracePeriod(5 * time.Minute).
-        Suspend(owner.Spec.Suspended).
         Build()
 }
 
-// 4. Reconcile from your controller
-func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-    owner := &MyOperatorCR{}
-    if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
-        return reconcile.Result{}, client.IgnoreNotFound(err)
-    }
-
-    comp, err := buildWebInterfaceComponent(owner)
-    if err != nil {
-        return reconcile.Result{}, err
-    }
-
-    recCtx := component.ReconcileContext{
-        Client:   r.Client,
-        Scheme:   r.Scheme,
-        Recorder: r.Recorder,
-        Metrics:  r.Metrics,
-        Owner:    owner,
-    }
-
-    return reconcile.Result{}, comp.Reconcile(ctx, recCtx)
+func NewWebService(owner *MyOperatorCR) (component.Resource, error) {
+    return service.NewBuilder(&corev1.Service{
+        ObjectMeta: metav1.ObjectMeta{Name: "web-server", Namespace: owner.Namespace},
+        Spec: corev1.ServiceSpec{
+            Selector: map[string]string{"app": "web-server"},
+            Ports:    []corev1.ServicePort{{Port: 8080}},
+        },
+    }).Build()
 }
 ```
 
-## Feature Mutations
+### Feature mutations
 
-Mutations decouple version-specific or feature-gated logic from the baseline resource definition. A mutation declares a
-condition under which it applies and a function that modifies the resource.
+[Mutations](docs/primitives.md#mutation-system) decouple version-specific or feature-gated logic from the baseline
+resource definition. Each mutation declares a condition under which it applies and a function that modifies the resource
+through typed [editors](docs/primitives.md#mutation-editors) and
+[container selectors](docs/primitives.md#container-selectors).
 
 ```go
-import (
-    corev1 "k8s.io/api/core/v1"
-    "github.com/sourcehawk/operator-component-framework/pkg/feature"
-    "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
-    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
-    "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
-)
-
 func TracingFeature(version string, enabled bool) deployment.Mutation {
     return deployment.Mutation{
         Name:    "enable-tracing",
@@ -168,8 +151,156 @@ func TracingFeature(version string, enabled bool) deployment.Mutation {
 }
 ```
 
-Mutations are applied in registration order. Each mutation is independent: multiple mutations can target the same
-resource without interfering with each other, and the framework guarantees a consistent application sequence.
+Mutations are applied in registration order. Multiple mutations can target the same resource without interfering with
+each other, and the framework guarantees a consistent application sequence.
+
+### Component
+
+The [component](docs/component.md) composes resources into a single reconcilable unit with one condition on the owner
+object. Resources are reconciled in registration order, so the ConfigMap exists before the Deployment is applied.
+
+```go
+func NewWebInterfaceComponent(owner *MyOperatorCR) (*component.Component, error) {
+    configMap, err := NewWebConfig(owner)
+    if err != nil {
+        return nil, err
+    }
+    deployment, err := NewWebDeployment(owner)
+    if err != nil {
+        return nil, err
+    }
+    service, err := NewWebService(owner)
+    if err != nil {
+        return nil, err
+    }
+
+    return component.NewComponentBuilder().
+        WithName("web-interface").
+        WithConditionType("WebInterfaceReady").
+        WithResource(configMap, component.ResourceOptions{}).
+        WithResource(deployment, component.ResourceOptions{}).
+        WithResource(service, component.ResourceOptions{}).
+        WithGracePeriod(5 * time.Minute).
+        Suspend(owner.Spec.Suspended).
+        Build()
+}
+```
+
+### Reconciliation
+
+The controller builds the component and hands it to the framework.
+
+```go
+func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+    owner := &MyOperatorCR{}
+    if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
+        return reconcile.Result{}, client.IgnoreNotFound(err)
+    }
+
+    comp, err := NewWebInterfaceComponent(owner)
+    if err != nil {
+        return reconcile.Result{}, err
+    }
+
+    return reconcile.Result{}, comp.Reconcile(ctx, component.ReconcileContext{
+        Client:   r.Client,
+        Scheme:   r.Scheme,
+        Recorder: r.Recorder,
+        Metrics:  r.Metrics,
+        Owner:    owner,
+    })
+}
+```
+
+## Beyond the Basics
+
+The Quick Start shows the common path. The sections below highlight capabilities that matter once your operator grows
+beyond a single resource.
+
+### Guards and Data Extraction
+
+Resources are reconciled in order. A [data extractor](docs/primitives.md#lifecycle-interfaces) on an earlier resource
+can feed a [guard](docs/component.md#guards) on a later one, letting you express dependencies between resources within a
+single component.
+
+```go
+func NewDatabaseConfig(owner *MyOperatorCR, dbHost *string) (component.Resource, error) {
+    return configmap.NewBuilder(baseCM).
+        WithDataExtractor(func(cm corev1.ConfigMap) error {
+            *dbHost = cm.Data["database-host"]
+            return nil
+        }).
+        Build()
+}
+
+func NewAppDeployment(owner *MyOperatorCR, dbHost *string) (component.Resource, error) {
+    return deployment.NewBuilder(baseDep).
+        WithGuard(func(_ appsv1.Deployment) (concepts.GuardStatusWithReason, error) {
+            if dbHost == nil || *dbHost == "" {
+                return concepts.GuardStatusWithReason{
+                    Status: concepts.GuardStatusBlocked,
+                    Reason: "waiting for database host from ConfigMap",
+                }, nil
+            }
+            return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
+        }).
+        Build()
+}
+```
+
+When a guard blocks, the component reports a `Blocked` condition and skips all subsequent resources in the pipeline.
+
+### Component Prerequisites and Feature Gates
+
+[Prerequisites](docs/component.md#prerequisites) express startup ordering between components.
+[Feature gates](docs/component.md#component-feature-gates) conditionally enable or disable an entire component: when
+disabled, all its resources are deleted and the condition reports `Disabled`.
+
+```go
+func NewAPIGatewayComponent(owner *MyOperatorCR) (*component.Component, error) {
+    // ... build gateway deployment, gateway service ...
+
+    return component.NewComponentBuilder().
+        WithName("api-gateway").
+        WithConditionType("APIGatewayReady").
+        WithFeatureGate(feature.NewVersionGate(version, versionConstraints).When(spec.GatewayEnabled)).
+        WithPrerequisite(component.DependsOn("DatabaseReady")).
+        WithResource(gatewayDep, component.ResourceOptions{}).
+        WithResource(gatewaySvc, component.ResourceOptions{}).
+        Build()
+}
+```
+
+### Resource Options
+
+Individual resources can be [feature-gated, read-only, or auxiliary](docs/component.md#resource-registration-options)
+within a component.
+
+```go
+// Feature-gated: created when enabled, deleted when disabled.
+metricsOpts, _ := component.NewResourceOptionsBuilder().
+    WithFeatureGate(metricsGate).
+    Auxiliary().
+    Build()
+
+builder.WithResource(metricsExporter, metricsOpts)
+builder.WithResource(externalCRD, component.ResourceOptions{ReadOnly: true})
+```
+
+### Built-in Primitives
+
+The framework ships with primitives for the most common Kubernetes resource types. Each primitive provides a typed
+builder, mutation system, and the appropriate lifecycle interfaces for its category.
+
+| Category         | Primitives                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Workload**     | Deployment, StatefulSet, DaemonSet, ReplicaSet, Pod                                                                       |
+| **Task**         | Job, CronJob                                                                                                              |
+| **Static**       | ConfigMap, Secret, ServiceAccount, Role, ClusterRole, RoleBinding, ClusterRoleBinding, PodDisruptionBudget, NetworkPolicy |
+| **Integration**  | Service, Ingress, PersistentVolume, PersistentVolumeClaim, HorizontalPodAutoscaler                                        |
+| **Unstructured** | Static, Workload, Task, and Integration variants for any GVK without a built-in wrapper                                   |
+
+For details on each primitive, see [Resource Primitives](docs/primitives.md).
 
 ## Resource Lifecycle Interfaces
 

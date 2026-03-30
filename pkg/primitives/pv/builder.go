@@ -89,13 +89,7 @@ func (b *Builder) WithCustomGraceStatus(
 // all resources registered after it are skipped until the guard clears.
 // Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(corev1.PersistentVolume) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(pv *corev1.PersistentVolume) (concepts.GuardStatusWithReason, error) {
-		return guard(*pv)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -107,11 +101,7 @@ func (b *Builder) WithGuard(guard func(corev1.PersistentVolume) (concepts.GuardS
 //
 // A nil extractor is ignored.
 func (b *Builder) WithDataExtractor(extractor func(corev1.PersistentVolume) error) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(pv *corev1.PersistentVolume) error {
-			return extractor(*pv)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

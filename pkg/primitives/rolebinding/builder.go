@@ -58,13 +58,7 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // all resources registered after it are skipped until the guard clears.
 // Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(rbacv1.RoleBinding) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(rb *rbacv1.RoleBinding) (concepts.GuardStatusWithReason, error) {
-		return guard(*rb)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -77,11 +71,7 @@ func (b *Builder) WithGuard(guard func(rbacv1.RoleBinding) (concepts.GuardStatus
 //
 // A nil extractor is ignored.
 func (b *Builder) WithDataExtractor(extractor func(rbacv1.RoleBinding) error) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(rb *rbacv1.RoleBinding) error {
-			return extractor(*rb)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

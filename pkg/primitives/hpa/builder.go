@@ -126,13 +126,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 func (b *Builder) WithGuard(
 	guard func(autoscalingv2.HorizontalPodAutoscaler) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(h *autoscalingv2.HorizontalPodAutoscaler) (concepts.GuardStatusWithReason, error) {
-		return guard(*h)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -146,11 +140,7 @@ func (b *Builder) WithGuard(
 func (b *Builder) WithDataExtractor(
 	extractor func(autoscalingv2.HorizontalPodAutoscaler) error,
 ) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(h *autoscalingv2.HorizontalPodAutoscaler) error {
-			return extractor(*h)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

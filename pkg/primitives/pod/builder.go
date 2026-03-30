@@ -146,13 +146,7 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 func (b *Builder) WithGuard(
 	guard func(corev1.Pod) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(p *corev1.Pod) (concepts.GuardStatusWithReason, error) {
-		return guard(*p)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -165,11 +159,7 @@ func (b *Builder) WithGuard(
 func (b *Builder) WithDataExtractor(
 	extractor func(corev1.Pod) error,
 ) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(p *corev1.Pod) error {
-			return extractor(*p)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

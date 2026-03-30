@@ -55,13 +55,7 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // all resources registered after it are skipped until the guard clears.
 // Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(p *policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error) {
-		return guard(*p)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -73,11 +67,7 @@ func (b *Builder) WithGuard(guard func(policyv1.PodDisruptionBudget) (concepts.G
 //
 // A nil extractor is ignored.
 func (b *Builder) WithDataExtractor(extractor func(policyv1.PodDisruptionBudget) error) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(p *policyv1.PodDisruptionBudget) error {
-			return extractor(*p)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

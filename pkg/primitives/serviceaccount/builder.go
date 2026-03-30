@@ -55,13 +55,7 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // all resources registered after it are skipped until the guard clears.
 // Passing nil clears any previously registered guard.
 func (b *Builder) WithGuard(guard func(corev1.ServiceAccount) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard == nil {
-		b.base.WithGuard(nil)
-		return b
-	}
-	b.base.WithGuard(func(sa *corev1.ServiceAccount) (concepts.GuardStatusWithReason, error) {
-		return guard(*sa)
-	})
+	b.base.WithGuard(generic.WrapGuard(guard))
 	return b
 }
 
@@ -73,11 +67,7 @@ func (b *Builder) WithGuard(guard func(corev1.ServiceAccount) (concepts.GuardSta
 //
 // A nil extractor is ignored.
 func (b *Builder) WithDataExtractor(extractor func(corev1.ServiceAccount) error) *Builder {
-	if extractor != nil {
-		b.base.WithDataExtractor(func(sa *corev1.ServiceAccount) error {
-			return extractor(*sa)
-		})
-	}
+	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

@@ -170,26 +170,24 @@ When `TracingEnabled` is true, the Jaeger sidecar is created and managed. When f
 support suspension (create/update resources, not read-only ones), updates the condition, then processes any pending
 deletions and returns. The remaining phases are skipped.
 
-**Phase 2: Resource synchronization.** Managed resources are created or updated sequentially in registration order. For
-each resource:
+**Phase 2: Resource reconciliation.** All non-delete resources are processed sequentially in registration order,
+regardless of whether they are managed or read-only. For each resource:
 
 1. If the resource has a [guard](#guards), the guard is evaluated first. If blocked, the resource and all subsequent
    resources are skipped.
-2. The resource is applied to the cluster using Server-Side Apply. Each resource gets a controller owner reference
-   pointing to the owner CRD, unless the resource is cluster-scoped and the owner is namespace-scoped (see
-   [Cluster-Scoped Resources](#cluster-scoped-resources)).
-3. If the resource implements `DataExtractable`, its data extractors run immediately after the apply. This makes
-   extracted data available to subsequent resources' guards and mutations within the same reconciliation cycle.
+2. The resource is either applied to the cluster (managed) or fetched from it (read-only). Managed resources use
+   Server-Side Apply and get a controller owner reference pointing to the owner CRD, unless the resource is
+   cluster-scoped and the owner is namespace-scoped (see [Cluster-Scoped Resources](#cluster-scoped-resources)).
+3. If the resource implements `DataExtractable`, its data extractors run immediately. This makes extracted data
+   available to subsequent resources' guards and mutations within the same reconciliation cycle.
 
-**Phase 3: Read-only resource fetching.** Read-only resources are fetched from the cluster. After all read-only
-resources are fetched, `DataExtractable` extractors run for any that implement the interface.
+This means a read-only resource registered before a managed resource can extract data that feeds into the managed
+resource's guard or mutations.
 
-**Phase 4: Data extraction.** (Handled inline during phases 2 and 3 as described above.)
-
-**Phase 5: Status aggregation and condition update.** The health of each resource is collected, the grace period is
+**Phase 3: Status aggregation and condition update.** The health of each resource is collected, the grace period is
 consulted, and a single aggregate condition is written to the owner object's status.
 
-**Phase 6: Resource deletion.** Resources registered for deletion are removed from the cluster.
+**Phase 4: Resource deletion.** Resources registered for deletion are removed from the cluster.
 
 ## Cluster-Scoped Resources
 

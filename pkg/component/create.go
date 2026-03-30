@@ -157,21 +157,17 @@ func applyResources(
 	return results, nil
 }
 
-// applyResourcesWithGuards performs the same work as applyResources but adds two behaviors:
+// reconcileResources processes all resources in registration order. Each resource is
+// either fetched (read-only) or applied (managed) depending on its mode. Guards are
+// evaluated before each resource, and data extraction runs immediately after, so that
+// extracted data from earlier resources is available to subsequent resources' guards
+// and mutations regardless of whether the earlier resource was read-only or managed.
 //
-//  1. Guard evaluation: Before applying each resource, if the resource implements the
-//     Guardable interface, its guard is evaluated. If the guard returns Blocked, the
-//     resource is not applied and no further resources are processed. A blocked converging
-//     result is appended to the results for the blocked resource.
-//
-//  2. Per-resource data extraction: After each resource is successfully applied, its data
-//     extractors are run immediately. This allows data extracted from Resource A to be
-//     available when Resource B's guard or mutations are evaluated.
-//
-// This function is used in the non-suspension reconciliation path. The existing applyResources
-// function remains unchanged for the suspension path, where guards must not interfere.
-func applyResourcesWithGuards(
-	ctx context.Context, rec ReconcileContext, resources []Resource,
+// When a guard returns Blocked, the resource is not processed and all subsequent
+// resources are skipped. Guards are not evaluated during suspension (the caller uses
+// applyResources for that path).
+func reconcileResources(
+	ctx context.Context, rec ReconcileContext, entries []reconcileEntry,
 	componentName string, mapper meta.RESTMapper,
 ) ([]convergingResult, error) {
 	fieldOwner := client.FieldOwner(
@@ -180,8 +176,10 @@ func applyResourcesWithGuards(
 
 	var results []convergingResult
 
-	for _, resource := range resources {
-		// Evaluate guard before applying
+	for _, entry := range entries {
+		resource := entry.Resource
+
+		// Evaluate guard before processing
 		if guardable, ok := resource.(concepts.Guardable); ok {
 			guardResult, err := guardable.GuardStatus()
 			if err != nil {
@@ -201,7 +199,14 @@ func applyResourcesWithGuards(
 			}
 		}
 
-		result, err := applyResource(ctx, rec, resource, fieldOwner, mapper)
+		// Process the resource based on its mode
+		var result *convergingResult
+		var err error
+		if entry.ReadOnly {
+			result, err = readResource(ctx, rec, resource)
+		} else {
+			result, err = applyResource(ctx, rec, resource, fieldOwner, mapper)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -209,8 +214,8 @@ func applyResourcesWithGuards(
 			results = append(results, *result)
 		}
 
-		// Per-resource data extraction: run immediately after apply so that extracted
-		// data is available to subsequent resources' guards and mutations.
+		// Per-resource data extraction: run immediately after processing so that
+		// extracted data is available to subsequent resources' guards and mutations.
 		if err := extractResourceData([]Resource{resource}); err != nil {
 			return nil, fmt.Errorf(
 				"failed to extract data from resource %s: %w", resource.Identity(), err,

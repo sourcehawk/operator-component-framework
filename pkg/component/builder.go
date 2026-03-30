@@ -146,13 +146,13 @@ func (b *Builder) WithResource(resource Resource, options ResourceOptions) *Buil
 
 	b.component.participationLookup[resource.Identity()] = options.ParticipationMode
 
-	switch {
-	case options.Delete:
+	if options.Delete {
 		b.component.deleteResources = append(b.component.deleteResources, resource)
-	case options.ReadOnly:
-		b.component.readResources = append(b.component.readResources, resource)
-	default:
-		b.component.createResources = append(b.component.createResources, resource)
+	} else {
+		b.component.reconcileResources = append(b.component.reconcileResources, reconcileEntry{
+			Resource: resource,
+			ReadOnly: options.ReadOnly,
+		})
 	}
 
 	return b

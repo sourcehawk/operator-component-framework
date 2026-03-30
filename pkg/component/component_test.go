@@ -103,7 +103,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Identity").Return("ConfigMap/test-cm")
 			res.On("Mutate", mock.Anything).Return(nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -140,7 +140,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Waiting for creation",
 			}, nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 			comp.participationLookup = map[string]ParticipationMode{
 				res.Identity(): ParticipationModeRequired,
 			}
@@ -176,7 +176,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Read-only healthy",
 			}, nil)
 
-			comp.readResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
 			comp.participationLookup = map[string]ParticipationMode{
 				res.Identity(): ParticipationModeRequired,
 			}
@@ -191,6 +191,41 @@ var _ = Describe("Component Reconciler", func() {
 			cond := getOwnerCondition()
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Reason).To(Equal(string(Healthy)))
+		})
+
+		It("should NOT mutate or apply read-only resources", func() {
+			// Given: a read-only resource that exists in the cluster
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-no-mutate-cm",
+					Namespace: namespace,
+				},
+				Data: map[string]string{"original": "data"},
+			}
+			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
+
+			res := &MockResource{}
+			res.On("Identity").Return("ConfigMap/test-no-mutate-cm")
+			res.On("Object").Return(cm, nil)
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+
+			// Mutate must never be called for read-only resources
+			res.AssertNotCalled(GinkgoT(), "Mutate", mock.Anything)
+
+			// Verify the cluster object was not modified
+			var fetched corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Name: "test-no-mutate-cm", Namespace: namespace,
+			}, &fetched)).To(Succeed())
+			Expect(fetched.Data).To(Equal(map[string]string{"original": "data"}))
+			Expect(fetched.OwnerReferences).To(BeEmpty(), "read-only resource should not get an owner reference")
 		})
 
 		It("should aggregate status across both create and read-only resources", func() {
@@ -220,8 +255,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Read resource still preparing",
 			}, nil)
 
-			comp.createResources = []Resource{res1}
-			comp.readResources = []Resource{res2}
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2, ReadOnly: true}}
 			comp.participationLookup = map[string]ParticipationMode{
 				res1.Identity(): ParticipationModeRequired,
 				res2.Identity(): ParticipationModeRequired,
@@ -242,8 +276,7 @@ var _ = Describe("Component Reconciler", func() {
 
 		It("should successfully reconcile an empty component to Ready", func() {
 			// Given
-			comp.createResources = nil
-			comp.readResources = nil
+			comp.reconcileResources = nil
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -289,7 +322,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			suspendRes.On("DeleteOnSuspend").Return(false)
 
-			comp.createResources = []Resource{suspendRes, createRes}
+			comp.reconcileResources = []reconcileEntry{{Resource: suspendRes}, {Resource: createRes}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -331,7 +364,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			res.On("DeleteOnSuspend").Return(true)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -390,7 +423,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(nil, fmt.Errorf("reconciliation error"))
 			res.On("Identity").Return("failing-resource")
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -412,7 +445,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(nil, fmt.Errorf("read error"))
 			res.On("Identity").Return("failing-read-resource")
 
-			comp.readResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -459,7 +492,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Suspend").Return(fmt.Errorf("suspend error"))
 			res.On("Identity").Return("failing-suspend-resource")
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -493,7 +526,7 @@ var _ = Describe("Component Reconciler", func() {
 			delRes.On("Object").Return(nil, fmt.Errorf("suspend-delete error"))
 			delRes.On("Identity").Return("failing-suspend-delete-resource")
 
-			comp.createResources = []Resource{susRes}
+			comp.reconcileResources = []reconcileEntry{{Resource: susRes}}
 			comp.deleteResources = []Resource{delRes}
 
 			// When
@@ -776,7 +809,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -807,7 +840,7 @@ var _ = Describe("Component Reconciler", func() {
 			// Actually, suspendResources handles non-suspendable resources as already suspended.
 			// Let's check suspend_test.go to be sure.
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -827,7 +860,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(fmt.Errorf("extraction failed"))
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -858,7 +891,7 @@ var _ = Describe("Component Reconciler", func() {
 			res2.On("Identity").Return("ConfigMap/res2")
 			res2.On("Mutate", mock.Anything).Return(nil)
 
-			comp.createResources = []Resource{res1, res2}
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -916,7 +949,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			res.On("Mutate", mock.Anything).Return(nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -936,7 +969,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			res.On("Identity").Return("v1/ConfigMap/guarded-cm")
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 			comp.participationLookup = map[string]ParticipationMode{
 				"v1/ConfigMap/guarded-cm": ParticipationModeRequired,
 			}
@@ -973,7 +1006,7 @@ var _ = Describe("Component Reconciler", func() {
 
 			res3 := &MockResource{}
 
-			comp.createResources = []Resource{res1, res2, res3}
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2}, {Resource: res3}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -991,7 +1024,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Identity").Return("v1/ConfigMap/guard-error")
 			res.On("GuardStatus").Return(concepts.GuardStatusWithReason{}, fmt.Errorf("guard evaluation failed"))
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -1014,7 +1047,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			res.On("Mutate", mock.Anything).Return(nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -1059,7 +1092,7 @@ var _ = Describe("Component Reconciler", func() {
 				mutatedARN = roleARN
 			}).Return(nil)
 
-			comp.createResources = []Resource{res1, res2}
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -1084,7 +1117,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(fmt.Errorf("extraction failed"))
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -1117,7 +1150,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			guarded.On("Identity").Return("v1/ConfigMap/guarded")
 
-			comp.createResources = []Resource{alive, guarded}
+			comp.reconcileResources = []reconcileEntry{{Resource: alive}, {Resource: guarded}}
 			comp.participationLookup = map[string]ParticipationMode{
 				"v1/ConfigMap/alive":   ParticipationModeRequired,
 				"v1/ConfigMap/guarded": ParticipationModeRequired,

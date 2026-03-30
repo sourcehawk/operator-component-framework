@@ -87,13 +87,20 @@ type Component struct {
 
 	conditionType ConditionType
 
-	createResources     []Resource
-	readResources       []Resource
+	// reconcileResources holds all non-delete resources in registration order.
+	// Each entry records whether the resource is read-only or managed (create/update).
+	reconcileResources  []reconcileEntry
 	deleteResources     []Resource
 	resourceLookup      map[string]Resource
 	participationLookup map[string]ParticipationMode
 
 	gracePeriod time.Duration
+}
+
+// reconcileEntry pairs a resource with its reconciliation mode.
+type reconcileEntry struct {
+	Resource Resource
+	ReadOnly bool
 }
 
 // GetName returns the name of the component, which is used for logging and identification.
@@ -123,27 +130,27 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 // Reconciliation follows these steps:
 //
 //  1. Suspension check: If the component is marked as suspended, it performs
-//     suspension of all registered creation resources (guards are not evaluated),
-//     updates the status to reflect the suspension progress (PendingSuspension,
-//     Suspending, or Suspended), and finally processes any deletion resources.
+//     suspension of all managed (non-read-only) resources. Guards are not evaluated.
+//     The status is updated to reflect suspension progress (PendingSuspension,
+//     Suspending, or Suspended), and then deletion resources are processed.
 //
-//  2. Resource Creation/Update: If not suspended, resources are applied sequentially
-//     in registration order. Before each resource, its guard (if any) is evaluated;
-//     a blocked guard stops processing of that resource and all subsequent resources.
-//     After each resource is applied, its data extractors run immediately so that
-//     extracted data is available to subsequent resources' guards and mutations.
+//  2. Resource reconciliation: All non-delete resources are processed sequentially
+//     in registration order, regardless of whether they are managed or read-only.
+//     For each resource:
+//     - Its guard (if any) is evaluated. A blocked guard stops processing of that
+//     resource and all subsequent resources.
+//     - The resource is either applied (managed) or fetched (read-only).
+//     - Its data extractors run immediately, making extracted data available to
+//     subsequent resources' guards and mutations.
 //
-//  3. Read-only Resources: Fetches the current state of all registered read-only
-//     resources from the cluster, then runs their data extractors.
+//  3. Status Aggregation: Collects converging status from all processed resources
+//     (including any blocked guard result).
 //
-//  4. Status Aggregation: Collects converging status from all applied resources
-//     (including any blocked guard result) and read-only resources.
-//
-//  5. Condition Update: Derives a new component condition using a stateful
+//  4. Condition Update: Derives a new component condition using a stateful
 //     progression model that considers the aggregate resource status, the
 //     previous condition, and the configured grace period to avoid churn.
 //
-//  6. Resource Deletion: Finally, it deletes any resources registered for deletion.
+//  5. Resource Deletion: Finally, it deletes any resources registered for deletion.
 func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	// Add logging context to the logger within this reconcile
 	logger := log.FromContext(ctx).WithValues(
@@ -154,12 +161,18 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 
 	mapper := rec.Client.RESTMapper()
 	if mapper == nil {
-		return fail(ctx, rec, c.conditionType, fmt.Errorf("ReconcileContext.Client.RESTMapper() returned nil; a valid RESTMapper is required for reconciliation"))
+		return fail(
+			ctx, rec, c.conditionType, fmt.Errorf(
+				"ReconcileContext.Client.RESTMapper() returned nil; a valid RESTMapper is required for reconciliation",
+			),
+		)
 	}
 
-	// Perform suspension reconciliation if component is marked as suspended
+	// Perform suspension reconciliation if component is marked as suspended.
+	// Only managed (non-read-only) resources are suspended.
 	if c.suspended {
-		results, err := suspendResources(ctx, rec, c.createResources, c.name, mapper)
+		managed := c.managedResources()
+		results, err := suspendResources(ctx, rec, managed, c.name, mapper)
 		if err != nil {
 			return fail(ctx, rec, c.conditionType, err)
 		}
@@ -180,21 +193,12 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		return nil
 	}
 
-	// Apply resources with guard checks and per-resource data extraction
-	createResults, err := applyResourcesWithGuards(ctx, rec, c.createResources, c.name, mapper)
+	// Reconcile all resources in registration order. Each resource is either
+	// fetched (read-only) or applied (managed) with guard evaluation and
+	// per-resource data extraction, so that extracted data from earlier resources
+	// is available to subsequent resources' guards and mutations.
+	results, err := reconcileResources(ctx, rec, c.reconcileResources, c.name, mapper)
 	if err != nil {
-		return fail(ctx, rec, c.conditionType, err)
-	}
-
-	// Get readonly resources
-	readonlyResults, err := readResources(ctx, rec, c.readResources)
-	if err != nil {
-		return fail(ctx, rec, c.conditionType, err)
-	}
-
-	// Extract data from read-only resources.
-	// Create resources are extracted per-resource inside applyResourcesWithGuards.
-	if err := extractResourceData(c.readResources); err != nil {
 		return fail(ctx, rec, c.conditionType, err)
 	}
 
@@ -202,7 +206,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	cond := newConvergingStatusCondition(
 		ctx,
 		rec.Owner,
-		convergeResults(append(createResults, readonlyResults...)).filterParticipators(c.participationLookup),
+		convergeResults(results).filterParticipators(c.participationLookup),
 		c.gracePeriod,
 		c.GetCondition(rec.Owner),
 	)
@@ -215,6 +219,18 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	}
 
 	return nil
+}
+
+// managedResources returns only the non-read-only resources from the reconcile list.
+// This is used during suspension, where only managed resources are suspended.
+func (c *Component) managedResources() []Resource {
+	var managed []Resource
+	for _, entry := range c.reconcileResources {
+		if !entry.ReadOnly {
+			managed = append(managed, entry.Resource)
+		}
+	}
+	return managed
 }
 
 // fail sets the component's error status condition on the owner and returns the

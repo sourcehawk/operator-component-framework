@@ -142,8 +142,10 @@ The legacy mutation rolls the baseline back for older versions:
 ```go
 func LegacyContainerName(version string) deployment.Mutation {
     return deployment.Mutation{
-        Name:    "legacy-container-name",
-        Feature: feature.NewVersionGate(version, semver.MustParseRange("<2.0.0")),
+        Name: "legacy-container-name",
+        Feature: feature.NewVersionGate(version, []feature.VersionConstraint{
+            LessThan("2.0.0"),
+        }),
         Mutate: func(m *deployment.Mutator) error {
             m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
                 e.Raw().Name = "server"
@@ -157,6 +159,10 @@ func LegacyContainerName(version string) deployment.Mutation {
     }
 }
 ```
+
+`LessThan` here is a user-provided implementation of `feature.VersionConstraint` that wraps a semver comparison. The
+interface requires a single `Enabled(version string) (bool, error)` method, so you can use any semver library to
+implement your constraints.
 
 For version 2.0 and above, the gate is inactive and the baseline is applied as-is. For older versions, the mutation
 adjusts the container name and ports back to the legacy shape. The mutation is explicitly about backward compatibility,

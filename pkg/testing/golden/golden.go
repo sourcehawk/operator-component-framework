@@ -46,8 +46,9 @@ func Update(enabled bool) Option {
 // object when TypeMeta is not populated. The scheme is used to look up the
 // object's GroupVersionKind.
 //
-// Without this option, objects that omit TypeMeta will not have apiVersion or
-// kind fields in the golden file.
+// Without this option, objects that omit TypeMeta cause serialization to fail.
+// Callers must either populate TypeMeta on the object or provide a scheme via
+// WithScheme so apiVersion and kind can be resolved.
 func WithScheme(s *runtime.Scheme) Option {
 	return func(c *config) {
 		c.scheme = s
@@ -126,20 +127,22 @@ func serializeObject(obj client.Object, scheme *runtime.Scheme) ([]byte, error) 
 	return out, nil
 }
 
-// ensureTypeMeta verifies the object has apiVersion and kind set. If TypeMeta
-// is empty, it attempts to populate it from the scheme. Returns an error if
-// the type cannot be determined.
+// ensureTypeMeta verifies the object has both apiVersion and kind set. If
+// TypeMeta is incomplete or empty, it attempts to populate it from the scheme.
+// Returns an error if the type cannot be determined.
 func ensureTypeMeta(obj client.Object, scheme *runtime.Scheme) error {
 	gvk := obj.GetObjectKind().GroupVersionKind()
-	if gvk.Kind != "" {
+	if gvk.Kind != "" && gvk.Version != "" {
 		return nil
 	}
 
 	if scheme == nil {
 		return fmt.Errorf(
-			"object %T has no TypeMeta set and no scheme was provided; "+
-				"either set TypeMeta on the object or pass golden.WithScheme()",
+			"object %T has incomplete TypeMeta (kind=%q, apiVersion=%q) and no scheme was provided; "+
+				"either set TypeMeta on the object or pass golden.WithScheme(scheme)",
 			obj,
+			gvk.Kind,
+			gvk.GroupVersion().String(),
 		)
 	}
 

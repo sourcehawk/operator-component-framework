@@ -73,20 +73,26 @@ func TestAssertYAML(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "deployment.yaml")
 
-		// Write the golden file with replicas=3.
+		// Write the golden file via AssertYAML with replicas=3.
 		original := testDeployment()
-		data, err := serializeObject(original, nil)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(path, data, 0o644))
+		AssertYAML(t, path, &fakePreviewer{obj: original}, Update(true))
 
-		// Serialize a modified object with replicas=5.
+		// Read back the golden file and compare against a modified object
+		// (replicas=5) to verify the comparison logic detects the difference.
+		expected, err := os.ReadFile(path)
+		require.NoError(t, err)
+
 		modified := testDeployment()
 		modified.Spec.Replicas = ptr.To[int32](5)
-		modifiedData, err := serializeObject(modified, nil)
+		actual, err := serializeObject(modified, nil)
 		require.NoError(t, err)
 
-		// The serialized outputs should differ.
-		assert.NotEqual(t, string(data), string(modifiedData))
+		assert.NotEqual(t, string(expected), string(actual),
+			"serialized output should differ when object fields change")
+		assert.Contains(t, formatDiff(string(expected), string(actual)), "-  replicas: 3",
+			"diff should show the original replica count as a removed line")
+		assert.Contains(t, formatDiff(string(expected), string(actual)), "+  replicas: 5",
+			"diff should show the new replica count as an added line")
 	})
 
 	t.Run("should create intermediate directories when updating", func(t *testing.T) {
@@ -171,14 +177,33 @@ func TestSerializeObject(t *testing.T) {
 		assert.Contains(t, string(out), "kind: Custom")
 	})
 
+	t.Run("should use scheme when Kind is set but apiVersion is missing", func(t *testing.T) {
+		dep := testDeployment()
+		dep.TypeMeta = metav1.TypeMeta{Kind: "Deployment"} // Kind set, apiVersion missing
+
+		out, err := serializeObject(dep, testScheme())
+		require.NoError(t, err)
+		assert.Contains(t, string(out), "apiVersion: apps/v1")
+		assert.Contains(t, string(out), "kind: Deployment")
+	})
+
+	t.Run("should error when TypeMeta is incomplete and no scheme is provided", func(t *testing.T) {
+		dep := testDeployment()
+		dep.TypeMeta = metav1.TypeMeta{Kind: "Deployment"} // Kind set, apiVersion missing
+
+		_, err := serializeObject(dep, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "incomplete TypeMeta")
+	})
+
 	t.Run("should error when TypeMeta is empty and no scheme is provided", func(t *testing.T) {
 		dep := testDeployment()
 		dep.TypeMeta = metav1.TypeMeta{}
 
 		_, err := serializeObject(dep, nil)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no TypeMeta set")
-		assert.Contains(t, err.Error(), "WithScheme")
+		assert.Contains(t, err.Error(), "incomplete TypeMeta")
+		assert.Contains(t, err.Error(), "WithScheme(scheme)")
 	})
 }
 

@@ -63,7 +63,7 @@ signature is unchanged.
 | Method                            | Effect                                                                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `WithFeatureGate(f feature.Gate)` | Gates the resource on a feature. When disabled, the resource is deleted.                                                        |
-| `WithTruth(truth bool)`           | Adds a boolean condition (AND logic). If any truth is false, the resource is deleted. Calls are additive.                       |
+| `When(truth bool)`                | Adds a boolean condition (AND logic). If any condition is false, the resource is deleted. Calls are additive.                   |
 | `Auxiliary()`                     | Sets participation mode to `Auxiliary` (resource does not affect component health).                                             |
 | `ReadOnly()`                      | Marks the resource as read-only. If the resource is also gated by a disabled feature, deletion takes precedence over read-only. |
 

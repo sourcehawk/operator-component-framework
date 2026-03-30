@@ -213,7 +213,7 @@ See the [Custom Resource Implementation Guide](docs/custom-resource.md) for a co
 | [Component Framework](docs/component.md)    | Reconciliation lifecycle, condition model, grace periods, suspension    |
 | [Resource Primitives](docs/primitives.md)   | Primitive categories, Server-Side Apply, mutation system                |
 | [Custom Resources](docs/custom-resource.md) | Implementing custom resource wrappers using the generic building blocks |
-| [Guidelines](docs/guidelines.md)            | Recommended patterns and tradeoffs for structuring operators            |
+| [Guidelines](docs/guidelines.md)            | Recommended patterns for structuring operators built with the framework |
 | [Compatibility](docs/compatibility.md)      | Supported Kubernetes and controller-runtime versions, version policy    |
 
 ## Contributing

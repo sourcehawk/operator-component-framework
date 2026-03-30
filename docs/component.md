@@ -137,8 +137,9 @@ component also reports `True`.
 ## Prerequisites
 
 Prerequisites are initialization barriers that prevent a component from reconciling until a condition is met. Unlike
-resource-level [guards](#guards), prerequisites are evaluated only until the component passes through to normal
-reconciliation for the first time. After that, the barrier is permanently passed and the prerequisite is never
+resource-level [guards](#guards), prerequisites are evaluated only until the component reconciles or suspends
+successfully for the first time. The barrier remains active while the condition reason is `Unknown`,
+`PrerequisiteNotMet`, `Disabled`, or `FeatureGateError`. After the barrier is passed, the prerequisite is never
 re-evaluated.
 
 This makes prerequisites suitable for expressing startup dependencies between components. If a dependency later becomes
@@ -203,9 +204,10 @@ message:
 **Phase 1: Feature gate check.** If a feature gate is set and disabled, all resources managed by the component are
 deleted and the condition is set to `True/Disabled`. No further processing occurs.
 
-**Phase 2: Prerequisite check.** If prerequisites are registered and the initialization barrier has not yet been passed,
-all prerequisites are evaluated. If any prerequisite is not met, the condition is set to `False/PrerequisiteNotMet` and
-no resources are reconciled or suspended.
+**Phase 2: Prerequisite check.** If prerequisites are registered and the initialization barrier has not yet been passed
+(condition reason is `Unknown`, `PrerequisiteNotMet`, `Disabled`, or `FeatureGateError`), all prerequisites are
+evaluated. If any prerequisite is not met, the condition is set to `False/PrerequisiteNotMet` and no resources are
+reconciled or suspended.
 
 **Phase 3: Suspension check.** If the component is marked suspended, it calls `Suspend()` on all managed resources that
 support suspension (create/update resources, not read-only ones), updates the condition, then processes any pending

@@ -186,6 +186,11 @@ const (
 	// All resources managed by the component are deleted when the gate is disabled.
 	// The condition status is True because the component is in its expected state.
 	Disabled Status = "Disabled"
+	// FeatureGateError indicates that the component's feature gate check failed
+	// with an error. This is distinct from a generic Error so that the prerequisite
+	// initialization barrier can distinguish pre-prerequisite failures from
+	// post-prerequisite failures.
+	FeatureGateError Status = "FeatureGateError"
 
 	// PendingSuspension indicates that the component is aware of the suspension request but has yet to begin suspension.
 	PendingSuspension = Status(concepts.SuspensionStatusPending)
@@ -252,7 +257,7 @@ func (s Status) Priority() int {
 		return 18
 	case Down:
 		return 19
-	case Error:
+	case Error, FeatureGateError:
 		return 20
 	}
 

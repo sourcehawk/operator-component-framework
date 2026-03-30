@@ -1028,7 +1028,7 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(cond.Reason).To(Equal(string(Disabled)))
 		})
 
-		It("should set condition to Error when gate evaluation fails", func() {
+		It("should set condition to FeatureGateError when gate evaluation fails", func() {
 			gate := &testGate{err: fmt.Errorf("gate check failed")}
 			c, err := NewComponentBuilder().
 				WithName("gate-err-test").
@@ -1041,7 +1041,7 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(err).To(HaveOccurred())
 
 			cond := getOwnerCondition()
-			Expect(cond.Reason).To(Equal(string(Error)))
+			Expect(cond.Reason).To(Equal(string(FeatureGateError)))
 		})
 
 		It("should handle deletion of non-existent resources without error", func() {
@@ -1251,7 +1251,7 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		})
 
-		It("should set condition to Error when prerequisite check fails", func() {
+		It("should set condition to PrerequisiteNotMet when prerequisite check fails", func() {
 			prereq := &testPrereqFunc{
 				checkFn: func() (PrerequisiteResult, error) {
 					return PrerequisiteResult{}, fmt.Errorf("prereq check failed")
@@ -1268,7 +1268,7 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(err).To(HaveOccurred())
 
 			cond := getOwnerCondition()
-			Expect(cond.Reason).To(Equal(string(Error)))
+			Expect(cond.Reason).To(Equal(string(PrerequisiteNotMet)))
 		})
 
 		It("should require all prerequisites to pass", func() {

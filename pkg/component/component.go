@@ -147,10 +147,10 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 //  2. Prerequisite check: If prerequisites are registered and the initialization
 //     barrier has not yet been passed, all prerequisites are evaluated. The barrier
 //     is considered active while the condition reason is Unknown, PrerequisiteNotMet,
-//     or Disabled. If any prerequisite is not met, the condition is set to
-//     False/PrerequisiteNotMet and no resources are reconciled or suspended. Once
-//     the component passes through to normal reconciliation (or suspension), the
-//     barrier is permanently cleared and prerequisites are never re-evaluated.
+//     Disabled, or FeatureGateError. If any prerequisite is not met, the condition
+//     is set to False/PrerequisiteNotMet and no resources are reconciled or
+//     suspended. Once the component reconciles or suspends successfully, the barrier
+//     is permanently cleared and prerequisites are never re-evaluated.
 //
 //  3. Suspension check: If the component is marked as suspended, it performs
 //     suspension of all managed (non-read-only) resources. Guards are not evaluated.
@@ -195,7 +195,9 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	if c.featureGate != nil {
 		enabled, err := c.featureGate.Enabled()
 		if err != nil {
-			return fail(ctx, rec, c.conditionType, err)
+			cond := conditionFeatureGateError(c.conditionType, err, rec.Owner.GetGeneration())
+			_ = setStatusCondition(ctx, rec, cond)
+			return err
 		}
 
 		if !enabled {
@@ -210,14 +212,16 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 
 	// Prerequisite barrier: block reconciliation until all prerequisites are met.
 	// The barrier is active while the condition reason is Unknown, PrerequisiteNotMet,
-	// or Disabled. Once the component passes through to normal reconciliation, the
-	// barrier is permanently cleared.
+	// Disabled, or FeatureGateError. Once the component reconciles or suspends
+	// successfully, the barrier is permanently cleared.
 	if len(c.prerequisites) > 0 {
 		currentCondition := c.GetCondition(rec.Owner)
 		if c.prerequisiteBarrierActive(currentCondition) {
 			result, err := c.evaluatePrerequisites(rec)
 			if err != nil {
-				return fail(ctx, rec, c.conditionType, err)
+				cond := conditionPrerequisiteNotMet(c.conditionType, err.Error(), rec.Owner.GetGeneration())
+				_ = setStatusCondition(ctx, rec, cond)
+				return err
 			}
 
 			if result.Status == PrerequisiteStatusNotMet {
@@ -299,13 +303,15 @@ func (c *Component) allManagedResources() []Resource {
 // prerequisiteBarrierActive reports whether the prerequisite initialization
 // barrier is still active based on the component's current condition. The
 // barrier is active when the component has never successfully reconciled,
-// indicated by a condition reason of Unknown, PrerequisiteNotMet, or Disabled.
-// Disabled is included because a component that was gated off has never
-// reconciled its resources, so prerequisites must be evaluated when the gate
-// is later enabled.
+// indicated by a condition reason of Unknown, PrerequisiteNotMet, Disabled,
+// or FeatureGateError. Disabled is included because a component that was
+// gated off has never reconciled its resources, so prerequisites must be
+// evaluated when the gate is later enabled. FeatureGateError is included
+// because the feature gate check runs before prerequisites; a failure there
+// means the component never reached resource reconciliation.
 func (c *Component) prerequisiteBarrierActive(cond Condition) bool {
 	reason := Status(cond.Reason)
-	return reason == Unknown || reason == PrerequisiteNotMet || reason == Disabled
+	return reason == Unknown || reason == PrerequisiteNotMet || reason == Disabled || reason == FeatureGateError
 }
 
 // evaluatePrerequisites checks all registered prerequisites in order. It

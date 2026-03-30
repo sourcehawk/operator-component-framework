@@ -102,6 +102,20 @@ func conditionError(component ConditionType, err error, observedGeneration int64
 	}
 }
 
+// conditionFeatureGateError returns a component condition indicating that the
+// feature gate check failed with an error. This is distinct from conditionError
+// so that the prerequisite initialization barrier can distinguish pre-prerequisite
+// failures from post-prerequisite failures.
+func conditionFeatureGateError(component ConditionType, err error, observedGeneration int64) Condition {
+	return Condition{
+		Type:               string(component),
+		Status:             metav1.ConditionFalse,
+		Reason:             string(FeatureGateError),
+		ObservedGeneration: observedGeneration,
+		Message:            err.Error(),
+	}
+}
+
 // conditionDisabled returns a component condition representing a Disabled state.
 // The condition status is True because a disabled component is in its expected state,
 // consistent with the convention used for suspended components.

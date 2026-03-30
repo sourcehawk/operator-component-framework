@@ -213,8 +213,10 @@ func (b *Builder) WithFeatureGate(gate feature.Gate) *Builder {
 // WithPrerequisite registers an initialization barrier for the component.
 //
 // Prerequisites are evaluated before any resources are reconciled or suspended.
-// Once the component has reconciled successfully for the first time, all
-// prerequisites are permanently passed and never re-evaluated.
+// The barrier remains active while the condition reason is Unknown,
+// PrerequisiteNotMet, Disabled, or FeatureGateError. Once the component
+// reconciles or suspends successfully, all prerequisites are permanently
+// passed and never re-evaluated.
 //
 // Multiple prerequisites may be registered; all must be met before the component
 // proceeds. They are evaluated in registration order and the first unmet

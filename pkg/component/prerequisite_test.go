@@ -162,6 +162,7 @@ func TestPrerequisiteBarrierActive(t *testing.T) {
 		{"inactive when Suspended", string(Suspended), false},
 		{"active when Disabled", string(Disabled), true},
 		{"inactive when Error", string(Error), false},
+		{"active when FeatureGateError", string(FeatureGateError), true},
 	}
 
 	for _, tt := range tests {

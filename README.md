@@ -113,7 +113,8 @@ func NewWebDeployment(owner *MyOperatorCR) (component.Resource, error) {
         },
     }
     return deployment.NewBuilder(dep).
-        WithMutation(TracingFeature(owner.Spec.Version, owner.Spec.TracingEnabled)).
+        WithMutation(TracingFeature(owner.Spec.TracingEnabled)).
+        WithMutation(LegacyPortConfig(owner.Spec.Version)).
         Build()
 }
 
@@ -135,14 +136,37 @@ resource definition. Each mutation declares a condition under which it applies a
 through typed [editors](docs/primitives.md#mutation-editors) and
 [container selectors](docs/primitives.md#container-selectors).
 
+A boolean-gated mutation applies only when a flag is set:
+
 ```go
-func TracingFeature(version string, enabled bool) deployment.Mutation {
+func TracingFeature(enabled bool) deployment.Mutation {
     return deployment.Mutation{
         Name:    "enable-tracing",
-        Feature: feature.NewVersionGate(version, nil).When(enabled),
+        Feature: feature.NewVersionGate("", nil).When(enabled),
         Mutate: func(m *deployment.Mutator) error {
             m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
                 e.EnsureEnvVar(corev1.EnvVar{Name: "TRACING_ENABLED", Value: "true"})
+                return nil
+            })
+            return nil
+        },
+    }
+}
+```
+
+A version-gated mutation applies only when the current version satisfies a constraint. This is useful for backward
+compatibility: the baseline reflects the latest shape, and mutations patch it back for older versions.
+
+```go
+func LegacyPortConfig(version string) deployment.Mutation {
+    return deployment.Mutation{
+        Name: "legacy-port-config",
+        Feature: feature.NewVersionGate(version, []feature.VersionConstraint{
+            LessThan("2.0.0"), // user-provided VersionConstraint implementation
+        }),
+        Mutate: func(m *deployment.Mutator) error {
+            m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+                e.Raw().Ports = []corev1.ContainerPort{{Name: "http", ContainerPort: 8080}}
                 return nil
             })
             return nil

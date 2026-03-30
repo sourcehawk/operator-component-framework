@@ -44,12 +44,12 @@ Each piece wraps a corresponding generic type from `pkg/generic`:
 The framework defines four resource categories. Each maps to a generic resource type with different lifecycle
 interfaces:
 
-| Category        | Generic Type                  | Lifecycle Interfaces                                        | Use When                                               |
-| --------------- | ----------------------------- | ----------------------------------------------------------- | ------------------------------------------------------ |
-| **Workload**    | `generic.WorkloadResource`    | `Alive`, `Graceful`, `Suspendable`, `DataExtractable`       | Long-running processes with replica-based health       |
-| **Static**      | `generic.StaticResource`      | `DataExtractable`                                           | Configuration objects with no runtime health semantics |
-| **Task**        | `generic.TaskResource`        | `Completable`, `Suspendable`, `DataExtractable`             | Run-to-completion workloads                            |
-| **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `DataExtractable` | External dependency objects (services, ingresses)      |
+| Category        | Generic Type                  | Lifecycle Interfaces                                                     | Use When                                               |
+| --------------- | ----------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------ |
+| **Workload**    | `generic.WorkloadResource`    | `Alive`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable`       | Long-running processes with replica-based health       |
+| **Static**      | `generic.StaticResource`      | `Guardable`, `DataExtractable`                                           | Configuration objects with no runtime health semantics |
+| **Task**        | `generic.TaskResource`        | `Completable`, `Suspendable`, `Guardable`, `DataExtractable`             | Run-to-completion workloads                            |
+| **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable` | External dependency objects (services, ingresses)      |
 
 Pick the category that matches your CRD's lifecycle. A CRD that manages a long-running process and needs health tracking
 is a **Workload**. A CRD that represents static configuration is **Static**. The rest of this guide uses Workload as the
@@ -295,6 +295,8 @@ func DefaultDeleteOnSuspendHandler(_ *examplev1.GameServer) bool {
 | All                   | `concepts.SuspensionStatus`      | `SuspensionStatusPending`       | `PendingSuspension` |
 |                       |                                  | `SuspensionStatusSuspending`    | `Suspending`        |
 |                       |                                  | `SuspensionStatusSuspended`     | `Suspended`         |
+| All                   | `concepts.GuardStatus`           | `GuardStatusBlocked`            | `Blocked`           |
+|                       |                                  | `GuardStatusUnblocked`          | `Unblocked`         |
 
 ### 4. Implement the Builder
 
@@ -390,6 +392,16 @@ func (b *Builder) WithCustomSuspendDeletionDecision(handler func(*examplev1.Game
     return b
 }
 
+// WithGuard registers a guard precondition that is evaluated before the object
+// is applied. If the guard returns Blocked, the resource and all resources after
+// it in the component are skipped. Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(
+    handler func(*examplev1.GameServer) (concepts.GuardStatusWithReason, error),
+) *Builder {
+    b.base.WithGuard(handler)
+    return b
+}
+
 // Build validates the configuration and returns the initialized Resource.
 func (b *Builder) Build() (*Resource, error) {
     genericRes, err := b.base.Build()
@@ -435,6 +447,7 @@ import (
 //   - concepts.Alive (ConvergingStatus)
 //   - concepts.Graceful (GraceStatus)
 //   - concepts.Suspendable (DeleteOnSuspend, Suspend, SuspensionStatus)
+//   - concepts.Guardable (GuardStatus)
 //   - concepts.DataExtractable (ExtractData)
 type Resource struct {
     base *generic.WorkloadResource[*examplev1.GameServer, *Mutator]
@@ -472,6 +485,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
     return r.base.SuspensionStatus()
 }
 
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+    return r.base.GuardStatus()
+}
+
 func (r *Resource) ExtractData() error {
     return r.base.ExtractData()
 }
@@ -479,12 +496,12 @@ func (r *Resource) ExtractData() error {
 
 Which methods to include depends on your resource category:
 
-| Category    | Typical Methods                                                                                                                    |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData` |
-| Static      | `Identity`, `Object`, `Mutate`, `ExtractData`                                                                                      |
-| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData`                |
-| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `ExtractData` |
+| Category    | Typical Methods                                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData` |
+| Static      | `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`                                                                                      |
+| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`                |
+| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData` |
 
 ### 6. Define Feature Mutations
 

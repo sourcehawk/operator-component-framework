@@ -5,12 +5,12 @@ definition available at compile time: Crossplane resources, external CRDs, or an
 
 Four variants are provided, one per [lifecycle category](../primitives.md#primitive-categories):
 
-| Package                                   | Category    | Lifecycle Interfaces                                        |
-| ----------------------------------------- | ----------- | ----------------------------------------------------------- |
-| `pkg/primitives/unstructured/static`      | Static      | `DataExtractable`                                           |
-| `pkg/primitives/unstructured/workload`    | Workload    | `Alive`, `Graceful`, `Suspendable`, `DataExtractable`       |
-| `pkg/primitives/unstructured/integration` | Integration | `Operational`, `Graceful`, `Suspendable`, `DataExtractable` |
-| `pkg/primitives/unstructured/task`        | Task        | `Completable`, `Suspendable`, `DataExtractable`             |
+| Package                                   | Category    | Lifecycle Interfaces                                                     |
+| ----------------------------------------- | ----------- | ------------------------------------------------------------------------ |
+| `pkg/primitives/unstructured/static`      | Static      | `Guardable`, `DataExtractable`                                           |
+| `pkg/primitives/unstructured/workload`    | Workload    | `Alive`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable`       |
+| `pkg/primitives/unstructured/integration` | Integration | `Operational`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable` |
+| `pkg/primitives/unstructured/task`        | Task        | `Completable`, `Suspendable`, `Guardable`, `DataExtractable`             |
 
 ## No Semantic Defaults
 

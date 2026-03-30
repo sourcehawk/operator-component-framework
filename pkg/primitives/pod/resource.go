@@ -128,3 +128,11 @@ func (r *Resource) ExtractData() error {
 func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
 	return r.base.GuardStatus()
 }
+
+// PreviewObject returns the Pod as it would appear after feature mutations
+// have been applied, without modifying the resource's internal state.
+//
+// Suspension mutations are not applied; the preview reflects content state only.
+func (r *Resource) PreviewObject() (*corev1.Pod, error) {
+	return r.base.PreviewObject()
+}

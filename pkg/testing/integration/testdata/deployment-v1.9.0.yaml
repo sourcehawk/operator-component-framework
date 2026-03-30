@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: my-app
+    app.kubernetes.io/managed-by: my-operator
+    app.kubernetes.io/version: 1.9.0
+  name: my-app-web
+  namespace: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - image: my-app:1.9.0
+        name: server
+        ports:
+        - containerPort: 8080
+          name: http
+        resources: {}

@@ -9,30 +9,13 @@ version-gated feature mutations.
 
 ---
 
-## Overview
+The framework is organized into three composable layers:
 
-Every Kubernetes operator starts simple: a reconciler, a few resources, some status updates. Then reality sets in. The
-reconciler grows into a monolith where creation, update, health-checking, suspension, and version-compatibility logic
-are all interleaved in a single function. Lifecycle behavior gets copy-pasted across resources because there is no
-shared abstraction for "a deployment that can be suspended" or "a job that runs to completion." Status reporting drifts:
-one resource sets a condition, another logs a warning, a third does nothing. And when you need to support multiple
-product versions, compatibility shims get wired directly into orchestration code, making it impossible to reason about
-what the baseline behavior actually is.
-
-The Operator Component Framework exists because these problems are structural, not incidental. They cannot be solved by
-writing more careful code in the same flat reconciler model. They require a different organizational unit for operator
-logic.
-
-The framework introduces three composable layers that separate concerns that operators routinely conflate:
-
-- **Components** are logical feature units that reconcile multiple resources together and report a single user-facing
-  condition. A component is the answer to "what does this feature need, and is it healthy?"
-- **Resource Primitives** are reusable, type-safe wrappers for individual Kubernetes objects with built-in lifecycle
-  semantics. A primitive knows how to create, update, suspend, and report health for its resource, so your reconciler
-  does not have to.
-- **Feature Mutations** are composable, version-gated modifications that keep baseline resource definitions clean.
-  Instead of scattering `if version < X` checks throughout your reconciler, mutations declare their applicability and
-  are applied in a predictable sequence.
+- **Components** group related resources into a single reconcilable unit with one user-facing condition.
+- **Resource Primitives** wrap individual Kubernetes objects with built-in lifecycle semantics (health, suspension,
+  completion).
+- **Feature Mutations** apply version-gated or feature-gated modifications to resource definitions without polluting the
+  baseline.
 
 ## Mental Model
 
@@ -58,8 +41,9 @@ Controller
 - **Suspension handling** with configurable behavior (scale to zero, delete, or custom logic)
 - **Version-gated mutations** to apply backward-compatibility patches only when needed
 - **Composable mutation layers** that stack without interfering with each other
+- **Resource guards** for gating resources on preconditions before they are applied
 - **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`,
-  `DataExtractable`) covering the full range of Kubernetes workload types
+  `DataExtractable`, `Guardable`) covering the full range of Kubernetes workload types
 - **Typed mutation editors** for kubernetes resource primitives
 - **Metrics and event recording** integrations out of the box
 
@@ -197,6 +181,7 @@ Resource primitives implement behavioral interfaces that the component layer use
 | `Completable`     | Run-to-completion tracking                        | Jobs                                         |
 | `Operational`     | External dependency readiness                     | Services, Ingresses, Gateways, CronJobs      |
 | `DataExtractable` | Post-reconciliation data harvest                  | Any resource exposing status fields          |
+| `Guardable`       | Precondition gating before resource application   | Resources dependent on prior resource state  |
 
 ## Implementing a Custom Resource
 

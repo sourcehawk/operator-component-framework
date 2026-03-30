@@ -6,68 +6,6 @@ related resources into **Components**.
 A Component acts as a single behavioral unit: it reconciles multiple resources, manages their shared lifecycle, and
 reports their aggregate health through one condition on the owner CRD.
 
-## Why Components Exist
-
-In complex operators, the same reconciliation patterns get reimplemented for every feature. Each controller coordinates
-its own resources, manages its own lifecycle (rollout, suspension, degradation), and reports status in its own way. The
-logic is duplicated but never identical, because there is no shared structure enforcing consistency.
-
-Most teams do try to organize. Resource construction moves into `pkg/` and concerns get split into separate files:
-
-```
-controllers/
-├── frontend_controller.go        # Orchestrates create/update/delete/suspend/status for frontend
-└── backend_controller.go         # Orchestrates create/update/delete/suspend/status for backend
-pkg/
-├── frontend/
-│   ├── deployment.go             # Constructs the Deployment
-│   ├── service.go                # Constructs the Service
-│   └── resources.go              # Wires resources together
-└── backend/
-    ├── deployment.go
-    └── configmap.go
-```
-
-This moves files around but doesn't change the underlying problem. Each controller still reimplements the same lifecycle
-patterns in slightly different ways. Version-specific behavior and feature flags compound things further: a probe format
-changes in v1.3, so `pkg/frontend/deployment.go` gains an `if version < "1.3"` branch. A tracing sidecar is
-feature-gated, so that lands in the same file, or the controller, or a new `features.go`, wherever the last author
-decided. Conditional logic accumulates until the only way to know what a resource actually looks like is to run the
-operator and inspect the output.
-
-The component model replaces this with a layout where each concern has exactly one home:
-
-```
-controllers/
-├── frontend_controller.go        # Builds components, calls Reconcile
-└── backend_controller.go
-pkg/components/
-├── web-interface/
-│   ├── component.go              # Assembles primitives into a component
-│   ├── resources/
-│   │   ├── deployment.go         # Baseline Deployment definition
-│   │   └── service.go            # Baseline Service definition
-│   └── features/
-│       ├── tracing.go            # Mutation: adds tracing sidecar
-│       ├── tracing_test.go
-│       ├── legacy_probes.go      # Mutation: version-gated probe adjustment
-│       └── legacy_probes_test.go
-└── api-server/
-    ├── component.go
-    ├── resources/
-    │   ├── deployment.go
-    │   └── configmap.go
-    └── features/
-        ├── rate_limiting.go
-        └── rate_limiting_test.go
-```
-
-Lifecycle behavior (rollout, suspension, status reporting) is handled by the framework, so controllers no longer
-reimplement it independently. Version-specific behavior and feature flags are expressed as isolated mutations, each in
-its own file with its own tests, rather than conditional branches layered into resource definitions. The baseline
-definition for each resource is always the canonical desired state, readable on its own without tracing through every
-mutation that might apply to it.
-
 ## Building a Component
 
 Components are constructed through a builder. The builder collects resource registrations, configuration, and lifecycle

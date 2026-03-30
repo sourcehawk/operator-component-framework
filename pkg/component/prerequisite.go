@@ -28,11 +28,12 @@ type PrerequisiteResult struct {
 
 // Prerequisite is an initialization barrier for a component.
 //
-// Unlike resource-level guards, a prerequisite is evaluated only until the
-// component reconciles or suspends successfully for the first time. The barrier
-// remains active while the condition reason is Unknown, PrerequisiteNotMet,
-// Disabled, or FeatureGateError. Once the barrier is passed, the prerequisite
-// is never re-evaluated, even if the underlying condition later becomes false.
+// Unlike resource-level guards, a prerequisite is evaluated only while the
+// component's condition reason indicates it has not yet proceeded past
+// initialization. The barrier remains active while the condition reason is
+// Unknown, PrerequisiteNotMet, Disabled, or FeatureGateError. Once the reason
+// changes to any other value, the barrier is permanently passed and the
+// prerequisite is never re-evaluated.
 //
 // If the prerequisite is not met, the component does not reconcile any
 // resources and reports a PrerequisiteNotMet condition.

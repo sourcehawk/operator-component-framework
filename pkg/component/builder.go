@@ -214,8 +214,8 @@ func (b *Builder) WithFeatureGate(gate feature.Gate) *Builder {
 //
 // Prerequisites are evaluated before any resources are reconciled or suspended.
 // The barrier remains active while the condition reason is Unknown,
-// PrerequisiteNotMet, Disabled, or FeatureGateError. Once the component
-// reconciles or suspends successfully, all prerequisites are permanently
+// PrerequisiteNotMet, Disabled, or FeatureGateError. Once the condition
+// reason changes to any other value, all prerequisites are permanently
 // passed and never re-evaluated.
 //
 // Multiple prerequisites may be registered; all must be met before the component

@@ -149,7 +149,7 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 //     is considered active while the condition reason is Unknown, PrerequisiteNotMet,
 //     Disabled, or FeatureGateError. If any prerequisite is not met, the condition
 //     is set to False/PrerequisiteNotMet and no resources are reconciled or
-//     suspended. Once the component reconciles or suspends successfully, the barrier
+//     suspended. Once the condition reason changes to any other value, the barrier
 //     is permanently cleared and prerequisites are never re-evaluated.
 //
 //  3. Suspension check: If the component is marked as suspended, it performs
@@ -212,8 +212,8 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 
 	// Prerequisite barrier: block reconciliation until all prerequisites are met.
 	// The barrier is active while the condition reason is Unknown, PrerequisiteNotMet,
-	// Disabled, or FeatureGateError. Once the component reconciles or suspends
-	// successfully, the barrier is permanently cleared.
+	// Disabled, or FeatureGateError. Once the condition reason changes to any other
+	// value, the barrier is permanently cleared.
 	if len(c.prerequisites) > 0 {
 		currentCondition := c.GetCondition(rec.Owner)
 		if c.prerequisiteBarrierActive(currentCondition) {
@@ -302,9 +302,9 @@ func (c *Component) allManagedResources() []Resource {
 
 // prerequisiteBarrierActive reports whether the prerequisite initialization
 // barrier is still active based on the component's current condition. The
-// barrier is active when the component has never successfully reconciled,
-// indicated by a condition reason of Unknown, PrerequisiteNotMet, Disabled,
-// or FeatureGateError. Disabled is included because a component that was
+// barrier is active while the condition reason is Unknown, PrerequisiteNotMet,
+// Disabled, or FeatureGateError. Once the reason changes to any other value
+// the barrier is considered passed. Disabled is included because a component that was
 // gated off has never reconciled its resources, so prerequisites must be
 // evaluated when the gate is later enabled. FeatureGateError is included
 // because the feature gate check runs before prerequisites; a failure there

@@ -1,6 +1,7 @@
 package golden
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,6 +56,92 @@ func testDeployment() *appsv1.Deployment {
 	}
 }
 
+func TestCompareYAML(t *testing.T) {
+	t.Run("should return nil when output matches golden file", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "deployment.yaml")
+
+		p := &fakePreviewer{obj: testDeployment()}
+
+		// Create the golden file first.
+		require.NoError(t, CompareYAML(path, p, Update(true)))
+
+		// Compare against it.
+		require.NoError(t, CompareYAML(path, p))
+	})
+
+	t.Run("should return MismatchError when output differs from golden file", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "deployment.yaml")
+
+		// Write the golden file with replicas=3.
+		original := &fakePreviewer{obj: testDeployment()}
+		require.NoError(t, CompareYAML(path, original, Update(true)))
+
+		// Compare with replicas=5.
+		modified := testDeployment()
+		modified.Spec.Replicas = ptr.To[int32](5)
+
+		err := CompareYAML(path, &fakePreviewer{obj: modified})
+		require.Error(t, err)
+
+		var mismatch *MismatchError
+		require.True(t, errors.As(err, &mismatch), "error should be *MismatchError")
+		assert.Equal(t, path, mismatch.Path)
+		assert.Contains(t, mismatch.Diff, "-  replicas: 3")
+		assert.Contains(t, mismatch.Diff, "+  replicas: 5")
+	})
+
+	t.Run("should create intermediate directories when updating", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "nested", "deeply", "deployment.yaml")
+
+		p := &fakePreviewer{obj: testDeployment()}
+		require.NoError(t, CompareYAML(path, p, Update(true)))
+
+		_, err := os.Stat(path)
+		require.NoError(t, err, "golden file should have been created")
+	})
+
+	t.Run("should overwrite existing golden file when updating", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "deployment.yaml")
+
+		// Write initial golden file.
+		original := &fakePreviewer{obj: testDeployment()}
+		require.NoError(t, CompareYAML(path, original, Update(true)))
+		before, err := os.ReadFile(path)
+		require.NoError(t, err)
+
+		// Update with a modified object.
+		modified := testDeployment()
+		modified.Spec.Replicas = ptr.To[int32](5)
+		require.NoError(t, CompareYAML(path, &fakePreviewer{obj: modified}, Update(true)))
+		after, err := os.ReadFile(path)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, string(before), string(after))
+	})
+
+	t.Run("should error when golden file does not exist", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "nonexistent.yaml")
+
+		err := CompareYAML(path, &fakePreviewer{obj: testDeployment()})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does not exist")
+	})
+
+	t.Run("should error when PreviewObject fails", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "deployment.yaml")
+
+		err := CompareYAML(path, &fakePreviewer{err: assert.AnError})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "PreviewObject failed")
+	})
+}
+
 func TestAssertYAML(t *testing.T) {
 	t.Run("should pass when output matches golden file", func(t *testing.T) {
 		dir := t.TempDir()
@@ -67,63 +154,6 @@ func TestAssertYAML(t *testing.T) {
 
 		// Now assert against it.
 		AssertYAML(t, path, p)
-	})
-
-	t.Run("should detect mismatch between output and golden file", func(t *testing.T) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "deployment.yaml")
-
-		// Write the golden file via AssertYAML with replicas=3.
-		original := testDeployment()
-		AssertYAML(t, path, &fakePreviewer{obj: original}, Update(true))
-
-		// Read back the golden file and compare against a modified object
-		// (replicas=5) to verify the comparison logic detects the difference.
-		expected, err := os.ReadFile(path)
-		require.NoError(t, err)
-
-		modified := testDeployment()
-		modified.Spec.Replicas = ptr.To[int32](5)
-		actual, err := serializeObject(modified, nil)
-		require.NoError(t, err)
-
-		assert.NotEqual(t, string(expected), string(actual),
-			"serialized output should differ when object fields change")
-		assert.Contains(t, formatDiff(string(expected), string(actual)), "-  replicas: 3",
-			"diff should show the original replica count as a removed line")
-		assert.Contains(t, formatDiff(string(expected), string(actual)), "+  replicas: 5",
-			"diff should show the new replica count as an added line")
-	})
-
-	t.Run("should create intermediate directories when updating", func(t *testing.T) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "nested", "deeply", "deployment.yaml")
-
-		p := &fakePreviewer{obj: testDeployment()}
-		AssertYAML(t, path, p, Update(true))
-
-		_, err := os.Stat(path)
-		require.NoError(t, err, "golden file should have been created")
-	})
-
-	t.Run("should overwrite existing golden file when updating", func(t *testing.T) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "deployment.yaml")
-
-		// Write initial golden file.
-		original := &fakePreviewer{obj: testDeployment()}
-		AssertYAML(t, path, original, Update(true))
-		before, err := os.ReadFile(path)
-		require.NoError(t, err)
-
-		// Update with a modified object.
-		modified := testDeployment()
-		modified.Spec.Replicas = ptr.To[int32](5)
-		AssertYAML(t, path, &fakePreviewer{obj: modified}, Update(true))
-		after, err := os.ReadFile(path)
-		require.NoError(t, err)
-
-		assert.NotEqual(t, string(before), string(after))
 	})
 }
 

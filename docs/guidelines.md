@@ -448,7 +448,8 @@ of genuine failures, so choose a value that reflects expected convergence time, 
 
 When a namespace-scoped owner manages cluster-scoped resources (like `ClusterRole` or `ClusterRoleBinding`), the
 framework cannot set an owner reference because Kubernetes does not allow cross-scope ownership. The framework detects
-this and skips the owner reference silently.
+this, skips setting the owner reference, and emits an Info log noting the skipped reference and its garbage collection
+implications.
 
 This means cluster-scoped resources will not be garbage collected when the owner is deleted. Handle cleanup explicitly
 using `Delete: true` in resource options or a finalizer on the owner CRD:

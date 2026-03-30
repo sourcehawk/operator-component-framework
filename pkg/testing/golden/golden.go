@@ -27,7 +27,7 @@ type config struct {
 	scheme *runtime.Scheme
 }
 
-// Option configures assertion behavior.
+// Option configures behavior.
 type Option func(*config)
 
 // Update returns an Option that overwrites the golden file with the actual
@@ -55,44 +55,74 @@ func WithScheme(s *runtime.Scheme) Option {
 	}
 }
 
-// AssertYAML calls PreviewObject on p, serializes the result as YAML, and
-// compares it against the golden file at path. The test fails with a diff if
-// they differ.
+// MismatchError is returned by [CompareYAML] when the serialized output does
+// not match the golden file. The Diff field contains a unified diff.
+type MismatchError struct {
+	Path string
+	Diff string
+}
+
+func (e *MismatchError) Error() string {
+	return fmt.Sprintf("golden file mismatch: %s\n\n%s", e.Path, e.Diff)
+}
+
+// CompareYAML calls PreviewObject on p, serializes the result as YAML, and
+// compares it against the golden file at path. Returns a [*MismatchError] if
+// they differ, or nil if they match.
 //
 // When [Update] is enabled, the golden file is written (creating intermediate
 // directories as needed) and comparison is skipped.
 //
-// If the golden file does not exist and Update is not enabled, the test fails.
-func AssertYAML[T client.Object](t *testing.T, path string, p Previewer[T], opts ...Option) {
-	t.Helper()
-
+// Returns an error if the golden file does not exist and Update is not enabled.
+func CompareYAML[T client.Object](path string, p Previewer[T], opts ...Option) error {
 	var cfg config
 	for _, o := range opts {
 		o(&cfg)
 	}
 
 	obj, err := p.PreviewObject()
-	require.NoError(t, err, "PreviewObject failed")
+	if err != nil {
+		return fmt.Errorf("PreviewObject failed: %w", err)
+	}
 
 	actual, err := serializeObject(obj, cfg.scheme)
-	require.NoError(t, err, "failed to serialize object to YAML")
+	if err != nil {
+		return fmt.Errorf("failed to serialize object to YAML: %w", err)
+	}
 
 	if cfg.update {
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755), "failed to create golden file directory")
-		require.NoError(t, os.WriteFile(path, actual, 0o644), "failed to write golden file")
-		return
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("failed to create golden file directory: %w", err)
+		}
+		if err := os.WriteFile(path, actual, 0o644); err != nil {
+			return fmt.Errorf("failed to write golden file: %w", err)
+		}
+		return nil
 	}
 
 	expected, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		require.Fail(t, fmt.Sprintf("golden file %s does not exist; run with -update to create it", path))
-		return
+		return fmt.Errorf("golden file %s does not exist; run with -update to create it", path)
 	}
-	require.NoError(t, err, "failed to read golden file")
+	if err != nil {
+		return fmt.Errorf("failed to read golden file: %w", err)
+	}
 
 	if string(expected) != string(actual) {
-		require.Fail(t, fmt.Sprintf("golden file mismatch: %s\n\n%s", path, formatDiff(string(expected), string(actual))))
+		return &MismatchError{
+			Path: path,
+			Diff: formatDiff(string(expected), string(actual)),
+		}
 	}
+
+	return nil
+}
+
+// AssertYAML is a test helper that calls [CompareYAML] and fails the test if
+// the result does not match the golden file. See [CompareYAML] for details.
+func AssertYAML[T client.Object](t *testing.T, path string, p Previewer[T], opts ...Option) {
+	t.Helper()
+	require.NoError(t, CompareYAML(path, p, opts...))
 }
 
 // serializeObject marshals a client.Object to YAML, removing zero-value noise

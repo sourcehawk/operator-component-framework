@@ -3,6 +3,7 @@ package pdb
 import (
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	policyv1 "k8s.io/api/policy/v1"
@@ -46,6 +47,21 @@ func NewBuilder(p *policyv1.PodDisruptionBudget) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the PodDisruptionBudget
+// is applied during reconciliation. If the guard returns Blocked, the PodDisruptionBudget and
+// all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(guard func(policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
+	}
+	b.base.WithGuard(func(p *policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error) {
+		return guard(*p)
+	})
 	return b
 }
 

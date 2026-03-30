@@ -76,7 +76,7 @@ var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 		clusterReconciler.Unregister(name)
 		framework.DeleteClusterTestApp(ctx, k8sClient, name)
 		// Explicitly clean up cluster-scoped PVs to avoid leaking test resources and relying on GC timing
-		for _, suffix := range []string{"create", "mutated", "update", "grace", "error"} {
+		for _, suffix := range []string{"create", "mutated", "update", "grace", "error", "guard"} {
 			pvObj := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: name + "-" + suffix}}
 			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, pvObj))).To(Succeed())
 		}
@@ -276,6 +276,28 @@ var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
+		})
+	})
+
+	Context("Guards", func() {
+		It("should report Blocked condition when guard blocks", func() {
+			pvName := name + "-guard"
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				obj := newBasePersistentVolume(pvName, "/tmp/e2e-pv-guard")
+				return pv.NewBuilder(obj).
+					WithGuard(func(_ corev1.PersistentVolume) (concepts.GuardStatusWithReason, error) {
+						return concepts.GuardStatusWithReason{
+							Status: concepts.GuardStatusBlocked,
+							Reason: "guard test",
+						}, nil
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Blocked"))
 		})
 	})
 })

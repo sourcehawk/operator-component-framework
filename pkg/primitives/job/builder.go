@@ -125,6 +125,23 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 	return b
 }
 
+// WithGuard registers a guard precondition that is evaluated before the Job
+// is applied during reconciliation. If the guard returns Blocked, the Job and
+// all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(
+	guard func(batchv1.Job) (concepts.GuardStatusWithReason, error),
+) *Builder {
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
+	}
+	b.base.WithGuard(func(j *batchv1.Job) (concepts.GuardStatusWithReason, error) {
+		return guard(*j)
+	})
+	return b
+}
+
 // WithDataExtractor registers a function to harvest information from the
 // Job after it has been successfully reconciled.
 //

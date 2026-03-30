@@ -20,6 +20,8 @@ const (
 	convergingStatusCompletablePending   = convergingStatus(concepts.CompletionStatusPending)
 	convergingStatusCompletableRunning   = convergingStatus(concepts.CompletionStatusRunning)
 	convergingStatusCompletableFailed    = convergingStatus(concepts.CompletionStatusFailing)
+
+	convergingStatusGuardBlocked = convergingStatus(concepts.GuardStatusBlocked)
 )
 
 // convergingStatusWithReason is the explanation of why the resource is in its current convergence state.
@@ -35,7 +37,7 @@ func (s convergingStatus) severity() int {
 	switch s {
 	case convergingStatusAliveHealthy, convergingStatusOperationalOperational, convergingStatusCompletableCompleted:
 		return 1
-	case convergingStatusAliveCreating, convergingStatusOperationalPending, convergingStatusCompletablePending:
+	case convergingStatusAliveCreating, convergingStatusOperationalPending, convergingStatusCompletablePending, convergingStatusGuardBlocked:
 		return 2
 	case convergingStatusAliveUpdating:
 		return 3
@@ -69,12 +71,14 @@ func (s convergingStatus) priority() int {
 		return 8
 	case convergingStatusAliveScaling:
 		return 9
-	case convergingStatusCompletableFailed:
+	case convergingStatusGuardBlocked:
 		return 10
-	case convergingStatusOperationalFailing:
+	case convergingStatusCompletableFailed:
 		return 11
-	case convergingStatusAliveFailing:
+	case convergingStatusOperationalFailing:
 		return 12
+	case convergingStatusAliveFailing:
+		return 13
 	}
 	return 0
 }
@@ -167,6 +171,10 @@ const (
 	// CompletionFailing indicates that completable tasks are failing.
 	CompletionFailing = Status(concepts.CompletionStatusFailing)
 
+	// GuardBlocked indicates that a resource's guard precondition is not yet met.
+	// The resource and all resources after it in registration order are waiting.
+	GuardBlocked = Status(concepts.GuardStatusBlocked)
+
 	// PendingSuspension indicates that the component is aware of the suspension request but has yet to begin suspension.
 	PendingSuspension = Status(concepts.SuspensionStatusPending)
 	// Suspending indicates that the component is converging towards a suspended state but is not yet fully suspended.
@@ -212,24 +220,26 @@ func (s Status) Priority() int {
 		return 8
 	case AliveScaling:
 		return 9
-	case CompletionFailing:
+	case GuardBlocked:
 		return 10
-	case OperationFailing:
+	case CompletionFailing:
 		return 11
-	case AliveFailing:
+	case OperationFailing:
 		return 12
-	case Suspended:
+	case AliveFailing:
 		return 13
-	case Suspending:
+	case Suspended:
 		return 14
-	case PendingSuspension:
+	case Suspending:
 		return 15
-	case Degraded:
+	case PendingSuspension:
 		return 16
-	case Down:
+	case Degraded:
 		return 17
-	case Error:
+	case Down:
 		return 18
+	case Error:
+		return 19
 	}
 
 	return 0

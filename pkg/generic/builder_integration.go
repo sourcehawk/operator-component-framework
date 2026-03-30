@@ -50,6 +50,14 @@ func (b *IntegrationBuilder[T, M]) WithMutation(
 	return b
 }
 
+// WithGuard registers a guard precondition for the integration resource.
+func (b *IntegrationBuilder[T, M]) WithGuard(
+	handler func(T) (concepts.GuardStatusWithReason, error),
+) *IntegrationBuilder[T, M] {
+	b.BaseBuilder.WithGuard(handler)
+	return b
+}
+
 // WithDataExtractor registers a typed data extractor to run after successful reconciliation.
 func (b *IntegrationBuilder[T, M]) WithDataExtractor(
 	extractor func(T) error,

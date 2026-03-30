@@ -254,4 +254,25 @@ var _ = Describe("Service Primitive", Label("service"), func() {
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
 		})
 	})
+
+	Context("Guards", func() {
+		It("should report Blocked condition when guard blocks", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				svc := newBaseService(ns, "guarded-svc")
+				return service.NewBuilder(svc).
+					WithGuard(func(_ corev1.Service) (concepts.GuardStatusWithReason, error) {
+						return concepts.GuardStatusWithReason{
+							Status: concepts.GuardStatusBlocked,
+							Reason: "guard test",
+						}, nil
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Blocked"))
+		})
+	})
 })

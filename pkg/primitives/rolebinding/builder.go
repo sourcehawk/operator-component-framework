@@ -3,6 +3,7 @@ package rolebinding
 import (
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -49,6 +50,21 @@ func NewBuilder(rb *rbacv1.RoleBinding) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the RoleBinding
+// is applied during reconciliation. If the guard returns Blocked, the RoleBinding and
+// all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(guard func(rbacv1.RoleBinding) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
+	}
+	b.base.WithGuard(func(rb *rbacv1.RoleBinding) (concepts.GuardStatusWithReason, error) {
+		return guard(*rb)
+	})
 	return b
 }
 

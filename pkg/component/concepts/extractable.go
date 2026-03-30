@@ -8,8 +8,12 @@ package concepts
 // memory for use by other components or for updating the parent CRD's status.
 //
 // Data extraction is intended to be an observational/read-only operation on the resource.
-// It is triggered automatically during reconciliation after all resources have been
-// synchronized with the cluster but before the final component condition is calculated.
+//
+// Extraction is triggered immediately after each resource is applied or fetched during
+// reconciliation, regardless of whether the resource is managed or read-only. This allows
+// data extracted from one resource to be available to subsequent resources' guards and
+// mutations within the same reconciliation cycle. Extraction always occurs before the
+// final component condition is calculated.
 type DataExtractable interface {
 	// ExtractData performs the data extraction from the resource's underlying Kubernetes object.
 	// The implementation should store the extracted data in its own fields or shared state

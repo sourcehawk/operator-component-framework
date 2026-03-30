@@ -80,6 +80,7 @@ Primitives implement behavioral interfaces that the component layer uses for sta
 | `Completable`     | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` | Jobs and task primitives                         |
 | `Operational`     | `Operational`, `OperationPending`, `OperationFailing`    | Services, Ingresses, CronJobs                    |
 | `DataExtractable` | _(no status, side-effecting)_                            | Resources that expose post-sync data             |
+| `Guardable`       | `Blocked`, `Unblocked`                                   | Resources with runtime preconditions             |
 
 Custom resource wrappers can implement any subset of these interfaces to opt into the corresponding component behaviors.
 
@@ -215,6 +216,29 @@ m.EditContainers(selectors.ContainersNamed("web", "api"), func(e *editors.Contai
     return nil
 })
 ```
+
+### Adding a guard
+
+Guards block a resource from being applied until a precondition is met. Combined with data extraction, they enable
+runtime dependencies between resources: an earlier resource extracts data after it is applied, and a later resource's
+guard checks that data before proceeding.
+
+```go
+resource, err := deployment.NewBuilder(base).
+    WithGuard(func(_ appsv1.Deployment) (concepts.GuardStatusWithReason, error) {
+        if roleARN == "" {
+            return concepts.GuardStatusWithReason{
+                Status: concepts.GuardStatusBlocked,
+                Reason: "waiting for IAM role ARN",
+            }, nil
+        }
+        return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
+    }).
+    Build()
+```
+
+See [Guards](component.md#guards) in the component documentation for the full behavioral contract and a complete example
+showing data extraction feeding into a guard.
 
 ## Unstructured Primitives
 

@@ -5,6 +5,7 @@ package primitives
 import (
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/configmap"
 
 	corev1 "k8s.io/api/core/v1"
@@ -139,6 +140,27 @@ var _ = Describe("ConfigMap Primitive", Label("configmap"), func() {
 				HaveKeyWithValue("key", "updated"),
 				HaveKeyWithValue("new-key", "new-value"),
 			))
+		})
+	})
+
+	Context("Guards", func() {
+		It("should report Blocked condition when guard blocks", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				cm := newBaseConfigMap(ns, "guarded-cm", map[string]string{"key": "value"})
+				return configmap.NewBuilder(cm).
+					WithGuard(func(_ corev1.ConfigMap) (concepts.GuardStatusWithReason, error) {
+						return concepts.GuardStatusWithReason{
+							Status: concepts.GuardStatusBlocked,
+							Reason: "guard test",
+						}, nil
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Blocked"))
 		})
 	})
 })

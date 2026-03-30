@@ -55,6 +55,7 @@ func normalizeProtocol(p corev1.Protocol) corev1.Protocol {
 //   - concepts.Operational: for tracking whether the Service is operational.
 //   - concepts.Graceful: for health assessment after the component's grace period expires.
 //   - concepts.Suspendable: for participating in the component suspension lifecycle.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*corev1.Service, *Mutator]
@@ -134,4 +135,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // LoadBalancer ingress from the Service.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

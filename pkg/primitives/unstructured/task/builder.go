@@ -85,6 +85,21 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 	return b
 }
 
+// WithGuard registers a guard precondition that is evaluated before the object
+// is applied during reconciliation. If the guard returns Blocked, the object and
+// all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(guard func(uns.Unstructured) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
+	}
+	b.base.WithGuard(func(obj *uns.Unstructured) (concepts.GuardStatusWithReason, error) {
+		return guard(*obj)
+	})
+	return b
+}
+
 // WithDataExtractor registers a function to read values from the object after
 // it has been successfully reconciled.
 func (b *Builder) WithDataExtractor(extractor func(uns.Unstructured) error) *Builder {

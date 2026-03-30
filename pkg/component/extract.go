@@ -9,8 +9,9 @@ import (
 // extractResourceData iterates over a list of resources and calls ExtractData for those
 // that implement the DataExtractable interface.
 //
-// This helper is called during reconciliation after both registered creation and
-// read-only resources have been successfully processed and updated with their cluster state.
+// During reconciliation, this is called per-resource immediately after each resource is
+// applied or fetched, so that extracted data is available to subsequent resources' guards
+// and mutations.
 func extractResourceData(resources []Resource) error {
 	for _, resource := range resources {
 		if extract, ok := resource.(concepts.DataExtractable); ok {

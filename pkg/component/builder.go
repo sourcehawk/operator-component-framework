@@ -18,8 +18,10 @@ type ResourceOptions struct {
 	// ParticipationMode describes in what way the resource participates in the component health aggregation.
 	// All resources default to ParticipationModeRequired when not otherwise specified.
 	//
-	// If the resource is static, e.g. not implementing any of the interfaces mentioned, the mode has no effect,
-	// since the resource's status is determined by whether it can be applied or not.
+	// If the resource is static (not implementing any of the interfaces mentioned), the mode only
+	// takes effect when the resource has a guard. A guarded static resource can report Blocked,
+	// which participates in health aggregation. An unguarded static resource produces no
+	// converging status, so the mode has no observable effect.
 	ParticipationMode ParticipationMode
 }
 
@@ -144,13 +146,13 @@ func (b *Builder) WithResource(resource Resource, options ResourceOptions) *Buil
 
 	b.component.participationLookup[resource.Identity()] = options.ParticipationMode
 
-	switch {
-	case options.Delete:
+	if options.Delete {
 		b.component.deleteResources = append(b.component.deleteResources, resource)
-	case options.ReadOnly:
-		b.component.readResources = append(b.component.readResources, resource)
-	default:
-		b.component.createResources = append(b.component.createResources, resource)
+	} else {
+		b.component.reconcileResources = append(b.component.reconcileResources, reconcileEntry{
+			Resource: resource,
+			ReadOnly: options.ReadOnly,
+		})
 	}
 
 	return b

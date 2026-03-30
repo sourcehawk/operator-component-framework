@@ -140,6 +140,23 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 	return b
 }
 
+// WithGuard registers a guard precondition that is evaluated before the ReplicaSet
+// is applied during reconciliation. If the guard returns Blocked, the ReplicaSet and
+// all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(
+	guard func(appsv1.ReplicaSet) (concepts.GuardStatusWithReason, error),
+) *Builder {
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
+	}
+	b.base.WithGuard(func(rs *appsv1.ReplicaSet) (concepts.GuardStatusWithReason, error) {
+		return guard(*rs)
+	})
+	return b
+}
+
 // WithDataExtractor registers a function to harvest information from the
 // ReplicaSet after it has been successfully reconciled.
 //

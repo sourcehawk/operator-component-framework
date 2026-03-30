@@ -103,7 +103,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Identity").Return("ConfigMap/test-cm")
 			res.On("Mutate", mock.Anything).Return(nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -140,7 +140,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Waiting for creation",
 			}, nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 			comp.participationLookup = map[string]ParticipationMode{
 				res.Identity(): ParticipationModeRequired,
 			}
@@ -176,7 +176,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Read-only healthy",
 			}, nil)
 
-			comp.readResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
 			comp.participationLookup = map[string]ParticipationMode{
 				res.Identity(): ParticipationModeRequired,
 			}
@@ -191,6 +191,41 @@ var _ = Describe("Component Reconciler", func() {
 			cond := getOwnerCondition()
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Reason).To(Equal(string(Healthy)))
+		})
+
+		It("should NOT mutate or apply read-only resources", func() {
+			// Given: a read-only resource that exists in the cluster
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-no-mutate-cm",
+					Namespace: namespace,
+				},
+				Data: map[string]string{"original": "data"},
+			}
+			Expect(k8sClient.Create(ctx, cm)).To(Succeed())
+
+			res := &MockResource{}
+			res.On("Identity").Return("ConfigMap/test-no-mutate-cm")
+			res.On("Object").Return(cm, nil)
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+
+			// Mutate must never be called for read-only resources
+			res.AssertNotCalled(GinkgoT(), "Mutate", mock.Anything)
+
+			// Verify the cluster object was not modified
+			var fetched corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Name: "test-no-mutate-cm", Namespace: namespace,
+			}, &fetched)).To(Succeed())
+			Expect(fetched.Data).To(Equal(map[string]string{"original": "data"}))
+			Expect(fetched.OwnerReferences).To(BeEmpty(), "read-only resource should not get an owner reference")
 		})
 
 		It("should aggregate status across both create and read-only resources", func() {
@@ -220,8 +255,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Read resource still preparing",
 			}, nil)
 
-			comp.createResources = []Resource{res1}
-			comp.readResources = []Resource{res2}
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2, ReadOnly: true}}
 			comp.participationLookup = map[string]ParticipationMode{
 				res1.Identity(): ParticipationModeRequired,
 				res2.Identity(): ParticipationModeRequired,
@@ -242,8 +276,7 @@ var _ = Describe("Component Reconciler", func() {
 
 		It("should successfully reconcile an empty component to Ready", func() {
 			// Given
-			comp.createResources = nil
-			comp.readResources = nil
+			comp.reconcileResources = nil
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -289,7 +322,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			suspendRes.On("DeleteOnSuspend").Return(false)
 
-			comp.createResources = []Resource{suspendRes, createRes}
+			comp.reconcileResources = []reconcileEntry{{Resource: suspendRes}, {Resource: createRes}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -331,7 +364,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			res.On("DeleteOnSuspend").Return(true)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -390,7 +423,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(nil, fmt.Errorf("reconciliation error"))
 			res.On("Identity").Return("failing-resource")
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -412,7 +445,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(nil, fmt.Errorf("read error"))
 			res.On("Identity").Return("failing-read-resource")
 
-			comp.readResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -459,7 +492,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Suspend").Return(fmt.Errorf("suspend error"))
 			res.On("Identity").Return("failing-suspend-resource")
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -493,7 +526,7 @@ var _ = Describe("Component Reconciler", func() {
 			delRes.On("Object").Return(nil, fmt.Errorf("suspend-delete error"))
 			delRes.On("Identity").Return("failing-suspend-delete-resource")
 
-			comp.createResources = []Resource{susRes}
+			comp.reconcileResources = []reconcileEntry{{Resource: susRes}}
 			comp.deleteResources = []Resource{delRes}
 
 			// When
@@ -776,7 +809,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(nil)
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -807,7 +840,7 @@ var _ = Describe("Component Reconciler", func() {
 			// Actually, suspendResources handles non-suspendable resources as already suspended.
 			// Let's check suspend_test.go to be sure.
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -827,7 +860,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Mutate", mock.Anything).Return(nil)
 			res.On("ExtractData").Return(fmt.Errorf("extraction failed"))
 
-			comp.createResources = []Resource{res}
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -858,7 +891,7 @@ var _ = Describe("Component Reconciler", func() {
 			res2.On("Identity").Return("ConfigMap/res2")
 			res2.On("Mutate", mock.Anything).Return(nil)
 
-			comp.createResources = []Resource{res1, res2}
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -900,6 +933,238 @@ var _ = Describe("Component Reconciler", func() {
 			// Then
 			Expect(err).NotTo(HaveOccurred())
 			Expect(extracted).To(BeTrue(), "Extraction logic should have been invoked")
+		})
+	})
+
+	Context("Guards", func() {
+		It("should apply resource normally when guard returns unblocked", func() {
+			// Given
+			res := &MockGuardableResource{}
+			res.On("Identity").Return("v1/ConfigMap/unblocked-cm")
+			res.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusUnblocked,
+			}, nil)
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "unblocked-cm", Namespace: namespace},
+			}, nil)
+			res.On("Mutate", mock.Anything).Return(nil)
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			res.AssertCalled(GinkgoT(), "Object")
+			res.AssertCalled(GinkgoT(), "Mutate", mock.Anything)
+		})
+
+		It("should block resource and set condition to Blocked when guard returns blocked", func() {
+			// Given
+			res := &MockGuardableAliveResource{}
+			res.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusBlocked,
+				Reason: "waiting for cloud provider role ARN",
+			}, nil)
+			res.On("Identity").Return("v1/ConfigMap/guarded-cm")
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
+			comp.participationLookup = map[string]ParticipationMode{
+				"v1/ConfigMap/guarded-cm": ParticipationModeRequired,
+			}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			res.AssertNotCalled(GinkgoT(), "Object")
+			res.AssertNotCalled(GinkgoT(), "Mutate", mock.Anything)
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(string(GuardBlocked)))
+			Expect(cond.Message).To(ContainSubstring("waiting for cloud provider role ARN"))
+		})
+
+		It("should skip all resources after a blocked guard", func() {
+			// Given
+			res1 := &MockResource{}
+			res1.On("Identity").Return("v1/ConfigMap/first-cm")
+			res1.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "first-cm", Namespace: namespace},
+			}, nil)
+			res1.On("Mutate", mock.Anything).Return(nil)
+
+			res2 := &MockGuardableResource{}
+			res2.On("Identity").Return("v1/ConfigMap/blocked-cm")
+			res2.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusBlocked,
+				Reason: "blocked",
+			}, nil)
+
+			res3 := &MockResource{}
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2}, {Resource: res3}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			res1.AssertCalled(GinkgoT(), "Object")
+			res2.AssertNotCalled(GinkgoT(), "Object")
+			res3.AssertNotCalled(GinkgoT(), "Object")
+		})
+
+		It("should set condition to Error when guard evaluation fails", func() {
+			// Given
+			res := &MockGuardableResource{}
+			res.On("Identity").Return("v1/ConfigMap/guard-error")
+			res.On("GuardStatus").Return(concepts.GuardStatusWithReason{}, fmt.Errorf("guard evaluation failed"))
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("guard evaluation failed"))
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(Error)))
+		})
+
+		It("should NOT evaluate guards during suspension", func() {
+			// Given
+			comp.suspended = true
+
+			res := &MockGuardableResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "suspended-guarded-cm", Namespace: namespace},
+			}, nil)
+			res.On("Mutate", mock.Anything).Return(nil)
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			res.AssertNotCalled(GinkgoT(), "GuardStatus")
+		})
+
+		It("should make extracted data available to a subsequent resource's guard and mutation", func() {
+			// This validates the full extractor -> guard -> mutation flow:
+			// Resource A's extractor populates a shared variable, Resource B's guard
+			// reads it to unblock, and Resource B's mutation reads it to inject into the spec.
+			var roleARN string
+
+			res1 := &MockGuardableExtractableResource{}
+			res1.On("Identity").Return("v1/ConfigMap/role")
+			res1.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusUnblocked,
+			}, nil)
+			res1.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "role-cm", Namespace: namespace},
+			}, nil)
+			res1.On("Mutate", mock.Anything).Return(nil)
+			res1.On("ExtractData").Run(func(_ mock.Arguments) {
+				roleARN = "arn:aws:iam::123456789:role/my-role"
+			}).Return(nil)
+
+			// Resource B: guard dynamically checks roleARN, mutation injects it into the object.
+			var mutatedARN string
+			res2 := &MockGuardableResource{}
+			res2.On("Identity").Return("v1/ConfigMap/bucket")
+			res2.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusUnblocked,
+			}, nil).Maybe()
+			res2.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "bucket-cm", Namespace: namespace},
+			}, nil)
+			res2.On("Mutate", mock.Anything).Run(func(args mock.Arguments) {
+				// The mutation reads roleARN at Mutate() time. Because per-resource
+				// extraction ran after res1 was applied, roleARN is already populated.
+				mutatedARN = roleARN
+			}).Return(nil)
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			Expect(roleARN).To(Equal("arn:aws:iam::123456789:role/my-role"))
+			Expect(mutatedARN).To(Equal("arn:aws:iam::123456789:role/my-role"),
+				"mutation on resource B should see the value extracted from resource A")
+		})
+
+		It("should propagate extraction errors from per-resource extraction", func() {
+			// Given
+			res := &MockGuardableExtractableResource{}
+			res.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusUnblocked,
+			}, nil)
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "fail-extract-cm", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("v1/ConfigMap/fail-extract")
+			res.On("Mutate", mock.Anything).Return(nil)
+			res.On("ExtractData").Return(fmt.Errorf("extraction failed"))
+
+			comp.reconcileResources = []reconcileEntry{{Resource: res}}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("extraction failed"))
+
+			cond := getOwnerCondition()
+			Expect(cond.Reason).To(Equal(string(Error)))
+		})
+
+		It("should collect alive status alongside blocked guard results", func() {
+			// Given: first resource is alive and healthy, second is blocked
+			alive := &MockAliveResource{}
+			alive.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "alive-cm", Namespace: namespace},
+			}, nil)
+			alive.On("Mutate", mock.Anything).Return(nil)
+			alive.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusHealthy,
+				Reason: "Ready",
+			}, nil)
+			alive.On("Identity").Return("v1/ConfigMap/alive")
+
+			guarded := &MockGuardableAliveResource{}
+			guarded.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusBlocked,
+				Reason: "waiting",
+			}, nil)
+			guarded.On("Identity").Return("v1/ConfigMap/guarded")
+
+			comp.reconcileResources = []reconcileEntry{{Resource: alive}, {Resource: guarded}}
+			comp.participationLookup = map[string]ParticipationMode{
+				"v1/ConfigMap/alive":   ParticipationModeRequired,
+				"v1/ConfigMap/guarded": ParticipationModeRequired,
+			}
+
+			// When
+			err := comp.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(string(GuardBlocked)))
 		})
 	})
 })

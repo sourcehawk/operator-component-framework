@@ -3,6 +3,7 @@ package secret
 import (
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	corev1 "k8s.io/api/core/v1"
@@ -46,6 +47,21 @@ func NewBuilder(s *corev1.Secret) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the Secret
+// is applied during reconciliation. If the guard returns Blocked, the Secret and
+// all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(guard func(corev1.Secret) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
+	}
+	b.base.WithGuard(func(s *corev1.Secret) (concepts.GuardStatusWithReason, error) {
+		return guard(*s)
+	})
 	return b
 }
 

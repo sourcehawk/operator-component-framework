@@ -8,6 +8,7 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/clusterrole"
 
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -210,6 +211,35 @@ var _ = Describe("ClusterRole Primitive", Label("clusterrole"), func() {
 
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
+		})
+	})
+
+	Context("Guards", func() {
+		It("should report Blocked condition when guard blocks", func() {
+			crName := "e2e-cr-guard-" + ns
+
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				cr := newBaseClusterRole(crName, []rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"pods"},
+						Verbs:     []string{"get"},
+					},
+				})
+				return clusterrole.NewBuilder(cr).
+					WithGuard(func(_ rbacv1.ClusterRole) (concepts.GuardStatusWithReason, error) {
+						return concepts.GuardStatusWithReason{
+							Status: concepts.GuardStatusBlocked,
+							Reason: "guard test",
+						}, nil
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Blocked"))
 		})
 	})
 })

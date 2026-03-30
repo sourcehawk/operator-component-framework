@@ -14,6 +14,7 @@ import (
 //   - component.Resource: for basic identity and mutation behaviour.
 //   - concepts.Operational: for tracking whether the PV is operationally ready.
 //   - concepts.Graceful: for assessing health after the grace period expires.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*corev1.PersistentVolume, *Mutator]
@@ -71,4 +72,10 @@ func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 // component to read generated or updated values from the PV.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

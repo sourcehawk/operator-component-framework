@@ -1,6 +1,7 @@
 package static
 
 import (
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
@@ -54,6 +55,21 @@ func (b *Builder) MarkClusterScoped() *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m unstruct.Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*unstruct.Mutator](m))
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the object
+// is applied during reconciliation. If the guard returns Blocked, the object and
+// all resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(guard func(uns.Unstructured) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
+	}
+	b.base.WithGuard(func(obj *uns.Unstructured) (concepts.GuardStatusWithReason, error) {
+		return guard(*obj)
+	})
 	return b
 }
 

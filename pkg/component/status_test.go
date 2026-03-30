@@ -43,6 +43,12 @@ func TestStatusLevelOrdering(t *testing.T) {
 	assert.Greater(t, OperationPending.Priority(), CompletionPending.Priority())
 	assert.Greater(t, AliveScaling.Priority(), CompletionRunning.Priority())
 
+	// GuardBlocked > Scaling
+	assert.Greater(t, GuardBlocked.Priority(), AliveScaling.Priority())
+
+	// Failing > GuardBlocked
+	assert.Greater(t, AliveFailing.Priority(), GuardBlocked.Priority())
+
 	// Suspension > Failure (assumes the failing state assertions above)
 	assert.Greater(t, Suspended.Priority(), AliveFailing.Priority())
 	assert.Greater(t, Error.Priority(), Down.Priority())
@@ -69,6 +75,8 @@ func TestStatusConstantsMatchSourceTypes(t *testing.T) {
 	assert.Equal(t, OperationPending, Status(concepts.OperationalStatusPending))
 	assert.Equal(t, OperationFailing, Status(concepts.OperationalStatusFailing))
 
+	assert.Equal(t, GuardBlocked, Status(concepts.GuardStatusBlocked))
+
 	assert.Equal(t, PendingSuspension, Status(concepts.SuspensionStatusPending))
 	assert.Equal(t, Suspending, Status(concepts.SuspensionStatusSuspending))
 	assert.Equal(t, Suspended, Status(concepts.SuspensionStatusSuspended))
@@ -88,6 +96,7 @@ func TestConvergingStatusSeverity(t *testing.T) {
 		{convergingStatusAliveCreating, 2},
 		{convergingStatusOperationalPending, 2},
 		{convergingStatusCompletablePending, 2},
+		{convergingStatusGuardBlocked, 2},
 		{convergingStatusAliveUpdating, 3},
 		{convergingStatusAliveScaling, 4},
 		{convergingStatusCompletableRunning, 4},
@@ -118,9 +127,10 @@ func TestConvergingStatusPriority(t *testing.T) {
 		{convergingStatusAliveUpdating, 7},
 		{convergingStatusCompletableRunning, 8},
 		{convergingStatusAliveScaling, 9},
-		{convergingStatusCompletableFailed, 10},
-		{convergingStatusOperationalFailing, 11},
-		{convergingStatusAliveFailing, 12},
+		{convergingStatusGuardBlocked, 10},
+		{convergingStatusCompletableFailed, 11},
+		{convergingStatusOperationalFailing, 12},
+		{convergingStatusAliveFailing, 13},
 		{convergingStatus("unknown"), 0},
 	}
 
@@ -148,6 +158,7 @@ func TestConvergingStatusHealthy(t *testing.T) {
 		{convergingStatusCompletablePending, false},
 		{convergingStatusCompletableRunning, false},
 		{convergingStatusCompletableFailed, false},
+		{convergingStatusGuardBlocked, false},
 	}
 
 	for _, tt := range tests {

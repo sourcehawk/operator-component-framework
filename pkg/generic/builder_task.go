@@ -43,6 +43,14 @@ func (b *TaskBuilder[T, M]) WithMutation(
 	return b
 }
 
+// WithGuard registers a guard precondition for the task resource.
+func (b *TaskBuilder[T, M]) WithGuard(
+	handler func(T) (concepts.GuardStatusWithReason, error),
+) *TaskBuilder[T, M] {
+	b.BaseBuilder.WithGuard(handler)
+	return b
+}
+
 // WithDataExtractor registers a typed data extractor to run after successful reconciliation.
 func (b *TaskBuilder[T, M]) WithDataExtractor(
 	extractor func(T) error,

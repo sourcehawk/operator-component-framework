@@ -102,11 +102,11 @@ func TestBuilder_WithResource(t *testing.T) {
 	comp, err := b.Build()
 	require.NoError(t, err)
 
-	assert.Len(t, comp.createResources, 1)
-	assert.Equal(t, res1, comp.createResources[0])
-
-	assert.Len(t, comp.readResources, 1)
-	assert.Equal(t, res2, comp.readResources[0])
+	assert.Len(t, comp.reconcileResources, 2)
+	assert.Equal(t, res1, comp.reconcileResources[0].Resource)
+	assert.False(t, comp.reconcileResources[0].ReadOnly)
+	assert.Equal(t, res2, comp.reconcileResources[1].Resource)
+	assert.True(t, comp.reconcileResources[1].ReadOnly)
 
 	assert.Len(t, comp.deleteResources, 1)
 	assert.Equal(t, res3, comp.deleteResources[0])

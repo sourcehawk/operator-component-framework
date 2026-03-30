@@ -14,6 +14,7 @@ import (
 //   - component.Resource: for basic identity and mutation behavior.
 //   - concepts.Alive: for health and readiness tracking.
 //   - concepts.Suspendable: for deletion-based deactivation.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting information after successful reconciliation.
 //
 // This resource handles the lifecycle of a Pod, including initial creation,
@@ -120,4 +121,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // prevent accidental mutations during the extraction process.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

@@ -196,10 +196,9 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			framework.NewClusterTestApp(ctx, k8sClient, name)
-			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
-				a.Spec.Suspended = true
-			})
+			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			app.Spec.Suspended = true
+			Expect(k8sClient.Update(ctx, app)).To(Succeed())
 
 			By("waiting for Disabled condition (not Suspended)")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).

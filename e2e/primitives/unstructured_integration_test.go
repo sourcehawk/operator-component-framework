@@ -157,7 +157,7 @@ var _ = Describe("Unstructured Integration Primitive", Label("unstructured-integ
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for the initial condition to be set")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -167,12 +167,12 @@ var _ = Describe("Unstructured Integration Primitive", Label("unstructured-integ
 			time.Sleep(gracePeriod + 2*time.Second)
 
 			By("triggering re-reconciliation after grace period")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["e2e.ocf.io/trigger"] = "grace-check"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["e2e.ocf.io/trigger"] = "grace-check"
+			})
 
 			By("waiting for Degraded condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).

@@ -174,7 +174,7 @@ var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 				return builder.Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for initial Healthy state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -188,12 +188,12 @@ var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 
 			By("switching desired spec and triggering reconciliation")
 			useUpdatedSpec.Store(true)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["e2e.ocf.io/trigger"] = "update-spec"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["e2e.ocf.io/trigger"] = "update-spec"
+			})
 
 			By("verifying updated reclaim policy")
 			Eventually(func(g Gomega) corev1.PersistentVolumeReclaimPolicy {
@@ -234,7 +234,7 @@ var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for the initial condition to be set")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -244,12 +244,12 @@ var _ = Describe("PersistentVolume Primitive", Label("pv"), func() {
 			time.Sleep(gracePeriod + 2*time.Second)
 
 			By("triggering re-reconciliation after grace period")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["e2e.ocf.io/trigger"] = "grace-check"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["e2e.ocf.io/trigger"] = "grace-check"
+			})
 
 			By("waiting for Degraded condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).

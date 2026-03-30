@@ -135,7 +135,7 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 				return job.NewBuilder(obj).Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for initial Healthy state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -148,12 +148,12 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 
 			By("switching the desired labels and triggering reconciliation")
 			useUpdatedLabels.Store(true)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["e2e.ocf.io/trigger"] = "update-labels"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["e2e.ocf.io/trigger"] = "update-labels"
+			})
 
 			By("verifying the Job labels are updated")
 			Eventually(func(g Gomega) string {
@@ -171,16 +171,16 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 				return job.NewBuilder(obj).Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Healthy state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("suspending the ClusterTestApp")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			app.Spec.Suspended = true
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				a.Spec.Suspended = true
+			})
 
 			By("waiting for Suspended condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -194,9 +194,9 @@ var _ = Describe("Job Primitive", Label("job"), func() {
 			}, framework.DefaultTimeout, framework.DefaultPolling).Should(BeTrue(), "expected Job to be deleted when suspended")
 
 			By("un-suspending the ClusterTestApp")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			app.Spec.Suspended = false
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				a.Spec.Suspended = false
+			})
 
 			By("waiting for Healthy state again")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).

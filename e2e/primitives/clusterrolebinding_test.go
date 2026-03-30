@@ -142,7 +142,7 @@ var _ = Describe("ClusterRoleBinding Primitive", Label("clusterrolebinding"), fu
 				return clusterrolebinding.NewBuilder(crb).Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for initial Healthy state")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -156,12 +156,12 @@ var _ = Describe("ClusterRoleBinding Primitive", Label("clusterrolebinding"), fu
 
 			By("switching desired subjects and triggering reconciliation")
 			useUpdatedSubjects.Store(true)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["e2e.ocf.io/trigger"] = "update-subjects"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["e2e.ocf.io/trigger"] = "update-subjects"
+			})
 
 			By("verifying updated subjects")
 			Eventually(func(g Gomega) string {

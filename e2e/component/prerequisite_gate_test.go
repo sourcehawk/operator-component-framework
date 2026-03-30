@@ -91,7 +91,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Healthy state with gate enabled")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -105,12 +105,12 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 
 			By("disabling the gate and triggering reconcile")
 			gate.enabled.Store(false)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["test.ocf.io/trigger"] = "disable-gate"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["test.ocf.io/trigger"] = "disable-gate"
+			})
 
 			By("waiting for Disabled condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -146,7 +146,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Disabled condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -159,12 +159,12 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 
 			By("enabling the gate and triggering reconcile")
 			gate.enabled.Store(true)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["test.ocf.io/trigger"] = "enable-gate"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["test.ocf.io/trigger"] = "enable-gate"
+			})
 
 			By("waiting for Healthy condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -196,10 +196,10 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			app.Spec.Suspended = true
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				a.Spec.Suspended = true
+			})
 
 			By("waiting for Disabled condition (not Suspended)")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -235,7 +235,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for PrerequisiteNotMet condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -251,12 +251,12 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 
 			By("satisfying the prerequisite and triggering reconcile")
 			prereq.met.Store(true)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["test.ocf.io/trigger"] = "unblock-prereq"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["test.ocf.io/trigger"] = "unblock-prereq"
+			})
 
 			By("waiting for Healthy condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -288,7 +288,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Healthy condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -299,12 +299,12 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 
 			By("making prerequisite not-met and triggering reconcile")
 			prereq.met.Store(false)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			if app.Annotations == nil {
-				app.Annotations = map[string]string{}
-			}
-			app.Annotations["test.ocf.io/trigger"] = "check-barrier"
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["test.ocf.io/trigger"] = "check-barrier"
+			})
 
 			By("verifying condition stays Healthy (prerequisite not re-evaluated)")
 			Consistently(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), "5s", framework.DefaultPolling).
@@ -333,10 +333,10 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			app.Spec.Suspended = true
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				a.Spec.Suspended = true
+			})
 
 			By("waiting for PrerequisiteNotMet condition (not Suspended)")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
@@ -367,16 +367,16 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					Build()
 			})
 
-			app := framework.NewClusterTestApp(ctx, k8sClient, name)
+			framework.NewClusterTestApp(ctx, k8sClient, name)
 
 			By("waiting for Healthy condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("suspending the component")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, app)).To(Succeed())
-			app.Spec.Suspended = true
-			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				a.Spec.Suspended = true
+			})
 
 			By("waiting for Suspended condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).

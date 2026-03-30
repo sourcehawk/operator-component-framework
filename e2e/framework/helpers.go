@@ -185,6 +185,21 @@ func GetCondition(
 	}
 }
 
+// UpdateClusterTestApp performs a read-modify-write on the named ClusterTestApp,
+// retrying automatically on conflict. The mutate function receives the latest
+// version of the object and should apply the desired spec or annotation changes.
+func UpdateClusterTestApp(ctx context.Context, c client.Client, name string, mutate func(*ClusterTestApp)) {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		app := &ClusterTestApp{}
+		if err := c.Get(ctx, types.NamespacedName{Name: name}, app); err != nil {
+			return err
+		}
+		mutate(app)
+		return c.Update(ctx, app)
+	})
+	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+}
+
 // HaveConditionStatus returns a GomegaMatcher that checks a *metav1.Condition
 // has the expected Status and Reason fields.
 func HaveConditionStatus(status metav1.ConditionStatus, reason string) gomegatypes.GomegaMatcher {

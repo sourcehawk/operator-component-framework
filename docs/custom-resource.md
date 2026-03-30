@@ -7,6 +7,33 @@ generics with type-specific logic.
 
 ---
 
+## Table of Contents
+
+- [When to Implement a Custom Resource](#when-to-implement-a-custom-resource)
+- [Architecture](#architecture)
+- [Choosing a Resource Category](#choosing-a-resource-category)
+- [Step-by-Step Implementation](#step-by-step-implementation)
+  - [1. Define the Mutation Type Alias](#1-define-the-mutation-type-alias)
+  - [2. Implement the Mutator](#2-implement-the-mutator)
+    - [The Plan-and-Apply Pattern](#the-plan-and-apply-pattern)
+    - [Mutator Design Guidelines](#mutator-design-guidelines)
+  - [3. Implement Status Handlers](#3-implement-status-handlers)
+    - [Workload Handlers](#workload-handlers)
+    - [Status Constants Reference](#status-constants-reference)
+  - [4. Implement the Builder](#4-implement-the-builder)
+    - [Builder Pattern Guidelines](#builder-pattern-guidelines)
+  - [5. Implement the Resource](#5-implement-the-resource)
+  - [6. Define Feature Mutations](#6-define-feature-mutations)
+  - [7. Register with a Component](#7-register-with-a-component)
+- [Cluster-Scoped Resources](#cluster-scoped-resources)
+- [Category-Specific Notes](#category-specific-notes)
+  - [Static Resources](#static-resources)
+  - [Task Resources](#task-resources)
+  - [Integration Resources](#integration-resources)
+- [Reference](#reference)
+
+---
+
 ## When to Implement a Custom Resource
 
 The built-in primitives cover common Kubernetes types (Deployments, ConfigMaps, Services, etc.) and are highly

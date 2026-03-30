@@ -20,6 +20,8 @@ type BaseResource[T client.Object, M FeatureMutator] struct {
 
 	Suspender func(M) error
 
+	GuardHandler func(T) (concepts.GuardStatusWithReason, error)
+
 	SuspendStatusHandler   func(T) (concepts.SuspensionStatusWithReason, error)
 	SuspendMutationHandler func(M) error
 	DeleteOnSuspendHandler func(T) bool
@@ -95,6 +97,17 @@ func (r *BaseResource[T, M]) ExtractData() error {
 	}
 
 	return nil
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard handler is configured, the resource is unconditionally unblocked.
+func (r *BaseResource[T, M]) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	if r.GuardHandler == nil {
+		return concepts.GuardStatusWithReason{
+			Status: concepts.GuardStatusUnblocked,
+		}, nil
+	}
+	return r.GuardHandler(r.DesiredObject)
 }
 
 // DeleteOnSuspend reports whether the resource should be deleted when suspended.

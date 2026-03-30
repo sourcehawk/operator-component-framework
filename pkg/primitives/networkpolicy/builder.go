@@ -3,6 +3,7 @@ package networkpolicy
 import (
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -47,6 +48,18 @@ func NewBuilder(np *networkingv1.NetworkPolicy) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the NetworkPolicy
+// is applied during reconciliation. If the guard returns Blocked, the NetworkPolicy and
+// all resources registered after it are skipped until the guard clears.
+func (b *Builder) WithGuard(guard func(networkingv1.NetworkPolicy) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard != nil {
+		b.base.WithGuard(func(np *networkingv1.NetworkPolicy) (concepts.GuardStatusWithReason, error) {
+			return guard(*np)
+		})
+	}
 	return b
 }
 

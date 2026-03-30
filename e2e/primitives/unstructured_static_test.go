@@ -7,6 +7,7 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured/static"
@@ -147,6 +148,27 @@ var _ = Describe("Unstructured Static Primitive", Label("unstructured-static"), 
 			By("waiting for Error condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
+		})
+	})
+
+	Context("Guards", func() {
+		It("should report Blocked condition when guard blocks", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				cm := newUnstructuredConfigMap(ns, "uns-static-guarded", map[string]string{"key": "value"})
+				return static.NewBuilder(cm).
+					WithGuard(func(_ uns.Unstructured) (concepts.GuardStatusWithReason, error) {
+						return concepts.GuardStatusWithReason{
+							Status: concepts.GuardStatusBlocked,
+							Reason: "guard test",
+						}, nil
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Blocked"))
 		})
 	})
 })

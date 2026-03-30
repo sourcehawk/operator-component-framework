@@ -140,6 +140,20 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 	return b
 }
 
+// WithGuard registers a guard precondition that is evaluated before the DaemonSet
+// is applied during reconciliation. If the guard returns Blocked, the DaemonSet and
+// all resources registered after it are skipped until the guard clears.
+func (b *Builder) WithGuard(
+	guard func(appsv1.DaemonSet) (concepts.GuardStatusWithReason, error),
+) *Builder {
+	if guard != nil {
+		b.base.WithGuard(func(d *appsv1.DaemonSet) (concepts.GuardStatusWithReason, error) {
+			return guard(*d)
+		})
+	}
+	return b
+}
+
 // WithDataExtractor registers a function to harvest information from the
 // DaemonSet after it has been successfully reconciled.
 //

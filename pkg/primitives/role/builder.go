@@ -3,6 +3,7 @@ package role
 import (
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -46,6 +47,18 @@ func NewBuilder(role *rbacv1.Role) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the Role
+// is applied during reconciliation. If the guard returns Blocked, the Role and
+// all resources registered after it are skipped until the guard clears.
+func (b *Builder) WithGuard(guard func(rbacv1.Role) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard != nil {
+		b.base.WithGuard(func(r *rbacv1.Role) (concepts.GuardStatusWithReason, error) {
+			return guard(*r)
+		})
+	}
 	return b
 }
 

@@ -373,4 +373,25 @@ var _ = Describe("HPA Primitive", Label("hpa"), func() {
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
 		})
 	})
+
+	Context("Guards", func() {
+		It("should report Blocked condition when guard blocks", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				obj := newBaseHPA(ns, "guarded-hpa", "nonexistent", 1, 5)
+				return hpa.NewBuilder(obj).
+					WithGuard(func(_ autoscalingv2.HorizontalPodAutoscaler) (concepts.GuardStatusWithReason, error) {
+						return concepts.GuardStatusWithReason{
+							Status: concepts.GuardStatusBlocked,
+							Reason: "guard test",
+						}, nil
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Blocked"))
+		})
+	})
 })

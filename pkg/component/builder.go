@@ -18,8 +18,10 @@ type ResourceOptions struct {
 	// ParticipationMode describes in what way the resource participates in the component health aggregation.
 	// All resources default to ParticipationModeRequired when not otherwise specified.
 	//
-	// If the resource is static, e.g. not implementing any of the interfaces mentioned, the mode has no effect,
-	// since the resource's status is determined by whether it can be applied or not.
+	// If the resource is static (not implementing any of the interfaces mentioned), the mode only
+	// takes effect when the resource has a guard. A guarded static resource can report Blocked,
+	// which participates in health aggregation. An unguarded static resource produces no
+	// converging status, so the mode has no observable effect.
 	ParticipationMode ParticipationMode
 }
 

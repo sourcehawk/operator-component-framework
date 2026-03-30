@@ -61,8 +61,9 @@ const (
 	//  - concepts.Alive: It must be 'Healthy'
 	//  - concepts.Operational: It must be 'Operational'
 	//  - concepts.Completable: It must be 'Completed'
-	//  - If the resource is static, e.g. not implementing any of the concepts mentioned, the mode has no effect,
-	//    since the resource's health is determined by whether it can be created or not.
+	//  - If the resource is static (not implementing any of the concepts mentioned), the mode only
+	//    takes effect when the resource has a guard. A guarded static resource can report Blocked,
+	//    which participates in health aggregation.
 	ParticipationModeRequired ParticipationMode = "Required"
 	// ParticipationModeAuxiliary The resource is auxiliary and not part of component health evaluation.
 	ParticipationModeAuxiliary ParticipationMode = "Auxiliary"
@@ -122,18 +123,21 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 // Reconciliation follows these steps:
 //
 //  1. Suspension check: If the component is marked as suspended, it performs
-//     suspension of all registered creation resources, updates the status to
-//     reflect the suspension progress (PendingSuspension, Suspending, or Suspended),
-//     and finally processes any deletion resources.
+//     suspension of all registered creation resources (guards are not evaluated),
+//     updates the status to reflect the suspension progress (PendingSuspension,
+//     Suspending, or Suspended), and finally processes any deletion resources.
 //
-//  2. Resource Creation/Update: If not suspended, it creates or updates all
-//     registered creation resources. If any resource creation fails, the
-//     component condition is set to Error and reconciliation stops.
+//  2. Resource Creation/Update: If not suspended, resources are applied sequentially
+//     in registration order. Before each resource, its guard (if any) is evaluated;
+//     a blocked guard stops processing of that resource and all subsequent resources.
+//     After each resource is applied, its data extractors run immediately so that
+//     extracted data is available to subsequent resources' guards and mutations.
 //
-//  3. Read-only Resources: Fetches the current state of all registered
-//     read-only resources from the cluster.
+//  3. Read-only Resources: Fetches the current state of all registered read-only
+//     resources from the cluster, then runs their data extractors.
 //
-//  4. Status Aggregation: Collects converging status from all resources that implement the resource concepts.
+//  4. Status Aggregation: Collects converging status from all applied resources
+//     (including any blocked guard result) and read-only resources.
 //
 //  5. Condition Update: Derives a new component condition using a stateful
 //     progression model that considers the aggregate resource status, the
@@ -176,8 +180,8 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		return nil
 	}
 
-	// Apply resources using Server-Side Apply
-	createResults, err := applyResources(ctx, rec, c.createResources, c.name, mapper)
+	// Apply resources with guard checks and per-resource data extraction
+	createResults, err := applyResourcesWithGuards(ctx, rec, c.createResources, c.name, mapper)
 	if err != nil {
 		return fail(ctx, rec, c.conditionType, err)
 	}
@@ -188,8 +192,9 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		return fail(ctx, rec, c.conditionType, err)
 	}
 
-	// Extract resource data if any
-	if err := extractResourceData(append(c.createResources, c.readResources...)); err != nil {
+	// Extract data from read-only resources.
+	// Create resources are extracted per-resource inside applyResourcesWithGuards.
+	if err := extractResourceData(c.readResources); err != nil {
 		return fail(ctx, rec, c.conditionType, err)
 	}
 

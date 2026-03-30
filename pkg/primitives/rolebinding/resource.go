@@ -1,6 +1,7 @@
 package rolebinding
 
 import (
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -11,6 +12,7 @@ import (
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // RoleBinding resources are static: they do not model convergence health,
@@ -48,4 +50,10 @@ func (r *Resource) Mutate(current client.Object) error {
 // component to read generated or updated values from the RoleBinding.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

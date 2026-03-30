@@ -170,16 +170,21 @@ When `TracingEnabled` is true, the Jaeger sidecar is created and managed. When f
 support suspension (create/update resources, not read-only ones), updates the condition, then processes any pending
 deletions and returns. The remaining phases are skipped.
 
-**Phase 2: Resource synchronization.** All managed resources are created or updated to match their desired state. Each
-resource gets a controller owner reference pointing to the owner CRD, unless the resource is cluster-scoped and the
-owner is namespace-scoped, in which case the reference is automatically skipped (see
-[Cluster-Scoped Resources](#cluster-scoped-resources)).
+**Phase 2: Resource synchronization.** Managed resources are created or updated sequentially in registration order. For
+each resource:
 
-**Phase 3: Read-only resource fetching.** Read-only resources are fetched from the cluster so their current state is
-available for health evaluation.
+1. If the resource has a [guard](#guards), the guard is evaluated first. If blocked, the resource and all subsequent
+   resources are skipped.
+2. The resource is applied to the cluster using Server-Side Apply. Each resource gets a controller owner reference
+   pointing to the owner CRD, unless the resource is cluster-scoped and the owner is namespace-scoped (see
+   [Cluster-Scoped Resources](#cluster-scoped-resources)).
+3. If the resource implements `DataExtractable`, its data extractors run immediately after the apply. This makes
+   extracted data available to subsequent resources' guards and mutations within the same reconciliation cycle.
 
-**Phase 4: Data extraction.** Any resource implementing `DataExtractable` has `ExtractData()` called to harvest data
-from the synchronized cluster state before condition evaluation.
+**Phase 3: Read-only resource fetching.** Read-only resources are fetched from the cluster. After all read-only
+resources are fetched, `DataExtractable` extractors run for any that implement the interface.
+
+**Phase 4: Data extraction.** (Handled inline during phases 2 and 3 as described above.)
 
 **Phase 5: Status aggregation and condition update.** The health of each resource is collected, the grace period is
 consulted, and a single aggregate condition is written to the owner object's status.
@@ -244,7 +249,8 @@ Reported by integration resources whose readiness depends on external systems (S
 
 ### Static Resources (no interface)
 
-Resources that implement none of the above interfaces are considered ready as long as they exist in the cluster.
+Resources that implement none of the above interfaces are considered ready as long as they exist in the cluster. If a
+static resource has a [guard](#guards), it can report `Blocked` when the guard precondition is not met.
 
 ### Grace States
 
@@ -267,15 +273,24 @@ Reported during intentional deactivation:
 | `Suspending`        | Resources are actively being scaled down or cleaned up |
 | `Suspended`         | All resources have reached their suspended state       |
 
+### Guard State
+
+| State     | Meaning                                                                      |
+| --------- | ---------------------------------------------------------------------------- |
+| `Blocked` | A resource's guard precondition is not met; it and subsequent resources wait |
+
+See [Guards](#guards) for details.
+
 ### Condition Priority
 
 When aggregating across multiple resources, the most critical state wins:
 
 1. `Error` / `Down` / `Degraded`: something is wrong
 2. Suspension states: the component is intentionally inactive
-3. Converging states (`Creating`, `Updating`, `Scaling`, `TaskRunning`, `TaskPending`, `OperationPending`): the
+3. `Blocked`: a resource is blocked on a guard precondition
+4. Converging states (`Creating`, `Updating`, `Scaling`, `TaskRunning`, `TaskPending`, `OperationPending`): the
    component is progressing
-4. `Healthy` / `Completed` / `Operational`: all resources are in their target state
+5. `Healthy` / `Completed` / `Operational`: all resources are in their target state
 
 ## Grace Period
 
@@ -333,6 +348,119 @@ Dependencies are passed explicitly so components remain testable and decoupled f
 The `Metrics` field is required. The framework records Prometheus metrics for every condition state transition during
 reconciliation. The recorder implementation is provided by
 [go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics).
+
+## Guards
+
+Guards allow resources within a component to express runtime dependencies on each other. A guard is a precondition
+function registered on a resource that is evaluated before the resource is applied. If the guard returns `Blocked`, the
+resource and all resources registered after it are skipped for that reconciliation cycle.
+
+Combined with per-resource data extraction, guards enable indirect dependency graphs: Resource A is applied first, its
+data extractor runs and populates a shared variable, and Resource B's guard checks that variable before allowing B to
+proceed.
+
+### Registering a Guard
+
+Guards are registered on the resource builder using `WithGuard`. The guard function receives a copy of the resource
+object and returns a `GuardStatusWithReason`.
+
+The following example shows the complete pattern. A cloud provider role resource extracts its ARN after being applied. A
+bucket resource uses that ARN in its spec and guards against being applied before the ARN is available:
+
+```go
+func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    // ...fetch owner...
+
+    // roleARN is scoped to this reconcile call. The role resource's data extractor
+    // populates it after the role is applied. Because extraction runs per-resource
+    // (not after all resources), roleARN is set before the bucket's guard evaluates.
+    var roleARN string
+
+    comp, err := buildCloudComponent(owner, &roleARN)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
+    return ctrl.Result{}, comp.Reconcile(ctx, recCtx)
+}
+
+func buildCloudComponent(owner *v1alpha1.MyApp, roleARN *string) (*component.Component, error) {
+    // First resource: the cloud provider role.
+    // After it is applied, the data extractor reads the ARN from the object.
+    roleRes, err := unstructured.NewStaticBuilder(newCloudRole(owner)).
+        WithDataExtractor(func(obj unstructuredv1.Unstructured) error {
+            *roleARN = obj.Object["status"].(map[string]any)["arn"].(string)
+            return nil
+        }).
+        Build()
+    if err != nil {
+        return nil, err
+    }
+
+    // Second resource: the cloud provider bucket.
+    // The role's data extractor populates *roleARN earlier in this same reconcile
+    // cycle, which causes the guard to clear. The mutation then runs lazily at
+    // Mutate() time and injects the now-populated *roleARN into the bucket spec.
+    bucketRes, err := unstructured.NewStaticBuilder(newCloudBucket(owner)).
+        WithGuard(func(_ unstructuredv1.Unstructured) (concepts.GuardStatusWithReason, error) {
+            if *roleARN == "" {
+                return concepts.GuardStatusWithReason{
+                    Status: concepts.GuardStatusBlocked,
+                    Reason: "waiting for cloud provider role ARN",
+                }, nil
+            }
+            return concepts.GuardStatusWithReason{
+                Status: concepts.GuardStatusUnblocked,
+            }, nil
+        }).
+        WithMutation(unstructured.Mutation{
+            Name: "set-role-arn",
+            Mutate: func(m *unstructured.Mutator) error {
+                m.EditContent(func(e *editors.UnstructuredContentEditor) error {
+                    return e.SetNestedString(*roleARN, "spec", "roleARN")
+                })
+                return nil
+            },
+        }).
+        Build()
+    if err != nil {
+        return nil, err
+    }
+
+    // Registration order matters: the role must be registered before the bucket.
+    return component.NewComponentBuilder().
+        WithName("cloud-resources").
+        WithConditionType("CloudResourcesReady").
+        WithResource(roleRes, component.ResourceOptions{}).
+        WithResource(bucketRes, component.ResourceOptions{}).
+        Build()
+}
+```
+
+The guard function receives the resource's object but is not required to use it. Guards that only check external state
+(closure variables populated by prior extractors) can ignore the parameter.
+
+### Guard Behavior
+
+- Guards are evaluated in resource registration order, before each resource is applied.
+- When a guard returns `Blocked`, the blocked resource contributes a `Blocked` status to the component condition. All
+  resources after it are skipped entirely.
+- On the next reconciliation cycle, if the guard clears (returns `Unblocked`), the resource is applied normally.
+- Guards are **not** evaluated during suspension. The suspension path always proceeds regardless of guard state.
+- A guard evaluation error is treated as a reconciliation failure and sets the component condition to `Error`.
+
+### Status Reporting
+
+A blocked guard produces a condition like:
+
+```yaml
+type: WebInterfaceReady
+status: "False"
+reason: Blocked
+message: "waiting for cloud provider role ARN"
+```
+
+The `Blocked` status is not sticky -- it is self-reinforcing because the guard re-evaluates on every reconcile. When the
+guard clears, the status immediately transitions to the next applicable state (e.g., `Creating`).
 
 ## Best Practices
 

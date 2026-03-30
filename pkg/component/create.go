@@ -16,6 +16,106 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// applyResource applies a single resource to the cluster using Server-Side Apply and
+// collects its converging status. It returns the converging result (nil for static
+// resources with no status interface) and any error encountered.
+//
+// This is the shared core used by both applyResources and applyResourcesWithGuards
+// to avoid duplicating the Object/Mutate/SSA/status-collection sequence.
+func applyResource(
+	ctx context.Context, rec ReconcileContext, resource Resource,
+	fieldOwner client.FieldOwner, mapper meta.RESTMapper,
+) (*convergingResult, error) {
+	obj, err := resource.Object()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to retrieve object for resource %s: %w", resource.Identity(), err,
+		)
+	}
+
+	// Check if the object already exists (reads from informer cache, not the API server).
+	var objectExists bool
+	existing := obj.DeepCopyObject().(client.Object)
+	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), existing); err == nil {
+		objectExists = true
+	} else if !apierrors.IsNotFound(err) {
+		return nil, fmt.Errorf(
+			"failed to check existence of resource %s: %w", resource.Identity(), err,
+		)
+	}
+
+	// Snapshot the object before mutations for operation detection.
+	// Comparing pre-Mutate vs post-Mutate detects whether the operator's desired
+	// state actually changed, without being affected by status subresource updates
+	// from other controllers (Mutate does not touch status).
+	preMutate := obj.DeepCopyObject()
+
+	// Apply mutations to desired state
+	ownerRefSkipped, err := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to mutate resource %s: %w", resource.Identity(), err,
+		)
+	}
+
+	// Determine the converging operation before clearing server fields.
+	var convergingOperation concepts.ConvergingOperation
+	switch {
+	case !objectExists:
+		convergingOperation = concepts.ConvergingOperationCreated
+	case !equality.Semantic.DeepEqual(preMutate, obj):
+		convergingOperation = concepts.ConvergingOperationUpdated
+	default:
+		convergingOperation = concepts.ConvergingOperationNone
+	}
+
+	// Prepare the object for SSA by clearing server-populated fields that must not
+	// be present in the patch. After the first reconcile, DesiredObject retains the
+	// server response (including these fields) because Mutate updates the internal
+	// pointer and Patch writes back into the same object.
+	clearServerFields(obj)
+
+	// Set GVK on the object (required for SSA — builders often omit TypeMeta)
+	if err := ensureGVK(obj, rec.Scheme); err != nil {
+		return nil, fmt.Errorf(
+			"failed to determine GVK for resource %s: %w", resource.Identity(), err,
+		)
+	}
+
+	// Server-Side Apply with forced ownership.
+	// client.Apply is deprecated in favor of client.Client.Apply() which requires generated
+	// ApplyConfiguration types. Using Patch with Apply is the pragmatic approach for untyped objects.
+	if err := rec.Client.Patch(ctx, obj, client.Apply, client.ForceOwnership, fieldOwner); err != nil { //nolint:staticcheck
+		return nil, fmt.Errorf(
+			"failed to apply resource %s: %w", resource.Identity(), err,
+		)
+	}
+
+	if ownerRefSkipped && convergingOperation != concepts.ConvergingOperationNone {
+		log.FromContext(ctx).Info(
+			"skipping owner reference for cluster-scoped resource owned by namespace-scoped owner; "+
+				"this resource will not be garbage-collected when the owner is deleted",
+			"resource", resource.Identity(),
+		)
+	}
+
+	// Gather converging status of resources
+	status, err := getConvergingStatus(resource, convergingOperation)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to determine converging status of resource %s: %w", resource.Identity(), err,
+		)
+	}
+
+	recording.RecordApplyOperationEvent(rec.Recorder, convergingOperation, obj, rec.Owner)
+
+	if status != nil {
+		result := convergingResult{Resource: resource, Status: *status}
+		return &result, nil
+	}
+	return nil, nil
+}
+
 // applyResources ensures that all registered "creation" resources exist and match
 // the desired state in the Kubernetes cluster using Server-Side Apply.
 //
@@ -23,8 +123,8 @@ import (
 //  1. Sequential Execution: Resources are processed one by one in the order they were registered.
 //  2. Fail-Fast: Processing stops at the first error. This is intentional, as resources
 //     often have implicit dependencies (e.g., a Deployment depending on a ConfigMap).
-//  3. Status Collection: For each resource that implements the Alive interface, its
-//     converging status is collected after the Apply operation.
+//  3. Status Collection: For each resource that implements a lifecycle concept interface,
+//     its converging status is collected after the Apply operation.
 //
 // Server-Side Apply behavior:
 //   - The resource's desired state is built via Object() + Mutate(), then patched into the
@@ -45,91 +145,77 @@ func applyResources(
 	var results []convergingResult
 
 	for _, resource := range resources {
-		obj, err := resource.Object()
+		result, err := applyResource(ctx, rec, resource, fieldOwner, mapper)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to retrieve object for resource %s: %w", resource.Identity(), err,
-			)
+			return nil, err
+		}
+		if result != nil {
+			results = append(results, *result)
+		}
+	}
+
+	return results, nil
+}
+
+// applyResourcesWithGuards performs the same work as applyResources but adds two behaviors:
+//
+//  1. Guard evaluation: Before applying each resource, if the resource implements the
+//     Guardable interface, its guard is evaluated. If the guard returns Blocked, the
+//     resource is not applied and no further resources are processed. A blocked converging
+//     result is appended to the results for the blocked resource.
+//
+//  2. Per-resource data extraction: After each resource is successfully applied, its data
+//     extractors are run immediately. This allows data extracted from Resource A to be
+//     available when Resource B's guard or mutations are evaluated.
+//
+// This function is used in the non-suspension reconciliation path. The existing applyResources
+// function remains unchanged for the suspension path, where guards must not interfere.
+func applyResourcesWithGuards(
+	ctx context.Context, rec ReconcileContext, resources []Resource,
+	componentName string, mapper meta.RESTMapper,
+) ([]convergingResult, error) {
+	fieldOwner := client.FieldOwner(
+		fmt.Sprintf("%s/%s", rec.Owner.GetKind(), componentName),
+	)
+
+	var results []convergingResult
+
+	for _, resource := range resources {
+		// Evaluate guard before applying
+		if guardable, ok := resource.(concepts.Guardable); ok {
+			guardResult, err := guardable.GuardStatus()
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to evaluate guard for resource %s: %w", resource.Identity(), err,
+				)
+			}
+			if guardResult.Status == concepts.GuardStatusBlocked {
+				results = append(results, convergingResult{
+					Resource: resource,
+					Status: convergingStatusWithReason{
+						Status: convergingStatusGuardBlocked,
+						Reason: guardResult.Reason,
+					},
+				})
+				return results, nil
+			}
 		}
 
-		// Check if the object already exists (reads from informer cache, not the API server).
-		var objectExists bool
-		existing := obj.DeepCopyObject().(client.Object)
-		if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), existing); err == nil {
-			objectExists = true
-		} else if !apierrors.IsNotFound(err) {
-			return nil, fmt.Errorf(
-				"failed to check existence of resource %s: %w", resource.Identity(), err,
-			)
-		}
-
-		// Snapshot the object before mutations for operation detection.
-		// Comparing pre-Mutate vs post-Mutate detects whether the operator's desired
-		// state actually changed, without being affected by status subresource updates
-		// from other controllers (Mutate does not touch status).
-		preMutate := obj.DeepCopyObject()
-
-		// Apply mutations to desired state
-		ownerRefSkipped, err := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper)
+		result, err := applyResource(ctx, rec, resource, fieldOwner, mapper)
 		if err != nil {
+			return nil, err
+		}
+		if result != nil {
+			results = append(results, *result)
+		}
+
+		// Per-resource data extraction: run immediately after apply so that extracted
+		// data is available to subsequent resources' guards and mutations.
+		if err := extractResourceData([]Resource{resource}); err != nil {
 			return nil, fmt.Errorf(
-				"failed to mutate resource %s: %w", resource.Identity(), err,
+				"failed to extract data from resource %s: %w", resource.Identity(), err,
 			)
 		}
-
-		// Determine the converging operation before clearing server fields.
-		var convergingOperation concepts.ConvergingOperation
-		switch {
-		case !objectExists:
-			convergingOperation = concepts.ConvergingOperationCreated
-		case !equality.Semantic.DeepEqual(preMutate, obj):
-			convergingOperation = concepts.ConvergingOperationUpdated
-		default:
-			convergingOperation = concepts.ConvergingOperationNone
-		}
-
-		// Prepare the object for SSA by clearing server-populated fields that must not
-		// be present in the patch. After the first reconcile, DesiredObject retains the
-		// server response (including these fields) because Mutate updates the internal
-		// pointer and Patch writes back into the same object.
-		clearServerFields(obj)
-
-		// Set GVK on the object (required for SSA — builders often omit TypeMeta)
-		if err := ensureGVK(obj, rec.Scheme); err != nil {
-			return nil, fmt.Errorf(
-				"failed to determine GVK for resource %s: %w", resource.Identity(), err,
-			)
-		}
-
-		// Server-Side Apply with forced ownership.
-		// client.Apply is deprecated in favor of client.Client.Apply() which requires generated
-		// ApplyConfiguration types. Using Patch with Apply is the pragmatic approach for untyped objects.
-		if err := rec.Client.Patch(ctx, obj, client.Apply, client.ForceOwnership, fieldOwner); err != nil { //nolint:staticcheck
-			return nil, fmt.Errorf(
-				"failed to apply resource %s: %w", resource.Identity(), err,
-			)
-		}
-
-		if ownerRefSkipped && convergingOperation != concepts.ConvergingOperationNone {
-			log.FromContext(ctx).Info(
-				"skipping owner reference for cluster-scoped resource owned by namespace-scoped owner; "+
-					"this resource will not be garbage-collected when the owner is deleted",
-				"resource", resource.Identity(),
-			)
-		}
-
-		// Gather converging status of resources
-		status, err := getConvergingStatus(resource, convergingOperation)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to determine converging status of resource %s: %w", resource.Identity(), err,
-			)
-		}
-		if status != nil {
-			results = append(results, convergingResult{Resource: resource, Status: *status})
-		}
-
-		recording.RecordApplyOperationEvent(rec.Recorder, convergingOperation, obj, rec.Owner)
 	}
 
 	return results, nil

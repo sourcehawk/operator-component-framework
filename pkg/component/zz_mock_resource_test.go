@@ -131,3 +131,35 @@ func (m *MockExtractableResource) ExtractData() error {
 	args := m.Called()
 	return args.Error(0)
 }
+
+type MockGuardableResource struct {
+	MockResource
+}
+
+func (m *MockGuardableResource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	args := m.Called()
+	return args.Get(0).(concepts.GuardStatusWithReason), args.Error(1)
+}
+
+type MockGuardableExtractableResource struct {
+	MockResource
+}
+
+func (m *MockGuardableExtractableResource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	args := m.Called()
+	return args.Get(0).(concepts.GuardStatusWithReason), args.Error(1)
+}
+
+func (m *MockGuardableExtractableResource) ExtractData() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
+type MockGuardableAliveResource struct {
+	MockAliveResource
+}
+
+func (m *MockGuardableAliveResource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	args := m.Called()
+	return args.Get(0).(concepts.GuardStatusWithReason), args.Error(1)
+}

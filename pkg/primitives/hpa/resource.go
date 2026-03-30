@@ -16,6 +16,7 @@ import (
 //   - concepts.Graceful: for reporting health after the allowed grace period has expired.
 //   - concepts.Suspendable: for default delete-on-suspend behaviour that removes the HPA to
 //     prevent it from scaling the target back up during suspension.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]
@@ -93,4 +94,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // component to read generated or updated values from the HPA.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

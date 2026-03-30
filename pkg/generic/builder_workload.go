@@ -53,6 +53,14 @@ func (b *WorkloadBuilder[T, M]) WithMutation(
 	return b
 }
 
+// WithGuard registers a guard precondition for the workload resource.
+func (b *WorkloadBuilder[T, M]) WithGuard(
+	handler func(T) (concepts.GuardStatusWithReason, error),
+) *WorkloadBuilder[T, M] {
+	b.BaseBuilder.WithGuard(handler)
+	return b
+}
+
 // WithDataExtractor registers a typed data extractor to run after successful reconciliation.
 func (b *WorkloadBuilder[T, M]) WithDataExtractor(
 	extractor func(T) error,

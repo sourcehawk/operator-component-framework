@@ -16,6 +16,7 @@ import (
 //   - concepts.Operational: for tracking whether the ingress has been assigned an address.
 //   - concepts.Graceful: for health assessment after the component's grace period has expired.
 //   - concepts.Suspendable: for controlled suspension when the parent component is suspended.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // Ingress resources are integration primitives: they depend on an external ingress
@@ -107,4 +108,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // addresses) from the Ingress.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

@@ -19,6 +19,7 @@ import (
 //   - concepts.Operational: for operational status tracking.
 //   - concepts.Graceful: for health assessment during grace periods.
 //   - concepts.Suspendable: for graceful deactivation.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // The operational status handler is required. All other handlers default to
@@ -77,4 +78,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // copy of the reconciled object.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

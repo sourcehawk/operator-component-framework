@@ -4,6 +4,7 @@
 package static
 
 import (
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
 	uns "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -15,6 +16,7 @@ import (
 //
 // It implements the following interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // Static unstructured resources do not model convergence health, grace periods,
@@ -45,4 +47,10 @@ func (r *Resource) Mutate(current client.Object) error {
 // copy of the reconciled object.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

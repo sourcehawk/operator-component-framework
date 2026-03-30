@@ -204,4 +204,26 @@ var _ = Describe("Unstructured Integration Primitive", Label("unstructured-integ
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Error"))
 		})
 	})
+
+	Context("Guards", func() {
+		It("should report Blocked condition when guard blocks", func() {
+			clusterReconciler.RegisterResource(name, func(owner *framework.ClusterTestApp) (component.Resource, error) {
+				obj := newUnstructuredConfigMap(ns, "int-guarded", map[string]string{"key": "value"})
+				return integration.NewBuilder(obj).
+					WithCustomOperationalStatus(unstructuredAlwaysOperational).
+					WithGuard(func(_ uns.Unstructured) (concepts.GuardStatusWithReason, error) {
+						return concepts.GuardStatusWithReason{
+							Status: concepts.GuardStatusBlocked,
+							Reason: "guard test",
+						}, nil
+					}).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Blocked"))
+		})
+	})
 })

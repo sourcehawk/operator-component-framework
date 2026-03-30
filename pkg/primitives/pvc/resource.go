@@ -15,6 +15,7 @@ import (
 //   - concepts.Operational: for tracking whether the PVC is bound and operational.
 //   - concepts.Graceful: for health assessment after the component's grace period expires.
 //   - concepts.Suspendable: for controlled suspension (e.g. retaining the PVC while suspending consumers).
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
 //
 // PVC resources follow the Integration lifecycle: they are operationally significant
@@ -101,4 +102,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // component to read generated or updated values from the PVC.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

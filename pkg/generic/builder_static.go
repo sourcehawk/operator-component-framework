@@ -1,7 +1,10 @@
 // Package generic provides generic builders and resources for operator components.
 package generic
 
-import "sigs.k8s.io/controller-runtime/pkg/client"
+import (
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 // StaticBuilder configures a generic internal static resource for Kubernetes objects
 // such as ConfigMaps and Secrets.
@@ -35,6 +38,14 @@ func NewStaticBuilder[T client.Object, M FeatureMutator](
 // WithMutation registers a typed feature mutation for the static resource.
 func (b *StaticBuilder[T, M]) WithMutation(m Mutation[M]) *StaticBuilder[T, M] {
 	b.BaseBuilder.WithMutation(m)
+	return b
+}
+
+// WithGuard registers a guard precondition for the static resource.
+func (b *StaticBuilder[T, M]) WithGuard(
+	handler func(T) (concepts.GuardStatusWithReason, error),
+) *StaticBuilder[T, M] {
+	b.BaseBuilder.WithGuard(handler)
 	return b
 }
 

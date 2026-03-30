@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -87,5 +88,53 @@ func TestStaticResource(t *testing.T) {
 		}
 		err := res.ExtractData()
 		assert.EqualError(t, err, "extract error")
+	})
+
+	t.Run("GuardStatus returns unblocked when no handler is set", func(t *testing.T) {
+		res.GuardHandler = nil
+		result, err := res.GuardStatus()
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GuardStatusUnblocked, result.Status)
+	})
+
+	t.Run("GuardStatus delegates to handler", func(t *testing.T) {
+		res.GuardHandler = func(cm *corev1.ConfigMap) (concepts.GuardStatusWithReason, error) {
+			if cm.Data["foo"] == "" {
+				return concepts.GuardStatusWithReason{
+					Status: concepts.GuardStatusBlocked,
+					Reason: "foo is empty",
+				}, nil
+			}
+			return concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusUnblocked,
+			}, nil
+		}
+
+		result, err := res.GuardStatus()
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GuardStatusUnblocked, result.Status)
+	})
+
+	t.Run("GuardStatus returns blocked from handler", func(t *testing.T) {
+		res.GuardHandler = func(_ *corev1.ConfigMap) (concepts.GuardStatusWithReason, error) {
+			return concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusBlocked,
+				Reason: "waiting for dependency",
+			}, nil
+		}
+
+		result, err := res.GuardStatus()
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GuardStatusBlocked, result.Status)
+		assert.Equal(t, "waiting for dependency", result.Reason)
+	})
+
+	t.Run("GuardStatus propagates handler errors", func(t *testing.T) {
+		res.GuardHandler = func(_ *corev1.ConfigMap) (concepts.GuardStatusWithReason, error) {
+			return concepts.GuardStatusWithReason{}, errors.New("guard error")
+		}
+
+		_, err := res.GuardStatus()
+		assert.EqualError(t, err, "guard error")
 	})
 }

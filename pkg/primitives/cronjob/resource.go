@@ -16,6 +16,7 @@ import (
 //   - concepts.Operational: for operational status tracking.
 //   - concepts.Graceful: for health assessment after grace period expiry.
 //   - concepts.Suspendable: for controlled suspension via spec.suspend.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting information after successful reconciliation.
 type Resource struct {
 	base *generic.IntegrationResource[*batchv1.CronJob, *Mutator]
@@ -89,4 +90,10 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // from the reconciled CronJob.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
 }

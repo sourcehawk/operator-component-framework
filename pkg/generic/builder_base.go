@@ -61,6 +61,13 @@ func (b *BaseBuilder[T, M]) WithMutation(m Mutation[M]) {
 	b.BaseRes.Mutations = append(b.BaseRes.Mutations, m)
 }
 
+// WithGuard registers a guard precondition for the resource.
+// The guard is evaluated before each apply during reconciliation. If it returns
+// Blocked, the resource and all resources after it are skipped until the guard clears.
+func (b *BaseBuilder[T, M]) WithGuard(handler func(T) (concepts.GuardStatusWithReason, error)) {
+	b.BaseRes.GuardHandler = handler
+}
+
 // WithDataExtractor registers a typed data extractor to run after successful reconciliation.
 func (b *BaseBuilder[T, M]) WithDataExtractor(extractor func(T) error) {
 	if extractor != nil {

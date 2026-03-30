@@ -3,6 +3,7 @@ package clusterrolebinding
 import (
 	"fmt"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -50,6 +51,18 @@ func NewBuilder(crb *rbacv1.ClusterRoleBinding) *Builder {
 // Feature is applied only when that feature is enabled.
 func (b *Builder) WithMutation(m Mutation) *Builder {
 	b.base.WithMutation(feature.Mutation[*Mutator](m))
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the ClusterRoleBinding
+// is applied during reconciliation. If the guard returns Blocked, the ClusterRoleBinding and
+// all resources registered after it are skipped until the guard clears.
+func (b *Builder) WithGuard(guard func(rbacv1.ClusterRoleBinding) (concepts.GuardStatusWithReason, error)) *Builder {
+	if guard != nil {
+		b.base.WithGuard(func(crb *rbacv1.ClusterRoleBinding) (concepts.GuardStatusWithReason, error) {
+			return guard(*crb)
+		})
+	}
 	return b
 }
 

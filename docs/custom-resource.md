@@ -111,53 +111,68 @@ import (
     examplev1 "example.io/api/v1"
 )
 
-// Mutator records mutation intent for a GameServer and applies changes in one pass.
-type Mutator struct {
-    current *examplev1.GameServer
-
+// featurePlan groups all mutation operations recorded by a single feature.
+type featurePlan struct {
     replicaOps []func(*examplev1.GameServerSpec)
     configOps  []func(*examplev1.GameServerSpec)
 }
 
-// NewMutator creates a new Mutator for the given GameServer.
-func NewMutator(current *examplev1.GameServer) *Mutator {
-    return &Mutator{current: current}
+// Mutator records mutation intent for a GameServer and applies changes in one pass.
+//
+// It maintains feature boundaries: each feature's mutations are planned together
+// and applied in the order the features were registered.
+type Mutator struct {
+    current *examplev1.GameServer
+
+    plans  []featurePlan
+    active *featurePlan
 }
 
-// NextFeature advances to a new feature scope. For simple mutators that
-// do not need per-feature ordering, this can reset or simply accumulate.
+// NewMutator creates a new Mutator for the given GameServer.
+// The constructor creates the initial feature scope, so mutations can be
+// registered immediately.
+func NewMutator(current *examplev1.GameServer) *Mutator {
+    m := &Mutator{current: current}
+    m.NextFeature()
+    return m
+}
+
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations are grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. The framework calls
+// this method between mutations to maintain per-feature ordering semantics.
 func (m *Mutator) NextFeature() {
-    // No per-feature scoping needed for this example.
-    // For complex mutators, start a new plan scope here (see the deployment
-    // primitive for a full implementation).
+    m.plans = append(m.plans, featurePlan{})
+    m.active = &m.plans[len(m.plans)-1]
 }
 
 // SetMaxPlayers records intent to set the maximum player count.
 func (m *Mutator) SetMaxPlayers(count int32) {
-    m.configOps = append(m.configOps, func(spec *examplev1.GameServerSpec) {
+    m.active.configOps = append(m.active.configOps, func(spec *examplev1.GameServerSpec) {
         spec.MaxPlayers = count
     })
 }
 
 // SetReplicas records intent to set the replica count.
 func (m *Mutator) SetReplicas(replicas int32) {
-    m.replicaOps = append(m.replicaOps, func(spec *examplev1.GameServerSpec) {
+    m.active.replicaOps = append(m.active.replicaOps, func(spec *examplev1.GameServerSpec) {
         spec.Replicas = &replicas
     })
 }
 
 // Apply executes all recorded mutations against the GameServer.
+// Features are applied in registration order. Within each feature,
+// replica operations are applied before config operations.
 func (m *Mutator) Apply() error {
-    for _, op := range m.replicaOps {
-        op(&m.current.Spec)
+    for _, plan := range m.plans {
+        for _, op := range plan.replicaOps {
+            op(&m.current.Spec)
+        }
+        for _, op := range plan.configOps {
+            op(&m.current.Spec)
+        }
     }
-    for _, op := range m.configOps {
-        op(&m.current.Spec)
-    }
-
-    // Clear recorded ops so the mutator can be reused for suspension.
-    m.replicaOps = nil
-    m.configOps = nil
 
     return nil
 }
@@ -165,15 +180,13 @@ func (m *Mutator) Apply() error {
 
 #### Mutator Design Guidelines
 
-- **Record, don't mutate.** Methods like `SetMaxPlayers` append to an operations slice. They do not touch `current`
+- **Record, don't mutate.** Methods like `SetMaxPlayers` append to the active feature plan. They do not touch `current`
   directly.
-- **Apply once.** The framework calls `Apply()` after all feature mutations, then again after suspension mutations if
-  applicable. Clear recorded state in `Apply()` if the mutator is reused across phases.
+- **Scope per feature.** `NextFeature()` creates a new plan scope. The framework calls it between each registered
+  mutation so that each feature's operations are grouped and applied in registration order. `Apply()` iterates over
+  plans sequentially, giving each feature a consistent view of the object as modified by all previous features.
 - **Keep it typed.** Expose domain-specific methods (`SetMaxPlayers`, `SetReplicas`) rather than generic ones. This
   makes feature mutations self-documenting and prevents callers from bypassing the plan-and-apply sequence.
-- **NextFeature can be simple.** For CRDs that don't need per-feature ordering guarantees, `NextFeature()` can clear the
-  recorded operations (as shown above). For complex cases with strict ordering between feature groups, see
-  `pkg/primitives/deployment/mutator.go` for a full scoped implementation.
 
 ### 3. Implement Status Handlers
 

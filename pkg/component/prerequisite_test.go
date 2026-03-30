@@ -143,6 +143,34 @@ func TestEvaluatePrerequisites(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, "check failed", err.Error())
 	})
+
+	t.Run("returns error for unrecognized status", func(t *testing.T) {
+		t.Parallel()
+
+		comp := &Component{
+			prerequisites: []Prerequisite{
+				&mockPrerequisite{result: PrerequisiteResult{Status: "bogus"}},
+			},
+		}
+
+		_, err := comp.evaluatePrerequisites(rec)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unrecognized status")
+	})
+
+	t.Run("returns error for zero-value status", func(t *testing.T) {
+		t.Parallel()
+
+		comp := &Component{
+			prerequisites: []Prerequisite{
+				&mockPrerequisite{result: PrerequisiteResult{}},
+			},
+		}
+
+		_, err := comp.evaluatePrerequisites(rec)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unrecognized status")
+	})
 }
 
 func TestPrerequisiteBarrierActive(t *testing.T) {

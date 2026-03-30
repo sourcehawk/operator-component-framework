@@ -316,15 +316,22 @@ func (c *Component) prerequisiteBarrierActive(cond Condition) bool {
 
 // evaluatePrerequisites checks all registered prerequisites in order. It
 // returns the first NotMet result or error encountered. If all prerequisites
-// are satisfied, it returns a Met result.
+// are satisfied, it returns a Met result. An unrecognized Status value is
+// treated as an error to prevent a buggy Prerequisite implementation from
+// silently allowing reconciliation.
 func (c *Component) evaluatePrerequisites(rec ReconcileContext) (PrerequisiteResult, error) {
 	for _, prereq := range c.prerequisites {
 		result, err := prereq.Check(rec)
 		if err != nil {
 			return PrerequisiteResult{}, err
 		}
-		if result.Status == PrerequisiteStatusNotMet {
+		switch result.Status {
+		case PrerequisiteStatusMet:
+			continue
+		case PrerequisiteStatusNotMet:
 			return result, nil
+		default:
+			return PrerequisiteResult{}, fmt.Errorf("prerequisite returned unrecognized status %q", result.Status)
 		}
 	}
 	return PrerequisiteResult{Status: PrerequisiteStatusMet}, nil

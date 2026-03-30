@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -155,6 +156,83 @@ func TestBuilder_WithGracePeriod(t *testing.T) {
 		assert.Nil(t, comp)
 		assert.Contains(t, err.Error(), "grace period must be positive")
 	})
+}
+
+func TestBuilder_WithFeatureGate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Valid gate", func(t *testing.T) {
+		t.Parallel()
+		gate := feature.NewVersionGate("1.0.0", nil)
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
+
+		b.WithFeatureGate(gate)
+		comp, err := b.Build()
+		require.NoError(t, err)
+		assert.NotNil(t, comp.featureGate)
+	})
+
+	t.Run("Nil gate is no-op", func(t *testing.T) {
+		t.Parallel()
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
+
+		b.WithFeatureGate(nil)
+		comp, err := b.Build()
+		require.NoError(t, err)
+		assert.Nil(t, comp.featureGate)
+	})
+
+	t.Run("Calling twice records error", func(t *testing.T) {
+		t.Parallel()
+		gate := feature.NewVersionGate("1.0.0", nil)
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
+
+		b.WithFeatureGate(gate).WithFeatureGate(gate)
+		_, err := b.Build()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "feature gate already set")
+	})
+}
+
+func TestBuilder_WithPrerequisite(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Valid prerequisite", func(t *testing.T) {
+		t.Parallel()
+		prereq := &testPrerequisite{}
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
+
+		b.WithPrerequisite(prereq)
+		comp, err := b.Build()
+		require.NoError(t, err)
+		assert.Len(t, comp.prerequisites, 1)
+	})
+
+	t.Run("Multiple prerequisites", func(t *testing.T) {
+		t.Parallel()
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
+
+		b.WithPrerequisite(&testPrerequisite{}).WithPrerequisite(&testPrerequisite{})
+		comp, err := b.Build()
+		require.NoError(t, err)
+		assert.Len(t, comp.prerequisites, 2)
+	})
+
+	t.Run("Nil prerequisite is no-op", func(t *testing.T) {
+		t.Parallel()
+		b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
+
+		b.WithPrerequisite(nil)
+		comp, err := b.Build()
+		require.NoError(t, err)
+		assert.Empty(t, comp.prerequisites)
+	})
+}
+
+type testPrerequisite struct{}
+
+func (t *testPrerequisite) Check(_ ReconcileContext) (PrerequisiteResult, error) {
+	return PrerequisiteResult{Status: PrerequisiteStatusMet}, nil
 }
 
 func TestBuilder_BuildErrorAggregation(t *testing.T) {

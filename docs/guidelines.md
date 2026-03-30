@@ -10,6 +10,8 @@ are effective and pitfalls that are easy to walk into.
 - [Keep Controllers Thin](#keep-controllers-thin)
 - [Resource Registration Order Is Execution Order](#resource-registration-order-is-execution-order)
 - [Use Data Extraction and Guards for Resource Dependencies](#use-data-extraction-and-guards-for-resource-dependencies)
+- [Use Prerequisites for Cross-Component Dependencies](#use-prerequisites-for-cross-component-dependencies)
+- [Use Component Feature Gates for Optional Components](#use-component-feature-gates-for-optional-components)
 - [Mutations Describe Intent, Not Observation](#mutations-describe-intent-not-observation)
 - [Understand Participation Modes](#understand-participation-modes)
 - [Use Feature Gating for Conditional Resources](#use-feature-gating-for-conditional-resources)
@@ -241,9 +243,10 @@ webComp, err := component.NewComponentBuilder().
 Separate components give users and monitoring systems granular observability: "the database is down" is a different
 signal from "the web interface is scaling." A problem in one component does not mask the status of another.
 
-The cost is coordination. If two components depend on each other (e.g., the web interface needs the database to be
-ready), you handle that dependency in the controller rather than within a single component, since guards and data
-extraction only work within a single component's resource list.
+When two components depend on each other (e.g., the web interface needs the database to be ready before it can be
+created), use [prerequisites](#use-prerequisites-for-cross-component-dependencies) to express that dependency
+declaratively. Guards and data extraction work within a single component's resource list; prerequisites work between
+components.
 
 ### When to split vs. combine
 
@@ -345,6 +348,62 @@ bucketRes, _ := static.NewBuilder(newCloudBucket(owner)).
 The guard prevents the dependent resource from being applied until its precondition is met, and a blocked guard surfaces
 as a `Blocked` condition reason so users can see why a resource has not been created yet. The shared variable
 (`roleARN`) is scoped to the reconciliation call, which prevents state leakage between reconciles.
+
+## Use Prerequisites for Cross-Component Dependencies
+
+When one component cannot start until another is ready, use a prerequisite on the dependent component rather than
+orchestrating the ordering in the controller.
+
+```go
+dbComp, err := component.NewComponentBuilder().
+    WithName("database").
+    WithConditionType("DatabaseReady").
+    WithResource(statefulSet, component.ResourceOptions{}).
+    Build()
+
+webComp, err := component.NewComponentBuilder().
+    WithName("web-interface").
+    WithConditionType("WebInterfaceReady").
+    WithPrerequisite(component.DependsOn("DatabaseReady")).
+    WithResource(deployment, component.ResourceOptions{}).
+    Build()
+```
+
+The web-interface component will not reconcile any resources until the `DatabaseReady` condition on the owner is `True`.
+Once it reconciles successfully for the first time, the prerequisite is permanently passed and never re-evaluated.
+
+This is the right tool when a component needs something to exist before it can be created. It is not the right tool for
+ongoing health dependencies. If the database goes down after the web interface is already running, the web interface
+component continues reconciling its own resources. The database's condition reflects the problem, and the web
+interface's condition reflects its own health independently. Conflating the two would lose the granularity that separate
+components provide.
+
+**Guards vs. prerequisites:** Guards are for resource dependencies within a single component (resource B depends on data
+from resource A). Prerequisites are for startup dependencies between components. Guards re-evaluate every reconcile;
+prerequisites evaluate only until the component's first successful reconciliation.
+
+## Use Component Feature Gates for Optional Components
+
+When an entire component should only exist based on a feature flag, use a component-level feature gate rather than
+conditionally building the component in the controller.
+
+```go
+comp, err := component.NewComponentBuilder().
+    WithName("monitoring").
+    WithConditionType("MonitoringReady").
+    WithFeatureGate(feature.NewVersionGate(owner.Spec.Version, nil).When(owner.Spec.MonitoringEnabled)).
+    WithResource(exporterDeployment, component.ResourceOptions{}).
+    WithResource(exporterService, component.ResourceOptions{}).
+    Build()
+```
+
+When the gate is disabled, the framework deletes all of the component's resources and reports `True/Disabled`. When
+re-enabled, the component reconciles normally. This is different from resource-level feature gating, which controls
+individual resources within a component. Use a component gate when the entire component is conditional; use resource
+gates when only some resources within the component are conditional.
+
+A disabled component gate takes precedence over suspension. If both the gate and suspension are active, the component is
+treated as disabled (resources deleted), not suspended (resources scaled down).
 
 ## Mutations Describe Intent, Not Observation
 

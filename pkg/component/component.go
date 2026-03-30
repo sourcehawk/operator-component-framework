@@ -13,6 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 )
 
 // OperatorCRD defines the interface for the custom resource that owns the component.
@@ -95,6 +97,15 @@ type Component struct {
 	participationLookup map[string]ParticipationMode
 
 	gracePeriod time.Duration
+
+	// featureGate controls whether the component is active. When the gate is
+	// disabled, all resources are deleted and the condition is set to True/Disabled.
+	featureGate feature.Gate
+
+	// prerequisites are initialization barriers that must all be met before the
+	// component reconciles for the first time. Once the component has reconciled
+	// successfully, prerequisites are never re-evaluated.
+	prerequisites []Prerequisite
 }
 
 // reconcileEntry pairs a resource with its reconciliation mode.
@@ -129,12 +140,24 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 //
 // Reconciliation follows these steps:
 //
-//  1. Suspension check: If the component is marked as suspended, it performs
+//  1. Feature gate check: If a feature gate is set and disabled, all resources
+//     managed by the component are deleted and the condition is set to
+//     True/Disabled. No further processing occurs.
+//
+//  2. Prerequisite check: If prerequisites are registered and the initialization
+//     barrier has not yet been passed (the component has never reconciled
+//     successfully), all prerequisites are evaluated. If any prerequisite is not
+//     met, the condition is set to False/PrerequisiteNotMet and no resources are
+//     reconciled or suspended. Once the component reconciles successfully for the
+//     first time, the barrier is permanently passed and prerequisites are never
+//     re-evaluated.
+//
+//  3. Suspension check: If the component is marked as suspended, it performs
 //     suspension of all managed (non-read-only) resources. Guards are not evaluated.
 //     The status is updated to reflect suspension progress (PendingSuspension,
 //     Suspending, or Suspended), and then deletion resources are processed.
 //
-//  2. Resource reconciliation: All non-delete resources are processed sequentially
+//  4. Resource reconciliation: All non-delete resources are processed sequentially
 //     in registration order, regardless of whether they are managed or read-only.
 //     For each resource:
 //     - Its guard (if any) is evaluated. A blocked guard stops processing of that
@@ -143,14 +166,14 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 //     - Its data extractors run immediately, making extracted data available to
 //     subsequent resources' guards and mutations.
 //
-//  3. Status Aggregation: Collects converging status from all processed resources
+//  5. Status Aggregation: Collects converging status from all processed resources
 //     (including any blocked guard result).
 //
-//  4. Condition Update: Derives a new component condition using a stateful
+//  6. Condition Update: Derives a new component condition using a stateful
 //     progression model that considers the aggregate resource status, the
 //     previous condition, and the configured grace period to avoid churn.
 //
-//  5. Resource Deletion: Finally, it deletes any resources registered for deletion.
+//  7. Resource Deletion: Finally, it deletes any resources registered for deletion.
 func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	// Add logging context to the logger within this reconcile
 	logger := log.FromContext(ctx).WithValues(
@@ -166,6 +189,42 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 				"ReconcileContext.Client.RESTMapper() returned nil; a valid RESTMapper is required for reconciliation",
 			),
 		)
+	}
+
+	// Feature gate: when disabled, delete all resources and report Disabled.
+	if c.featureGate != nil {
+		enabled, err := c.featureGate.Enabled()
+		if err != nil {
+			return fail(ctx, rec, c.conditionType, err)
+		}
+
+		if !enabled {
+			if err := deleteResources(ctx, rec, c.allResources()); err != nil {
+				return fail(ctx, rec, c.conditionType, err)
+			}
+
+			cond := conditionDisabled(c.conditionType, rec.Owner.GetGeneration())
+			return setStatusCondition(ctx, rec, cond)
+		}
+	}
+
+	// Prerequisite barrier: block reconciliation until all prerequisites are met.
+	// The barrier is only active when the component has never reconciled successfully
+	// (condition reason is Unknown or PrerequisiteNotMet). Once the component passes
+	// through to normal reconciliation, the barrier is permanently cleared.
+	if len(c.prerequisites) > 0 {
+		currentCondition := c.GetCondition(rec.Owner)
+		if c.prerequisiteBarrierActive(currentCondition) {
+			result, err := c.evaluatePrerequisites(rec)
+			if err != nil {
+				return fail(ctx, rec, c.conditionType, err)
+			}
+
+			if result.Status == PrerequisiteStatusNotMet {
+				cond := conditionPrerequisiteNotMet(c.conditionType, result.Reason, rec.Owner.GetGeneration())
+				return setStatusCondition(ctx, rec, cond)
+			}
+		}
 	}
 
 	// Perform suspension reconciliation if component is marked as suspended.
@@ -219,6 +278,43 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	}
 
 	return nil
+}
+
+// allResources returns every resource known to the component, combining both
+// reconcile entries and delete entries into a single slice. This is used when
+// the feature gate is disabled and all resources must be deleted.
+func (c *Component) allResources() []Resource {
+	resources := make([]Resource, 0, len(c.reconcileResources)+len(c.deleteResources))
+	for _, entry := range c.reconcileResources {
+		resources = append(resources, entry.Resource)
+	}
+	resources = append(resources, c.deleteResources...)
+	return resources
+}
+
+// prerequisiteBarrierActive reports whether the prerequisite initialization
+// barrier is still active based on the component's current condition. The
+// barrier is active when the component has never successfully reconciled,
+// indicated by a condition reason of Unknown or PrerequisiteNotMet.
+func (c *Component) prerequisiteBarrierActive(cond Condition) bool {
+	reason := Status(cond.Reason)
+	return reason == Unknown || reason == PrerequisiteNotMet
+}
+
+// evaluatePrerequisites checks all registered prerequisites in order. It
+// returns the first NotMet result or error encountered. If all prerequisites
+// are satisfied, it returns a Met result.
+func (c *Component) evaluatePrerequisites(rec ReconcileContext) (PrerequisiteResult, error) {
+	for _, prereq := range c.prerequisites {
+		result, err := prereq.Check(rec)
+		if err != nil {
+			return PrerequisiteResult{}, err
+		}
+		if result.Status == PrerequisiteStatusNotMet {
+			return result, nil
+		}
+	}
+	return PrerequisiteResult{Status: PrerequisiteStatusMet}, nil
 }
 
 // managedResources returns only the non-read-only resources from the reconcile list.

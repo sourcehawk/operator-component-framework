@@ -46,17 +46,31 @@ func TestStatusLevelOrdering(t *testing.T) {
 	// GuardBlocked > Scaling
 	assert.Greater(t, GuardBlocked.Priority(), AliveScaling.Priority())
 
-	// Failing > GuardBlocked
-	assert.Greater(t, AliveFailing.Priority(), GuardBlocked.Priority())
+	// PrerequisiteNotMet same priority as GuardBlocked
+	assert.Equal(t, GuardBlocked.Priority(), PrerequisiteNotMet.Priority())
 
-	// Suspension > Failure (assumes the failing state assertions above)
-	assert.Greater(t, Suspended.Priority(), AliveFailing.Priority())
+	// Failing > GuardBlocked / PrerequisiteNotMet
+	assert.Greater(t, AliveFailing.Priority(), GuardBlocked.Priority())
+	assert.Greater(t, AliveFailing.Priority(), PrerequisiteNotMet.Priority())
+
+	// Disabled > Failure
+	assert.Greater(t, Disabled.Priority(), AliveFailing.Priority())
+
+	// Suspension > Disabled
+	assert.Greater(t, Suspended.Priority(), Disabled.Priority())
 	assert.Greater(t, Error.Priority(), Down.Priority())
 
 	// Grace > Suspension
 	assert.Greater(t, Degraded.Priority(), Suspended.Priority())
 
 	// Error > Grace
+}
+
+func TestPrerequisiteNotMetAndDisabledAreNotHealthyOrSticky(t *testing.T) {
+	assert.False(t, PrerequisiteNotMet.Healthy())
+	assert.False(t, PrerequisiteNotMet.sticky())
+	assert.False(t, Disabled.Healthy())
+	assert.False(t, Disabled.sticky())
 }
 
 func TestStatusConstantsMatchSourceTypes(t *testing.T) {

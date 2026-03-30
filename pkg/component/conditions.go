@@ -102,6 +102,32 @@ func conditionError(component ConditionType, err error, observedGeneration int64
 	}
 }
 
+// conditionDisabled returns a component condition representing a Disabled state.
+// The condition status is True because a disabled component is in its expected state,
+// consistent with the convention used for suspended components.
+func conditionDisabled(component ConditionType, observedGeneration int64) Condition {
+	return Condition{
+		Type:               string(component),
+		Status:             metav1.ConditionTrue,
+		Reason:             string(Disabled),
+		ObservedGeneration: observedGeneration,
+		Message:            "Component is disabled.",
+	}
+}
+
+// conditionPrerequisiteNotMet returns a component condition indicating that a
+// component-level prerequisite has not been satisfied. The component has not
+// reconciled any resources.
+func conditionPrerequisiteNotMet(component ConditionType, reason string, observedGeneration int64) Condition {
+	return Condition{
+		Type:               string(component),
+		Status:             metav1.ConditionFalse,
+		Reason:             string(PrerequisiteNotMet),
+		ObservedGeneration: observedGeneration,
+		Message:            reason,
+	}
+}
+
 // conditionUnknown returns a component condition representing an Unknown state.
 func conditionUnknown(component ConditionType, observedGeneration int64) Condition {
 	return Condition{

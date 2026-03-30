@@ -156,6 +156,23 @@ func TestStaticConditions(t *testing.T) {
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, string(Unknown), cond.Reason)
 	})
+
+	t.Run("conditionDisabled", func(t *testing.T) {
+		cond := conditionDisabled(componentType, observedGen)
+		assert.Equal(t, metav1.ConditionTrue, cond.Status)
+		assert.Equal(t, string(Disabled), cond.Reason)
+		assert.Equal(t, "Component is disabled.", cond.Message)
+		assert.Equal(t, observedGen, cond.ObservedGeneration)
+	})
+
+	t.Run("conditionPrerequisiteNotMet", func(t *testing.T) {
+		reason := "Condition DepReady is not True"
+		cond := conditionPrerequisiteNotMet(componentType, reason, observedGen)
+		assert.Equal(t, metav1.ConditionFalse, cond.Status)
+		assert.Equal(t, string(PrerequisiteNotMet), cond.Reason)
+		assert.Equal(t, reason, cond.Message)
+		assert.Equal(t, observedGen, cond.ObservedGeneration)
+	})
 }
 
 func TestConditionMethods(t *testing.T) {

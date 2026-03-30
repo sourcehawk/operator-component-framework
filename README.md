@@ -42,6 +42,8 @@ Controller
 - **Version-gated mutations** to apply backward-compatibility patches only when needed
 - **Composable mutation layers** that stack without interfering with each other
 - **Resource guards** for gating resources on preconditions before they are applied
+- **Component prerequisites** for expressing startup dependencies between components
+- **Component feature gates** to conditionally enable or disable entire components
 - **Built-in lifecycle interfaces** (`Alive`, `Graceful`, `Suspendable`, `Completable`, `Operational`,
   `DataExtractable`, `Guardable`) covering the full range of Kubernetes workload types
 - **Typed mutation editors** for kubernetes resource primitives

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 )
 
 // ResourceOptions defines configuration for how a Kubernetes resource is managed
@@ -34,6 +36,7 @@ type Builder struct {
 
 	nameSupplied          bool
 	conditionTypeSupplied bool
+	featureGateSupplied   bool
 }
 
 // NewComponentBuilder initializes a new Builder for creating a Component.
@@ -178,6 +181,52 @@ func (b *Builder) WithGracePeriod(gracePeriod time.Duration) *Builder {
 		return b
 	}
 	b.component.gracePeriod = gracePeriod
+	return b
+}
+
+// WithFeatureGate sets a feature gate that controls whether the component is active.
+//
+// When the gate is disabled, the component deletes all of its resources and reports
+// a True condition with reason Disabled. When the gate is enabled (or not set),
+// the component reconciles normally.
+//
+// A disabled gate takes precedence over suspension: if the gate is disabled, the
+// component is removed regardless of the suspension flag.
+//
+// A nil gate is ignored. Calling WithFeatureGate more than once records a
+// validation error that is returned by Build.
+func (b *Builder) WithFeatureGate(gate feature.Gate) *Builder {
+	if gate == nil {
+		return b
+	}
+
+	if b.featureGateSupplied {
+		b.buildErrors = append(b.buildErrors, errors.New("feature gate already set; WithFeatureGate can only be called once"))
+		return b
+	}
+
+	b.featureGateSupplied = true
+	b.component.featureGate = gate
+	return b
+}
+
+// WithPrerequisite registers an initialization barrier for the component.
+//
+// Prerequisites are evaluated before any resources are reconciled or suspended.
+// Once the component has reconciled successfully for the first time, all
+// prerequisites are permanently passed and never re-evaluated.
+//
+// Multiple prerequisites may be registered; all must be met before the component
+// proceeds. They are evaluated in registration order and the first unmet
+// prerequisite short-circuits the check.
+//
+// A nil prerequisite is ignored.
+func (b *Builder) WithPrerequisite(prereq Prerequisite) *Builder {
+	if prereq == nil {
+		return b
+	}
+
+	b.component.prerequisites = append(b.component.prerequisites, prereq)
 	return b
 }
 

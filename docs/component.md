@@ -137,8 +137,9 @@ component also reports `True`.
 ## Prerequisites
 
 Prerequisites are initialization barriers that prevent a component from reconciling until a condition is met. Unlike
-resource-level [guards](#guards), prerequisites are evaluated only until the component reconciles successfully for the
-first time. After that, the barrier is permanently passed and the prerequisite is never re-evaluated.
+resource-level [guards](#guards), prerequisites are evaluated only until the component passes through to normal
+reconciliation for the first time. After that, the barrier is permanently passed and the prerequisite is never
+re-evaluated.
 
 This makes prerequisites suitable for expressing startup dependencies between components. If a dependency later becomes
 unhealthy, the dependent component continues to reconcile its own resources. Prerequisites answer the question "can this
@@ -175,8 +176,8 @@ type Prerequisite interface {
 ### Prerequisite Behavior
 
 - Prerequisites are evaluated before any resources are reconciled or suspended.
-- The barrier is considered active when the component's condition reason is `Unknown` or `PrerequisiteNotMet`. Any other
-  reason means the component has reconciled at least once and the barrier is permanently passed.
+- The barrier is considered active when the component's condition reason is `Unknown`, `PrerequisiteNotMet`, or
+  `Disabled`. Any other reason means the component has reconciled at least once and the barrier is permanently passed.
 - While the barrier is active, suspension is a no-op. No resources exist to suspend.
 - A feature gate check runs before the prerequisite check. If the gate is disabled, prerequisites are not evaluated.
 - Prerequisites are evaluated in registration order. The first unmet prerequisite short-circuits the check.

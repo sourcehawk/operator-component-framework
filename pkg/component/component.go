@@ -103,8 +103,8 @@ type Component struct {
 	featureGate feature.Gate
 
 	// prerequisites are initialization barriers that must all be met before the
-	// component reconciles for the first time. Once the component has reconciled
-	// successfully, prerequisites are never re-evaluated.
+	// component reconciles for the first time. Once the component passes through
+	// to normal reconciliation, prerequisites are never re-evaluated.
 	prerequisites []Prerequisite
 }
 
@@ -145,12 +145,12 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 //     True/Disabled. No further processing occurs.
 //
 //  2. Prerequisite check: If prerequisites are registered and the initialization
-//     barrier has not yet been passed (the component has never reconciled
-//     successfully), all prerequisites are evaluated. If any prerequisite is not
-//     met, the condition is set to False/PrerequisiteNotMet and no resources are
-//     reconciled or suspended. Once the component reconciles successfully for the
-//     first time, the barrier is permanently passed and prerequisites are never
-//     re-evaluated.
+//     barrier has not yet been passed, all prerequisites are evaluated. The barrier
+//     is considered active while the condition reason is Unknown, PrerequisiteNotMet,
+//     or Disabled. If any prerequisite is not met, the condition is set to
+//     False/PrerequisiteNotMet and no resources are reconciled or suspended. Once
+//     the component passes through to normal reconciliation (or suspension), the
+//     barrier is permanently cleared and prerequisites are never re-evaluated.
 //
 //  3. Suspension check: If the component is marked as suspended, it performs
 //     suspension of all managed (non-read-only) resources. Guards are not evaluated.
@@ -199,7 +199,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		}
 
 		if !enabled {
-			if err := deleteResources(ctx, rec, c.allResources()); err != nil {
+			if err := deleteResources(ctx, rec, c.allManagedResources(), withDeletionReason("disabled feature gate")); err != nil {
 				return fail(ctx, rec, c.conditionType, err)
 			}
 
@@ -209,9 +209,9 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	}
 
 	// Prerequisite barrier: block reconciliation until all prerequisites are met.
-	// The barrier is only active when the component has never reconciled successfully
-	// (condition reason is Unknown or PrerequisiteNotMet). Once the component passes
-	// through to normal reconciliation, the barrier is permanently cleared.
+	// The barrier is active while the condition reason is Unknown, PrerequisiteNotMet,
+	// or Disabled. Once the component passes through to normal reconciliation, the
+	// barrier is permanently cleared.
 	if len(c.prerequisites) > 0 {
 		currentCondition := c.GetCondition(rec.Owner)
 		if c.prerequisiteBarrierActive(currentCondition) {
@@ -280,13 +280,17 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	return nil
 }
 
-// allResources returns every resource known to the component, combining both
-// reconcile entries and delete entries into a single slice. This is used when
-// the feature gate is disabled and all resources must be deleted.
-func (c *Component) allResources() []Resource {
+// allManagedResources returns every managed (non-read-only) resource known to
+// the component, combining non-read-only reconcile entries and delete entries
+// into a single slice. This is used when the feature gate is disabled and all
+// managed resources must be deleted. Read-only resources are excluded because
+// they are never created or modified by the component.
+func (c *Component) allManagedResources() []Resource {
 	resources := make([]Resource, 0, len(c.reconcileResources)+len(c.deleteResources))
 	for _, entry := range c.reconcileResources {
-		resources = append(resources, entry.Resource)
+		if !entry.ReadOnly {
+			resources = append(resources, entry.Resource)
+		}
 	}
 	resources = append(resources, c.deleteResources...)
 	return resources
@@ -295,10 +299,13 @@ func (c *Component) allResources() []Resource {
 // prerequisiteBarrierActive reports whether the prerequisite initialization
 // barrier is still active based on the component's current condition. The
 // barrier is active when the component has never successfully reconciled,
-// indicated by a condition reason of Unknown or PrerequisiteNotMet.
+// indicated by a condition reason of Unknown, PrerequisiteNotMet, or Disabled.
+// Disabled is included because a component that was gated off has never
+// reconciled its resources, so prerequisites must be evaluated when the gate
+// is later enabled.
 func (c *Component) prerequisiteBarrierActive(cond Condition) bool {
 	reason := Status(cond.Reason)
-	return reason == Unknown || reason == PrerequisiteNotMet
+	return reason == Unknown || reason == PrerequisiteNotMet || reason == Disabled
 }
 
 // evaluatePrerequisites checks all registered prerequisites in order. It

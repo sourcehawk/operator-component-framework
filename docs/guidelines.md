@@ -370,7 +370,8 @@ webComp, err := component.NewComponentBuilder().
 ```
 
 The web-interface component will not reconcile any resources until the `DatabaseReady` condition on the owner is `True`.
-Once it reconciles successfully for the first time, the prerequisite is permanently passed and never re-evaluated.
+Once the component passes through to normal reconciliation for the first time, the prerequisite is permanently passed
+and never re-evaluated.
 
 This is the right tool when a component needs something to exist before it can be created. It is not the right tool for
 ongoing health dependencies. If the database goes down after the web interface is already running, the web interface

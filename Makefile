@@ -61,7 +61,10 @@ AI_BASE  := .ai/base.md
 AI_REVIEW := .ai/review.md
 
 .PHONY: ai-instructions
-ai-instructions: ## Generate all AI instruction files from source templates in .ai/
+ai-instructions: ai-instructions-gen fmt-md
+
+.PHONY: ai-instructions-gen
+ai-instructions-gen: ## Generate all AI instruction files from source templates in .ai/
 	cp $(AI_BASE) CLAUDE.md
 	@mkdir -p .junie
 	cp $(AI_BASE) .junie/guidelines.md

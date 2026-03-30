@@ -160,7 +160,7 @@ func TestPrerequisiteBarrierActive(t *testing.T) {
 		{"inactive when Healthy", string(Healthy), false},
 		{"inactive when Creating", string(AliveCreating), false},
 		{"inactive when Suspended", string(Suspended), false},
-		{"inactive when Disabled", string(Disabled), false},
+		{"active when Disabled", string(Disabled), true},
 		{"inactive when Error", string(Error), false},
 	}
 

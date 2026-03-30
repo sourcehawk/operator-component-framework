@@ -178,7 +178,8 @@ const (
 	// PrerequisiteNotMet indicates that a component-level prerequisite has not been satisfied.
 	// The component has not reconciled any resources and is waiting for the prerequisite to be met.
 	// Unlike resource guards, prerequisites are initialization barriers: once the component
-	// reconciles successfully for the first time, the prerequisite is never re-evaluated.
+	// passes through to normal reconciliation for the first time, the prerequisite is never
+	// re-evaluated.
 	PrerequisiteNotMet Status = "PrerequisiteNotMet"
 
 	// Disabled indicates that the component's feature gate is disabled.

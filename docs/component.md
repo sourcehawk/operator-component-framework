@@ -63,7 +63,7 @@ signature is unchanged.
 | Method                            | Effect                                                                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `WithFeatureGate(f feature.Gate)` | Gates the resource on a feature. When disabled, the resource is deleted.                                                        |
-| `WithTruth(truth bool)`           | Adds a boolean condition (AND logic). If any truth is false, the resource is deleted. Calls are additive.                       |
+| `When(truth bool)`                | Adds a boolean condition (AND logic). If any condition is false, the resource is deleted. Calls are additive.                   |
 | `Auxiliary()`                     | Sets participation mode to `Auxiliary` (resource does not affect component health).                                             |
 | `ReadOnly()`                      | Marks the resource as read-only. If the resource is also gated by a disabled feature, deletion takes precedence over read-only. |
 
@@ -76,7 +76,7 @@ opts, err := component.ResourceOptionsFor(tracingFeature)
 **Resolution rules:**
 
 1. If the feature is non-nil and evaluates to disabled, the resource is deleted.
-2. If any truth condition is false, the resource is deleted.
+2. If any When condition evaluates to false, the resource is deleted.
 3. Deletion takes precedence over read-only mode.
 4. Participation mode is preserved regardless of deletion state.
 

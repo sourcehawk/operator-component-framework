@@ -54,11 +54,13 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // is applied during reconciliation. If the guard returns Blocked, the Role and
 // all resources registered after it are skipped until the guard clears.
 func (b *Builder) WithGuard(guard func(rbacv1.Role) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(r *rbacv1.Role) (concepts.GuardStatusWithReason, error) {
-			return guard(*r)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(r *rbacv1.Role) (concepts.GuardStatusWithReason, error) {
+		return guard(*r)
+	})
 	return b
 }
 

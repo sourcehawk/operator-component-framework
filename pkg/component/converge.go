@@ -30,6 +30,15 @@ func (c convergeResults) filterParticipators(resourceModeLookup map[string]Parti
 	var results []convergingResult
 
 	for _, result := range c {
+		// Guard-blocked results always participate in aggregation regardless of
+		// the resource's participation mode, because a blocked guard halts the
+		// entire reconciliation pipeline -- subsequent required resources are
+		// skipped and their absence must not be mistaken for health.
+		if result.Status.Status == convergingStatusGuardBlocked {
+			results = append(results, result)
+			continue
+		}
+
 		if mode, ok := resourceModeLookup[result.Resource.Identity()]; ok && mode == ParticipationModeRequired {
 			results = append(results, result)
 		}

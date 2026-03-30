@@ -55,11 +55,13 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // is applied during reconciliation. If the guard returns Blocked, the ClusterRole and
 // all resources registered after it are skipped until the guard clears.
 func (b *Builder) WithGuard(guard func(rbacv1.ClusterRole) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(cr *rbacv1.ClusterRole) (concepts.GuardStatusWithReason, error) {
-			return guard(*cr)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(cr *rbacv1.ClusterRole) (concepts.GuardStatusWithReason, error) {
+		return guard(*cr)
+	})
 	return b
 }
 

@@ -20,8 +20,9 @@ import (
 // collects its converging status. It returns the converging result (nil for static
 // resources with no status interface) and any error encountered.
 //
-// This is the shared core used by both applyResources and applyResourcesWithGuards
-// to avoid duplicating the Object/Mutate/SSA/status-collection sequence.
+// This is the shared core used by both applyResources (suspension path) and
+// reconcileResources (normal path) to avoid duplicating the Object/Mutate/SSA/
+// status-collection sequence.
 func applyResource(
 	ctx context.Context, rec ReconcileContext, resource Resource,
 	fieldOwner client.FieldOwner, mapper meta.RESTMapper,

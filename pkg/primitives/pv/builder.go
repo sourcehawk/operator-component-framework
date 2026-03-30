@@ -88,11 +88,13 @@ func (b *Builder) WithCustomGraceStatus(
 // is applied during reconciliation. If the guard returns Blocked, the PersistentVolume and
 // all resources registered after it are skipped until the guard clears.
 func (b *Builder) WithGuard(guard func(corev1.PersistentVolume) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(pv *corev1.PersistentVolume) (concepts.GuardStatusWithReason, error) {
-			return guard(*pv)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(pv *corev1.PersistentVolume) (concepts.GuardStatusWithReason, error) {
+		return guard(*pv)
+	})
 	return b
 }
 

@@ -384,8 +384,8 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 func buildCloudComponent(owner *v1alpha1.MyApp, roleARN *string) (*component.Component, error) {
     // First resource: the cloud provider role.
     // After it is applied, the data extractor reads the ARN from the object.
-    roleRes, err := unstructured.NewStaticBuilder(newCloudRole(owner)).
-        WithDataExtractor(func(obj unstructuredv1.Unstructured) error {
+    roleRes, err := static.NewBuilder(newCloudRole(owner)).
+        WithDataExtractor(func(obj uns.Unstructured) error {
             *roleARN = obj.Object["status"].(map[string]any)["arn"].(string)
             return nil
         }).
@@ -398,8 +398,8 @@ func buildCloudComponent(owner *v1alpha1.MyApp, roleARN *string) (*component.Com
     // The role's data extractor populates *roleARN earlier in this same reconcile
     // cycle, which causes the guard to clear. The mutation then runs lazily at
     // Mutate() time and injects the now-populated *roleARN into the bucket spec.
-    bucketRes, err := unstructured.NewStaticBuilder(newCloudBucket(owner)).
-        WithGuard(func(_ unstructuredv1.Unstructured) (concepts.GuardStatusWithReason, error) {
+    bucketRes, err := static.NewBuilder(newCloudBucket(owner)).
+        WithGuard(func(_ uns.Unstructured) (concepts.GuardStatusWithReason, error) {
             if *roleARN == "" {
                 return concepts.GuardStatusWithReason{
                     Status: concepts.GuardStatusBlocked,
@@ -410,9 +410,9 @@ func buildCloudComponent(owner *v1alpha1.MyApp, roleARN *string) (*component.Com
                 Status: concepts.GuardStatusUnblocked,
             }, nil
         }).
-        WithMutation(unstructured.Mutation{
+        WithMutation(unstruct.Mutation{
             Name: "set-role-arn",
-            Mutate: func(m *unstructured.Mutator) error {
+            Mutate: func(m *unstruct.Mutator) error {
                 m.EditContent(func(e *editors.UnstructuredContentEditor) error {
                     return e.SetNestedString(*roleARN, "spec", "roleARN")
                 })

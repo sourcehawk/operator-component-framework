@@ -54,11 +54,13 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // is applied during reconciliation. If the guard returns Blocked, the ServiceAccount and
 // all resources registered after it are skipped until the guard clears.
 func (b *Builder) WithGuard(guard func(corev1.ServiceAccount) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(sa *corev1.ServiceAccount) (concepts.GuardStatusWithReason, error) {
-			return guard(*sa)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(sa *corev1.ServiceAccount) (concepts.GuardStatusWithReason, error) {
+		return guard(*sa)
+	})
 	return b
 }
 

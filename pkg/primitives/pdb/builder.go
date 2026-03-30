@@ -54,11 +54,13 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // is applied during reconciliation. If the guard returns Blocked, the PodDisruptionBudget and
 // all resources registered after it are skipped until the guard clears.
 func (b *Builder) WithGuard(guard func(policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(p *policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error) {
-			return guard(*p)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(p *policyv1.PodDisruptionBudget) (concepts.GuardStatusWithReason, error) {
+		return guard(*p)
+	})
 	return b
 }
 

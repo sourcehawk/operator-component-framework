@@ -80,7 +80,7 @@ Primitives implement behavioral interfaces that the component layer uses for sta
 | `Completable`     | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` | Jobs and task primitives                         |
 | `Operational`     | `Operational`, `OperationPending`, `OperationFailing`    | Services, Ingresses, CronJobs                    |
 | `DataExtractable` | _(no status, side-effecting)_                            | Resources that expose post-sync data             |
-| `Guardable`       | `Blocked`                                                | Resources with runtime preconditions             |
+| `Guardable`       | `Blocked`, `Unblocked`                                   | Resources with runtime preconditions             |
 
 Custom resource wrappers can implement any subset of these interfaces to opt into the corresponding component behaviors.
 

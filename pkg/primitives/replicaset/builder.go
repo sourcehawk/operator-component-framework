@@ -146,11 +146,13 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 func (b *Builder) WithGuard(
 	guard func(appsv1.ReplicaSet) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(rs *appsv1.ReplicaSet) (concepts.GuardStatusWithReason, error) {
-			return guard(*rs)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(rs *appsv1.ReplicaSet) (concepts.GuardStatusWithReason, error) {
+		return guard(*rs)
+	})
 	return b
 }
 

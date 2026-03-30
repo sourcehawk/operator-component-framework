@@ -98,11 +98,13 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 // is applied during reconciliation. If the guard returns Blocked, the object and
 // all resources registered after it are skipped until the guard clears.
 func (b *Builder) WithGuard(guard func(uns.Unstructured) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(obj *uns.Unstructured) (concepts.GuardStatusWithReason, error) {
-			return guard(*obj)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(obj *uns.Unstructured) (concepts.GuardStatusWithReason, error) {
+		return guard(*obj)
+	})
 	return b
 }
 

@@ -114,11 +114,13 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 func (b *Builder) WithGuard(
 	guard func(batchv1.CronJob) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(c *batchv1.CronJob) (concepts.GuardStatusWithReason, error) {
-			return guard(*c)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(c *batchv1.CronJob) (concepts.GuardStatusWithReason, error) {
+		return guard(*c)
+	})
 	return b
 }
 

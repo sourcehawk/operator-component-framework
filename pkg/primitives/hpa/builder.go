@@ -125,11 +125,13 @@ func (b *Builder) WithCustomSuspendDeletionDecision(
 func (b *Builder) WithGuard(
 	guard func(autoscalingv2.HorizontalPodAutoscaler) (concepts.GuardStatusWithReason, error),
 ) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(h *autoscalingv2.HorizontalPodAutoscaler) (concepts.GuardStatusWithReason, error) {
-			return guard(*h)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(h *autoscalingv2.HorizontalPodAutoscaler) (concepts.GuardStatusWithReason, error) {
+		return guard(*h)
+	})
 	return b
 }
 

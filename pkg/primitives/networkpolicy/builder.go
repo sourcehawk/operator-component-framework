@@ -55,11 +55,13 @@ func (b *Builder) WithMutation(m Mutation) *Builder {
 // is applied during reconciliation. If the guard returns Blocked, the NetworkPolicy and
 // all resources registered after it are skipped until the guard clears.
 func (b *Builder) WithGuard(guard func(networkingv1.NetworkPolicy) (concepts.GuardStatusWithReason, error)) *Builder {
-	if guard != nil {
-		b.base.WithGuard(func(np *networkingv1.NetworkPolicy) (concepts.GuardStatusWithReason, error) {
-			return guard(*np)
-		})
+	if guard == nil {
+		b.base.WithGuard(nil)
+		return b
 	}
+	b.base.WithGuard(func(np *networkingv1.NetworkPolicy) (concepts.GuardStatusWithReason, error) {
+		return guard(*np)
+	})
 	return b
 }
 

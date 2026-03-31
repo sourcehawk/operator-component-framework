@@ -541,3 +541,8 @@ consuming that output, not for the internal implementation.
 
 The audience cares about the feature, not the Kubernetes resource type backing it. A condition named
 `DeploymentReconciled` tells a user nothing about what capability is affected.
+
+## Further Reading
+
+For a deeper look at the structural problems these guidelines address, see
+[The Missing Layers in Your Kubernetes Operator](https://medium.com/@sourcehawk/the-missing-layers-in-your-kubernetes-operator-306ee8633350).

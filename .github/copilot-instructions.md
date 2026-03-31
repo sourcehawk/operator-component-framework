@@ -23,6 +23,9 @@ Understand the intended design first:
 - `docs/component.md` — component lifecycle, status model, reconciliation phases
 - `docs/primitives.md` — primitive categories, field application, mutation system, editors, selectors
 - `docs/primitives/*.md` — primitive implementations
+- `docs/custom-resource.md` — implementing custom resource wrappers using `pkg/generic`
+- `docs/guidelines.md` — best practices for structuring operators (desired state, one component per condition, etc.)
+- `docs/compatibility.md` — supported version combinations and compatibility policy
 
 ### Source to read
 
@@ -31,11 +34,21 @@ Verify the real API before using or documenting it. Key packages:
 - `pkg/component/` — builder, reconciliation, condition types, participation modes
 - `pkg/component/concepts/` — lifecycle interfaces and their exact status type constants
 - `pkg/primitives/` — kubernetes primitive resource wrappers with builders and mutators
+- `pkg/generic/` — generic building blocks for custom resource wrappers (reconciliation, mutation sequencing,
+  suspension, data extraction)
 - `pkg/mutation/editors/` — available methods per editor type
 - `pkg/mutation/selectors/` — available container selectors
 - `pkg/feature/feature.go` — `NewVersionGate`, `Mutation[T]`
+- `pkg/recording/` — resource event recording
+- `pkg/testing/` — testing utilities (`golden/` for snapshot tests, `integration/` for integration helpers)
 
 When changing a public API, also check `examples/` for real usage patterns and to identify what else needs updating.
+
+### Keeping these instructions current
+
+If a change introduces a new `docs/` file, a new `pkg/` package, or removes/renames an existing one, update the
+reference lists above and the documentation table below in the same response. These instructions are only useful if they
+point to things that actually exist.
 
 ---
 
@@ -77,13 +90,15 @@ semantics. GoDoc is part of the public API surface.
 
 Update documentation in the **same response** as the code change — never leave them out of sync.
 
-| Code area changed                                 | Documentation to update |
-| ------------------------------------------------- | ----------------------- |
-| Component builder, reconciliation, status model   | `docs/component.md`     |
-| Primitives, field application, editors, selectors | `docs/primitives.md`    |
-| Primitive implementations                         | `docs/primitives/*.md`  |
-| Any `pkg/` export visible in the quick start      | `README.md`             |
-| Examples                                          | `examples/*/README.md`  |
+| Code area changed                                 | Documentation to update   |
+| ------------------------------------------------- | ------------------------- |
+| Component builder, reconciliation, status model   | `docs/component.md`       |
+| Primitives, field application, editors, selectors | `docs/primitives.md`      |
+| Primitive implementations                         | `docs/primitives/*.md`    |
+| Generic building blocks, custom resource wrappers | `docs/custom-resource.md` |
+| Operator structuring patterns, best practices     | `docs/guidelines.md`      |
+| Any `pkg/` export visible in the quick start      | `README.md`               |
+| Examples                                          | `examples/*/README.md`    |
 
 When updating documentation in markdown files, make sure to run `make fmt-md` for consistent formatting.
 
@@ -146,6 +161,25 @@ first determine whether the code or the test is wrong:
   reveals that a method signature is imprecise or misleading, update the signature to express the intention correctly.
   If the intention remains genuinely ambiguous after analysis, **stop and ask** before touching either the code or the
   test. Do not guess.
+
+### E2E Tests
+
+E2E tests live in `e2e/` and run against a real kind cluster. They validate the same intent as unit tests, just at a
+higher integration level. Treat them with the same rigour: if a code change breaks an E2E test, determine whether the
+code or the test is wrong before adjusting either.
+
+**When to write E2E tests.** Create E2E tests for larger changes or architectural shifts that deserve validation against
+a real cluster. Small, isolated fixes covered by unit tests do not need E2E coverage.
+
+**Running E2E tests after code changes.** After `make all` passes, check whether E2E tests are affected by the change.
+If they are, run the minimal possible E2E suite for the change rather than the full suite:
+
+```bash
+make e2e-primitives PRIMITIVE=daemonset
+```
+
+Do not run `make e2e` locally unless a full suite run is genuinely required; it takes close to 15 minutes. If a full run
+is needed, call it out so the decision is explicit.
 
 ---
 

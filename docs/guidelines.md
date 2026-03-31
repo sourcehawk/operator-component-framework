@@ -10,6 +10,7 @@ are effective and pitfalls that are easy to walk into.
 - [Keep Controllers Thin](#keep-controllers-thin)
 - [Resource Registration Order Is Execution Order](#resource-registration-order-is-execution-order)
 - [Use Data Extraction and Guards for Resource Dependencies](#use-data-extraction-and-guards-for-resource-dependencies)
+  - [Prefer stable values for guard conditions](#prefer-stable-values-for-guard-conditions)
 - [Use Prerequisites for Cross-Component Dependencies](#use-prerequisites-for-cross-component-dependencies)
 - [Use Component Feature Gates for Optional Components](#use-component-feature-gates-for-optional-components)
 - [Mutations Describe Intent, Not Observation](#mutations-describe-intent-not-observation)

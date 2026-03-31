@@ -140,10 +140,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Waiting for creation",
 			}, nil)
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res}}
-			comp.participationLookup = map[string]ParticipationMode{
-				res.Identity(): ParticipationModeRequired,
-			}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -176,10 +173,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Read-only healthy",
 			}, nil)
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
-			comp.participationLookup = map[string]ParticipationMode{
-				res.Identity(): ParticipationModeRequired,
-			}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -208,7 +202,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Identity").Return("ConfigMap/test-no-mutate-cm")
 			res.On("Object").Return(cm, nil)
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ReadOnly: true}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -255,10 +249,9 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Read resource still preparing",
 			}, nil)
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res1}, {Resource: res2, ReadOnly: true}}
-			comp.participationLookup = map[string]ParticipationMode{
-				res1.Identity(): ParticipationModeRequired,
-				res2.Identity(): ParticipationModeRequired,
+			comp.reconcileResources = []reconcileEntry{
+				{Resource: res1, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}},
+				{Resource: res2, Options: ResourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired}},
 			}
 
 			// When
@@ -445,7 +438,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(nil, fmt.Errorf("read error"))
 			res.On("Identity").Return("failing-read-resource")
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, ReadOnly: true}}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ReadOnly: true}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -1327,10 +1320,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			res.On("Identity").Return("v1/ConfigMap/guarded-cm")
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res}}
-			comp.participationLookup = map[string]ParticipationMode{
-				"v1/ConfigMap/guarded-cm": ParticipationModeRequired,
-			}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -1508,10 +1498,9 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			guarded.On("Identity").Return("v1/ConfigMap/guarded")
 
-			comp.reconcileResources = []reconcileEntry{{Resource: alive}, {Resource: guarded}}
-			comp.participationLookup = map[string]ParticipationMode{
-				"v1/ConfigMap/alive":   ParticipationModeRequired,
-				"v1/ConfigMap/guarded": ParticipationModeRequired,
+			comp.reconcileResources = []reconcileEntry{
+				{Resource: alive, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}},
+				{Resource: guarded, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}},
 			}
 
 			// When

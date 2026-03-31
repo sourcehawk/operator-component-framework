@@ -14,8 +14,9 @@ type ResourceOptionsBuilder struct {
 	feature        feature.Gate
 	requiredTruths []bool
 
-	readOnly          bool
-	participationMode ParticipationMode
+	readOnly                          bool
+	participationMode                 ParticipationMode
+	suppressGraceInconsistencyWarning bool
 }
 
 // NewResourceOptionsBuilder creates a new ResourceOptionsBuilder with default
@@ -55,6 +56,14 @@ func (b *ResourceOptionsBuilder) When(truth bool) *ResourceOptionsBuilder {
 // This is equivalent to setting ParticipationMode to ParticipationModeAuxiliary.
 func (b *ResourceOptionsBuilder) Auxiliary() *ResourceOptionsBuilder {
 	b.participationMode = ParticipationModeAuxiliary
+	return b
+}
+
+// SuppressGraceInconsistencyWarning suppresses the warning log emitted when
+// the resource's grace status handler returns Healthy while its convergence
+// handler returns non-healthy. Use this when the inconsistency is intentional.
+func (b *ResourceOptionsBuilder) SuppressGraceInconsistencyWarning() *ResourceOptionsBuilder {
+	b.suppressGraceInconsistencyWarning = true
 	return b
 }
 
@@ -103,9 +112,10 @@ func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {
 	}
 
 	return ResourceOptions{
-		Delete:            shouldDelete,
-		ReadOnly:          b.readOnly && !shouldDelete,
-		ParticipationMode: b.participationMode,
+		Delete:                            shouldDelete,
+		ReadOnly:                          b.readOnly && !shouldDelete,
+		ParticipationMode:                 b.participationMode,
+		SuppressGraceInconsistencyWarning: b.suppressGraceInconsistencyWarning,
 	}, nil
 }
 

@@ -9,15 +9,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type convergingResult struct {
-	Resource Resource
-	Status   convergingStatusWithReason
+type reconcileResult struct {
+	Entry       reconcileEntry
+	Status      convergingStatusWithReason
+	GraceStatus *concepts.GraceStatusWithReason
 }
 
-type convergeResults []convergingResult
+type reconcileResults []reconcileResult
 
 // healthy returns true if all component resources are healthy.
-func (c convergeResults) healthy() bool {
+func (c reconcileResults) healthy() bool {
 	for _, result := range c {
 		if !result.Status.Status.healthy() {
 			return false
@@ -26,8 +27,8 @@ func (c convergeResults) healthy() bool {
 	return true
 }
 
-func (c convergeResults) filterParticipators(resourceModeLookup map[string]ParticipationMode) convergeResults {
-	var results []convergingResult
+func (c reconcileResults) filterParticipators() reconcileResults {
+	var results []reconcileResult
 
 	for _, result := range c {
 		// Guard-blocked results always participate in aggregation regardless of
@@ -39,7 +40,7 @@ func (c convergeResults) filterParticipators(resourceModeLookup map[string]Parti
 			continue
 		}
 
-		if mode, ok := resourceModeLookup[result.Resource.Identity()]; ok && mode == ParticipationModeRequired {
+		if result.Entry.Options.ParticipationMode == ParticipationModeRequired {
 			results = append(results, result)
 		}
 	}
@@ -52,7 +53,7 @@ func (c convergeResults) filterParticipators(resourceModeLookup map[string]Parti
 // (e.g., Scaling > Updating > Creating > Ready).
 // If multiple resources share the same highest priority level, their reasons are concatenated
 // to provide a comprehensive summary.
-func (c convergeResults) convergeSummary() convergingStatusWithReason {
+func (c reconcileResults) convergeSummary() convergingStatusWithReason {
 	var maxStatus convergingStatus
 	var reasons []string
 
@@ -85,31 +86,43 @@ func (c convergeResults) convergeSummary() convergingStatusWithReason {
 	}
 }
 
-// graceSummary returns an aggregate grace status of all component resources that implement the Graceful interface.
-// If multiple alive resources are present, the one with the most severe status takes precedence
-// (Down > Degraded > healthy).
-// If no resources implement the Graceful interface, it returns a Down status with an explanation,
-// as the component cannot provide health information.
-func (c convergeResults) graceSummary() (concepts.GraceStatusWithReason, error) {
+// evaluateGrace populates the GraceStatus field on each result whose resource
+// implements the Graceful interface. Results without a Graceful resource are
+// left with a nil GraceStatus.
+func (c reconcileResults) evaluateGrace() error {
+	for i := range c {
+		graceful, ok := c[i].Entry.Resource.(concepts.Graceful)
+		if !ok {
+			continue
+		}
+		status, err := graceful.GraceStatus()
+		if err != nil {
+			return err
+		}
+		c[i].GraceStatus = &status
+	}
+	return nil
+}
+
+// graceSummary aggregates the evaluated grace statuses into a single result.
+// The most severe status wins (Down > Degraded > Healthy). If no Graceful
+// resources are present, it returns Down. Must be called after evaluateGrace.
+func (c reconcileResults) graceSummary() concepts.GraceStatusWithReason {
 	var maxStatus concepts.GraceStatus
 	var reasons []string
 	anyGraceful := false
 
 	for _, result := range c {
-		if graceful, ok := result.Resource.(concepts.Graceful); ok {
-			anyGraceful = true
+		if result.GraceStatus == nil {
+			continue
+		}
+		anyGraceful = true
 
-			current, err := graceful.GraceStatus()
-			if err != nil {
-				return concepts.GraceStatusWithReason{}, err
-			}
-
-			if current.Status.Priority() > maxStatus.Priority() {
-				maxStatus = current.Status
-				reasons = []string{current.Reason}
-			} else if current.Status.Priority() == maxStatus.Priority() && current.Reason != "" {
-				reasons = append(reasons, current.Reason)
-			}
+		if result.GraceStatus.Status.Priority() > maxStatus.Priority() {
+			maxStatus = result.GraceStatus.Status
+			reasons = []string{result.GraceStatus.Reason}
+		} else if result.GraceStatus.Status.Priority() == maxStatus.Priority() && result.GraceStatus.Reason != "" {
+			reasons = append(reasons, result.GraceStatus.Reason)
 		}
 	}
 
@@ -117,20 +130,20 @@ func (c convergeResults) graceSummary() (concepts.GraceStatusWithReason, error) 
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDown,
 			Reason: "Component failed to converge within grace period",
-		}, nil
+		}
 	}
 
 	if maxStatus == "" || maxStatus == concepts.GraceStatusHealthy {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusHealthy,
 			Reason: "All resources healthy.",
-		}, nil
+		}
 	}
 
 	return concepts.GraceStatusWithReason{
 		Status: maxStatus,
 		Reason: strings.Join(reasons, "; "),
-	}, nil
+	}
 }
 
 // graceExpired returns true if the grace duration of the component has been exceeded
@@ -181,7 +194,7 @@ func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 //
 // If health aggregation (GraceStatus) fails for any resource, an Error condition is returned.
 func newConvergingStatusCondition(
-	ctx context.Context, owner OperatorCRD, results convergeResults, gracePeriod time.Duration, previousCondition Condition,
+	ctx context.Context, owner OperatorCRD, results reconcileResults, gracePeriod time.Duration, previousCondition Condition,
 ) Condition {
 	generation := owner.GetGeneration()
 	conditionType := ConditionType(previousCondition.Type)
@@ -217,24 +230,36 @@ func newConvergingStatusCondition(
 
 	// If the grace period expired, and we're still not healthy, set a down/degraded status
 	if graceExpired(gracePeriod, previousCondition.LastTransitionTime.Time) {
-		summary, err := results.graceSummary()
-		if err != nil {
-			logger.Error(err, "failed to get grace summary for component")
+		if err := results.evaluateGrace(); err != nil {
+			logger.Error(err, "failed to evaluate grace status for component")
 			return conditionError(conditionType, err, generation)
 		}
 
+		summary := results.graceSummary()
 		if summary.Status == concepts.GraceStatusDown || summary.Status == concepts.GraceStatusDegraded {
 			return graceCondition(conditionType, summary, generation)
 		}
 
-		// One of the resource's status handlers is misconfigured. Convergence status and
-		// grace status are determined in the same loop with no refetch of the underlying
-		// resource between them. A resource should never report non-healthy for convergence
-		// and Healthy for grace in the same reconcile. Log a warning and continue onto other
-		// code paths rather than escalating.
-		logger.V(0).Info(
-			"component progressor encountered GraceStatus=Healthy on unready component after detecting grace expiry",
-		)
+		// Log per-resource inconsistencies where grace reports Healthy but
+		// convergence reports non-healthy. Both handlers evaluate the same object
+		// in the same reconcile loop, so this indicates a handler misconfiguration.
+		for _, result := range results {
+			if result.GraceStatus == nil {
+				continue
+			}
+			if result.GraceStatus.Status != concepts.GraceStatusHealthy || result.Status.Status.healthy() {
+				continue
+			}
+			if result.Entry.Options.SuppressGraceInconsistencyWarning {
+				continue
+			}
+			logger.V(0).Info(
+				"Grace inconsistency detected: resource grace status is Healthy but convergence status is non-healthy",
+				"resource", result.Entry.Resource.Identity(),
+				"convergeStatus", result.Status,
+				"graceStatus", result.GraceStatus,
+			)
+		}
 	}
 
 	// Copy old condition and update

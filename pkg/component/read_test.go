@@ -97,13 +97,10 @@ func TestReadResources(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, results, 3) // Alive, Operational, Completable
 
-		assert.Equal(t, resource2, results[0].Resource)
 		assert.Equal(t, convergingStatusAliveHealthy, results[0].Status.Status)
 
-		assert.Equal(t, resource3, results[1].Resource)
 		assert.Equal(t, convergingStatusOperationalOperational, results[1].Status.Status)
 
-		assert.Equal(t, resource4, results[2].Resource)
 		assert.Equal(t, convergingStatusCompletableCompleted, results[2].Status.Status)
 
 		resource1.AssertExpectations(t)

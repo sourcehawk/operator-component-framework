@@ -16,7 +16,7 @@ import (
 // when processing read-only entries in the unified reconciliation loop.
 func readResource(
 	ctx context.Context, rec ReconcileContext, resource Resource,
-) (*convergingResult, error) {
+) (*reconcileResult, error) {
 	object, err := resource.Object()
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -39,8 +39,7 @@ func readResource(
 	}
 
 	if status != nil {
-		result := convergingResult{Resource: resource, Status: *status}
-		return &result, nil
+		return &reconcileResult{Status: *status}, nil
 	}
 	return nil, nil
 }
@@ -53,8 +52,8 @@ func readResource(
 // ConvergingOperationNone is passed to Alive.ConvergingStatus, as no mutations were performed.
 func readResources(
 	ctx context.Context, rec ReconcileContext, resources []Resource,
-) ([]convergingResult, error) {
-	var results []convergingResult
+) ([]reconcileResult, error) {
+	var results []reconcileResult
 
 	for _, resource := range resources {
 		result, err := readResource(ctx, rec, resource)

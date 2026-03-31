@@ -153,6 +153,13 @@ func TestResourceOptionsBuilder_Build(t *testing.T) {
 			want: ResourceOptions{Delete: true, ReadOnly: false},
 		},
 		{
+			name: "suppress grace inconsistency warning sets flag",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().SuppressGraceInconsistencyWarning().Build()
+			},
+			want: ResourceOptions{SuppressGraceInconsistencyWarning: true},
+		},
+		{
 			name: "last WithFeatureGate wins",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().

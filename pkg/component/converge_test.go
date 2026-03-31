@@ -13,17 +13,17 @@ import (
 func TestConvergeResultsHealthy(t *testing.T) {
 	tests := []struct {
 		name     string
-		results  convergeResults
+		results  reconcileResults
 		expected bool
 	}{
 		{
 			name:     "empty results should be healthy",
-			results:  convergeResults{},
+			results:  reconcileResults{},
 			expected: true,
 		},
 		{
 			name: "all results healthy",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy}},
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy}},
 			},
@@ -31,7 +31,7 @@ func TestConvergeResultsHealthy(t *testing.T) {
 		},
 		{
 			name: "one result not healthy",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy}},
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
 			},
@@ -49,12 +49,12 @@ func TestConvergeResultsHealthy(t *testing.T) {
 func TestConvergeResultsConvergeSummary(t *testing.T) {
 	tests := []struct {
 		name     string
-		results  convergeResults
+		results  reconcileResults
 		expected convergingStatusWithReason
 	}{
 		{
 			name:    "empty results",
-			results: convergeResults{},
+			results: reconcileResults{},
 			expected: convergingStatusWithReason{
 				Status: convergingStatusAliveHealthy,
 				Reason: "All resources healthy.",
@@ -62,7 +62,7 @@ func TestConvergeResultsConvergeSummary(t *testing.T) {
 		},
 		{
 			name: "single healthy",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy, Reason: "Healthy"}},
 			},
 			expected: convergingStatusWithReason{
@@ -72,7 +72,7 @@ func TestConvergeResultsConvergeSummary(t *testing.T) {
 		},
 		{
 			name: "mixed statuses, highest priority wins (Scaling > Updating > Creating > Healthy)",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating CM"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveUpdating, Reason: "Updating Deploy"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveScaling, Reason: "Scaling StatefulSet"}},
@@ -84,7 +84,7 @@ func TestConvergeResultsConvergeSummary(t *testing.T) {
 		},
 		{
 			name: "mixed resource concepts, highest priority wins",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy, Reason: "Alive Healthy"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusOperationalPending, Reason: "Operational Pending"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusCompletableRunning, Reason: "Completable Running"}},
@@ -96,7 +96,7 @@ func TestConvergeResultsConvergeSummary(t *testing.T) {
 		},
 		{
 			name: "failing statuses priority",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveFailing, Reason: "Alive Failing"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusOperationalFailing, Reason: "Operational Failing"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusCompletableFailed, Reason: "Completable Failed"}},
@@ -108,7 +108,7 @@ func TestConvergeResultsConvergeSummary(t *testing.T) {
 		},
 		{
 			name: "same severity aggregate reasons (Creating, OperationPending, CompletionPending)",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating CM"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusOperationalPending, Reason: "Awaiting LB"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusCompletablePending, Reason: "Job pending"}},
@@ -120,7 +120,7 @@ func TestConvergeResultsConvergeSummary(t *testing.T) {
 		},
 		{
 			name: "same statuses aggregate reasons",
-			results: convergeResults{
+			results: reconcileResults{
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating CM"}},
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating Secret"}},
 			},
@@ -140,11 +140,11 @@ func TestConvergeResultsConvergeSummary(t *testing.T) {
 
 func TestConvergeResultsGraceSummary(t *testing.T) {
 	t.Run("should return concepts.GraceStatusDown if no alive resources", func(t *testing.T) {
-		results := convergeResults{
-			{Resource: &MockResource{}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: &MockResource{}}},
 		}
-		summary, err := results.graceSummary()
-		require.NoError(t, err)
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
 		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
 	})
 
@@ -155,13 +155,13 @@ func TestConvergeResultsGraceSummary(t *testing.T) {
 		alive2 := &MockAliveResource{}
 		alive2.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "Down 2"}, nil)
 
-		results := convergeResults{
-			{Resource: alive1},
-			{Resource: alive2},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive1}},
+			{Entry: reconcileEntry{Resource: alive2}},
 		}
 
-		summary, err := results.graceSummary()
-		require.NoError(t, err)
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
 		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
 		assert.Equal(t, "Down 2", summary.Reason)
 	})
@@ -173,13 +173,13 @@ func TestConvergeResultsGraceSummary(t *testing.T) {
 		alive2 := &MockAliveResource{}
 		alive2.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDegraded, Reason: "Degraded 2"}, nil)
 
-		results := convergeResults{
-			{Resource: alive1},
-			{Resource: alive2},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive1}},
+			{Entry: reconcileEntry{Resource: alive2}},
 		}
 
-		summary, err := results.graceSummary()
-		require.NoError(t, err)
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
 		assert.Equal(t, concepts.GraceStatusDegraded, summary.Status)
 		assert.Equal(t, "Degraded 1; Degraded 2", summary.Reason)
 	})
@@ -194,14 +194,14 @@ func TestConvergeResultsGraceSummary(t *testing.T) {
 		operational := &MockOperationalResource{}
 		operational.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy, Reason: "Operational Healthy"}, nil)
 
-		results := convergeResults{
-			{Resource: alive},
-			{Resource: completable},
-			{Resource: operational},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveScaling}},
+			{Entry: reconcileEntry{Resource: completable}, Status: convergingStatusWithReason{Status: convergingStatusCompletableRunning}},
+			{Entry: reconcileEntry{Resource: operational}, Status: convergingStatusWithReason{Status: convergingStatusOperationalOperational}},
 		}
 
-		summary, err := results.graceSummary()
-		require.NoError(t, err)
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
 		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
 		assert.Equal(t, "Completable Down", summary.Reason)
 	})
@@ -256,7 +256,7 @@ func TestNewConvergingStatusCondition(t *testing.T) {
 	)
 
 	t.Run("should return Healthy condition when all results healthy", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy}},
 		}
 		previous := Condition{Type: "Test", Reason: string(AliveCreating)}
@@ -282,7 +282,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 	)
 
 	t.Run("should initialize condition from summary if previous is Unknown", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating something"}},
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
@@ -295,7 +295,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 	})
 
 	t.Run("should initialize condition from OperationalPending if previous is Unknown", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusOperationalPending, Reason: "Awaiting LB IP"}},
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
@@ -308,7 +308,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 	})
 
 	t.Run("should initialize condition from TaskRunning if previous is Unknown", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusCompletableRunning, Reason: "Task is running"}},
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
@@ -324,8 +324,8 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 		alive := &MockAliveResource{}
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDegraded, Reason: "Resource Degraded"}, nil)
 
-		results := convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
 		}
 
 		// 10 minutes ago, 5 minute grace period -> expired
@@ -347,8 +347,8 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 		operational := &MockOperationalResource{}
 		operational.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "Operational Down"}, nil)
 
-		results := convergeResults{
-			{Resource: operational, Status: convergingStatusWithReason{Status: convergingStatusOperationalPending}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: operational}, Status: convergingStatusWithReason{Status: convergingStatusOperationalPending}},
 		}
 
 		transition := time.Now().Add(-10 * time.Minute)
@@ -383,8 +383,8 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 		alive := &MockAliveResource{}
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDegraded, Reason: "Now Degraded"}, nil)
 
-		results := convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
 		}
 
 		previous := Condition{
@@ -403,8 +403,8 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 		alive := &MockAliveResource{}
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "Status Down"}, nil)
 
-		results := convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Resource Creating"}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Resource Creating"}},
 		}
 
 		// Use a fixed time for LastTransitionTime to avoid flaky tests due to time.Now()
@@ -428,8 +428,8 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 		alive := &MockAliveResource{}
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "Now Down"}, nil)
 
-		results := convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
 		}
 
 		previous := Condition{
@@ -448,8 +448,8 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 		alive := &MockAliveResource{}
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDegraded, Reason: "Now Degraded"}, nil)
 
-		results := convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating}},
 		}
 
 		previous := Condition{
@@ -479,7 +479,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 	)
 
 	t.Run("should initialize condition from summary if previous is Unknown (Initialization)", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveUpdating, Reason: "Updating something"}},
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
@@ -492,7 +492,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 	})
 
 	t.Run("should transition from Healthy if resources are no longer healthy (Recovery from Healthy)", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveScaling, Reason: "Scaling resources"}},
 		}
 		previous := Condition{
@@ -509,7 +509,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 	})
 
 	t.Run("should update ObservedGeneration and Message if no state transition occurs (Steady State Update)", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveUpdating, Reason: "New progress message"}},
 		}
 		previous := Condition{
@@ -536,10 +536,11 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 
 	t.Run("should update ObservedGeneration if no other changes", func(t *testing.T) {
 		alive := &MockAliveResource{}
+		alive.On("Identity").Return("test-alive")
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy, Reason: "Resource is healthy but unready"}, nil)
 
-		results := convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Still Creating"}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Still Creating"}},
 		}
 
 		previous := Condition{
@@ -558,7 +559,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 	})
 
 	t.Run("should not update condition reason from Creating to Updating or Scaling", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveUpdating, Reason: "Still creating something"}},
 		}
 
@@ -576,7 +577,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 		assert.Equal(t, "Still creating something", cond.Message)
 
 		// Also check Scaling
-		results = convergeResults{
+		results = reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveScaling, Reason: "Taking forever to create"}},
 		}
 		cond = newConvergingStatusCondition(ctx, owner, results, 0, previous)
@@ -588,8 +589,8 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 		alive := &MockAliveResource{}
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "Still Down"}, nil)
 
-		results := convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Resource Creating"}},
+		results := reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Resource Creating"}},
 		}
 
 		previous := Condition{
@@ -607,8 +608,8 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 		alive = &MockAliveResource{}
 		alive.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDegraded, Reason: "Still Degraded"}, nil)
 
-		results = convergeResults{
-			{Resource: alive, Status: convergingStatusWithReason{Status: convergingStatusAliveUpdating, Reason: "Resource Updating"}},
+		results = reconcileResults{
+			{Entry: reconcileEntry{Resource: alive}, Status: convergingStatusWithReason{Status: convergingStatusAliveUpdating, Reason: "Resource Updating"}},
 		}
 
 		previous = Condition{
@@ -623,7 +624,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 	})
 
 	t.Run("should transition to Healthy from Down or Degraded if all results are healthy", func(t *testing.T) {
-		results := convergeResults{
+		results := reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy}},
 		}
 

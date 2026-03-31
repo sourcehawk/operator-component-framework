@@ -359,6 +359,10 @@ A misconfigured grace handler that reports Healthy when the resource has not con
 In the last row, convergence considers the resource non-healthy (still scaling down), but grace tells the component
 everything is fine.
 
+If this inconsistency is intentional (e.g., a custom grace handler that deliberately reports Healthy for a resource that
+has not fully converged), set `SuppressGraceInconsistencyWarning: true` on the resource's `ResourceOptions` to suppress
+the warning log.
+
 #### Status Constants Reference
 
 | Category              | Status Type                      | Constant Name                   | String Value        |

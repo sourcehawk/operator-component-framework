@@ -22,13 +22,13 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 		wantReason string
 	}{
 		{
-			name: "pending when never scheduled",
+			name: "operational when never scheduled",
 			op:   concepts.ConvergingOperationCreated,
 			cronjob: &batchv1.CronJob{
 				Status: batchv1.CronJobStatus{},
 			},
-			wantStatus: concepts.OperationalStatusPending,
-			wantReason: "CronJob has never been scheduled",
+			wantStatus: concepts.OperationalStatusOperational,
+			wantReason: "CronJob is a passive scheduler and is considered operational once it exists",
 		},
 		{
 			name: "operational when scheduled at least once",
@@ -39,7 +39,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.OperationalStatusOperational,
-			wantReason: "CronJob last scheduled at 2025-01-01T12:00:00Z",
+			wantReason: "CronJob is a passive scheduler and is considered operational once it exists",
 		},
 		{
 			name: "operational regardless of converging operation",
@@ -50,7 +50,7 @@ func TestDefaultOperationalStatusHandler(t *testing.T) {
 				},
 			},
 			wantStatus: concepts.OperationalStatusOperational,
-			wantReason: "CronJob last scheduled at 2025-06-15T08:30:00Z",
+			wantReason: "CronJob is a passive scheduler and is considered operational once it exists",
 		},
 	}
 

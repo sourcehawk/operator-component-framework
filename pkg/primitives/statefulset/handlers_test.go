@@ -176,6 +176,22 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		assert.Equal(t, "All replicas are ready", got.Reason)
 	})
 
+	t.Run("degraded (ready exceeds desired)", func(t *testing.T) {
+		replicas := int32(1)
+		sts := &appsv1.StatefulSet{
+			Spec: appsv1.StatefulSetSpec{
+				Replicas: &replicas,
+			},
+			Status: appsv1.StatefulSetStatus{
+				ReadyReplicas: 3,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(sts)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
+		assert.Equal(t, "StatefulSet partially available", got.Reason)
+	})
+
 	t.Run("degraded (some ready)", func(t *testing.T) {
 		replicas := int32(3)
 		sts := &appsv1.StatefulSet{

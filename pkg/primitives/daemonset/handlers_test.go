@@ -208,6 +208,19 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		assert.Equal(t, "All pods are ready", got.Reason)
 	})
 
+	t.Run("degraded (ready exceeds desired)", func(t *testing.T) {
+		ds := &appsv1.DaemonSet{
+			Status: appsv1.DaemonSetStatus{
+				DesiredNumberScheduled: 2,
+				NumberReady:            3,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(ds)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
+		assert.Equal(t, "DaemonSet partially available", got.Reason)
+	})
+
 	t.Run("degraded (some ready)", func(t *testing.T) {
 		ds := &appsv1.DaemonSet{
 			Status: appsv1.DaemonSetStatus{

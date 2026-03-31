@@ -227,8 +227,11 @@ func newConvergingStatusCondition(
 			return graceCondition(conditionType, summary, generation)
 		}
 
-		// Something is misconfigured in the grace logic in the Resources
-		// We continue onto other code paths but log a warning
+		// One of the resource's status handlers is misconfigured. Convergence status and
+		// grace status are determined in the same loop with no refetch of the underlying
+		// resource between them. A resource should never report non-healthy for convergence
+		// and Healthy for grace in the same reconcile. Log a warning and continue onto other
+		// code paths rather than escalating.
 		logger.V(0).Info(
 			"component progressor encountered GraceStatus=Healthy on unready component after detecting grace expiry",
 		)

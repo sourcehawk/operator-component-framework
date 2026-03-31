@@ -10,24 +10,20 @@ import (
 
 // DefaultOperationalStatusHandler is the default logic for determining if a CronJob is operational.
 //
-// It considers a CronJob operational when it has scheduled at least once
-// (Status.LastScheduleTime is not nil). If it has never been scheduled,
-// the status is Pending.
+// It always reports Operational. A CronJob is a passive scheduler: once it exists in the cluster
+// it is functioning correctly regardless of whether it has fired yet. The schedule interval may
+// be longer than the component's grace period, so treating a never-scheduled CronJob as Pending
+// would produce false degradation signals. Failures are reported on the spawned Job resources,
+// not on the CronJob itself.
 //
-// Failures are reported on the spawned Job resources, not on the CronJob itself.
+// Users who need visibility into whether the CronJob has executed can override this handler via
+// Builder.WithCustomConvergeStatus.
 func DefaultOperationalStatusHandler(
-	_ concepts.ConvergingOperation, cj *batchv1.CronJob,
+	_ concepts.ConvergingOperation, _ *batchv1.CronJob,
 ) (concepts.OperationalStatusWithReason, error) {
-	if cj.Status.LastScheduleTime == nil {
-		return concepts.OperationalStatusWithReason{
-			Status: concepts.OperationalStatusPending,
-			Reason: "CronJob has never been scheduled",
-		}, nil
-	}
-
 	return concepts.OperationalStatusWithReason{
 		Status: concepts.OperationalStatusOperational,
-		Reason: fmt.Sprintf("CronJob last scheduled at %s", cj.Status.LastScheduleTime.UTC().Format("2006-01-02T15:04:05Z")),
+		Reason: "CronJob is a passive scheduler and is considered operational once it exists",
 	}, nil
 }
 

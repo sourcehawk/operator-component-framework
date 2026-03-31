@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -97,7 +98,7 @@ func (c reconcileResults) evaluateGrace() error {
 		}
 		status, err := graceful.GraceStatus()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to evaluate grace status for resource %s: %w", c[i].Entry.Resource.Identity(), err)
 		}
 		c[i].GraceStatus = &status
 	}

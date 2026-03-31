@@ -19,6 +19,7 @@ generics with type-specific logic.
     - [Mutator Design Guidelines](#mutator-design-guidelines)
   - [3. Implement Status Handlers](#3-implement-status-handlers)
     - [Workload Handlers](#workload-handlers)
+    - [Convergence and Grace Status Consistency](#convergence-and-grace-status-consistency)
     - [Status Constants Reference](#status-constants-reference)
   - [4. Implement the Builder](#4-implement-the-builder)
     - [Builder Pattern Guidelines](#builder-pattern-guidelines)
@@ -269,8 +270,24 @@ func DefaultConvergingStatusHandler(
     }, nil
 }
 
-// DefaultGraceStatusHandler reports degraded or down state during convergence.
+// DefaultGraceStatusHandler reports health during convergence.
 func DefaultGraceStatusHandler(gs *examplev1.GameServer) (concepts.GraceStatusWithReason, error) {
+    desired := int32(1)
+    if gs.Spec.Replicas != nil {
+        desired = *gs.Spec.Replicas
+    }
+
+    // Use == rather than >= so that grace and convergence agree on replica state.
+    // Both handlers evaluate the same object in the same reconcile loop, so grace
+    // must not return Healthy for a state that convergence considers non-healthy
+    // (e.g. ReadyReplicas > desired during scale-down).
+    if gs.Status.ReadyReplicas == desired {
+        return concepts.GraceStatusWithReason{
+            Status: concepts.GraceStatusHealthy,
+            Reason: "All replicas are ready",
+        }, nil
+    }
+
     if gs.Status.ReadyReplicas > 0 {
         return concepts.GraceStatusWithReason{
             Status: concepts.GraceStatusDegraded,
@@ -312,6 +329,35 @@ func DefaultDeleteOnSuspendHandler(_ *examplev1.GameServer) bool {
     return false
 }
 ```
+
+#### Convergence and Grace Status Consistency
+
+The convergence handler and the grace handler evaluate the same object in the same reconcile loop with no refetch
+between them. The grace handler must not return Healthy for any object state where the convergence handler returns
+non-healthy. If this happens, one of the two handlers is misconfigured, and the component will log a warning.
+
+When convergence returns Healthy, the component is satisfied and grace is never called. For all other states, grace must
+not contradict convergence by returning Healthy. The following table shows a consistent pair of handlers for a
+Deployment with 3 desired replicas:
+
+| Desired | Ready | Convergence | Grace        |
+| ------- | ----- | ----------- | ------------ |
+| 3       | 0     | Creating    | Down         |
+| 3       | 1     | Scaling     | Degraded     |
+| 3       | 3     | Healthy     | (not called) |
+| 3       | 5     | Scaling     | Degraded     |
+
+A misconfigured grace handler that reports Healthy when the resource has not converged breaks this invariant:
+
+| Desired | Ready | Convergence | Grace        |
+| ------- | ----- | ----------- | ------------ |
+| 3       | 0     | Creating    | Down         |
+| 3       | 1     | Scaling     | Degraded     |
+| 3       | 3     | Healthy     | (not called) |
+| 3       | 5     | Scaling     | **Healthy**  |
+
+In the last row, convergence considers the resource non-healthy (still scaling down), but grace tells the component
+everything is fine.
 
 #### Status Constants Reference
 

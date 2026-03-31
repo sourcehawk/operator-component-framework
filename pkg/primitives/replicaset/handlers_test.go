@@ -162,8 +162,40 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 }
 
 func TestDefaultGraceStatusHandler(t *testing.T) {
-	t.Run("degraded (some ready)", func(t *testing.T) {
+	t.Run("healthy (all ready)", func(t *testing.T) {
+		replicas := int32(3)
 		rs := &appsv1.ReplicaSet{
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: &replicas,
+			},
+			Status: appsv1.ReplicaSetStatus{
+				ReadyReplicas: 3,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(rs)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "All replicas are ready", got.Reason)
+	})
+
+	t.Run("healthy (nil replicas, one ready)", func(t *testing.T) {
+		rs := &appsv1.ReplicaSet{
+			Status: appsv1.ReplicaSetStatus{
+				ReadyReplicas: 1,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(rs)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "All replicas are ready", got.Reason)
+	})
+
+	t.Run("degraded (some ready)", func(t *testing.T) {
+		replicas := int32(3)
+		rs := &appsv1.ReplicaSet{
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: &replicas,
+			},
 			Status: appsv1.ReplicaSetStatus{
 				ReadyReplicas: 1,
 			},

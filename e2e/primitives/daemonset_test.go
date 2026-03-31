@@ -205,11 +205,11 @@ var _ = Describe("DaemonSet Primitive", Label("daemonset"), func() {
 			gracePeriod := 5 * time.Second
 
 			// On a single-node kind cluster, a DaemonSet's DesiredNumberScheduled=1.
-			// When NumberReady=1, the default converging handler reports Healthy.
-			// To test the Degraded grace path (NumberReady >= 1 but not converged),
-			// we use a custom converging handler that always reports "Scaling" so the
-			// grace handler is invoked after the period expires. The default grace
-			// handler then sees NumberReady >= 1 and returns Degraded.
+			// When NumberReady=1, the default grace handler reports Healthy because
+			// all desired pods are ready. To test the Degraded grace path we use a
+			// custom converging handler that always reports "Scaling" (so the grace
+			// handler is invoked after the period expires) and a custom grace handler
+			// that returns Degraded.
 			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
 				ds := newBaseDaemonSet(ns, "ds-degraded")
 
@@ -218,6 +218,12 @@ var _ = Describe("DaemonSet Primitive", Label("daemonset"), func() {
 						return concepts.AliveStatusWithReason{
 							Status: concepts.AliveConvergingStatusScaling,
 							Reason: "Forced non-converged for e2e test",
+						}, nil
+					}).
+					WithCustomGraceStatus(func(_ *appsv1.DaemonSet) (concepts.GraceStatusWithReason, error) {
+						return concepts.GraceStatusWithReason{
+							Status: concepts.GraceStatusDegraded,
+							Reason: "Forced degraded for e2e test",
 						}, nil
 					}).
 					Build()

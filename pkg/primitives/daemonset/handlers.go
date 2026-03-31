@@ -67,7 +67,8 @@ func DefaultConvergingStatusHandler(
 // It categorizes the current state into:
 //   - GraceStatusHealthy: DesiredNumberScheduled is zero, the controller has observed the current
 //     generation (Status.ObservedGeneration >= Generation), and no nodes match the selector; this is a
-//     valid configuration state, not a failure.
+//     valid configuration state, not a failure. Also healthy when NumberReady meets or exceeds
+//     DesiredNumberScheduled.
 //   - GraceStatusDegraded: DesiredNumberScheduled is zero but the controller has not yet observed the
 //     current generation, or DesiredNumberScheduled > 0 and at least one pod is ready, but below desired.
 //   - GraceStatusDown: DesiredNumberScheduled > 0 and no pods are ready.
@@ -86,6 +87,13 @@ func DefaultGraceStatusHandler(ds *appsv1.DaemonSet) (concepts.GraceStatusWithRe
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDegraded,
 			Reason: "Waiting for DaemonSet controller to observe latest generation",
+		}, nil
+	}
+
+	if ds.Status.NumberReady >= ds.Status.DesiredNumberScheduled {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusHealthy,
+			Reason: "All pods are ready",
 		}, nil
 	}
 

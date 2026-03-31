@@ -195,6 +195,19 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		assert.Equal(t, "Waiting for DaemonSet controller to observe latest generation", got.Reason)
 	})
 
+	t.Run("healthy (all ready)", func(t *testing.T) {
+		ds := &appsv1.DaemonSet{
+			Status: appsv1.DaemonSetStatus{
+				DesiredNumberScheduled: 3,
+				NumberReady:            3,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(ds)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "All pods are ready", got.Reason)
+	})
+
 	t.Run("degraded (some ready)", func(t *testing.T) {
 		ds := &appsv1.DaemonSet{
 			Status: appsv1.DaemonSetStatus{

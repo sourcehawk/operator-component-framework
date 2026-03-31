@@ -333,11 +333,16 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 			})
 
 			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			By("waiting for PrerequisiteNotMet condition before suspending")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "PrerequisiteNotMet"))
+
 			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
 				a.Spec.Suspended = true
 			})
 
-			By("waiting for PrerequisiteNotMet condition (not Suspended)")
+			By("verifying condition remains PrerequisiteNotMet (not Suspended)")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "PrerequisiteNotMet"))
 

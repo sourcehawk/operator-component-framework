@@ -17,7 +17,7 @@ import (
 // not on the CronJob itself.
 //
 // Users who need visibility into whether the CronJob has executed can override this handler via
-// Builder.WithCustomConvergeStatus.
+// Builder.WithCustomOperationalStatus.
 func DefaultOperationalStatusHandler(
 	_ concepts.ConvergingOperation, _ *batchv1.CronJob,
 ) (concepts.OperationalStatusWithReason, error) {

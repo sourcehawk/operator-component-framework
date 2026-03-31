@@ -183,15 +183,15 @@ func TestResource_ConvergingStatus(t *testing.T) {
 		assert.Equal(t, concepts.OperationalStatusOperational, status.Status)
 	})
 
-	t.Run("uses default - pending", func(t *testing.T) {
+	t.Run("uses default - operational when never scheduled", func(t *testing.T) {
 		res, err := NewBuilder(cj).Build()
 		require.NoError(t, err)
 		status, err := res.ConvergingStatus(concepts.ConvergingOperationUpdated)
 		require.NoError(t, err)
-		assert.Equal(t, concepts.OperationalStatusPending, status.Status)
+		assert.Equal(t, concepts.OperationalStatusOperational, status.Status)
 	})
 
-	t.Run("uses default - operational", func(t *testing.T) {
+	t.Run("uses default - operational when scheduled", func(t *testing.T) {
 		cjScheduled := newValidCronJob()
 		now := metav1.NewTime(time.Now())
 		cjScheduled.Status.LastScheduleTime = &now

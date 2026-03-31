@@ -25,6 +25,13 @@ type ResourceOptions struct {
 	// which participates in health aggregation. An unguarded static resource produces no
 	// converging status, so the mode has no observable effect.
 	ParticipationMode ParticipationMode
+	// SuppressGraceInconsistencyWarning suppresses the warning log emitted when the
+	// resource's grace status handler returns Healthy while its convergence handler
+	// returns non-healthy. By default, the component logs this as a potential
+	// misconfiguration. Set this to true when the inconsistency is intentional
+	// (e.g., a custom grace handler that deliberately reports Healthy for a
+	// resource that has not fully converged).
+	SuppressGraceInconsistencyWarning bool
 }
 
 // Builder implements the fluent API for constructing and validating a Component.
@@ -46,12 +53,11 @@ type Builder struct {
 func NewComponentBuilder() *Builder {
 	return &Builder{
 		component: &Component{
-			name:                "",
-			suspended:           false,
-			conditionType:       "",
-			gracePeriod:         time.Duration(0),
-			resourceLookup:      make(map[string]Resource),
-			participationLookup: make(map[string]ParticipationMode),
+			name:           "",
+			suspended:      false,
+			conditionType:  "",
+			gracePeriod:    time.Duration(0),
+			resourceLookup: make(map[string]Resource),
 		},
 	}
 }
@@ -147,14 +153,12 @@ func (b *Builder) WithResource(resource Resource, options ResourceOptions) *Buil
 		options.ParticipationMode = ParticipationModeRequired
 	}
 
-	b.component.participationLookup[resource.Identity()] = options.ParticipationMode
-
 	if options.Delete {
 		b.component.deleteResources = append(b.component.deleteResources, resource)
 	} else {
 		b.component.reconcileResources = append(b.component.reconcileResources, reconcileEntry{
 			Resource: resource,
-			ReadOnly: options.ReadOnly,
+			Options:  options,
 		})
 	}
 

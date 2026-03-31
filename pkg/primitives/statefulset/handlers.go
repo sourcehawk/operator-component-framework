@@ -58,12 +58,29 @@ func DefaultConvergingStatusHandler(
 // reached full readiness.
 //
 // It categorizes the current state into:
+//   - GraceStatusHealthy: ReadyReplicas matches the desired replica count.
 //   - GraceStatusDegraded: At least one replica is ready, but the desired count is not met.
 //   - GraceStatusDown: No replicas are ready.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultGraceStatusHandler(sts *appsv1.StatefulSet) (concepts.GraceStatusWithReason, error) {
+	desiredReplicas := int32(1)
+	if sts.Spec.Replicas != nil {
+		desiredReplicas = *sts.Spec.Replicas
+	}
+
+	// Use == rather than >= so that grace and convergence agree on replica state.
+	// Both handlers evaluate the same object in the same reconcile loop, so grace
+	// must not return Healthy for a state that convergence considers non-healthy
+	// (e.g. ReadyReplicas > desiredReplicas during scale-down).
+	if sts.Status.ReadyReplicas == desiredReplicas {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusHealthy,
+			Reason: "All replicas are ready",
+		}, nil
+	}
+
 	if sts.Status.ReadyReplicas > 0 {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDegraded,

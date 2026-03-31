@@ -105,9 +105,9 @@ func TestBuilder_WithResource(t *testing.T) {
 
 	assert.Len(t, comp.reconcileResources, 2)
 	assert.Equal(t, res1, comp.reconcileResources[0].Resource)
-	assert.False(t, comp.reconcileResources[0].ReadOnly)
+	assert.False(t, comp.reconcileResources[0].Options.ReadOnly)
 	assert.Equal(t, res2, comp.reconcileResources[1].Resource)
-	assert.True(t, comp.reconcileResources[1].ReadOnly)
+	assert.True(t, comp.reconcileResources[1].Options.ReadOnly)
 
 	assert.Len(t, comp.deleteResources, 1)
 	assert.Equal(t, res3, comp.deleteResources[0])

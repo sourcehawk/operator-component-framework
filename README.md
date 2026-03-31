@@ -389,6 +389,11 @@ All new code should include tests. The project uses [testify](https://github.com
 go test ./...
 ```
 
+## Further Reading
+
+- [The Missing Layers in Your Kubernetes Operator](https://medium.com/@sourcehawk/the-missing-layers-in-your-kubernetes-operator-306ee8633350) -
+  a walkthrough of common structural problems in Kubernetes operators and how the framework addresses them.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for details.

@@ -26,7 +26,7 @@ import (
 func applyResource(
 	ctx context.Context, rec ReconcileContext, resource Resource,
 	fieldOwner client.FieldOwner, mapper meta.RESTMapper,
-) (*convergingResult, error) {
+) (*reconcileResult, error) {
 	obj, err := resource.Object()
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -111,8 +111,7 @@ func applyResource(
 	recording.RecordApplyOperationEvent(rec.Recorder, convergingOperation, obj, rec.Owner)
 
 	if status != nil {
-		result := convergingResult{Resource: resource, Status: *status}
-		return &result, nil
+		return &reconcileResult{Status: *status}, nil
 	}
 	return nil, nil
 }
@@ -138,12 +137,12 @@ func applyResource(
 func applyResources(
 	ctx context.Context, rec ReconcileContext, resources []Resource,
 	componentName string, mapper meta.RESTMapper,
-) ([]convergingResult, error) {
+) ([]reconcileResult, error) {
 	fieldOwner := client.FieldOwner(
 		fmt.Sprintf("%s/%s", rec.Owner.GetKind(), componentName),
 	)
 
-	var results []convergingResult
+	var results []reconcileResult
 
 	for _, resource := range resources {
 		result, err := applyResource(ctx, rec, resource, fieldOwner, mapper)
@@ -170,12 +169,12 @@ func applyResources(
 func reconcileResources(
 	ctx context.Context, rec ReconcileContext, entries []reconcileEntry,
 	componentName string, mapper meta.RESTMapper,
-) ([]convergingResult, error) {
+) ([]reconcileResult, error) {
 	fieldOwner := client.FieldOwner(
 		fmt.Sprintf("%s/%s", rec.Owner.GetKind(), componentName),
 	)
 
-	var results []convergingResult
+	var results []reconcileResult
 
 	for _, entry := range entries {
 		resource := entry.Resource
@@ -189,8 +188,8 @@ func reconcileResources(
 				)
 			}
 			if guardResult.Status == concepts.GuardStatusBlocked {
-				results = append(results, convergingResult{
-					Resource: resource,
+				results = append(results, reconcileResult{
+					Entry: entry,
 					Status: convergingStatusWithReason{
 						Status: convergingStatusGuardBlocked,
 						Reason: guardResult.Reason,
@@ -201,9 +200,9 @@ func reconcileResources(
 		}
 
 		// Process the resource based on its mode
-		var result *convergingResult
+		var result *reconcileResult
 		var err error
-		if entry.ReadOnly {
+		if entry.Options.ReadOnly {
 			result, err = readResource(ctx, rec, resource)
 		} else {
 			result, err = applyResource(ctx, rec, resource, fieldOwner, mapper)
@@ -212,6 +211,7 @@ func reconcileResources(
 			return nil, err
 		}
 		if result != nil {
+			result.Entry = entry
 			results = append(results, *result)
 		}
 

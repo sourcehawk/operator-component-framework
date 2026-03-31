@@ -150,8 +150,56 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 }
 
 func TestDefaultGraceStatusHandler(t *testing.T) {
-	t.Run("degraded (some ready)", func(t *testing.T) {
+	t.Run("healthy (all ready)", func(t *testing.T) {
+		replicas := int32(3)
 		deployment := &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{
+				Replicas: &replicas,
+			},
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 3,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "All replicas are ready", got.Reason)
+	})
+
+	t.Run("healthy (nil replicas, one ready)", func(t *testing.T) {
+		deployment := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 1,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, got.Status)
+		assert.Equal(t, "All replicas are ready", got.Reason)
+	})
+
+	t.Run("degraded (ready exceeds desired)", func(t *testing.T) {
+		replicas := int32(1)
+		deployment := &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{
+				Replicas: &replicas,
+			},
+			Status: appsv1.DeploymentStatus{
+				ReadyReplicas: 3,
+			},
+		}
+		got, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, got.Status)
+		assert.Equal(t, "Deployment partially available", got.Reason)
+	})
+
+	t.Run("degraded (some ready)", func(t *testing.T) {
+		replicas := int32(3)
+		deployment := &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{
+				Replicas: &replicas,
+			},
 			Status: appsv1.DeploymentStatus{
 				ReadyReplicas: 1,
 			},

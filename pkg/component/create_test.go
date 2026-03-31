@@ -145,7 +145,6 @@ func TestApplyResources(t *testing.T) {
 		// Then
 		require.NoError(t, err)
 		require.Len(t, results, 1)
-		assert.Equal(t, aliveResource, results[0].Resource)
 		assert.Equal(t, convergingStatusAliveHealthy, results[0].Status.Status)
 
 		regularResource.AssertExpectations(t)
@@ -281,7 +280,6 @@ func TestApplyResources(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Len(t, results, 1)
-			assert.Equal(t, tc.resource, results[0].Resource)
 			assert.Equal(t, tc.expectedStatus, results[0].Status.Status)
 		})
 	}

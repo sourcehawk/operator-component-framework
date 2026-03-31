@@ -10,6 +10,7 @@ are effective and pitfalls that are easy to walk into.
 - [Keep Controllers Thin](#keep-controllers-thin)
 - [Resource Registration Order Is Execution Order](#resource-registration-order-is-execution-order)
 - [Use Data Extraction and Guards for Resource Dependencies](#use-data-extraction-and-guards-for-resource-dependencies)
+  - [Prefer stable values for guard conditions](#prefer-stable-values-for-guard-conditions)
 - [Use Prerequisites for Cross-Component Dependencies](#use-prerequisites-for-cross-component-dependencies)
 - [Use Component Feature Gates for Optional Components](#use-component-feature-gates-for-optional-components)
 - [Mutations Describe Intent, Not Observation](#mutations-describe-intent-not-observation)
@@ -349,6 +350,21 @@ The guard prevents the dependent resource from being applied until its precondit
 as a `Blocked` condition reason so users can see why a resource has not been created yet. The shared variable
 (`roleARN`) is scoped to the reconciliation call, which prevents state leakage between reconciles.
 
+### Prefer stable values for guard conditions
+
+A guard re-evaluates on every reconcile. If the extracted value it depends on is unstable (it can disappear, change, or
+transiently become empty), the guard will re-block after the dependent resource has already been created. In most cases
+this is not intentional. The resource is already running, but the guard now reports `Blocked` and skips reconciliation
+for everything after it.
+
+Good candidates for guard conditions are values that appear once and remain stable: a status field written by a
+controller (an ARN, a provisioned IP, a generated credential reference). Poor candidates are values that fluctuate
+during normal operation, such as replica counts, transient annotations, or fields that get cleared during rolling
+updates.
+
+If you genuinely need to react to a value disappearing after initial creation, that is a valid use case, but it should
+be a deliberate design choice rather than an accidental side effect of choosing an unstable extraction target.
+
 ## Use Prerequisites for Cross-Component Dependencies
 
 When one component cannot start until another is ready, use a prerequisite on the dependent component rather than
@@ -541,3 +557,8 @@ consuming that output, not for the internal implementation.
 
 The audience cares about the feature, not the Kubernetes resource type backing it. A condition named
 `DeploymentReconciled` tells a user nothing about what capability is affected.
+
+## Further Reading
+
+For a deeper look at the structural problems these guidelines address, see
+[The Missing Layers in Your Kubernetes Operator](https://medium.com/@sourcehawk/the-missing-layers-in-your-kubernetes-operator-306ee8633350).

@@ -90,11 +90,10 @@ type Component struct {
 	conditionType ConditionType
 
 	// reconcileResources holds all non-delete resources in registration order.
-	// Each entry records whether the resource is read-only or managed (create/update).
-	reconcileResources  []reconcileEntry
-	deleteResources     []Resource
-	resourceLookup      map[string]Resource
-	participationLookup map[string]ParticipationMode
+	// Each entry pairs the resource with its full options.
+	reconcileResources []reconcileEntry
+	deleteResources    []Resource
+	resourceLookup     map[string]Resource
 
 	gracePeriod time.Duration
 
@@ -108,10 +107,10 @@ type Component struct {
 	prerequisites []Prerequisite
 }
 
-// reconcileEntry pairs a resource with its reconciliation mode.
+// reconcileEntry pairs a resource with its configuration options.
 type reconcileEntry struct {
 	Resource Resource
-	ReadOnly bool
+	Options  ResourceOptions
 }
 
 // GetName returns the name of the component, which is used for logging and identification.
@@ -269,7 +268,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	cond := newConvergingStatusCondition(
 		ctx,
 		rec.Owner,
-		convergeResults(results).filterParticipators(c.participationLookup),
+		reconcileResults(results).filterParticipators(),
 		c.gracePeriod,
 		c.GetCondition(rec.Owner),
 	)
@@ -292,7 +291,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 func (c *Component) allManagedResources() []Resource {
 	resources := make([]Resource, 0, len(c.reconcileResources)+len(c.deleteResources))
 	for _, entry := range c.reconcileResources {
-		if !entry.ReadOnly {
+		if !entry.Options.ReadOnly {
 			resources = append(resources, entry.Resource)
 		}
 	}
@@ -342,7 +341,7 @@ func (c *Component) evaluatePrerequisites(rec ReconcileContext) (PrerequisiteRes
 func (c *Component) managedResources() []Resource {
 	var managed []Resource
 	for _, entry := range c.reconcileResources {
-		if !entry.ReadOnly {
+		if !entry.Options.ReadOnly {
 			managed = append(managed, entry.Resource)
 		}
 	}

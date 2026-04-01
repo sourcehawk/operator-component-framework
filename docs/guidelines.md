@@ -621,34 +621,20 @@ treated as disabled (resources deleted), not suspended (resources scaled down).
 
 ## Mutations Describe Intent, Not Observation
 
-Mutations operate on the desired object, not the server's current state. If you need to make decisions based on the
-resource's live state in the cluster, use a data extractor to observe it and feed the result into a mutation through a
-closure variable.
+Mutations operate on the desired object, not the server's current state. A mutation should be a pure function of the
+owner spec and other static inputs available at build time. It should never try to read the resource's live cluster
+state to decide what to write.
 
-```go
-var currentReplicas int32
+This is not just a style preference. Within a single resource, the framework runs mutations **before** data extraction.
+A data extractor registered on the same builder as a mutation will not have executed yet when that mutation runs. Any
+closure variable populated by the extractor will still hold its zero value.
 
-res, _ := deployment.NewBuilder(baseline).
-    WithDataExtractor(func(d appsv1.Deployment) error {
-        currentReplicas = d.Status.ReadyReplicas
-        return nil
-    }).
-    WithMutation(deployment.Mutation{
-        Name: "scale-aware-annotation",
-        Mutate: func(m *deployment.Mutator) error {
-            m.EditPodTemplateMetadata(func(meta *editors.ObjectMetaEditor) error {
-                meta.EnsureAnnotation("app.example.com/last-known-ready",
-                    fmt.Sprintf("%d", currentReplicas))
-                return nil
-            })
-            return nil
-        },
-    }).
-    Build()
-```
+Data extractors exist to pass observed state from an **earlier** resource to a **later** resource's guards and
+mutations. They are not a mechanism for feeding a resource's own live state back into its own mutations. If you find
+yourself wanting to do that, reconsider the design: the mutation is likely encoding observation rather than intent.
 
-This keeps mutations predictable: they always produce the same desired state for the same inputs, regardless of what
-currently exists in the cluster, which aligns with Server-Side Apply's declarative model.
+A well-written mutation produces the same desired state for the same owner spec, regardless of what currently exists in
+the cluster. This aligns with Server-Side Apply's declarative model and keeps the reconciliation loop predictable.
 
 ## Understand Participation Modes
 

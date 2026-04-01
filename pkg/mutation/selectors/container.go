@@ -36,6 +36,20 @@ func ContainersNamed(names ...string) ContainerSelector {
 	}
 }
 
+// ContainerNotNamed returns a ContainerSelector that matches all containers except the one with the given name.
+func ContainerNotNamed(name string) ContainerSelector {
+	return func(_ int, c *corev1.Container) bool {
+		return c.Name != name
+	}
+}
+
+// ContainersNotNamed returns a ContainerSelector that matches all containers except those with any of the given names.
+func ContainersNotNamed(names ...string) ContainerSelector {
+	return func(_ int, c *corev1.Container) bool {
+		return !slices.Contains(names, c.Name)
+	}
+}
+
 // ContainerAtIndex returns a ContainerSelector that matches a container at the given index.
 func ContainerAtIndex(index int) ContainerSelector {
 	return func(i int, _ *corev1.Container) bool {

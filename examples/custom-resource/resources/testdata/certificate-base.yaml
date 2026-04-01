@@ -1,0 +1,5 @@
+apiVersion: cert.example.io/v1
+kind: CertificateRequest
+metadata:
+  name: my-app-cert
+  namespace: default

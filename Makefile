@@ -1,5 +1,5 @@
 .PHONY: all
-all: fmt lint test build-examples
+all: fmt lint test test-examples build-examples
 
 ##@ General
 
@@ -120,6 +120,10 @@ test: setup-envtest
 .PHONY: build-examples
 build-examples: ## Build all example binaries.
 	go build ./examples/...
+
+.PHONY: test-examples
+test-examples: ## Run example tests (golden files, mutation unit tests).
+	go test ./examples/...
 
 .PHONY: run-examples
 run-examples: ## Run all examples to verify they execute without error.

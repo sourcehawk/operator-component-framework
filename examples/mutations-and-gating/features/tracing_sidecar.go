@@ -7,7 +7,7 @@ import (
 )
 
 // TracingSidecarMutation injects a Jaeger sidecar and sets JAEGER_AGENT_HOST on
-// the application container. It is boolean-gated on the enableTracing flag.
+// all containers. It is boolean-gated on the enableTracing flag.
 func TracingSidecarMutation(enabled bool) deployment.Mutation {
 	return deployment.Mutation{
 		Name:    "Tracing",

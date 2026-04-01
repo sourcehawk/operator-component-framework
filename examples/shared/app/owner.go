@@ -18,6 +18,9 @@ type ExampleAppSpec struct {
 	// EnableMetrics adds metrics configuration to the application.
 	EnableMetrics bool `json:"enableMetrics"`
 
+	// EnableDebugLogging sets LOG_LEVEL=debug on the application container.
+	EnableDebugLogging bool `json:"enableDebugLogging"`
+
 	// Suspended determines whether the application is active.
 	Suspended bool `json:"suspended"`
 }

@@ -150,6 +150,8 @@ Selectors determine which containers an editor targets. This is important for mu
 selectors.AllContainers()                    // every container in the pod
 selectors.ContainerNamed("app")              // a single container by name
 selectors.ContainersNamed("web", "api")      // multiple containers by name
+selectors.ContainerNotNamed("sidecar")       // all containers except one
+selectors.ContainersNotNamed("agent", "log") // all containers except several
 selectors.ContainerAtIndex(0)                // container at a specific index
 ```
 

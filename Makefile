@@ -1,5 +1,5 @@
 .PHONY: all
-all: fmt lint test build-examples
+all: fmt lint test test-examples build-examples
 
 ##@ General
 
@@ -121,30 +121,17 @@ test: setup-envtest
 build-examples: ## Build all example binaries.
 	go build ./examples/...
 
+.PHONY: test-examples
+test-examples: ## Run example tests (golden files, mutation unit tests).
+	go test ./examples/...
+
 .PHONY: run-examples
 run-examples: ## Run all examples to verify they execute without error.
-	go run ./examples/deployment-primitive/.
-	go run ./examples/configmap-primitive/.
-	go run ./examples/serviceaccount-primitive/.
-	go run ./examples/secret-primitive/.
-	go run ./examples/statefulset-primitive/.
-	go run ./examples/replicaset-primitive/.
-	go run ./examples/rolebinding-primitive/.
-	go run ./examples/custom-resource-implementation/.
-	go run ./examples/service-primitive/.
-	go run ./examples/role-primitive/.
-	go run ./examples/pdb-primitive/.
-	go run ./examples/daemonset-primitive/.
-	go run ./examples/hpa-primitive/.
-	go run ./examples/clusterrolebinding-primitive/.
-	go run ./examples/clusterrole-primitive/.
-	go run ./examples/cronjob-primitive/.
-	go run ./examples/ingress-primitive/.
-	go run ./examples/job-primitive/.
-	go run ./examples/networkpolicy-primitive/.
-	go run ./examples/pod-primitive/.
-	go run ./examples/pvc-primitive/.
-	go run ./examples/pv-primitive/.
+	go run ./examples/mutations-and-gating/.
+	go run ./examples/extraction-and-guards/.
+	go run ./examples/component-prerequisites/.
+	go run ./examples/custom-resource/.
+	go run ./examples/grace-inconsistency/.
 
 ##@ E2E Testing
 

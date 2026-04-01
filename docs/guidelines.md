@@ -9,6 +9,7 @@ are effective and pitfalls that are easy to walk into.
 - [One Component Per Logical Condition](#one-component-per-logical-condition)
 - [Keep Controllers Thin](#keep-controllers-thin)
 - [Resource Registration Order Is Execution Order](#resource-registration-order-is-execution-order)
+- [Mutation Ordering and Container Name Dependencies](#mutation-ordering-and-container-name-dependencies)
 - [Use Data Extraction and Guards for Resource Dependencies](#use-data-extraction-and-guards-for-resource-dependencies)
   - [Prefer stable values for guard conditions](#prefer-stable-values-for-guard-conditions)
 - [Use Prerequisites for Cross-Component Dependencies](#use-prerequisites-for-cross-component-dependencies)
@@ -108,7 +109,40 @@ you update the baseline and adjust any mutations that assumed the old shape. The
 the ones gated on legacy versions, and those mutations are explicitly about backward compatibility rather than silently
 load-bearing.
 
-### Legacy version mutations in practice
+### Revert mutations vs. forward mutations
+
+The baseline-as-latest approach means that every structural version change requires a new legacy mutation that reverts
+the baseline to the older shape. This is real friction: update the baseline, write a revert mutation, add golden files.
+It is natural to wonder whether the opposite direction (baseline stays at the original shape, forward mutations patch it
+to the latest version) would be less work.
+
+In practice, the revert direction is easier to maintain:
+
+- **Adding a revert mutation does not require changing existing ones.** Each revert mutation handles one version step:
+  the v2 revert turns v3 back into v2, and the v1 revert turns v2 back into v1. They do execute in order (newest first),
+  but the v1 revert was written when v2 was the baseline, and it still works because the v2 revert restores the shape it
+  expects. When you drop support for v1, you delete one mutation and nothing else changes.
+- **Forward mutations have fragile ordering dependencies.** A v3 forward patch might assume that the v2 patch already
+  ran (e.g. it expects a container name or port layout that only exists after v2's mutation). Delete the v2 mutation
+  when you drop support, and v3 breaks silently because its precondition is gone.
+- **You read the baseline more often than you update it.** Structural changes to a resource happen occasionally; reading
+  the resource definition happens constantly. With baseline-as-latest, a new contributor opens the file and sees the
+  current shape at a glance. With baseline-as-original, understanding the current shape requires mentally replaying
+  every forward mutation in order.
+- **The two mutation categories have different lifecycles.** Revert mutations are backward compatibility: temporary by
+  nature, and they shrink as you drop old versions. Feature mutations (tracing, metrics, debug logging) are
+  cross-cutting concerns with a longer lifecycle. Forward mutations mix both categories in the same pipeline, making it
+  harder to tell which mutations are temporary compatibility shims and which are permanent features.
+- **Where the revert approach costs more.** Each structural version change requires writing a new revert mutation. This
+  is the tradeoff. But the friction is also a forcing function: it makes the backward-compatibility decision explicit
+  rather than letting old shapes silently persist as the baseline drifts from reality.
+
+The number of revert mutations is bounded by the number of supported versions. Most operators support two or three
+concurrent versions. When a version falls out of support, its revert mutation is deleted cleanly. Forward mutation
+stacks tend to grow indefinitely because removing a forward mutation requires proving that nothing downstream depends on
+it.
+
+### Backward compatibility mutations in practice
 
 Suppose version 2.0 of your application renamed its container from `"server"` to `"app"` and added a health check port.
 The baseline reflects the latest shape:
@@ -135,17 +169,17 @@ dep := &appsv1.Deployment{
 }
 
 res, err := deployment.NewBuilder(dep).
-    WithMutation(LegacyContainerName(owner.Spec.Version)).
+    WithMutation(BackwardCompatV1Container(owner.Spec.Version)).
     WithMutation(TracingFeature(owner.Spec.TracingEnabled)).
     Build()
 ```
 
-The legacy mutation rolls the baseline back for older versions:
+The backward compat mutation rolls the baseline back for older versions:
 
 ```go
-func LegacyContainerName(version string) deployment.Mutation {
+func BackwardCompatV1Container(version string) deployment.Mutation {
     return deployment.Mutation{
-        Name: "legacy-container-name",
+        Name: "BackwardCompatV1Container",
         Feature: feature.NewVersionGate(version, []feature.VersionConstraint{
             LessThan("2.0.0"),
         }),
@@ -163,6 +197,9 @@ func LegacyContainerName(version string) deployment.Mutation {
 }
 ```
 
+Naming the function `BackwardCompat<version><what>` makes the pattern immediately recognizable. When scanning a builder
+chain, `BackwardCompatV1Container` tells you exactly what it does and why it exists without reading the implementation.
+
 `LessThan` here is a user-provided implementation of `feature.VersionConstraint` that wraps a semver comparison. The
 interface requires a single `Enabled(version string) (bool, error)` method, so you can use any semver library to
 implement your constraints.
@@ -176,7 +213,7 @@ backward. If instead you had kept the baseline at the 1.x shape and added a muta
 future version change would stack another forward-patching mutation on top, and the baseline would never reflect
 reality.
 
-### Verifying legacy mutations
+### Verifying backward compatibility mutations
 
 When you update the baseline, you need confidence that older versions still produce the same object they did before. The
 framework provides a `golden` package for this. `AssertYAML` accepts any resource that implements `PreviewObject`,
@@ -213,9 +250,9 @@ func TestDeploymentShape(t *testing.T) {
 ```
 
 Each version you care about gets a golden file. When the baseline evolves, run `go test -update` to regenerate the
-golden files, then review the diff. The current version's golden file updates to reflect the new shape, but legacy
-version golden files should stay unchanged. If a baseline change accidentally breaks a legacy mutation, the snapshot
-diff shows exactly what shifted.
+golden files, then review the diff. The current version's golden file updates to reflect the new shape, but older
+version golden files should stay unchanged. If a baseline change accidentally breaks a backward compat mutation, the
+snapshot diff shows exactly what shifted.
 
 A reasonable heuristic for the boundary: if a field is always present regardless of feature flags or version, it belongs
 in the baseline. If it is conditional, it belongs in a mutation.
@@ -316,6 +353,166 @@ comp, err := component.NewComponentBuilder().
 Reading the `WithResource()` calls top to bottom tells you the execution order. There is no implicit dependency graph to
 reconstruct. The flip side is that reordering these calls can silently break data flow between guards and extractors.
 Document the dependency when it exists.
+
+## Mutation Ordering and Container Name Dependencies
+
+Mutations within a resource are also applied in registration order. Each mutation gets its own feature scope, and later
+mutations see the resource as modified by all earlier mutations. This is normally invisible because most mutations are
+independent. It becomes visible when a backward compat mutation renames a container and a feature mutation needs to
+target that container by name.
+
+Consider a deployment where the baseline container is named `"app"` (v2+), and a backward compat mutation renames it to
+`"server"` for versions before 2.0. A new mutation that sets `LOG_LEVEL=debug` on the application container faces a
+question: does it target `"app"` or `"server"`?
+
+The answer depends on registration order, and there are two rules that eliminate the problem.
+
+### Use broad selectors for version-independent mutations
+
+If a mutation applies to all versions regardless of container name, use `AllContainers()`, `EnsureContainerEnvVar`, or
+`EnsureContainerArg`. These selectors never reference a name, so they work whether or not a backward compat rename has
+fired. No ordering constraint is needed.
+
+```go
+// TracingSidecar uses EnsureContainerEnvVar (wraps AllContainers) and is order-insensitive.
+func TracingSidecarMutation(enabled bool) deployment.Mutation {
+    return deployment.Mutation{
+        Name:    "Tracing",
+        Feature: feature.NewVersionGate("any", nil).When(enabled),
+        Mutate: func(m *deployment.Mutator) error {
+            m.EnsureContainer(corev1.Container{
+                Name:  "jaeger-agent",
+                Image: "jaegertracing/jaeger-agent:1.28",
+            })
+            m.EnsureContainerEnvVar(corev1.EnvVar{
+                Name:  "JAEGER_AGENT_HOST",
+                Value: "localhost",
+            })
+            return nil
+        },
+    }
+}
+```
+
+### Register name-specific mutations before backward compat renames
+
+When a mutation must target a specific container by name, register it before the backward compat mutation that renames
+it. Registered in that position, the mutation sees the baseline name because the rename has not fired yet. Its edits
+carry through the rename because the backward compat mutation only overwrites specific fields (`Name`, `Ports`), not the
+entire container.
+
+```go
+// DebugLogging targets ContainerNamed("app"), so it must come before BackwardCompatV1Container.
+func DebugLoggingMutation(enabled bool) deployment.Mutation {
+    return deployment.Mutation{
+        Name:    "DebugLogging",
+        Feature: feature.NewVersionGate("any", nil).When(enabled),
+        Mutate: func(m *deployment.Mutator) error {
+            m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
+                ce.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
+                return nil
+            })
+            return nil
+        },
+    }
+}
+```
+
+The registration order makes the constraint explicit:
+
+```go
+res, err := deployment.NewBuilder(BaseDeployment(owner)).
+    WithMutation(DebugLoggingMutation(owner.Spec.EnableDebugLogging)).   // targets "app" by name
+    WithMutation(BackwardCompatV1Container(owner.Spec.Version)).        // renames "app" → "server" for v1
+    WithMutation(TracingSidecarMutation(owner.Spec.EnableTracing)).     // uses AllContainers, order-insensitive
+    Build()
+```
+
+For v2+, the backward compat mutation is inactive and `DebugLogging` sets the env var on `"app"`. For v1, `DebugLogging`
+sets the env var on `"app"`, then `BackwardCompatV1Container` renames the container to `"server"` and resets its ports.
+The env var survives because the rename does not touch `Env`.
+
+### Naming and ordering with multiple backward compat mutations
+
+Name backward compat mutations `BackwardCompat<version><what>` so the pattern is self-documenting. Use the `P` separator
+for version dots when the function name would otherwise be ambiguous: `BackwardCompatV1P2P0Container` for v1.2.0,
+`BackwardCompatV2Container` for the v2 line.
+
+When multiple backward compat mutations exist, register the newest first (closest to the baseline) and the oldest last.
+Each mutation reverts one version step: `BackwardCompatV2` reverts v3 to v2, and `BackwardCompatV1` reverts v2 to v1.
+For a v1 version, both fire in sequence. The key guarantee is not that they are independent of each other (they do
+execute in order), but that adding a new one does not require changing existing ones. When you update the baseline to v3
+and add `BackwardCompatV2`, the existing `BackwardCompatV1` continues to work unchanged because `BackwardCompatV2`
+restores the v2 shape before `BackwardCompatV1` runs.
+
+```go
+res, err := deployment.NewBuilder(BaseDeployment(owner)).                     // baseline is v3
+    WithMutation(DebugLoggingMutation(owner.Spec.EnableDebugLogging)).        // must come before backward compat renames
+    WithMutation(BackwardCompatV2Container(owner.Spec.Version)).              // reverts v3 → v2 for < 3.0.0
+    WithMutation(BackwardCompatV1Container(owner.Spec.Version)).              // reverts v2 → v1 for < 2.0.0
+    WithMutation(TracingSidecarMutation(owner.Spec.EnableTracing)).           // order-insensitive (broad selector)
+    Build()
+```
+
+The only ordering constraint for feature mutations is that those targeting a container by name must come before backward
+compat mutations that rename that container. Feature mutations that use broad selectors (like `TracingSidecar`) can go
+anywhere in the chain. The ordering between feature mutations themselves does not matter. When you add a new version
+that changes the resource structure, update the baseline and insert the new backward compat mutation before the existing
+ones.
+
+#### Alternative: non-overlapping version gates
+
+Instead of chaining reverts (each undoing one version step), you can give each backward compat mutation a
+non-overlapping gate so that only one fires for any given version. `BackwardCompatV2` fires for `>= 2.0.0, < 3.0.0` and
+`BackwardCompatV1` fires for `>= 1.0.0, < 2.0.0`. Each mutation reverts directly from the current baseline to its target
+version, making them truly order-independent.
+
+The tradeoff is maintenance cost. When you update the baseline to v3, every existing backward compat mutation needs
+updating because each one must now revert from the v3 shape instead of the v2 shape. With chained reverts, only the new
+mutation needs writing; existing ones are untouched. The chained approach trades a visible ordering constraint (newest
+first, enforced by the registration chain) for a stronger stability guarantee (existing mutations never change). The
+non-overlapping approach trades that stability for order independence.
+
+For most operators, the chained approach is the better default. The ordering is mechanical (newest first) and visible in
+the builder chain. The non-overlapping approach is worth considering when mutations are complex enough that reasoning
+about chained execution is genuinely difficult, or when backward compat mutations are maintained by different teams who
+cannot easily coordinate ordering.
+
+### What to avoid
+
+Do not work around the ordering problem by matching multiple names:
+
+```go
+// Anti-pattern: couples this mutation to knowledge of legacy naming.
+m.EditContainers(selectors.ContainersNamed("app", "server"), func(ce *editors.ContainerEditor) error {
+    ce.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
+    return nil
+})
+```
+
+This works today but breaks if a future version renames the container again. The mutation now needs to track every name
+the container has ever had. Instead, target the baseline name and register the mutation before the backward compat
+rename:
+
+```go
+// Correct: targets the baseline name, registered before BackwardCompatV1Container.
+m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
+    ce.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
+    return nil
+})
+```
+
+The mutation only knows `"app"` (the current baseline name). The backward compat rename fires afterward and carries the
+edit through.
+
+### When a backward compat mutation replaces the entire container
+
+The carry-through property depends on the backward compat mutation only overwriting specific fields. If a backward
+compat mutation replaces the entire container (sets all fields, not just `Name` and `Ports`), edits from earlier
+mutations are lost. In that case, the mutation is effectively a full override and later mutations should target the
+post-rename name via version gating rather than relying on ordering.
+
+See the [mutations-and-gating example](../examples/mutations-and-gating/) for a working demonstration of these patterns.
 
 ## Use Data Extraction and Guards for Resource Dependencies
 

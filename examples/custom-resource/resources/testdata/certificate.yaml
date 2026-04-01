@@ -1,0 +1,13 @@
+apiVersion: cert.example.io/v1
+kind: CertificateRequest
+metadata:
+  labels:
+    app: my-app
+  name: my-app-cert
+  namespace: default
+spec:
+  dnsNames:
+  - my-app.example.com
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod

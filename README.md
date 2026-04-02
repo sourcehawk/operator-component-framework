@@ -7,6 +7,10 @@
 A Go framework for building highly maintainable Kubernetes operators using a behavioral component model and
 version-gated feature mutations.
 
+<p align="center">
+  <img width="400" height="400" alt="OCF Logo" src="https://github.com/user-attachments/assets/ac8162e7-5963-4284-a590-5a9215090103" />
+</p>
+
 ---
 
 The framework is organized into three composable layers:

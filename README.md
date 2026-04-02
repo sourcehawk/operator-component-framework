@@ -4,8 +4,10 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sourcehawk/operator-component-framework)](https://goreportcard.com/report/github.com/sourcehawk/operator-component-framework)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A Go framework for building highly maintainable Kubernetes operators using a behavioral component model and
-version-gated feature mutations.
+A Go framework for building Kubernetes operators that stay maintainable as they grow. It pulls reconciliation mechanics,
+status reporting, and lifecycle behavior into reusable building blocks (**components** and **resource primitives**), so
+your controllers stay thin and focused on construction and orchestration, without sacrificing customizability where it
+matters.
 
 <p align="center">
   <img width="400" height="400" alt="OCF Logo" src="https://github.com/user-attachments/assets/ac8162e7-5963-4284-a590-5a9215090103" />
@@ -13,15 +15,9 @@ version-gated feature mutations.
 
 ---
 
-The framework is organized into three composable layers:
-
-- **Components** group related resources into a single reconcilable unit with one user-facing condition.
-- **Resource Primitives** wrap individual Kubernetes objects with built-in lifecycle semantics (health, suspension,
-  completion).
-- **Feature Mutations** apply version-gated or feature-gated modifications to resource definitions without polluting the
-  baseline.
-
 ## Mental Model
+
+An operator built with this framework has two layers between the controller and raw Kubernetes objects:
 
 ```
 Controller
@@ -35,7 +31,6 @@ Controller
 | **Controller**         | Determines which components should exist; orchestrates reconciliation at a high level   |
 | **Component**          | Represents one logical feature; reconciles its resources and reports a single condition |
 | **Resource Primitive** | Encapsulates desired state and lifecycle behavior for a single Kubernetes object        |
-| **Kubernetes Object**  | The raw `client.Object` (e.g. `Deployment`) persisted to the cluster                    |
 
 ## Features
 

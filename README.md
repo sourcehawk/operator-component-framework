@@ -9,6 +9,10 @@ status reporting, and lifecycle behavior into reusable building blocks (**compon
 your controllers stay thin and focused on construction and orchestration, without sacrificing customizability where it
 matters.
 
+> **Note:** This is not a replacement for [kubebuilder](https://github.com/kubernetes-sigs/kubebuilder) or
+> [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime). It is a library you use on top of them to
+> manage the layers between the reconciler and the Kubernetes resources it manages.
+
 <p align="center">
   <img width="400" height="400" alt="OCF Logo" src="https://github.com/user-attachments/assets/ac8162e7-5963-4284-a590-5a9215090103" />
 </p>

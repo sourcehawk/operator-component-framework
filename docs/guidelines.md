@@ -208,11 +208,6 @@ For version 2.0 and above, the gate is inactive and the baseline is applied as-i
 adjusts the container name and ports back to the legacy shape. The mutation is explicitly about backward compatibility,
 gated on the versions that need it, and will stop running entirely once those versions are no longer supported.
 
-The key difference from the alternative approach: the baseline was updated to the 2.0 shape, and the mutation adapts
-backward. If instead you had kept the baseline at the 1.x shape and added a mutation to patch it forward to 2.0, every
-future version change would stack another forward-patching mutation on top, and the baseline would never reflect
-reality.
-
 ### Verifying backward compatibility mutations
 
 When you update the baseline, you need confidence that older versions still produce the same object they did before. The
@@ -432,18 +427,13 @@ For v2+, the backward compat mutation is inactive and `DebugLogging` sets the en
 sets the env var on `"app"`, then `BackwardCompatV1Container` renames the container to `"server"` and resets its ports.
 The env var survives because the rename does not touch `Env`.
 
-### Naming and ordering with multiple backward compat mutations
+### Ordering with multiple backward compat mutations
 
-Name backward compat mutations `BackwardCompat<version><what>` so the pattern is self-documenting. Use the `P` separator
-for version dots when the function name would otherwise be ambiguous: `BackwardCompatV1P2P0Container` for v1.2.0,
-`BackwardCompatV2Container` for the v2 line.
-
-When multiple backward compat mutations exist, register the newest first (closest to the baseline) and the oldest last.
-Each mutation reverts one version step: `BackwardCompatV2` reverts v3 to v2, and `BackwardCompatV1` reverts v2 to v1.
-For a v1 version, both fire in sequence. The key guarantee is not that they are independent of each other (they do
-execute in order), but that adding a new one does not require changing existing ones. When you update the baseline to v3
-and add `BackwardCompatV2`, the existing `BackwardCompatV1` continues to work unchanged because `BackwardCompatV2`
-restores the v2 shape before `BackwardCompatV1` runs.
+When multiple backward compat mutations exist, the same chained revert ordering from
+[Revert mutations vs. forward mutations](#revert-mutations-vs-forward-mutations) applies: register the newest first
+(closest to the baseline) and the oldest last. The additional constraint here is that feature mutations targeting a
+container by name must come before the backward compat mutations that rename it. Feature mutations using broad selectors
+can go anywhere.
 
 ```go
 res, err := deployment.NewBuilder(BaseDeployment(owner)).                     // baseline is v3
@@ -454,29 +444,8 @@ res, err := deployment.NewBuilder(BaseDeployment(owner)).                     //
     Build()
 ```
 
-The only ordering constraint for feature mutations is that those targeting a container by name must come before backward
-compat mutations that rename that container. Feature mutations that use broad selectors (like `TracingSidecar`) can go
-anywhere in the chain. The ordering between feature mutations themselves does not matter. When you add a new version
-that changes the resource structure, update the baseline and insert the new backward compat mutation before the existing
-ones.
-
-#### Alternative: non-overlapping version gates
-
-Instead of chaining reverts (each undoing one version step), you can give each backward compat mutation a
-non-overlapping gate so that only one fires for any given version. `BackwardCompatV2` fires for `>= 2.0.0, < 3.0.0` and
-`BackwardCompatV1` fires for `>= 1.0.0, < 2.0.0`. Each mutation reverts directly from the current baseline to its target
-version, making them truly order-independent.
-
-The tradeoff is maintenance cost. When you update the baseline to v3, every existing backward compat mutation needs
-updating because each one must now revert from the v3 shape instead of the v2 shape. With chained reverts, only the new
-mutation needs writing; existing ones are untouched. The chained approach trades a visible ordering constraint (newest
-first, enforced by the registration chain) for a stronger stability guarantee (existing mutations never change). The
-non-overlapping approach trades that stability for order independence.
-
-For most operators, the chained approach is the better default. The ordering is mechanical (newest first) and visible in
-the builder chain. The non-overlapping approach is worth considering when mutations are complex enough that reasoning
-about chained execution is genuinely difficult, or when backward compat mutations are maintained by different teams who
-cannot easily coordinate ordering.
+When you add a new version that changes the resource structure, update the baseline and insert the new backward compat
+mutation before the existing ones.
 
 ### What to avoid
 
@@ -491,19 +460,8 @@ m.EditContainers(selectors.ContainersNamed("app", "server"), func(ce *editors.Co
 ```
 
 This works today but breaks if a future version renames the container again. The mutation now needs to track every name
-the container has ever had. Instead, target the baseline name and register the mutation before the backward compat
-rename:
-
-```go
-// Correct: targets the baseline name, registered before BackwardCompatV1Container.
-m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
-    ce.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
-    return nil
-})
-```
-
-The mutation only knows `"app"` (the current baseline name). The backward compat rename fires afterward and carries the
-edit through.
+the container has ever had. Instead, target the baseline name and
+[register the mutation before the backward compat rename](#register-name-specific-mutations-before-backward-compat-renames).
 
 ### When a backward compat mutation replaces the entire container
 

@@ -13,9 +13,9 @@ matters.
   <img width="400" height="400" alt="OCF Logo" src="https://github.com/user-attachments/assets/ac8162e7-5963-4284-a590-5a9215090103" />
 </p>
 
-> ![NOTE] 
-> This is not a replacement for [kubebuilder](https://github.com/kubernetes-sigs/kubebuilder) or
-> [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime). It is a library you use on top of them to
+> [!NOTE] 
+> This framework is not a replacement for [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime). 
+> It is a library you use inside controller-runtime reconcilers, such as in Kubebuilder-generated projects, to
 > manage the layers between the reconciler and the Kubernetes resources it manages.
 
 ---

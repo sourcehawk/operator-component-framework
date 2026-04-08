@@ -21,22 +21,40 @@ matters.
 
 ---
 
-## Mental Model
+## Architecture
 
 An operator built with this framework has two layers between the controller and raw Kubernetes objects:
 
-```
-Controller
-  └─ Component
-      └─ Resource Primitive
-           └─ Kubernetes Object
+```mermaid
+graph TB
+    subgraph controller [" "]
+        R["⚪ Your Reconciler"]
+    end
+
+    subgraph components [" "]
+        C1["🔵 Web Interface component"]
+        C2["🔵 Monitoring component"]
+    end
+
+    subgraph primitives [" "]
+        P1["🟢 ConfigMap"]
+        P2["🟢 Deployment"]
+        P3["🟢 Service"]
+        P4["🟢 ServiceAccount"]
+        P5["🟢 DaemonSet"]
+    end
+
+    subgraph cluster [" "]
+        K["⚪ Kubernetes API"]
+    end
+
+    R --> C1 & C2
+    C1 --> P1 & P2 & P3
+    C2 --> P4 & P5
+    P1 & P2 & P3 & P4 & P5 --> K
 ```
 
-| Layer                  | Responsibility                                                                          |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| **Controller**         | Determines which components should exist; orchestrates reconciliation at a high level   |
-| **Component**          | Represents one logical feature; reconciles its resources and reports a single condition |
-| **Resource Primitive** | Encapsulates desired state and lifecycle behavior for a single Kubernetes object        |
+> ⚪ What you already have &emsp; 🔵 OCF component layer &emsp; 🟢 OCF primitive layer
 
 ## Features
 

@@ -301,33 +301,54 @@ clearer than splitting them into `DeploymentReady` and `ServiceReady`.
 
 ## Keep Controllers Thin
 
-Controllers should fetch the owner, decide which components to build, and call `Reconcile()`. Business logic, resource
-construction, and feature decisions belong in components and their resource builders.
+Controllers should fetch the owner, decide which components to build, call `Reconcile()`, and defer a single
+`component.FlushStatus` to persist status. Business logic, resource construction, and feature decisions belong in
+components and their resource builders.
 
 ```go
-func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_ reconcile.Result, err error) {
     owner := &v1alpha1.MyApp{}
     if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
         return reconcile.Result{}, client.IgnoreNotFound(err)
     }
+
+    recCtx := component.ReconcileContext{
+        Client:   r.Client,
+        Scheme:   r.Scheme,
+        Recorder: r.Recorder,
+        Metrics:  r.Metrics,
+        Owner:    owner,
+    }
+    defer func() {
+        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+            err = flushErr
+        }
+    }()
 
     comp, err := buildWebComponent(owner)
     if err != nil {
         return reconcile.Result{}, err
     }
 
-    return reconcile.Result{}, comp.Reconcile(ctx, component.ReconcileContext{
-        Client:   r.Client,
-        Scheme:   r.Scheme,
-        Recorder: r.Recorder,
-        Metrics:  r.Metrics,
-        Owner:    owner,
-    })
+    return reconcile.Result{}, comp.Reconcile(ctx, recCtx)
 }
 ```
 
 This keeps controller logic trivial to test (there is almost nothing to test) and makes component construction functions
 independently testable as pure functions: owner in, component out, no cluster required.
+
+### Flushing status is the controller's job
+
+`Component.Reconcile` only mutates the owner's conditions in memory. Persisting them is explicitly the controller's
+responsibility, via one `component.FlushStatus` call per reconcile, typically deferred so that conditions set by error
+paths (for example, `fail()` in the framework) are still written when `Reconcile` returns an error.
+
+Do not call `FlushStatus` in between component reconciles. With several components per controller the point of the split
+is to stage all their conditions in memory first and write them once at the end. Flushing between components brings back
+the exact 409 conflict pattern the split was introduced to eliminate.
+
+If you do not want to emit condition metrics, leave `ReconcileContext.Metrics` as `nil`. `FlushStatus` tolerates a nil
+recorder and simply skips metric emission.
 
 ## Resource Registration Order Is Execution Order
 

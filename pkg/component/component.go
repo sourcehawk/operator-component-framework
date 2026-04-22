@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -30,6 +32,8 @@ type OperatorCRD interface {
 }
 
 // Recorder is an interface for recording status condition changes as metrics.
+// It is optional: a [ReconcileContext] may leave [ReconcileContext.Metrics]
+// nil, in which case [FlushStatus] skips metric emission.
 type Recorder interface {
 	// RecordConditionFor records a condition change for a specific object and kind.
 	RecordConditionFor(
@@ -47,7 +51,8 @@ type ReconcileContext struct {
 	Scheme *runtime.Scheme
 	// Recorder is the event recorder for publishing Kubernetes events.
 	Recorder record.EventRecorder
-	// Metrics is the recorder for status condition metrics.
+	// Metrics is the recorder for status condition metrics. It is optional; if
+	// nil, [FlushStatus] will skip metric emission.
 	Metrics Recorder
 	// Owner is the custom resource that owns and is updated by the components.
 	Owner OperatorCRD
@@ -134,8 +139,12 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 
 // Reconcile converges the component to the desired state.
 //
-// A component manages its own condition on the parent and updates it accordingly
-// to represent currently observable facts about the component status.
+// A component manages its own condition on the parent and updates it in-memory
+// to represent currently observable facts about the component status. Reconcile
+// never writes to the Kubernetes API status subresource; the controller is
+// responsible for persisting the final status by calling [FlushStatus] exactly
+// once per reconciliation, typically via defer so that conditions set on error
+// paths are still written.
 //
 // Reconciliation follows these steps:
 //
@@ -170,7 +179,9 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 //
 //  6. Condition Update: Derives a new component condition using a stateful
 //     progression model that considers the aggregate resource status, the
-//     previous condition, and the configured grace period to avoid churn.
+//     previous condition, and the configured grace period to avoid churn. The
+//     new condition is written to the owner in memory only; call [FlushStatus]
+//     to persist.
 //
 //  7. Resource Deletion: Finally, it deletes any resources registered for deletion.
 func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
@@ -184,7 +195,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	mapper := rec.Client.RESTMapper()
 	if mapper == nil {
 		return fail(
-			ctx, rec, c.conditionType, fmt.Errorf(
+			rec, c.conditionType, fmt.Errorf(
 				"ReconcileContext.Client.RESTMapper() returned nil; a valid RESTMapper is required for reconciliation",
 			),
 		)
@@ -195,17 +206,18 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		enabled, err := c.featureGate.Enabled()
 		if err != nil {
 			cond := conditionFeatureGateError(c.conditionType, err, rec.Owner.GetGeneration())
-			_ = setStatusCondition(ctx, rec, cond)
+			applyStatusCondition(rec, cond)
 			return err
 		}
 
 		if !enabled {
 			if err := deleteResources(ctx, rec, c.allManagedResources(), withDeletionReason("disabled feature gate")); err != nil {
-				return fail(ctx, rec, c.conditionType, err)
+				return fail(rec, c.conditionType, err)
 			}
 
 			cond := conditionDisabled(c.conditionType, rec.Owner.GetGeneration())
-			return setStatusCondition(ctx, rec, cond)
+			applyStatusCondition(rec, cond)
+			return nil
 		}
 	}
 
@@ -219,13 +231,14 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 			result, err := c.evaluatePrerequisites(rec)
 			if err != nil {
 				cond := conditionPrerequisiteNotMet(c.conditionType, err.Error(), rec.Owner.GetGeneration())
-				_ = setStatusCondition(ctx, rec, cond)
+				applyStatusCondition(rec, cond)
 				return err
 			}
 
 			if result.Status == PrerequisiteStatusNotMet {
 				cond := conditionPrerequisiteNotMet(c.conditionType, result.Reason, rec.Owner.GetGeneration())
-				return setStatusCondition(ctx, rec, cond)
+				applyStatusCondition(rec, cond)
+				return nil
 			}
 		}
 	}
@@ -236,7 +249,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		managed := c.managedResources()
 		results, err := suspendResources(ctx, rec, managed, c.name, mapper)
 		if err != nil {
-			return fail(ctx, rec, c.conditionType, err)
+			return fail(rec, c.conditionType, err)
 		}
 
 		cond := suspendingCondition(
@@ -244,12 +257,10 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 			suspensionResults(results).summary(),
 			rec.Owner.GetGeneration(),
 		)
-		if err := setStatusCondition(ctx, rec, cond); err != nil {
-			return err
-		}
+		applyStatusCondition(rec, cond)
 
 		if err := deleteResources(ctx, rec, c.deleteResources); err != nil {
-			return fail(ctx, rec, c.conditionType, err)
+			return fail(rec, c.conditionType, err)
 		}
 
 		return nil
@@ -261,7 +272,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	// is available to subsequent resources' guards and mutations.
 	results, err := reconcileResources(ctx, rec, c.reconcileResources, c.name, mapper)
 	if err != nil {
-		return fail(ctx, rec, c.conditionType, err)
+		return fail(rec, c.conditionType, err)
 	}
 
 	// Determine new condition for component
@@ -272,12 +283,10 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		c.gracePeriod,
 		c.GetCondition(rec.Owner),
 	)
-	if err := setStatusCondition(ctx, rec, cond); err != nil {
-		return err
-	}
+	applyStatusCondition(rec, cond)
 
 	if err := deleteResources(ctx, rec, c.deleteResources); err != nil {
-		return fail(ctx, rec, c.conditionType, err)
+		return fail(rec, c.conditionType, err)
 	}
 
 	return nil
@@ -348,23 +357,77 @@ func (c *Component) managedResources() []Resource {
 	return managed
 }
 
-// fail sets the component's error status condition on the owner and returns the
-// provided error.
-//
-// This helper centralizes the common reconciliation pattern where a failure
-// should both:
-//  1. Update the component condition on the owner to reflect the error.
-//  2. Propagate the error to stop further reconciliation.
-//
-// The error from setting the status condition is intentionally ignored because
-// the original reconciliation error is considered the primary failure.
-func fail(
-	ctx context.Context,
-	rec ReconcileContext,
-	conditionType ConditionType,
-	err error,
-) error {
+// fail writes an error condition for the component to the owner in memory and
+// returns the provided error. Persistence of the error condition happens when
+// the controller calls [FlushStatus], typically from a deferred call that
+// still runs even when Reconcile returns an error.
+func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 	cond := conditionError(conditionType, err, rec.Owner.GetGeneration())
-	_ = setStatusCondition(ctx, rec, cond)
+	applyStatusCondition(rec, cond)
 	return err
+}
+
+// FlushStatus persists the owner's current status conditions to the Kubernetes
+// API and records condition metrics for every condition on the owner.
+//
+// Controllers must call FlushStatus exactly once per reconciliation, typically
+// via defer so that conditions set on error paths are still persisted:
+//
+//	func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (res reconcile.Result, err error) {
+//	    owner := &v1alpha1.MyApp{}
+//	    if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
+//	        return reconcile.Result{}, client.IgnoreNotFound(err)
+//	    }
+//	    rec := component.ReconcileContext{ /* ... */ Owner: owner}
+//	    defer func() {
+//	        if flushErr := component.FlushStatus(ctx, rec); flushErr != nil && err == nil {
+//	            err = flushErr
+//	        }
+//	    }()
+//	    return reconcile.Result{}, comp.Reconcile(ctx, rec)
+//	}
+//
+// On a 409 Conflict (for example if an external writer updated the owner
+// between the controller fetching it and this call) FlushStatus refetches the
+// owner, re-applies the conditions staged during reconciliation using
+// meta.SetStatusCondition, and retries. Conditions managed by other writers on
+// the owner are preserved because meta.SetStatusCondition merges by condition
+// type.
+//
+// If rec.Metrics is nil, metric recording is skipped. All other fields of rec
+// must be populated.
+func FlushStatus(ctx context.Context, rec ReconcileContext) error {
+	desired := append([]metav1.Condition(nil), *rec.Owner.GetStatusConditions()...)
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		updateErr := rec.Client.Status().Update(ctx, rec.Owner)
+		if updateErr == nil {
+			return nil
+		}
+		if !apierrors.IsConflict(updateErr) {
+			return updateErr
+		}
+		key := client.ObjectKeyFromObject(rec.Owner)
+		if getErr := rec.Client.Get(ctx, key, rec.Owner); getErr != nil {
+			return getErr
+		}
+		for _, cond := range desired {
+			meta.SetStatusCondition(rec.Owner.GetStatusConditions(), cond)
+		}
+		return updateErr
+	})
+	if err != nil {
+		return err
+	}
+
+	if rec.Metrics == nil {
+		return nil
+	}
+	for _, cond := range *rec.Owner.GetStatusConditions() {
+		rec.Metrics.RecordConditionFor(
+			rec.Owner.GetKind(), rec.Owner, cond.Type, string(cond.Status),
+			cond.Reason, cond.LastTransitionTime.Time,
+		)
+	}
+	return nil
 }

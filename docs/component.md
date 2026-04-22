@@ -32,6 +32,7 @@ reports their aggregate health through one condition on the owner CRD.
 - [Grace Period](#grace-period)
 - [Suspension Lifecycle](#suspension-lifecycle)
 - [ReconcileContext](#reconcilecontext)
+- [Persisting Status with FlushStatus](#persisting-status-with-flushstatus)
 - [Guards](#guards)
   - [Registering a Guard](#registering-a-guard)
   - [Guard Behavior](#guard-behavior)
@@ -262,7 +263,9 @@ This means a read-only resource registered before a managed resource can extract
 resource's guard or mutations.
 
 **Phase 5: Status aggregation and condition update.** The health of each resource is collected, the grace period is
-consulted, and a single aggregate condition is written to the owner object's status.
+consulted, and a single aggregate condition is written to the owner object's conditions **in memory**. `Reconcile` never
+calls the Kubernetes API to persist status; the controller does that in a single write at the end of its reconcile loop.
+See [Persisting Status with FlushStatus](#persisting-status-with-flushstatus).
 
 **Phase 6: Resource deletion.** Resources registered for deletion are removed from the cluster.
 
@@ -428,7 +431,7 @@ recCtx := component.ReconcileContext{
     Client:   r.Client,    // sigs.k8s.io/controller-runtime/pkg/client
     Scheme:   r.Scheme,    // *runtime.Scheme
     Recorder: r.Recorder,  // record.EventRecorder
-    Metrics:  r.Metrics,   // component.Recorder (condition metrics)
+    Metrics:  r.Metrics,   // component.Recorder (condition metrics), optional
     Owner:    owner,       // the CRD that owns this component
 }
 
@@ -437,9 +440,57 @@ err = comp.Reconcile(ctx, recCtx)
 
 Dependencies are passed explicitly so components remain testable and decoupled from global state.
 
-The `Metrics` field is required. The framework records Prometheus metrics for every condition state transition during
-reconciliation. The recorder implementation is provided by
-[go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics).
+The `Metrics` field is optional. When set, the framework records Prometheus metrics for every condition reported during
+a reconcile. The recorder implementation is provided by
+[go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics). Leave the field `nil` to opt out of
+metric recording.
+
+## Persisting Status with FlushStatus
+
+`Component.Reconcile` only mutates the owner's status conditions in memory. The controller is responsible for writing
+those conditions to the Kubernetes API by calling `component.FlushStatus` once per reconcile, typically from a deferred
+call so that conditions set on error paths are still persisted:
+
+```go
+func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_ reconcile.Result, err error) {
+    owner := &v1alpha1.MyApp{}
+    if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
+        return reconcile.Result{}, client.IgnoreNotFound(err)
+    }
+
+    recCtx := component.ReconcileContext{
+        Client:   r.Client,
+        Scheme:   r.Scheme,
+        Recorder: r.Recorder,
+        Metrics:  r.Metrics,
+        Owner:    owner,
+    }
+    defer func() {
+        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+            err = flushErr
+        }
+    }()
+
+    comp, err := buildMyComponent(owner)
+    if err != nil {
+        return reconcile.Result{}, err
+    }
+    return reconcile.Result{}, comp.Reconcile(ctx, recCtx)
+}
+```
+
+`FlushStatus` performs one `Status().Update` call that writes every condition currently on the owner in memory, wrapped
+in `retry.RetryOnConflict`. If another writer updated the owner between the controller's initial `Get` and this call,
+`FlushStatus` refetches, reapplies the conditions staged during the reconcile, and retries. Conditions managed by other
+writers on the same owner are preserved because `meta.SetStatusCondition` merges by condition type.
+
+After the update succeeds, `FlushStatus` records metrics for every condition on the owner. If `rec.Metrics` is nil,
+metric recording is skipped.
+
+This split is what allows a controller with several components (see [Keep Controllers Thin](./guidelines.md) and
+[One Component Per Logical Condition](./guidelines.md)) to stage several conditions during one reconcile and persist
+them all in a single write. Persisting after every component would race the components' writes against each other and
+produce 409 conflicts.
 
 ## Guards
 
@@ -460,8 +511,14 @@ The following example shows the complete pattern. A cloud provider role resource
 bucket resource uses that ARN in its spec and guards against being applied before the ARN is available:
 
 ```go
-func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-    // ...fetch owner...
+func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
+    // ...fetch owner and build recCtx...
+
+    defer func() {
+        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+            err = flushErr
+        }
+    }()
 
     // roleARN is scoped to this reconcile call. The role resource's data extractor
     // populates it after the role is applied. Because extraction runs per-resource

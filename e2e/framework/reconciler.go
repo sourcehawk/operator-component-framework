@@ -82,7 +82,7 @@ func (r *E2EReconciler) Unregister(key types.NamespacedName) {
 
 // Reconcile implements reconcile.Reconciler. It fetches the TestApp, looks up
 // the registered factory, builds the component, and reconciles it.
-func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_ reconcile.Result, err error) {
 	logger := log.FromContext(ctx).WithValues("testapp", req.NamespacedName)
 
 	owner := &TestApp{}
@@ -98,20 +98,19 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 	r.mu.RUnlock()
 
 	var comp *component.Component
-	var err error
 
 	switch {
 	case hasComp:
 		comp, err = compFactory(owner)
 	case hasRes:
-		res, buildErr := resFactory(owner)
+		resource, buildErr := resFactory(owner)
 		if buildErr != nil {
 			return reconcile.Result{}, buildErr
 		}
 		comp, err = component.NewComponentBuilder().
 			WithName("e2e-test").
 			WithConditionType("E2EReady").
-			WithResource(res, component.ResourceOptions{}).
+			WithResource(resource, component.ResourceOptions{}).
 			Suspend(owner.Spec.Suspended).
 			Build()
 	default:
@@ -130,6 +129,11 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		Metrics:  r.Metrics,
 		Owner:    owner,
 	}
+	defer func() {
+		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+			err = flushErr
+		}
+	}()
 
 	if err := comp.Reconcile(ctx, recCtx); err != nil {
 		return reconcile.Result{}, err

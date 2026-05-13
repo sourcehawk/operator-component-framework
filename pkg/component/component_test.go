@@ -42,7 +42,13 @@ var _ = Describe("Component Reconciler", func() {
 		}
 	})
 
+	// getOwnerCondition mirrors what a controller does in production: after
+	// Reconcile mutates the owner's status conditions in memory, a deferred
+	// FlushStatus writes them to the API. The helper flushes then refetches so
+	// that the returned condition reflects the persisted state, including
+	// error conditions set via fail().
 	getOwnerCondition := func() Condition {
+		Expect(FlushStatus(ctx, recCtx)).To(Succeed())
 		updatedOwner := &MockOperatorCRD{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: owner.Name, Namespace: namespace}, updatedOwner)).To(Succeed())
 		return comp.GetCondition(updatedOwner)

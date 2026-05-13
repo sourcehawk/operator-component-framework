@@ -27,7 +27,13 @@ type Controller struct {
 }
 
 // Reconcile builds and reconciles the infra and app components in order.
-func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) error {
+//
+// Both components share the same ReconcileContext and stage their conditions
+// on the owner in memory; a single deferred FlushStatus at the end of
+// reconciliation persists both conditions in one API call. That is what
+// prevents the sequential components from racing two separate status updates
+// against the same owner and hitting conflicts.
+func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err error) {
 	recCtx := component.ReconcileContext{
 		Client:   r.Client,
 		Scheme:   r.Scheme,
@@ -35,6 +41,11 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) error {
 		Metrics:  r.Metrics,
 		Owner:    owner,
 	}
+	defer func() {
+		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+			err = flushErr
+		}
+	}()
 
 	// --- Infra component: no prerequisites ---
 	cmResource, err := r.NewConfigMapResource(owner)

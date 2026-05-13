@@ -24,7 +24,20 @@ type Controller struct {
 }
 
 // Reconcile builds and reconciles a single component containing both resources.
-func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) error {
+func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err error) {
+	recCtx := component.ReconcileContext{
+		Client:   r.Client,
+		Scheme:   r.Scheme,
+		Recorder: r.Recorder,
+		Metrics:  r.Metrics,
+		Owner:    owner,
+	}
+	defer func() {
+		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+			err = flushErr
+		}
+	}()
+
 	deployResource, err := r.NewDeploymentResource(owner)
 	if err != nil {
 		return err
@@ -55,11 +68,5 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) error {
 		return err
 	}
 
-	return comp.Reconcile(ctx, component.ReconcileContext{
-		Client:   r.Client,
-		Scheme:   r.Scheme,
-		Recorder: r.Recorder,
-		Metrics:  r.Metrics,
-		Owner:    owner,
-	})
+	return comp.Reconcile(ctx, recCtx)
 }

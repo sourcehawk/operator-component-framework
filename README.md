@@ -238,26 +238,37 @@ func NewWebInterfaceComponent(owner *MyOperatorCR) (*component.Component, error)
 The controller builds the component and hands it to the framework.
 
 ```go
-func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_ reconcile.Result, err error) {
     owner := &MyOperatorCR{}
     if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
         return reconcile.Result{}, client.IgnoreNotFound(err)
     }
+
+    recCtx := component.ReconcileContext{
+        Client:   r.Client,
+        Scheme:   r.Scheme,
+        Recorder: r.Recorder,
+        Metrics:  r.Metrics,
+        Owner:    owner,
+    }
+    defer func() {
+        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+            err = flushErr
+        }
+    }()
 
     comp, err := NewWebInterfaceComponent(owner)
     if err != nil {
         return reconcile.Result{}, err
     }
 
-    return reconcile.Result{}, comp.Reconcile(ctx, component.ReconcileContext{
-        Client:   r.Client,
-        Scheme:   r.Scheme,
-        Recorder: r.Recorder,
-        Metrics:  r.Metrics,
-        Owner:    owner,
-    })
+    return reconcile.Result{}, comp.Reconcile(ctx, recCtx)
 }
 ```
+
+Components stage their conditions on `owner` in memory; a single deferred `component.FlushStatus` at the end of the
+reconcile loop persists every condition with one `Status().Update` call. This keeps controllers with multiple components
+free of self-induced 409 conflicts.
 
 ## Beyond the Basics
 

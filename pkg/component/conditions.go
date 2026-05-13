@@ -1,8 +1,6 @@
 package component
 
 import (
-	"context"
-
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -153,29 +151,12 @@ func conditionUnknown(component ConditionType, observedGeneration int64) Conditi
 	}
 }
 
-// setStatusCondition updates the component condition on the owner CRD's status.
-// It performs three key actions:
-//  1. Updates the condition in the owner's status condition slice.
-//  2. Records the condition change in the metrics recorder.
-//  3. If the condition has changed, it persists the update to the Kubernetes API.
-func setStatusCondition(
-	ctx context.Context, rec ReconcileContext, cond Condition,
-) error {
-	changed := meta.SetStatusCondition(rec.Owner.GetStatusConditions(), metav1.Condition(cond))
-	updated := meta.FindStatusCondition(*rec.Owner.GetStatusConditions(), cond.Type)
-
-	if updated != nil {
-		rec.Metrics.RecordConditionFor(
-			rec.Owner.GetKind(), rec.Owner, updated.Type, string(updated.Status),
-			updated.Reason, updated.LastTransitionTime.Time,
-		)
-	}
-
-	if changed {
-		if err := rec.Client.Status().Update(ctx, rec.Owner); err != nil {
-			return err
-		}
-	}
-
-	return nil
+// applyStatusCondition updates the component condition on the owner's in-memory
+// status conditions. It does not call the Kubernetes API and does not record
+// metrics; persistence and metrics recording are performed once per reconcile
+// by [FlushStatus]. Keeping this function purely in-memory is what allows a
+// controller with several components to share a single status write at the end
+// of reconciliation instead of racing multiple writes against the same owner.
+func applyStatusCondition(rec ReconcileContext, cond Condition) {
+	meta.SetStatusCondition(rec.Owner.GetStatusConditions(), metav1.Condition(cond))
 }

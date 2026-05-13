@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,8 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -191,10 +194,7 @@ func TestConditionMethods(t *testing.T) {
 	})
 }
 
-func TestSetStatusCondition(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = AddToScheme(scheme)
-
+func TestApplyStatusCondition(t *testing.T) {
 	owner := &MockOperatorCRD{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "test-owner",
@@ -203,7 +203,12 @@ func TestSetStatusCondition(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	rec := ReconcileContext{
+		Client:  failingClient{},
+		Metrics: metricsThatPanic{},
+		Owner:   owner,
+	}
+
 	cond := Condition{
 		Type:               "TestComponent",
 		Status:             metav1.ConditionTrue,
@@ -212,56 +217,123 @@ func TestSetStatusCondition(t *testing.T) {
 		ObservedGeneration: 1,
 	}
 
-	t.Run("should update status and record metrics", func(t *testing.T) {
+	// Pure in-memory mutation: no client call, no metrics call. Using a client
+	// that would fail on any API access and a metrics recorder that would
+	// panic on any invocation proves applyStatusCondition never reaches either.
+	applyStatusCondition(rec, cond)
+
+	conditions := owner.GetStatusConditions()
+	require.Len(t, *conditions, 1)
+	assert.Equal(t, cond.Type, (*conditions)[0].Type)
+	assert.Equal(t, metav1.ConditionTrue, (*conditions)[0].Status)
+	assert.Equal(t, cond.Reason, (*conditions)[0].Reason)
+}
+
+func TestFlushStatus(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	require.NoError(t, AddToScheme(scheme))
+
+	newOwner := func() *MockOperatorCRD {
+		return &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-owner",
+				Namespace:  "default",
+				Generation: 1,
+			},
+		}
+	}
+
+	cond := func(ctype, reason string, status metav1.ConditionStatus) Condition {
+		return Condition{Type: ctype, Status: status, Reason: reason, ObservedGeneration: 1}
+	}
+
+	t.Run("persists every condition on the owner and records a metric per condition", func(t *testing.T) {
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, cond("InfraReady", "Ready", metav1.ConditionTrue))
+		applyStatusCondition(ReconcileContext{Owner: owner}, cond("AppReady", "Ready", metav1.ConditionTrue))
+
 		k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
 		metrics := &MockMetrics{}
+		metrics.On("RecordConditionFor", owner.GetKind(), owner, "InfraReady",
+			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
+		metrics.On("RecordConditionFor", owner.GetKind(), owner, "AppReady",
+			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
 
-		rec := ReconcileContext{
-			Client:  k8sClient,
-			Metrics: metrics,
-			Owner:   owner,
-		}
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}))
 
-		metrics.On("RecordConditionFor",
-			owner.GetKind(), owner, cond.Type, string(cond.Status),
-			cond.Reason, mock.AnythingOfType("time.Time"), mock.Anything,
-		).Return()
-
-		err := setStatusCondition(ctx, rec, cond)
-		require.NoError(t, err)
-
-		// Verify condition set in owner
-		updated := owner.GetStatusConditions()
-		assert.Len(t, *updated, 1)
-		assert.Equal(t, cond.Type, (*updated)[0].Type)
-
+		persisted := &MockOperatorCRD{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
+		assert.Len(t, persisted.Status.Conditions, 2)
 		metrics.AssertExpectations(t)
 	})
 
-	t.Run("should return error if update fails", func(t *testing.T) {
-		// Use a manual mock client to simulate error
-		innerClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
-		k8sClient := &errorMockClient{Client: innerClient}
+	t.Run("is a no-op when metrics recorder is nil", func(t *testing.T) {
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, cond("InfraReady", "Ready", metav1.ConditionTrue))
+
+		k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
+
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}))
+
+		persisted := &MockOperatorCRD{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
+		assert.Len(t, persisted.Status.Conditions, 1)
+	})
+
+	t.Run("surfaces non-conflict update errors without recording metrics", func(t *testing.T) {
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, cond("InfraReady", "Ready", metav1.ConditionTrue))
+
+		inner := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
+		k8sClient := &errorMockClient{Client: inner}
 		metrics := &MockMetrics{}
 
-		rec := ReconcileContext{
-			Client:  k8sClient,
-			Metrics: metrics,
-			Owner:   owner,
-		}
-
-		metrics.On("RecordConditionFor",
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything, mock.Anything, mock.Anything,
-		).Return()
-
-		// New condition to ensure changed=true
-		newCond := cond
-		newCond.Message = "Something changed"
-
-		err := setStatusCondition(ctx, rec, newCond)
+		err := FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner})
 		require.Error(t, err)
 		assert.Equal(t, "update failed", err.Error())
+
+		metrics.AssertNotCalled(t, "RecordConditionFor")
+	})
+
+	t.Run("retries on conflict by refetching the owner and reapplying staged conditions", func(t *testing.T) {
+		owner := newOwner()
+
+		// External writer got there first with a condition the framework does not manage.
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type:               "ExternalReady",
+			Status:             metav1.ConditionTrue,
+			Reason:             "ExternalReason",
+			LastTransitionTime: metav1.Now(),
+		}}
+		inner := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(owner).WithObjects(serverSide).Build()
+		// The in-memory owner has a stale ResourceVersion (empty), so the first
+		// Update must conflict. The conflict wrapper refetches, reapplies our
+		// staged condition, and lets retry.RetryOnConflict succeed on the retry.
+		k8sClient := &conflictOnceClient{Client: inner}
+
+		applyStatusCondition(ReconcileContext{Owner: owner}, cond("InfraReady", "Ready", metav1.ConditionTrue))
+
+		metrics := &MockMetrics{}
+		metrics.On("RecordConditionFor", owner.GetKind(), owner, "ExternalReady",
+			string(metav1.ConditionTrue), "ExternalReason", mock.Anything, mock.Anything).Return().Once()
+		metrics.On("RecordConditionFor", owner.GetKind(), owner, "InfraReady",
+			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
+
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}))
+
+		assert.GreaterOrEqual(t, k8sClient.gets, 1, "expected at least one Get for conflict refetch")
+		persisted := &MockOperatorCRD{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
+		// Both the externally written condition and the framework-managed
+		// condition must be present on the persisted owner.
+		types := make([]string, 0, len(persisted.Status.Conditions))
+		for _, c := range persisted.Status.Conditions {
+			types = append(types, c.Type)
+		}
+		assert.ElementsMatch(t, []string{"ExternalReady", "InfraReady"}, types)
+		metrics.AssertExpectations(t)
 	})
 }
 
@@ -279,4 +351,60 @@ type errorStatusWriter struct {
 
 func (e *errorStatusWriter) Update(_ context.Context, _ client.Object, _ ...client.SubResourceUpdateOption) error {
 	return errors.New("update failed")
+}
+
+// conflictOnceClient wraps a real client and causes the first status Update to
+// return a Conflict error, forcing FlushStatus to refetch and retry. Subsequent
+// Updates fall through to the underlying client.
+type conflictOnceClient struct {
+	client.Client
+	conflicts int
+	gets      int
+}
+
+func (c *conflictOnceClient) Status() client.SubResourceWriter {
+	return &conflictOnceStatusWriter{SubResourceWriter: c.Client.Status(), parent: c}
+}
+
+func (c *conflictOnceClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	c.gets++
+	return c.Client.Get(ctx, key, obj, opts...)
+}
+
+type conflictOnceStatusWriter struct {
+	client.SubResourceWriter
+	parent *conflictOnceClient
+}
+
+func (w *conflictOnceStatusWriter) Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+	if w.parent.conflicts == 0 {
+		w.parent.conflicts++
+		return apierrors.NewConflict(
+			schema.GroupResource{Group: "example.io", Resource: "mockoperatorcrds"},
+			obj.GetName(),
+			fmt.Errorf("the object has been modified; please apply your changes to the latest version and try again"),
+		)
+	}
+	return w.SubResourceWriter.Update(ctx, obj, opts...)
+}
+
+// failingClient is a client whose every method panics. Used to prove that
+// applyStatusCondition never calls the API.
+type failingClient struct {
+	client.Client
+}
+
+func (failingClient) Status() client.SubResourceWriter {
+	panic("applyStatusCondition must not reach the client")
+}
+func (failingClient) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	panic("applyStatusCondition must not reach the client")
+}
+
+// metricsThatPanic is a Recorder whose every method panics. Used to prove that
+// applyStatusCondition never records metrics.
+type metricsThatPanic struct{}
+
+func (metricsThatPanic) RecordConditionFor(string, ocm.ObjectLike, string, string, string, time.Time, ...string) {
+	panic("applyStatusCondition must not record metrics")
 }

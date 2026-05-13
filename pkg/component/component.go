@@ -394,8 +394,8 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // the owner are preserved because meta.SetStatusCondition merges by condition
 // type.
 //
-// If rec.Metrics is nil, metric recording is skipped. All other fields of rec
-// must be populated.
+// rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
+// recording is skipped.
 func FlushStatus(ctx context.Context, rec ReconcileContext) error {
 	desired := append([]metav1.Condition(nil), *rec.Owner.GetStatusConditions()...)
 

@@ -388,8 +388,8 @@ func (w *conflictOnceStatusWriter) Update(ctx context.Context, obj client.Object
 	return w.SubResourceWriter.Update(ctx, obj, opts...)
 }
 
-// failingClient is a client whose every method returns an error. Used to prove
-// that applyStatusCondition never calls the API.
+// failingClient is a client whose every method panics. Used to prove that
+// applyStatusCondition never calls the API.
 type failingClient struct {
 	client.Client
 }

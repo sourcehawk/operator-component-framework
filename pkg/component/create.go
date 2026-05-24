@@ -208,6 +208,16 @@ func reconcileResources(
 			result, err = applyResource(ctx, rec, resource, fieldOwner, mapper)
 		}
 		if err != nil {
+			if entry.Options.ReadOnly && entry.Options.BlockOnAbsence && apierrors.IsNotFound(err) {
+				results = append(results, reconcileResult{
+					Entry: entry,
+					Status: convergingStatusWithReason{
+						Status: convergingStatusGuardBlocked,
+						Reason: fmt.Sprintf("waiting for %s", resource.Identity()),
+					},
+				})
+				return results, nil
+			}
 			return nil, err
 		}
 		if result != nil {

@@ -32,6 +32,12 @@ type ResourceOptions struct {
 	// (e.g., a custom grace handler that deliberately reports Healthy for a
 	// resource that has not fully converged).
 	SuppressGraceInconsistencyWarning bool
+	// BlockOnAbsence applies to read-only resources. When true, a NotFound response
+	// from the cluster is treated as a guard-blocked condition rather than an error,
+	// preventing controller-runtime's exponential backoff and producing a meaningful
+	// status reason. Only use this when the consumer has a watch on the resource's
+	// type so that the reconcile is re-enqueued when the resource appears.
+	BlockOnAbsence bool
 }
 
 // Builder implements the fluent API for constructing and validating a Component.

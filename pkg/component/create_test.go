@@ -466,3 +466,95 @@ func TestApplyResources_ClusterScopedResource(t *testing.T) {
 		resource.AssertExpectations(t)
 	})
 }
+
+func TestReconcileResources_BlockOnAbsence(t *testing.T) {
+	var (
+		scheme    = setupScheme()
+		namespace = "test-namespace"
+		owner     = &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-owner",
+				Namespace: namespace,
+			},
+		}
+		fakeClient       = fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).Build()
+		reconcileContext = setupReconcileContext(scheme, owner, fakeClient)
+		mapper           = createTestRESTMapper()
+		ctx              = t.Context()
+	)
+
+	t.Run("a missing read-only resource that opted into BlockOnAbsence reports guard-blocked instead of erroring", func(t *testing.T) {
+		// Given a read-only resource pointed at a Secret that does not exist
+		// in the cluster, registered with BlockOnAbsence: true.
+		missing := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "absent-secret",
+				Namespace: namespace,
+			},
+		}
+		resource := &MockResource{}
+		resource.On("Object").Return(missing, nil)
+		resource.On("Identity").Return("v1/Secret/absent-secret")
+
+		entry := reconcileEntry{
+			Resource: resource,
+			Options:  ResourceOptions{ReadOnly: true, BlockOnAbsence: true},
+		}
+
+		// When
+		results, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
+
+		// Then no error; one guard-blocked result with the resource identity in the reason.
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		assert.Equal(t, convergingStatusGuardBlocked, results[0].Status.Status)
+		assert.Contains(t, results[0].Status.Reason, "v1/Secret/absent-secret")
+	})
+
+	t.Run("a missing read-only resource without BlockOnAbsence still errors", func(t *testing.T) {
+		missing := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "absent-secret-strict",
+				Namespace: namespace,
+			},
+		}
+		resource := &MockResource{}
+		resource.On("Object").Return(missing, nil)
+		resource.On("Identity").Return("v1/Secret/absent-secret-strict")
+
+		entry := reconcileEntry{
+			Resource: resource,
+			Options:  ResourceOptions{ReadOnly: true},
+		}
+
+		_, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
+		require.Error(t, err)
+	})
+
+	t.Run("subsequent resources are skipped after a BlockOnAbsence short-circuit", func(t *testing.T) {
+		missing := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "absent-secret-leader",
+				Namespace: namespace,
+			},
+		}
+		leader := &MockResource{}
+		leader.On("Object").Return(missing, nil)
+		leader.On("Identity").Return("v1/Secret/absent-secret-leader")
+
+		// A second resource that, if reached, would fail the assertion: its
+		// Object call is not registered, so an unexpected invocation panics.
+		follower := &MockResource{}
+
+		entries := []reconcileEntry{
+			{Resource: leader, Options: ResourceOptions{ReadOnly: true, BlockOnAbsence: true}},
+			{Resource: follower, Options: ResourceOptions{ReadOnly: true}},
+		}
+
+		results, err := reconcileResources(ctx, reconcileContext, entries, "comp", mapper)
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		assert.Equal(t, convergingStatusGuardBlocked, results[0].Status.Status)
+		follower.AssertNotCalled(t, "Object")
+	})
+}

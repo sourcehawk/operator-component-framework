@@ -16,6 +16,7 @@ import (
 //   - concepts.Suspendable: for graceful scale-down or temporary deactivation.
 //   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting information after successful reconciliation.
+//   - concepts.ObservationRecorder: for surfacing live cluster state to data extractors on read-only reconciliation.
 //
 // This resource handles the lifecycle of a Deployment, including initial creation,
 // updates via feature mutations, and status monitoring.
@@ -137,6 +138,14 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // prevent accidental mutations during the extraction process.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// RecordObservation stores the supplied object as the resource's most recently
+// observed cluster state. The framework invokes this on read-only resources
+// after fetching them so that registered data extractors observe the live
+// object rather than the inert base used to construct the resource.
+func (r *Resource) RecordObservation(observed client.Object) error {
+	return r.base.RecordObservation(observed)
 }
 
 // GuardStatus evaluates the resource's guard precondition.

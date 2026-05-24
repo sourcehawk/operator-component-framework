@@ -18,6 +18,7 @@ import (
 //   - concepts.Suspendable: for controlled suspension when the parent component is suspended.
 //   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.ObservationRecorder: for surfacing live cluster state to data extractors on read-only reconciliation.
 //
 // Ingress resources are integration primitives: they depend on an external ingress
 // controller to assign load balancer addresses. The default operational status handler
@@ -108,6 +109,14 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // addresses) from the Ingress.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// RecordObservation stores the supplied object as the resource's most recently
+// observed cluster state. The framework invokes this on read-only resources
+// after fetching them so that registered data extractors observe the live
+// object rather than the inert base used to construct the resource.
+func (r *Resource) RecordObservation(observed client.Object) error {
+	return r.base.RecordObservation(observed)
 }
 
 // GuardStatus evaluates the resource's guard precondition.

@@ -17,6 +17,7 @@ import (
 //   - concepts.Suspendable: for controlled suspension (e.g. retaining the PVC while suspending consumers).
 //   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.ObservationRecorder: for surfacing live cluster state to data extractors on read-only reconciliation.
 //
 // PVC resources follow the Integration lifecycle: they are operationally significant
 // (a PVC must be Bound to be useful) and support suspension semantics.
@@ -102,6 +103,14 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // component to read generated or updated values from the PVC.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
+}
+
+// RecordObservation stores the supplied object as the resource's most recently
+// observed cluster state. The framework invokes this on read-only resources
+// after fetching them so that registered data extractors observe the live
+// object rather than the inert base used to construct the resource.
+func (r *Resource) RecordObservation(observed client.Object) error {
+	return r.base.RecordObservation(observed)
 }
 
 // GuardStatus evaluates the resource's guard precondition.

@@ -160,6 +160,24 @@ func TestResourceOptionsBuilder_Build(t *testing.T) {
 			want: ResourceOptions{SuppressGraceInconsistencyWarning: true},
 		},
 		{
+			name: "block on absence sets flag alongside read-only",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().ReadOnly().BlockOnAbsence().Build()
+			},
+			want: ResourceOptions{ReadOnly: true, BlockOnAbsence: true},
+		},
+		{
+			name: "block on absence preserved when deletion forced",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().
+					WithFeatureGate(&disabledFeature{}).
+					ReadOnly().
+					BlockOnAbsence().
+					Build()
+			},
+			want: ResourceOptions{Delete: true, ReadOnly: false, BlockOnAbsence: true},
+		},
+		{
 			name: "last WithFeatureGate wins",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().

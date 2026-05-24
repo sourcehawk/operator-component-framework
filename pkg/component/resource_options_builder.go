@@ -15,6 +15,7 @@ type ResourceOptionsBuilder struct {
 	requiredTruths []bool
 
 	readOnly                          bool
+	blockOnAbsence                    bool
 	participationMode                 ParticipationMode
 	suppressGraceInconsistencyWarning bool
 }
@@ -77,6 +78,23 @@ func (b *ResourceOptionsBuilder) ReadOnly() *ResourceOptionsBuilder {
 	return b
 }
 
+// BlockOnAbsence opts a read-only resource into guard-blocked semantics when
+// the cluster reports NotFound: instead of returning an error (which triggers
+// controller-runtime's exponential backoff), the component records a blocked
+// status with a "waiting for <resource>" reason and short-circuits the
+// remaining resources for the current reconcile.
+//
+// Use this when the consumer has a watch on the resource's type so that the
+// reconcile is re-enqueued the moment the resource appears. The framework does
+// not verify that a watch exists; without one the component will only retry on
+// its periodic resync.
+//
+// The flag has no effect on managed (non-read-only) resources.
+func (b *ResourceOptionsBuilder) BlockOnAbsence() *ResourceOptionsBuilder {
+	b.blockOnAbsence = true
+	return b
+}
+
 // Build evaluates the configured feature and truth conditions and returns
 // the resulting ResourceOptions.
 //
@@ -114,6 +132,7 @@ func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {
 	return ResourceOptions{
 		Delete:                            shouldDelete,
 		ReadOnly:                          b.readOnly && !shouldDelete,
+		BlockOnAbsence:                    b.blockOnAbsence,
 		ParticipationMode:                 b.participationMode,
 		SuppressGraceInconsistencyWarning: b.suppressGraceInconsistencyWarning,
 	}, nil

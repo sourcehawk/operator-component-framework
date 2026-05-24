@@ -539,6 +539,7 @@ import (
 //   - concepts.Suspendable (DeleteOnSuspend, Suspend, SuspensionStatus)
 //   - concepts.Guardable (GuardStatus)
 //   - concepts.DataExtractable (ExtractData)
+//   - concepts.ObservationRecorder (RecordObservation)
 type Resource struct {
     base *generic.WorkloadResource[*examplev1.GameServer, *Mutator]
 }
@@ -582,16 +583,24 @@ func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
 func (r *Resource) ExtractData() error {
     return r.base.ExtractData()
 }
+
+func (r *Resource) RecordObservation(observed client.Object) error {
+    return r.base.RecordObservation(observed)
+}
 ```
+
+Forward `RecordObservation` whenever the resource may be registered as read-only with a data extractor. The framework
+uses it to feed the fetched cluster object back to the resource before extraction runs; without it, the extractor would
+see the inert base passed to the builder rather than live cluster state.
 
 Which methods to include depends on your resource category:
 
-| Category    | Typical Methods                                                                                                                                   |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData` |
-| Static      | `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`                                                                                      |
-| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`                |
-| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData` |
+| Category    | Typical Methods                                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation` |
+| Static      | `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`, `RecordObservation`                                                                                      |
+| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`                |
+| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation` |
 
 ### 6. Define Feature Mutations
 

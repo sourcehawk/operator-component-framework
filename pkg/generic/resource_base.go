@@ -81,6 +81,10 @@ func (r *BaseResource[T, M]) PreviewObject() (T, error) {
 }
 
 // ExtractData runs all registered data extractors against a deep copy of the reconciled object.
+//
+// For managed resources the reconciled object is the desired state produced by Mutate.
+// For read-only resources it is the object most recently supplied via RecordObservation,
+// which the read flow invokes after fetching from the cluster.
 func (r *BaseResource[T, M]) ExtractData() error {
 	copyObj, ok := r.DesiredObject.DeepCopyObject().(T)
 	if !ok {
@@ -96,6 +100,25 @@ func (r *BaseResource[T, M]) ExtractData() error {
 		}
 	}
 
+	return nil
+}
+
+// RecordObservation stores the supplied object as the resource's most recently observed
+// cluster state. The framework invokes this on read-only resources immediately after
+// fetching them, so that subsequent capabilities such as ExtractData observe the live
+// object rather than the inert base used to construct the resource.
+//
+// RecordObservation returns an error when the supplied object is not assignable to the
+// resource's underlying type.
+func (r *BaseResource[T, M]) RecordObservation(observed client.Object) error {
+	typed, ok := observed.(T)
+	if !ok {
+		return fmt.Errorf(
+			"failed to record observation: expected object of type %T, got %T",
+			r.DesiredObject, observed,
+		)
+	}
+	r.DesiredObject = typed
 	return nil
 }
 

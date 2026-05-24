@@ -90,6 +90,56 @@ func TestStaticResource(t *testing.T) {
 		assert.EqualError(t, err, "extract error")
 	})
 
+	t.Run("RecordObservation makes the observed object visible to ExtractData", func(t *testing.T) {
+		base := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "base-cm",
+				Namespace: "default",
+			},
+		}
+		readOnly := &StaticResource[*corev1.ConfigMap, *mockMutator]{
+			BaseResource: BaseResource[*corev1.ConfigMap, *mockMutator]{
+				DesiredObject: base,
+				IdentityFunc:  identityFunc,
+				NewMutator:    newMutator,
+			},
+		}
+
+		observed := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "base-cm",
+				Namespace: "default",
+			},
+			Data: map[string]string{"foo": "from-cluster"},
+		}
+		require.NoError(t, readOnly.RecordObservation(observed))
+
+		var seen string
+		readOnly.DataExtractors = []func(*corev1.ConfigMap) error{
+			func(cm *corev1.ConfigMap) error {
+				seen = cm.Data["foo"]
+				return nil
+			},
+		}
+		require.NoError(t, readOnly.ExtractData())
+		assert.Equal(t, "from-cluster", seen,
+			"extractor must see the observed cluster object, not the empty desired base")
+	})
+
+	t.Run("RecordObservation rejects an object of the wrong type", func(t *testing.T) {
+		readOnly := &StaticResource[*corev1.ConfigMap, *mockMutator]{
+			BaseResource: BaseResource[*corev1.ConfigMap, *mockMutator]{
+				DesiredObject: &corev1.ConfigMap{},
+				IdentityFunc:  identityFunc,
+				NewMutator:    newMutator,
+			},
+		}
+
+		err := readOnly.RecordObservation(&corev1.Secret{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ConfigMap")
+	})
+
 	t.Run("GuardStatus returns unblocked when no handler is set", func(t *testing.T) {
 		res.GuardHandler = nil
 		result, err := res.GuardStatus()

@@ -256,7 +256,10 @@ regardless of whether they are managed or read-only. For each resource:
 2. The resource is either applied to the cluster (managed) or fetched from it (read-only). Managed resources use
    Server-Side Apply and get a controller owner reference pointing to the owner CRD, unless the resource is
    cluster-scoped and the owner is namespace-scoped (see [Cluster-Scoped Resources](#cluster-scoped-resources)).
-3. If the resource implements `DataExtractable`, its data extractors run immediately. This makes extracted data
+3. For read-only resources that implement `ObservationRecorder`, the framework records the fetched object back onto the
+   resource so that subsequent inspection observes the live cluster state. Resources built from `generic.BaseResource`
+   implement this automatically.
+4. If the resource implements `DataExtractable`, its data extractors run immediately. This makes extracted data
    available to subsequent resources' guards and mutations within the same reconciliation cycle.
 
 This means a read-only resource registered before a managed resource can extract data that feeds into the managed

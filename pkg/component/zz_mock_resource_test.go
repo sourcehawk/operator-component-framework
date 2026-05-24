@@ -163,3 +163,12 @@ func (m *MockGuardableAliveResource) GuardStatus() (concepts.GuardStatusWithReas
 	args := m.Called()
 	return args.Get(0).(concepts.GuardStatusWithReason), args.Error(1)
 }
+
+type MockObservationRecorderResource struct {
+	MockResource
+}
+
+func (m *MockObservationRecorderResource) RecordObservation(observed client.Object) error {
+	args := m.Called(observed)
+	return args.Error(0)
+}

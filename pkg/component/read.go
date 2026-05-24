@@ -31,6 +31,14 @@ func readResource(
 		)
 	}
 
+	if recorder, ok := resource.(concepts.ObservationRecorder); ok {
+		if err := recorder.RecordObservation(object); err != nil {
+			return nil, fmt.Errorf(
+				"failed to record observation for resource %s: %w", resource.Identity(), err,
+			)
+		}
+	}
+
 	status, err := getConvergingStatus(resource, concepts.ConvergingOperationNone)
 	if err != nil {
 		return nil, fmt.Errorf(

@@ -6,10 +6,12 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -147,6 +149,71 @@ func TestReadResources(t *testing.T) {
 		assert.True(t, apierrors.IsNotFound(errors.Unwrap(err)))
 
 		resource.AssertExpectations(t)
+	})
+
+	t.Run("should record the fetched object when the resource implements ObservationRecorder", func(t *testing.T) {
+		// Given a cluster Secret with populated data and a read-only resource
+		// constructed with an empty base; the framework must hand the fetched
+		// object to RecordObservation so that subsequent data extraction sees
+		// the cluster state, not the inert base.
+		clusterSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "observed-secret",
+				Namespace: namespace,
+			},
+			Data: map[string][]byte{"token": []byte("from-cluster")},
+		}
+		require.NoError(t, fakeClient.Create(ctx, clusterSecret))
+
+		baseObject := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "observed-secret",
+				Namespace: namespace,
+			},
+		}
+
+		resource := &MockObservationRecorderResource{}
+		resource.On("Object").Return(baseObject, nil)
+		resource.On("RecordObservation", mock.MatchedBy(func(obj client.Object) bool {
+			secret, ok := obj.(*corev1.Secret)
+			if !ok {
+				return false
+			}
+			return string(secret.Data["token"]) == "from-cluster"
+		})).Return(nil)
+
+		// When
+		_, err := readResources(ctx, reconcileContext, []Resource{resource})
+
+		// Then
+		require.NoError(t, err)
+		resource.AssertExpectations(t)
+	})
+
+	t.Run("should propagate errors from RecordObservation", func(t *testing.T) {
+		clusterSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "record-fail-secret",
+				Namespace: namespace,
+			},
+		}
+		require.NoError(t, fakeClient.Create(ctx, clusterSecret))
+
+		resource := &MockObservationRecorderResource{}
+		resource.On("Object").Return(&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "record-fail-secret",
+				Namespace: namespace,
+			},
+		}, nil)
+		resource.On("Identity").Return("v1/Secret/record-fail-secret")
+		resource.On("RecordObservation", mock.Anything).Return(errors.New("record failed"))
+
+		_, err := readResources(ctx, reconcileContext, []Resource{resource})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "record failed")
+		assert.Contains(t, err.Error(), "v1/Secret/record-fail-secret")
 	})
 
 	t.Run("should return error and update status if resource.ConvergingStatus() fails", func(t *testing.T) {

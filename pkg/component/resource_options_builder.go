@@ -1,6 +1,10 @@
 package component
 
-import "github.com/sourcehawk/operator-component-framework/pkg/feature"
+import (
+	"fmt"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+)
 
 // ResourceOptionsBuilder constructs a ResourceOptions value, optionally
 // integrating with the feature gating system to control whether a resource
@@ -90,7 +94,9 @@ func (b *ResourceOptionsBuilder) ReadOnly() *ResourceOptionsBuilder {
 // not verify that a watch exists; without one the component will only retry on
 // its periodic resync.
 //
-// The flag has no effect on managed (non-read-only) resources.
+// Only valid alongside ReadOnly(); Build() returns an error otherwise.
+// Mutually exclusive with IgnoreIfAbsent(); Build() returns an error if both
+// are set.
 func (b *ResourceOptionsBuilder) BlockOnAbsence() *ResourceOptionsBuilder {
 	b.blockOnAbsence = true
 	return b
@@ -123,6 +129,22 @@ func (b *ResourceOptionsBuilder) IgnoreIfAbsent() *ResourceOptionsBuilder {
 //   - If Delete is true, ReadOnly is forced to false (deletion takes precedence).
 //   - ParticipationMode is preserved regardless of deletion state.
 func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {
+	if b.blockOnAbsence && b.ignoreIfAbsent {
+		return ResourceOptions{}, fmt.Errorf(
+			"BlockOnAbsence and IgnoreIfAbsent are mutually exclusive",
+		)
+	}
+	if b.blockOnAbsence && !b.readOnly {
+		return ResourceOptions{}, fmt.Errorf(
+			"BlockOnAbsence requires ReadOnly",
+		)
+	}
+	if b.ignoreIfAbsent && !b.readOnly {
+		return ResourceOptions{}, fmt.Errorf(
+			"IgnoreIfAbsent requires ReadOnly",
+		)
+	}
+
 	shouldDelete := false
 
 	if b.feature != nil {

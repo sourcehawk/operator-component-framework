@@ -244,3 +244,60 @@ func TestResourceOptionsFor(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestResourceOptionsBuilder_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		build     func() (ResourceOptions, error)
+		wantErrIs string
+	}{
+		{
+			name: "IgnoreIfAbsent without ReadOnly errors",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().IgnoreIfAbsent().Build()
+			},
+			wantErrIs: "IgnoreIfAbsent requires ReadOnly",
+		},
+		{
+			name: "BlockOnAbsence without ReadOnly errors",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().BlockOnAbsence().Build()
+			},
+			wantErrIs: "BlockOnAbsence requires ReadOnly",
+		},
+		{
+			name: "BlockOnAbsence and IgnoreIfAbsent are mutually exclusive",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().
+					ReadOnly().
+					BlockOnAbsence().
+					IgnoreIfAbsent().
+					Build()
+			},
+			wantErrIs: "BlockOnAbsence and IgnoreIfAbsent are mutually exclusive",
+		},
+		{
+			name: "BlockOnAbsence + ReadOnly + disabled feature does not error",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().
+					WithFeatureGate(&disabledFeature{}).
+					ReadOnly().
+					BlockOnAbsence().
+					Build()
+			},
+			wantErrIs: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.build()
+			if tt.wantErrIs == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErrIs)
+		})
+	}
+}

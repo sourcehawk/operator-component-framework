@@ -38,6 +38,16 @@ type ResourceOptions struct {
 	// status reason. Only use this when the consumer has a watch on the resource's
 	// type so that the reconcile is re-enqueued when the resource appears.
 	BlockOnAbsence bool
+	// IgnoreIfAbsent applies to read-only resources. When true, a NotFound
+	// response from the cluster when reading the resource is silently ignored:
+	// the entry is skipped, no condition or observation is recorded, the data
+	// extractor is not invoked, and reconciliation of subsequent resources
+	// continues unchanged.
+	//
+	// Use this when the resource is genuinely optional (e.g., a reference to a
+	// Secret owned by another operator that may or may not exist). It is
+	// mutually exclusive with BlockOnAbsence and requires ReadOnly.
+	IgnoreIfAbsent bool
 }
 
 // Builder implements the fluent API for constructing and validating a Component.

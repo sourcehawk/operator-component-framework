@@ -178,6 +178,24 @@ func TestResourceOptionsBuilder_Build(t *testing.T) {
 			want: ResourceOptions{Delete: true, ReadOnly: false, BlockOnAbsence: true},
 		},
 		{
+			name: "ignore if absent sets flag alongside read-only",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().ReadOnly().IgnoreIfAbsent().Build()
+			},
+			want: ResourceOptions{ReadOnly: true, IgnoreIfAbsent: true},
+		},
+		{
+			name: "ignore if absent preserved when deletion forced",
+			build: func() (ResourceOptions, error) {
+				return NewResourceOptionsBuilder().
+					WithFeatureGate(&disabledFeature{}).
+					ReadOnly().
+					IgnoreIfAbsent().
+					Build()
+			},
+			want: ResourceOptions{Delete: true, ReadOnly: false, IgnoreIfAbsent: true},
+		},
+		{
 			name: "last WithFeatureGate wins",
 			build: func() (ResourceOptions, error) {
 				return NewResourceOptionsBuilder().

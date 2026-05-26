@@ -16,6 +16,7 @@ type ResourceOptionsBuilder struct {
 
 	readOnly                          bool
 	blockOnAbsence                    bool
+	ignoreIfAbsent                    bool
 	participationMode                 ParticipationMode
 	suppressGraceInconsistencyWarning bool
 }
@@ -95,6 +96,20 @@ func (b *ResourceOptionsBuilder) BlockOnAbsence() *ResourceOptionsBuilder {
 	return b
 }
 
+// IgnoreIfAbsent opts a read-only resource into "optional" semantics: if the
+// cluster reports NotFound when reading the resource, the framework silently
+// skips this entry and continues reconciling subsequent resources. No
+// condition is reported, no observation is recorded, and the data extractor
+// is not invoked.
+//
+// Only valid alongside ReadOnly(); Build() returns an error otherwise.
+// Mutually exclusive with BlockOnAbsence(); Build() returns an error if both
+// are set.
+func (b *ResourceOptionsBuilder) IgnoreIfAbsent() *ResourceOptionsBuilder {
+	b.ignoreIfAbsent = true
+	return b
+}
+
 // Build evaluates the configured feature and truth conditions and returns
 // the resulting ResourceOptions.
 //
@@ -133,6 +148,7 @@ func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {
 		Delete:                            shouldDelete,
 		ReadOnly:                          b.readOnly && !shouldDelete,
 		BlockOnAbsence:                    b.blockOnAbsence,
+		IgnoreIfAbsent:                    b.ignoreIfAbsent,
 		ParticipationMode:                 b.participationMode,
 		SuppressGraceInconsistencyWarning: b.suppressGraceInconsistencyWarning,
 	}, nil

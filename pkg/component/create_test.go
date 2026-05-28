@@ -558,3 +558,96 @@ func TestReconcileResources_BlockOnAbsence(t *testing.T) {
 		follower.AssertNotCalled(t, "Object")
 	})
 }
+
+func TestReconcileResources_IgnoreIfAbsent(t *testing.T) {
+	var (
+		scheme    = setupScheme()
+		namespace = "test-namespace"
+		owner     = &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-owner",
+				Namespace: namespace,
+			},
+		}
+		fakeClient       = fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).Build()
+		reconcileContext = setupReconcileContext(scheme, owner, fakeClient)
+		mapper           = createTestRESTMapper()
+		ctx              = t.Context()
+	)
+
+	t.Run("a missing read-only resource with IgnoreIfAbsent is silently skipped", func(t *testing.T) {
+		missing := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "absent-optional-secret",
+				Namespace: namespace,
+			},
+		}
+		resource := &MockResource{}
+		resource.On("Object").Return(missing, nil)
+		resource.On("Identity").Return("v1/Secret/absent-optional-secret")
+
+		entry := reconcileEntry{
+			Resource: resource,
+			Options:  ResourceOptions{ReadOnly: true, IgnoreIfAbsent: true},
+		}
+
+		results, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
+
+		require.NoError(t, err)
+		assert.Empty(t, results, "absent IgnoreIfAbsent resource must contribute no condition")
+	})
+
+	t.Run("subsequent resources still reconcile after an ignored absence", func(t *testing.T) {
+		missingLeader := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "absent-optional-leader",
+				Namespace: namespace,
+			},
+		}
+		leader := &MockResource{}
+		leader.On("Object").Return(missingLeader, nil)
+		leader.On("Identity").Return("v1/Secret/absent-optional-leader")
+
+		presentFollower := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "present-follower",
+				Namespace: namespace,
+			},
+		}
+		require.NoError(t, fakeClient.Create(ctx, presentFollower))
+
+		follower := &MockResource{}
+		follower.On("Object").Return(presentFollower, nil)
+		follower.On("Identity").Return("v1/Secret/present-follower")
+
+		entries := []reconcileEntry{
+			{Resource: leader, Options: ResourceOptions{ReadOnly: true, IgnoreIfAbsent: true}},
+			{Resource: follower, Options: ResourceOptions{ReadOnly: true}},
+		}
+
+		_, err := reconcileResources(ctx, reconcileContext, entries, "comp", mapper)
+
+		require.NoError(t, err)
+		follower.AssertCalled(t, "Object")
+	})
+
+	t.Run("a missing read-only resource without any absence flag still errors", func(t *testing.T) {
+		missing := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "absent-strict-default",
+				Namespace: namespace,
+			},
+		}
+		resource := &MockResource{}
+		resource.On("Object").Return(missing, nil)
+		resource.On("Identity").Return("v1/Secret/absent-strict-default")
+
+		entry := reconcileEntry{
+			Resource: resource,
+			Options:  ResourceOptions{ReadOnly: true},
+		}
+
+		_, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
+		require.Error(t, err)
+	})
+}

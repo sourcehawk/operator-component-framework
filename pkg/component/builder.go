@@ -33,11 +33,32 @@ type ResourceOptions struct {
 	// resource that has not fully converged).
 	SuppressGraceInconsistencyWarning bool
 	// BlockOnAbsence applies to read-only resources. When true, a NotFound response
-	// from the cluster is treated as a guard-blocked condition rather than an error,
-	// preventing controller-runtime's exponential backoff and producing a meaningful
-	// status reason. Only use this when the consumer has a watch on the resource's
-	// type so that the reconcile is re-enqueued when the resource appears.
+	// from the cluster is treated as a guard-blocked condition rather than an
+	// error, preventing controller-runtime's exponential backoff and producing a
+	// meaningful status reason. Only use this when the consumer has a watch on
+	// the resource's type so that the reconcile is re-enqueued when the
+	// resource appears. Mutually exclusive with IgnoreIfAbsent; the builder
+	// rejects both at Build() time.
 	BlockOnAbsence bool
+	// IgnoreIfAbsent applies to read-only resources. When true, a NotFound
+	// response from the cluster when reading the resource is silently ignored:
+	// the entry is skipped, no condition or observation is recorded, the data
+	// extractor is not invoked, and reconciliation of subsequent resources
+	// continues unchanged.
+	//
+	// State recorded in earlier reconciles (the last observation stored on the
+	// resource and any data extracted from it) is preserved across an absence
+	// rather than reset. Resources are reused across reconciles, so any
+	// downstream consumer that reads such state will see the last-known value
+	// until a future reconcile finds the resource present again. Use the
+	// returned ReadOnly+IgnoreIfAbsent flag combination only when last-known
+	// behavior is acceptable on absence; otherwise gate the resource with a
+	// When() condition that performs your own existence check.
+	//
+	// Use this when the resource is genuinely optional (e.g., a reference to a
+	// Secret owned by another operator that may or may not exist). It is
+	// mutually exclusive with BlockOnAbsence and requires ReadOnly.
+	IgnoreIfAbsent bool
 }
 
 // Builder implements the fluent API for constructing and validating a Component.

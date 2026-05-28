@@ -1,6 +1,10 @@
 package component
 
-import "github.com/sourcehawk/operator-component-framework/pkg/feature"
+import (
+	"fmt"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+)
 
 // ResourceOptionsBuilder constructs a ResourceOptions value, optionally
 // integrating with the feature gating system to control whether a resource
@@ -16,6 +20,7 @@ type ResourceOptionsBuilder struct {
 
 	readOnly                          bool
 	blockOnAbsence                    bool
+	ignoreIfAbsent                    bool
 	participationMode                 ParticipationMode
 	suppressGraceInconsistencyWarning bool
 }
@@ -89,9 +94,33 @@ func (b *ResourceOptionsBuilder) ReadOnly() *ResourceOptionsBuilder {
 // not verify that a watch exists; without one the component will only retry on
 // its periodic resync.
 //
-// The flag has no effect on managed (non-read-only) resources.
+// Only valid alongside ReadOnly(); Build() returns an error otherwise.
+// Mutually exclusive with IgnoreIfAbsent(); Build() returns an error if both
+// are set.
 func (b *ResourceOptionsBuilder) BlockOnAbsence() *ResourceOptionsBuilder {
 	b.blockOnAbsence = true
+	return b
+}
+
+// IgnoreIfAbsent opts a read-only resource into "optional" semantics: if the
+// cluster reports NotFound when reading the resource, the framework silently
+// skips this entry and continues reconciling subsequent resources. No
+// condition is reported, no observation is recorded, and the data extractor
+// is not invoked.
+//
+// State recorded in earlier reconciles (the last observation stored on the
+// resource and any data extracted from it) is preserved across an absence
+// rather than reset. Downstream consumers that read that state will see the
+// last-known value until a future reconcile finds the resource present
+// again. Pick this flag only when last-known-good behavior on absence is
+// acceptable; otherwise gate the resource with a When() condition that
+// performs your own existence check.
+//
+// Only valid alongside ReadOnly(); Build() returns an error otherwise.
+// Mutually exclusive with BlockOnAbsence(); Build() returns an error if both
+// are set.
+func (b *ResourceOptionsBuilder) IgnoreIfAbsent() *ResourceOptionsBuilder {
+	b.ignoreIfAbsent = true
 	return b
 }
 
@@ -108,6 +137,22 @@ func (b *ResourceOptionsBuilder) BlockOnAbsence() *ResourceOptionsBuilder {
 //   - If Delete is true, ReadOnly is forced to false (deletion takes precedence).
 //   - ParticipationMode is preserved regardless of deletion state.
 func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {
+	if b.blockOnAbsence && b.ignoreIfAbsent {
+		return ResourceOptions{}, fmt.Errorf(
+			"resource options BlockOnAbsence and IgnoreIfAbsent are mutually exclusive",
+		)
+	}
+	if b.blockOnAbsence && !b.readOnly {
+		return ResourceOptions{}, fmt.Errorf(
+			"resource option BlockOnAbsence requires ReadOnly",
+		)
+	}
+	if b.ignoreIfAbsent && !b.readOnly {
+		return ResourceOptions{}, fmt.Errorf(
+			"resource option IgnoreIfAbsent requires ReadOnly",
+		)
+	}
+
 	shouldDelete := false
 
 	if b.feature != nil {
@@ -133,6 +178,7 @@ func (b *ResourceOptionsBuilder) Build() (ResourceOptions, error) {
 		Delete:                            shouldDelete,
 		ReadOnly:                          b.readOnly && !shouldDelete,
 		BlockOnAbsence:                    b.blockOnAbsence,
+		IgnoreIfAbsent:                    b.ignoreIfAbsent,
 		ParticipationMode:                 b.participationMode,
 		SuppressGraceInconsistencyWarning: b.suppressGraceInconsistencyWarning,
 	}, nil

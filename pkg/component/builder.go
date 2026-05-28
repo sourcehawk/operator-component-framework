@@ -46,6 +46,15 @@ type ResourceOptions struct {
 	// extractor is not invoked, and reconciliation of subsequent resources
 	// continues unchanged.
 	//
+	// State recorded in earlier reconciles (the last observation stored on the
+	// resource and any data extracted from it) is preserved across an absence
+	// rather than reset. Resources are reused across reconciles, so any
+	// downstream consumer that reads such state will see the last-known value
+	// until a future reconcile finds the resource present again. Use the
+	// returned ReadOnly+IgnoreIfAbsent flag combination only when last-known
+	// behavior is acceptable on absence; otherwise gate the resource with a
+	// When() condition that performs your own existence check.
+	//
 	// Use this when the resource is genuinely optional (e.g., a reference to a
 	// Secret owned by another operator that may or may not exist). It is
 	// mutually exclusive with BlockOnAbsence and requires ReadOnly.

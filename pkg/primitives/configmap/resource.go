@@ -77,3 +77,13 @@ func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
 func (r *Resource) PreviewObject() (*corev1.ConfigMap, error) {
 	return r.base.PreviewObject()
 }
+
+// Preview renders the ConfigMap as a client.Object with feature mutations applied,
+// without modifying the resource's internal state. It satisfies the component's
+// Previewable capability so the component can assemble a cluster-free preview.
+//
+// Suspension mutations are not applied; the preview reflects content state only.
+// Callers needing the concrete type can type-assert the returned object.
+func (r *Resource) Preview() (client.Object, error) {
+	return r.base.Preview()
+}

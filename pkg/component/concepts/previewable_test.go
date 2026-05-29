@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -18,10 +19,6 @@ var _ concepts.Previewable = stubPreviewable{}
 func TestPreviewableConformance(t *testing.T) {
 	var p concepts.Previewable = stubPreviewable{obj: &appsv1.Deployment{}}
 	obj, err := p.Preview()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if obj == nil {
-		t.Fatal("expected non-nil object")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, obj)
 }

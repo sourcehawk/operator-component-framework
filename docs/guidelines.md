@@ -253,7 +253,7 @@ A reasonable heuristic for the boundary: if a field is always present regardless
 in the baseline. If it is conditional, it belongs in a mutation.
 
 To snapshot an entire component at once, use `AssertComponentYAML`. It calls `comp.Preview()`, serializes every managed
-resource the component would apply into a single multi-document YAML file (one `---` separator per object, in
+resource the component would apply into a single multi-document YAML file (documents joined by `---` separators, in
 registration order), and compares the result against the golden file. This is useful when you want to verify that a
 cross-component change does not accidentally alter any resource's shape.
 

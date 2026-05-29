@@ -165,6 +165,9 @@ func (c *Component) Preview() ([]client.Object, error) {
 		if err != nil {
 			return nil, fmt.Errorf("preview resource %q: %w", entry.Resource.Identity(), err)
 		}
+		if obj == nil {
+			return nil, fmt.Errorf("preview resource %q: returned a nil object", entry.Resource.Identity())
+		}
 		objs = append(objs, obj)
 	}
 	return objs, nil

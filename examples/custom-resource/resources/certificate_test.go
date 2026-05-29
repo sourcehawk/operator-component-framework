@@ -86,7 +86,7 @@ func TestCertificateGVK(t *testing.T) {
 }
 
 // Verify the Previewer interface conformance for the unstructured static resource.
-func TestCertificatePreviewObject(t *testing.T) {
+func TestCertificatePreview(t *testing.T) {
 	owner := testOwner()
 	res, err := static.NewBuilder(resources.BaseCertificateRequest(owner)).Build()
 	require.NoError(t, err)

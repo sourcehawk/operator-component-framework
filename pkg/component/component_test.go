@@ -1650,6 +1650,22 @@ func TestComponentPreview(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "apps/v1/Deployment/default/f")
 	})
+
+	t.Run("errors when a managed resource previews a nil object", func(t *testing.T) {
+		nilRes := &MockPreviewableResource{}
+		nilRes.On("Identity").Return("apps/v1/Deployment/default/nilobj")
+		nilRes.On("Preview").Return(nil, nil)
+
+		b := NewComponentBuilder()
+		b.WithName("t").WithConditionType("Ready")
+		b.WithResource(nilRes, ResourceOptions{})
+		comp, err := b.Build()
+		require.NoError(t, err)
+
+		_, err = comp.Preview()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "apps/v1/Deployment/default/nilobj")
+	})
 }
 
 func TestComponentResource(t *testing.T) {

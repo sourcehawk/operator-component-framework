@@ -154,14 +154,6 @@ func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
 	return r.base.GuardStatus()
 }
 
-// PreviewObject returns the Deployment as it would appear after feature mutations
-// have been applied, without modifying the resource's internal state.
-//
-// Suspension mutations are not applied; the preview reflects content state only.
-func (r *Resource) PreviewObject() (*appsv1.Deployment, error) {
-	return r.base.PreviewObject()
-}
-
 // Preview renders the Deployment as a client.Object with feature mutations applied,
 // without modifying the resource's internal state. It satisfies the component's
 // Previewable capability so the component can assemble a cluster-free preview.

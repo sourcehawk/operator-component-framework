@@ -16,6 +16,7 @@ import (
 
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 )
 
@@ -135,6 +136,46 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 	}
 
 	return Condition(*cond)
+}
+
+// Preview renders the desired state of every managed resource the component
+// would apply, in registration order, without contacting the cluster.
+//
+// Read-only resources (which are fetched, not applied) and delete resources
+// (removal markers with no desired object) are excluded; the result is the
+// "what would you apply" view, suitable for whole-component golden snapshots.
+//
+// Each managed reconcile resource must implement concepts.Previewable; all
+// built-in primitives do. Preview returns an error if a managed resource does
+// not implement it or if rendering a resource fails.
+func (c *Component) Preview() ([]client.Object, error) {
+	objs := make([]client.Object, 0, len(c.reconcileResources))
+	for _, entry := range c.reconcileResources {
+		if entry.Options.ReadOnly {
+			continue
+		}
+		previewable, ok := entry.Resource.(concepts.Previewable)
+		if !ok {
+			return nil, fmt.Errorf(
+				"resource %q does not implement concepts.Previewable and cannot be previewed",
+				entry.Resource.Identity(),
+			)
+		}
+		obj, err := previewable.Preview()
+		if err != nil {
+			return nil, fmt.Errorf("preview resource %q: %w", entry.Resource.Identity(), err)
+		}
+		objs = append(objs, obj)
+	}
+	return objs, nil
+}
+
+// Resource returns the registered resource with the given Identity() and true,
+// or nil and false if no such resource is registered. The lookup covers every
+// registered resource, including read-only and delete resources.
+func (c *Component) Resource(identity string) (Resource, bool) {
+	r, ok := c.resourceLookup[identity]
+	return r, ok
 }
 
 // Reconcile converges the component to the desired state.

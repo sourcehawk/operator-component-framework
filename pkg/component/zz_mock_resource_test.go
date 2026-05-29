@@ -172,3 +172,18 @@ func (m *MockObservationRecorderResource) RecordObservation(observed client.Obje
 	args := m.Called(observed)
 	return args.Error(0)
 }
+
+// MockPreviewableResource is a MockResource that also implements
+// concepts.Previewable, for exercising Component.Preview.
+type MockPreviewableResource struct {
+	MockResource
+}
+
+func (m *MockPreviewableResource) Preview() (client.Object, error) {
+	args := m.Called()
+	obj := args.Get(0)
+	if obj == nil {
+		return nil, args.Error(1)
+	}
+	return obj.(client.Object), args.Error(1)
+}

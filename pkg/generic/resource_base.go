@@ -80,6 +80,16 @@ func (r *BaseResource[T, M]) PreviewObject() (T, error) {
 	)
 }
 
+// Preview renders the desired object as a client.Object with feature mutations
+// applied, without modifying the resource's internal state. It wraps
+// PreviewObject so resources can be previewed polymorphically through the
+// component's Previewable capability.
+//
+// Suspension mutations are not applied; the preview reflects content state only.
+func (r *BaseResource[T, M]) Preview() (client.Object, error) {
+	return r.PreviewObject()
+}
+
 // ExtractData runs all registered data extractors against a deep copy of the reconciled object.
 //
 // For managed resources the reconciled object is the desired state produced by Mutate.

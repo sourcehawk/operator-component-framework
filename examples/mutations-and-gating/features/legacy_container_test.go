@@ -39,8 +39,11 @@ func TestBackwardCompatV1Container(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	obj, err := res.PreviewObject()
+	previewed, err := res.Preview()
 	require.NoError(t, err)
+
+	obj, ok := previewed.(*appsv1.Deployment)
+	require.True(t, ok)
 
 	containers := obj.Spec.Template.Spec.Containers
 	require.Len(t, containers, 1)

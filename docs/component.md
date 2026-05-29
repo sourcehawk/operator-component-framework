@@ -17,6 +17,7 @@ reports their aggregate health through one condition on the owner CRD.
   - [Prerequisite Behavior](#prerequisite-behavior)
   - [Status Reporting](#status-reporting)
 - [Reconciliation Lifecycle](#reconciliation-lifecycle)
+- [Previewing Desired State](#previewing-desired-state)
 - [Cluster-Scoped Resources](#cluster-scoped-resources)
 - [Status Model](#status-model)
   - [Alive Resources](#alive-resources-alive-interface)
@@ -275,6 +276,53 @@ calls the Kubernetes API to persist status; the controller does that in a single
 See [Persisting Status with FlushStatus](#persisting-status-with-flushstatus).
 
 **Phase 6: Resource deletion.** Resources registered for deletion are removed from the cluster.
+
+## Previewing Desired State
+
+`Component.Preview() ([]client.Object, error)` renders the desired state of every managed resource registered on the
+component, in registration order, without contacting the cluster. Read-only resources (fetched, not applied) and delete
+resources (removal markers) are excluded.
+
+`Preview` does not evaluate guards. Reconciliation stops at the first resource whose guard is `Blocked` and skips that
+resource and all later ones, but a guard's outcome typically depends on cluster state and data extracted from earlier
+resources, neither of which is available in a cluster-free render. `Preview` therefore reports the full desired shape of
+every managed resource, including ones a given reconcile might skip behind a blocked guard. This keeps the snapshot
+deterministic and focused on baseline construction, mutation wiring, and registration order.
+
+Each managed resource must implement `concepts.Previewable`. All built-in primitives satisfy this through
+`generic.BaseResource`. `Preview` returns an error if any managed resource does not implement `concepts.Previewable` or
+if rendering a resource fails.
+
+`Component.Resource(identity string) (Resource, bool)` looks up a registered resource by its `Identity()` string. For
+namespaced resources the identity is `<apiVersion>/<kind>/<namespace>/<name>` (for example
+`apps/v1/Deployment/default/web`); cluster-scoped resources omit the namespace segment (for example
+`v1/PersistentVolume/data` or `rbac.authorization.k8s.io/v1/ClusterRole/viewer`). The lookup covers all registered
+resources: managed, read-only, and delete resources.
+
+`Reconcile` remains the only path that performs cluster IO. `Preview` is the natural input for whole-component golden
+snapshots via `golden.AssertComponentYAML`.
+
+```go
+comp, err := buildWebComponent(owner)
+if err != nil {
+    return err
+}
+
+objs, err := comp.Preview()
+if err != nil {
+    return err
+}
+
+for _, obj := range objs {
+    fmt.Printf("%s/%s\n", obj.GetNamespace(), obj.GetName())
+}
+```
+
+If you need the concrete Kubernetes type rather than `client.Object`, type-assert the returned value:
+
+```go
+dep, ok := objs[0].(*appsv1.Deployment)
+```
 
 ## Cluster-Scoped Resources
 

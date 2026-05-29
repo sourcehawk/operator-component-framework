@@ -3,16 +3,20 @@ package component
 import (
 	"context"
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var _ = Describe("Component Reconciler", func() {
@@ -1559,4 +1563,135 @@ type testPrereqFunc struct {
 
 func (p *testPrereqFunc) Check(_ ReconcileContext) (PrerequisiteResult, error) {
 	return p.checkFn()
+}
+
+func TestComponentPreview(t *testing.T) {
+	t.Run("renders managed reconcile resources in registration order", func(t *testing.T) {
+		r1 := &MockPreviewableResource{}
+		r1.On("Identity").Return("apps/v1/Deployment/default/a")
+		r1.On("Preview").Return(&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		}, nil)
+
+		r2 := &MockPreviewableResource{}
+		r2.On("Identity").Return("v1/ConfigMap/default/b")
+		r2.On("Preview").Return(&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "b"},
+		}, nil)
+
+		b := NewComponentBuilder()
+		b.WithName("t").WithConditionType("Ready")
+		b.WithResource(r1, ResourceOptions{})
+		b.WithResource(r2, ResourceOptions{})
+		comp, err := b.Build()
+		require.NoError(t, err)
+
+		objs, err := comp.Preview()
+		require.NoError(t, err)
+		require.Len(t, objs, 2)
+		assert.Equal(t, "a", objs[0].GetName())
+		assert.Equal(t, "b", objs[1].GetName())
+	})
+
+	t.Run("excludes read-only and delete resources", func(t *testing.T) {
+		managed := &MockPreviewableResource{}
+		managed.On("Identity").Return("apps/v1/Deployment/default/m")
+		managed.On("Preview").Return(&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "m"}}, nil)
+
+		readOnly := &MockPreviewableResource{}
+		readOnly.On("Identity").Return("v1/Secret/default/ro")
+
+		del := &MockPreviewableResource{}
+		del.On("Identity").Return("v1/ConfigMap/default/del")
+
+		b := NewComponentBuilder()
+		b.WithName("t").WithConditionType("Ready")
+		b.WithResource(managed, ResourceOptions{})
+		b.WithResource(readOnly, ResourceOptions{ReadOnly: true})
+		b.WithResource(del, ResourceOptions{Delete: true})
+		comp, err := b.Build()
+		require.NoError(t, err)
+
+		objs, err := comp.Preview()
+		require.NoError(t, err)
+		require.Len(t, objs, 1)
+		assert.Equal(t, "m", objs[0].GetName())
+		readOnly.AssertNotCalled(t, "Preview")
+		del.AssertNotCalled(t, "Preview")
+	})
+
+	t.Run("errors when a managed resource is not previewable", func(t *testing.T) {
+		plain := &MockResource{} // implements Resource but not Previewable
+		plain.On("Identity").Return("apps/v1/Deployment/default/p")
+
+		b := NewComponentBuilder()
+		b.WithName("t").WithConditionType("Ready")
+		b.WithResource(plain, ResourceOptions{})
+		comp, err := b.Build()
+		require.NoError(t, err)
+
+		_, err = comp.Preview()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "apps/v1/Deployment/default/p")
+	})
+
+	t.Run("wraps a render error with the resource identity", func(t *testing.T) {
+		failing := &MockPreviewableResource{}
+		failing.On("Identity").Return("apps/v1/Deployment/default/f")
+		failing.On("Preview").Return(nil, assert.AnError)
+
+		b := NewComponentBuilder()
+		b.WithName("t").WithConditionType("Ready")
+		b.WithResource(failing, ResourceOptions{})
+		comp, err := b.Build()
+		require.NoError(t, err)
+
+		_, err = comp.Preview()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "apps/v1/Deployment/default/f")
+	})
+
+	t.Run("errors when a managed resource previews a nil object", func(t *testing.T) {
+		nilRes := &MockPreviewableResource{}
+		nilRes.On("Identity").Return("apps/v1/Deployment/default/nilobj")
+		nilRes.On("Preview").Return(nil, nil)
+
+		b := NewComponentBuilder()
+		b.WithName("t").WithConditionType("Ready")
+		b.WithResource(nilRes, ResourceOptions{})
+		comp, err := b.Build()
+		require.NoError(t, err)
+
+		_, err = comp.Preview()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "apps/v1/Deployment/default/nilobj")
+	})
+}
+
+func TestComponentResource(t *testing.T) {
+	managed := &MockResource{}
+	managed.On("Identity").Return("apps/v1/Deployment/default/m")
+	readOnly := &MockResource{}
+	readOnly.On("Identity").Return("v1/Secret/default/ro")
+	del := &MockResource{}
+	del.On("Identity").Return("v1/ConfigMap/default/del")
+
+	b := NewComponentBuilder()
+	b.WithName("t").WithConditionType("Ready")
+	b.WithResource(managed, ResourceOptions{})
+	b.WithResource(readOnly, ResourceOptions{ReadOnly: true})
+	b.WithResource(del, ResourceOptions{Delete: true})
+	comp, err := b.Build()
+	require.NoError(t, err)
+
+	got, ok := comp.Resource("v1/Secret/default/ro")
+	assert.True(t, ok)
+	assert.Equal(t, readOnly, got)
+
+	gotDel, ok := comp.Resource("v1/ConfigMap/default/del")
+	assert.True(t, ok)
+	assert.Equal(t, del, gotDel)
+
+	_, ok = comp.Resource("does/not/exist")
+	assert.False(t, ok)
 }

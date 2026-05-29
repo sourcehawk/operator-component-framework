@@ -3,6 +3,7 @@
 package golden
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,10 +17,17 @@ import (
 )
 
 // Previewer is satisfied by any resource primitive that can render its
-// post-mutation state. All built-in primitives implement this through
-// [generic.BaseResource].
-type Previewer[T client.Object] interface {
-	PreviewObject() (T, error)
+// post-mutation state as a client.Object. All built-in primitives implement
+// this through generic.BaseResource.
+type Previewer interface {
+	Preview() (client.Object, error)
+}
+
+// ComponentPreviewer is satisfied by a built component that can render the
+// desired state of all the resources it would apply. The component package's
+// *Component implements this through its Preview method.
+type ComponentPreviewer interface {
+	Preview() ([]client.Object, error)
 }
 
 type config struct {
@@ -66,23 +74,23 @@ func (e *MismatchError) Error() string {
 	return fmt.Sprintf("golden file mismatch: %s\n\n%s", e.Path, e.Diff)
 }
 
-// CompareYAML calls PreviewObject on p, serializes the result as YAML, and
-// compares it against the golden file at path. Returns a [*MismatchError] if
-// they differ, or nil if they match.
+// CompareYAML calls Preview on p, serializes the result as YAML, and compares
+// it against the golden file at path. Returns a [*MismatchError] if they
+// differ, or nil if they match.
 //
 // When [Update] is enabled, the golden file is written (creating intermediate
 // directories as needed) and comparison is skipped.
 //
 // Returns an error if the golden file does not exist and Update is not enabled.
-func CompareYAML[T client.Object](path string, p Previewer[T], opts ...Option) error {
+func CompareYAML(path string, p Previewer, opts ...Option) error {
 	var cfg config
 	for _, o := range opts {
 		o(&cfg)
 	}
 
-	obj, err := p.PreviewObject()
+	obj, err := p.Preview()
 	if err != nil {
-		return fmt.Errorf("PreviewObject failed: %w", err)
+		return fmt.Errorf("Preview failed: %w", err)
 	}
 
 	actual, err := serializeObject(obj, cfg.scheme)
@@ -90,7 +98,60 @@ func CompareYAML[T client.Object](path string, p Previewer[T], opts ...Option) e
 		return fmt.Errorf("failed to serialize object to YAML: %w", err)
 	}
 
-	if cfg.update {
+	return compareOrUpdate(path, actual, cfg.update)
+}
+
+// AssertYAML is a test helper that calls [CompareYAML] and fails the test if
+// the result does not match the golden file. See [CompareYAML] for details.
+func AssertYAML(t *testing.T, path string, p Previewer, opts ...Option) {
+	t.Helper()
+	require.NoError(t, CompareYAML(path, p, opts...))
+}
+
+// CompareComponentYAML calls Preview on c, serializes every rendered object
+// into a single multi-document YAML stream (--- separated, in the order
+// Preview returns them), and compares it against the golden file at path.
+// Returns a [*MismatchError] if they differ, or nil if they match.
+//
+// When [Update] is enabled, the golden file is written and comparison is
+// skipped. [WithScheme] is applied to each object as in [CompareYAML]. An
+// empty preview produces empty output.
+func CompareComponentYAML(path string, c ComponentPreviewer, opts ...Option) error {
+	var cfg config
+	for _, o := range opts {
+		o(&cfg)
+	}
+
+	objs, err := c.Preview()
+	if err != nil {
+		return fmt.Errorf("Preview failed: %w", err)
+	}
+
+	docs := make([][]byte, 0, len(objs))
+	for i, obj := range objs {
+		doc, err := serializeObject(obj, cfg.scheme)
+		if err != nil {
+			return fmt.Errorf("failed to serialize object %d to YAML: %w", i, err)
+		}
+		docs = append(docs, doc)
+	}
+
+	actual := bytes.Join(docs, []byte("---\n"))
+
+	return compareOrUpdate(path, actual, cfg.update)
+}
+
+// AssertComponentYAML is a test helper that calls [CompareComponentYAML] and
+// fails the test if the result does not match the golden file.
+func AssertComponentYAML(t *testing.T, path string, c ComponentPreviewer, opts ...Option) {
+	t.Helper()
+	require.NoError(t, CompareComponentYAML(path, c, opts...))
+}
+
+// compareOrUpdate writes actual to path when update is set, otherwise compares
+// actual against the existing golden file at path.
+func compareOrUpdate(path string, actual []byte, update bool) error {
+	if update {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return fmt.Errorf("failed to create golden file directory: %w", err)
 		}
@@ -109,20 +170,9 @@ func CompareYAML[T client.Object](path string, p Previewer[T], opts ...Option) e
 	}
 
 	if string(expected) != string(actual) {
-		return &MismatchError{
-			Path: path,
-			Diff: formatDiff(string(expected), string(actual)),
-		}
+		return &MismatchError{Path: path, Diff: formatDiff(string(expected), string(actual))}
 	}
-
 	return nil
-}
-
-// AssertYAML is a test helper that calls [CompareYAML] and fails the test if
-// the result does not match the golden file. See [CompareYAML] for details.
-func AssertYAML[T client.Object](t *testing.T, path string, p Previewer[T], opts ...Option) {
-	t.Helper()
-	require.NoError(t, CompareYAML(path, p, opts...))
 }
 
 // serializeObject marshals a client.Object to YAML, removing zero-value noise

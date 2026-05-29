@@ -138,16 +138,23 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 	return Condition(*cond)
 }
 
-// Preview renders the desired state of every managed resource the component
-// would apply, in registration order, without contacting the cluster.
+// Preview renders the desired state of every managed resource registered on the
+// component, in registration order, without contacting the cluster.
 //
 // Read-only resources (which are fetched, not applied) and delete resources
-// (removal markers with no desired object) are excluded; the result is the
-// "what would you apply" view, suitable for whole-component golden snapshots.
+// (removal markers with no desired object) are excluded, leaving the desired
+// shape of the managed resources, suitable for whole-component golden snapshots.
+//
+// Preview does not evaluate guards. Reconcile stops at the first resource whose
+// guard is Blocked and skips it and all later resources, but a guard's outcome
+// generally depends on cluster state and data extracted from earlier resources,
+// none of which is available in a cluster-free render. Preview therefore returns
+// the full desired set, including resources a given reconcile might skip behind a
+// blocked guard, keeping the snapshot deterministic.
 //
 // Each managed reconcile resource must implement concepts.Previewable; all
 // built-in primitives do. Preview returns an error if a managed resource does
-// not implement it or if rendering a resource fails.
+// not implement it, renders a nil object, or fails to render.
 func (c *Component) Preview() ([]client.Object, error) {
 	objs := make([]client.Object, 0, len(c.reconcileResources))
 	for _, entry := range c.reconcileResources {

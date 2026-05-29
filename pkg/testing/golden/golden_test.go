@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // fakePreviewer implements Previewer for testing without pulling in the full
@@ -22,8 +24,11 @@ type fakePreviewer struct {
 	err error
 }
 
-func (f *fakePreviewer) PreviewObject() (*appsv1.Deployment, error) {
-	return f.obj, f.err
+func (f *fakePreviewer) Preview() (client.Object, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.obj, nil
 }
 
 func testDeployment() *appsv1.Deployment {
@@ -132,13 +137,13 @@ func TestCompareYAML(t *testing.T) {
 		assert.Contains(t, err.Error(), "does not exist")
 	})
 
-	t.Run("should error when PreviewObject fails", func(t *testing.T) {
+	t.Run("should error when Preview fails", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "deployment.yaml")
 
 		err := CompareYAML(path, &fakePreviewer{err: assert.AnError})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "PreviewObject failed")
+		assert.Contains(t, err.Error(), "Preview failed")
 	})
 }
 
@@ -154,6 +159,56 @@ func TestAssertYAML(t *testing.T) {
 
 		// Now assert against it.
 		AssertYAML(t, path, p)
+	})
+}
+
+type fakeComponentPreviewer struct {
+	objs []client.Object
+	err  error
+}
+
+func (f *fakeComponentPreviewer) Preview() ([]client.Object, error) {
+	return f.objs, f.err
+}
+
+func TestCompareComponentYAML(t *testing.T) {
+	cm := &corev1.ConfigMap{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+		ObjectMeta: metav1.ObjectMeta{Name: "cfg", Namespace: "default"},
+		Data:       map[string]string{"k": "v"},
+	}
+	dep := testDeployment()
+
+	t.Run("writes and matches a multi-document golden", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "component.yaml")
+		c := &fakeComponentPreviewer{objs: []client.Object{dep, cm}}
+		require.NoError(t, CompareComponentYAML(path, c, Update(true)))
+
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), "\n---\n") // documents are separated
+		assert.True(t, strings.Index(string(data), "Deployment") < strings.Index(string(data), "ConfigMap"),
+			"documents must preserve Preview() order")
+
+		require.NoError(t, CompareComponentYAML(path, c))
+	})
+
+	t.Run("returns MismatchError on difference", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "component.yaml")
+		require.NoError(t, CompareComponentYAML(path, &fakeComponentPreviewer{objs: []client.Object{dep}}, Update(true)))
+
+		err := CompareComponentYAML(path, &fakeComponentPreviewer{objs: []client.Object{cm}})
+		require.Error(t, err)
+		var mismatch *MismatchError
+		assert.ErrorAs(t, err, &mismatch)
+	})
+
+	t.Run("empty preview writes empty golden", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "empty.yaml")
+		require.NoError(t, CompareComponentYAML(path, &fakeComponentPreviewer{}, Update(true)))
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assert.Empty(t, strings.TrimSpace(string(data)))
 	})
 }
 

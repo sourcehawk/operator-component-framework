@@ -211,8 +211,8 @@ gated on the versions that need it, and will stop running entirely once those ve
 ### Verifying backward compatibility mutations
 
 When you update the baseline, you need confidence that older versions still produce the same object they did before. The
-framework provides a `golden` package for this. `AssertYAML` accepts any resource that implements `PreviewObject`,
-renders it to YAML, and compares the result against a golden file.
+framework provides a `golden` package for this. `AssertYAML` accepts any resource that implements `Preview`, renders it
+to YAML, and compares the result against a golden file.
 
 ```go
 import "github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
@@ -251,6 +251,27 @@ snapshot diff shows exactly what shifted.
 
 A reasonable heuristic for the boundary: if a field is always present regardless of feature flags or version, it belongs
 in the baseline. If it is conditional, it belongs in a mutation.
+
+To snapshot an entire component at once, use `AssertComponentYAML`. It calls `comp.Preview()`, serializes every managed
+resource the component would apply into a single multi-document YAML file (one `---` separator per object, in
+registration order), and compares the result against the golden file. This is useful when you want to verify that a
+cross-component change does not accidentally alter any resource's shape.
+
+```go
+func TestComponentShape(t *testing.T) {
+    owner := &v1alpha1.MyApp{
+        Spec: v1alpha1.MyAppSpec{Version: "2.0.0"},
+    }
+
+    comp, err := buildWebComponent(owner)
+    require.NoError(t, err)
+
+    golden.AssertComponentYAML(t, "testdata/web-component.yaml", comp, golden.Update(*update))
+}
+```
+
+Read-only and delete resources are excluded from the component preview; only resources the component would actively
+apply appear in the golden file.
 
 ## One Component Per Logical Condition
 

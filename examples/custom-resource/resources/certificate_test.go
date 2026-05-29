@@ -91,7 +91,7 @@ func TestCertificatePreviewObject(t *testing.T) {
 	res, err := static.NewBuilder(resources.BaseCertificateRequest(owner)).Build()
 	require.NoError(t, err)
 
-	obj, err := res.PreviewObject()
+	obj, err := res.Preview()
 	require.NoError(t, err)
 	require.IsType(t, &uns.Unstructured{}, obj)
 }

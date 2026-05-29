@@ -26,8 +26,11 @@ func TestMetricsConfigMutation(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	obj, err := res.PreviewObject()
+	previewed, err := res.Preview()
 	require.NoError(t, err)
+
+	obj, ok := previewed.(*corev1.ConfigMap)
+	require.True(t, ok)
 
 	yaml := obj.Data["app.yaml"]
 	assert.Contains(t, yaml, "metrics:")

@@ -134,6 +134,26 @@ This design:
 - **Guarantees ordering**: features apply in registration order; within a feature, categories apply in a fixed sequence
 - **Avoids error-prone slice manipulation**: editors handle presence operations and stable selection internally
 
+### Registering multiple mutations
+
+`WithMutation` is variadic, so a single call can register several mutations, applied in the order given:
+
+```go
+b.WithMutation(first, second, third)
+```
+
+This composes cleanly with factories that return `[]Mutation`, without breaking the fluent chain:
+
+```go
+return statefulset.NewBuilder(base).
+	WithMutation(defaults.ContainerImage(version, registry)).
+	WithMutation(defaults.ClusterEnv(cc)...).
+	WithMutation(defaults.ExporterEnv(version)...).
+	Build()
+```
+
+Calling `WithMutation()` with no arguments is a no-op.
+
 ## Mutation Editors
 
 Editors provide scoped, typed APIs for modifying specific parts of a resource. Every editor exposes a `.Raw()` method

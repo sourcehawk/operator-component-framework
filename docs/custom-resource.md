@@ -434,9 +434,12 @@ func NewBuilder(gs *examplev1.GameServer) *Builder {
     return &Builder{base: base}
 }
 
-// WithMutation registers a feature-gated mutation.
-func (b *Builder) WithMutation(m Mutation) *Builder {
-    b.base.WithMutation(feature.Mutation[*Mutator](m))
+// WithMutation registers one or more feature-gated mutations, applied in the order given.
+// Pass a slice with the spread operator: b.WithMutation(factory()...)
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+    for _, m := range ms {
+        b.base.WithMutation(feature.Mutation[*Mutator](m))
+    }
     return b
 }
 
@@ -638,6 +641,29 @@ func CompetitiveMode(version string, enabled bool) gameserver.Mutation {
         },
     }
 }
+
+// DefaultSettings returns baseline mutations applied to every GameServer regardless of feature flags.
+// The version parameter is forwarded to any version-aware mutations in the set.
+func DefaultSettings(version string) []gameserver.Mutation {
+    return []gameserver.Mutation{
+        {
+            Name:    "default-replicas",
+            Feature: nil, // always applied
+            Mutate: func(m *gameserver.Mutator) error {
+                m.SetReplicas(1)
+                return nil
+            },
+        },
+        {
+            Name:    "default-max-players",
+            Feature: feature.NewVersionGate(version, nil),
+            Mutate: func(m *gameserver.Mutator) error {
+                m.SetMaxPlayers(100)
+                return nil
+            },
+        },
+    }
+}
 ```
 
 Mutations are applied in registration order. When a mutation's `Feature` is nil or reports `Enabled() == true`, its
@@ -663,6 +689,7 @@ func buildGameComponent(owner *MyOperatorCR) (*component.Component, error) {
     res, err := gameserver.NewBuilder(gs).
         WithMutation(features.HighCapacityMode(owner.Spec.Version)).
         WithMutation(features.CompetitiveMode(owner.Spec.Version, owner.Spec.Competitive)).
+        WithMutation(features.DefaultSettings(owner.Spec.Version)...). // spread a []Mutation slice
         Build()
     if err != nil {
         return nil, err

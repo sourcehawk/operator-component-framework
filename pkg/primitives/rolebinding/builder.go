@@ -43,13 +43,15 @@ func NewBuilder(rb *rbacv1.RoleBinding) *Builder {
 	}
 }
 
-// WithMutation registers a mutation for the RoleBinding.
+// WithMutation registers one or more mutations for the RoleBinding.
 //
 // Mutations are applied sequentially during the Mutate() phase of reconciliation.
 // A mutation with a nil Feature is applied unconditionally; one with a non-nil
 // Feature is applied only when that feature is enabled.
-func (b *Builder) WithMutation(m Mutation) *Builder {
-	b.base.WithMutation(feature.Mutation[*Mutator](m))
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*Mutator](m))
+	}
 	return b
 }
 

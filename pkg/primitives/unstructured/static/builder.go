@@ -48,13 +48,15 @@ func (b *Builder) MarkClusterScoped() *Builder {
 	return b
 }
 
-// WithMutation registers a mutation for the unstructured object.
+// WithMutation registers one or more mutations for the unstructured object.
 //
 // Mutations are applied sequentially during the Mutate() phase of reconciliation.
 // A mutation with a nil Feature is applied unconditionally; one with a non-nil
 // Feature is applied only when that feature is enabled.
-func (b *Builder) WithMutation(m unstruct.Mutation) *Builder {
-	b.base.WithMutation(feature.Mutation[*unstruct.Mutator](m))
+func (b *Builder) WithMutation(ms ...unstruct.Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*unstruct.Mutator](m))
+	}
 	return b
 }
 

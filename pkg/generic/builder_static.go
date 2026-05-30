@@ -35,9 +35,10 @@ func NewStaticBuilder[T client.Object, M FeatureMutator](
 	return b
 }
 
-// WithMutation registers a typed feature mutation for the static resource.
-func (b *StaticBuilder[T, M]) WithMutation(m Mutation[M]) *StaticBuilder[T, M] {
-	b.BaseBuilder.WithMutation(m)
+// WithMutation registers one or more typed feature mutations for the static
+// resource, in the order provided.
+func (b *StaticBuilder[T, M]) WithMutation(ms ...Mutation[M]) *StaticBuilder[T, M] {
+	b.BaseBuilder.WithMutation(ms...)
 	return b
 }
 

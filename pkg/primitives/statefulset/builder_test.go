@@ -93,6 +93,51 @@ func TestBuilder(t *testing.T) {
 		assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
 	})
 
+	t.Run("WithMutation variadic registers in order", func(t *testing.T) {
+		t.Parallel()
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-sts",
+				Namespace: "test-ns",
+			},
+		}
+		first := Mutation{Name: "first", Mutate: func(_ *Mutator) error { return nil }}
+		second := Mutation{Name: "second", Mutate: func(_ *Mutator) error { return nil }}
+
+		builder := NewBuilder(sts)
+		require.Same(t, builder, builder.WithMutation(first, second))
+
+		res, err := builder.Build()
+		require.NoError(t, err)
+		require.Len(t, res.base.Mutations, 2)
+		assert.Equal(t, "first", res.base.Mutations[0].Name)
+		assert.Equal(t, "second", res.base.Mutations[1].Name)
+	})
+
+	t.Run("WithMutation spread and zero args", func(t *testing.T) {
+		t.Parallel()
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-sts",
+				Namespace: "test-ns",
+			},
+		}
+		muts := []Mutation{
+			{Name: "a", Mutate: func(_ *Mutator) error { return nil }},
+			{Name: "b", Mutate: func(_ *Mutator) error { return nil }},
+		}
+
+		builder := NewBuilder(sts)
+		require.Same(t, builder, builder.WithMutation(muts...))
+		require.Same(t, builder, builder.WithMutation())
+
+		res, err := builder.Build()
+		require.NoError(t, err)
+		require.Len(t, res.base.Mutations, 2)
+		assert.Equal(t, "a", res.base.Mutations[0].Name)
+		assert.Equal(t, "b", res.base.Mutations[1].Name)
+	})
+
 	t.Run("WithCustomConvergeStatus", func(t *testing.T) {
 		t.Parallel()
 		sts := &appsv1.StatefulSet{

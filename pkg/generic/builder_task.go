@@ -35,11 +35,12 @@ func NewTaskBuilder[T client.Object, M FeatureMutator](
 	return b
 }
 
-// WithMutation registers a typed feature mutation for the task.
+// WithMutation registers one or more typed feature mutations for the task,
+// in the order provided.
 func (b *TaskBuilder[T, M]) WithMutation(
-	m Mutation[M],
+	ms ...Mutation[M],
 ) *TaskBuilder[T, M] {
-	b.BaseBuilder.WithMutation(m)
+	b.BaseBuilder.WithMutation(ms...)
 	return b
 }
 

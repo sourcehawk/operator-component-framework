@@ -45,11 +45,12 @@ func NewWorkloadBuilder[T client.Object, M FeatureMutator](
 	return b
 }
 
-// WithMutation registers a typed feature mutation for the workload.
+// WithMutation registers one or more typed feature mutations for the workload,
+// in the order provided.
 func (b *WorkloadBuilder[T, M]) WithMutation(
-	m Mutation[M],
+	ms ...Mutation[M],
 ) *WorkloadBuilder[T, M] {
-	b.BaseBuilder.WithMutation(m)
+	b.BaseBuilder.WithMutation(ms...)
 	return b
 }
 

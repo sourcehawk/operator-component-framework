@@ -56,9 +56,11 @@ func (b *BaseBuilder[T, M]) InitBase(
 	}
 }
 
-// WithMutation registers a typed feature mutation for the resource.
-func (b *BaseBuilder[T, M]) WithMutation(m Mutation[M]) {
-	b.BaseRes.Mutations = append(b.BaseRes.Mutations, m)
+// WithMutation registers one or more typed feature mutations for the resource.
+// Mutations are appended in the order provided; calling it with no arguments is
+// a no-op.
+func (b *BaseBuilder[T, M]) WithMutation(ms ...Mutation[M]) {
+	b.BaseRes.Mutations = append(b.BaseRes.Mutations, ms...)
 }
 
 // WithGuard registers a guard precondition for the resource.

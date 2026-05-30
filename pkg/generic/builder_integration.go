@@ -42,11 +42,12 @@ func NewIntegrationBuilder[T client.Object, M FeatureMutator](
 	return b
 }
 
-// WithMutation registers a typed feature mutation for the integration.
+// WithMutation registers one or more typed feature mutations for the
+// integration, in the order provided.
 func (b *IntegrationBuilder[T, M]) WithMutation(
-	m Mutation[M],
+	ms ...Mutation[M],
 ) *IntegrationBuilder[T, M] {
-	b.BaseBuilder.WithMutation(m)
+	b.BaseBuilder.WithMutation(ms...)
 	return b
 }
 

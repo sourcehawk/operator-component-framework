@@ -50,13 +50,15 @@ func NewBuilder(statefulset *appsv1.StatefulSet) *Builder {
 	}
 }
 
-// WithMutation registers a feature-based mutation for the StatefulSet.
+// WithMutation registers one or more feature-based mutations for the StatefulSet.
 //
 // Mutations are applied sequentially during the Mutate() phase of reconciliation.
 // They are typically used by Features to inject environment variables,
 // arguments, or other configuration into the StatefulSet's containers.
-func (b *Builder) WithMutation(m Mutation) *Builder {
-	b.base.WithMutation(feature.Mutation[*Mutator](m))
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*Mutator](m))
+	}
 	return b
 }
 

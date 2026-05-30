@@ -43,9 +43,11 @@ func (b *Builder) MarkClusterScoped() *Builder {
 	return b
 }
 
-// WithMutation registers a mutation for the unstructured object.
-func (b *Builder) WithMutation(m unstruct.Mutation) *Builder {
-	b.base.WithMutation(feature.Mutation[*unstruct.Mutator](m))
+// WithMutation registers one or more mutations for the unstructured object.
+func (b *Builder) WithMutation(ms ...unstruct.Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*unstruct.Mutator](m))
+	}
 	return b
 }
 

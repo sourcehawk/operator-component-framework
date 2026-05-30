@@ -49,11 +49,13 @@ func NewBuilder(cj *batchv1.CronJob) *Builder {
 	}
 }
 
-// WithMutation registers a feature-based mutation for the CronJob.
+// WithMutation registers one or more feature-based mutations for the CronJob.
 //
 // Mutations are applied sequentially during the Mutate() phase of reconciliation.
-func (b *Builder) WithMutation(m Mutation) *Builder {
-	b.base.WithMutation(feature.Mutation[*Mutator](m))
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*Mutator](m))
+	}
 	return b
 }
 

@@ -44,14 +44,16 @@ func NewBuilder(pv *corev1.PersistentVolume) *Builder {
 	return &Builder{base: base}
 }
 
-// WithMutation registers a mutation for the PersistentVolume.
+// WithMutation registers one or more mutations for the PersistentVolume.
 //
 // Mutations are applied sequentially during the Mutate() phase of reconciliation,
 // after the baseline field applicator and any registered flavors have run.
 // A mutation with a nil Feature is applied unconditionally; one with a non-nil
 // Feature is applied only when that feature is enabled.
-func (b *Builder) WithMutation(m Mutation) *Builder {
-	b.base.WithMutation(feature.Mutation[*Mutator](m))
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*Mutator](m))
+	}
 	return b
 }
 

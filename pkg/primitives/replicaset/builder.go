@@ -50,7 +50,7 @@ func NewBuilder(replicaset *appsv1.ReplicaSet) *Builder {
 	}
 }
 
-// WithMutation registers a feature-based mutation for the ReplicaSet.
+// WithMutation registers one or more feature-based mutations for the ReplicaSet.
 //
 // Mutations are applied sequentially during the Mutate() phase of reconciliation.
 // They are typically used by Features to inject environment variables,
@@ -59,8 +59,10 @@ func NewBuilder(replicaset *appsv1.ReplicaSet) *Builder {
 // Since mutations are often version-gated, the provided feature.Mutation
 // should contain the logic to determine if and how the mutation is applied
 // based on the component's current version or configuration.
-func (b *Builder) WithMutation(m Mutation) *Builder {
-	b.base.WithMutation(feature.Mutation[*Mutator](m))
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*Mutator](m))
+	}
 	return b
 }
 

@@ -3,7 +3,7 @@ module github.com/sourcehawk/operator-component-framework
 go 1.25.6
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/pmezard/go-difflib v1.0.0

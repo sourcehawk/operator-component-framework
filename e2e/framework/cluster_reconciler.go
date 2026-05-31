@@ -110,7 +110,7 @@ func (r *ClusterE2EReconciler) Reconcile(ctx context.Context, req reconcile.Requ
 		comp, err = component.NewComponentBuilder().
 			WithName("e2e-test").
 			WithConditionType("E2EReady").
-			WithResource(resource, component.ResourceOptions{}).
+			WithResource(resource).
 			Suspend(owner.Spec.Suspended).
 			Build()
 	default:

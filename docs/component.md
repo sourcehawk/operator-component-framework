@@ -10,7 +10,7 @@ reports their aggregate health through one condition on the owner CRD.
 
 - [Building a Component](#building-a-component)
   - [Resource Registration Options](#resource-registration-options)
-  - [Building Resource Options with Feature Gating](#building-resource-options-with-feature-gating)
+  - [Conditional and Optional Resources](#conditional-and-optional-resources)
 - [Component Feature Gates](#component-feature-gates)
 - [Prerequisites](#prerequisites)
   - [Registering Prerequisites](#registering-prerequisites)
@@ -51,9 +51,9 @@ comp, err := component.NewComponentBuilder().
     WithConditionType("WebInterfaceReady").
     WithFeatureGate(webFeature).                                     // optional: disable to remove all resources
     WithPrerequisite(component.DependsOn("DatabaseReady")).   // optional: wait for another component
-    WithResource(deployment, component.ResourceOptions{}).
-    WithResource(configMap, component.ResourceOptions{ReadOnly: true}).
-    WithResource(oldService, component.ResourceOptions{Delete: true}).
+    WithResource(deployment).
+    WithResource(configMap, component.ReadOnly()).
+    WithResource(oldService, component.Delete()).
     WithGracePeriod(5 * time.Minute).
     Suspend(owner.Spec.Suspended).
     Build()
@@ -64,82 +64,69 @@ if err != nil {
 
 ### Resource Registration Options
 
-Each resource is registered with a `ResourceOptions` struct that controls how the component interacts with it:
+Each resource is registered via `WithResource`. The second argument accepts zero or more `ResourceOption` values that
+control how the component interacts with the resource:
 
-| Option                                                           | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ResourceOptions{}` (default)                                    | **Managed**: created or updated; health contributes to condition                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `ResourceOptions{ReadOnly: true}`                                | **Read-only**: fetched but never modified; health still contributes                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `ResourceOptions{Delete: true}`                                  | **Delete-only**: removed from the cluster if present; does not contribute to health                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}` | The resource's health does not contribute to the component condition. The component can become Ready regardless of this resource's state. **Exception:** a blocked [guard](#guards) always contributes to the condition regardless of participation mode, because it halts the entire reconciliation pipeline                                                                                                                                                                         |
-| `ResourceOptions{SuppressGraceInconsistencyWarning: true}`       | Suppresses the warning log emitted when the resource's grace handler returns Healthy while its convergence handler returns non-healthy. Use this when the inconsistency is intentional (e.g., a custom grace handler that deliberately reports Healthy for a resource that has not fully converged)                                                                                                                                                                                   |
-| `ResourceOptions{ReadOnly: true, BlockOnAbsence: true}`          | **Read-only with watch-driven retry**: a NotFound from the cluster is recorded as a blocked status (`waiting for <resource>`) and short-circuits the remaining resources, instead of erroring back through controller-runtime's exponential backoff. Use only when the consumer has a watch on the resource's type so the reconcile is re-enqueued when it appears                                                                                                                    |
-| `ResourceOptions{ReadOnly: true, IgnoreIfAbsent: true}`          | **Optional read-only**: a NotFound from the cluster is silently ignored. The entry contributes nothing to the component's conditions, no observation is recorded, and the data extractor is not invoked. Subsequent resources reconcile unchanged. State recorded from earlier reconciles (last observation, extracted data) is preserved across an absence rather than reset. Use for resources that may legitimately be absent (e.g. a referenced Secret owned by another operator) |
+| Option                                              | Behavior                                                                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| (none)                                              | **Managed**: created or updated; health contributes to the condition                                                |
+| `component.ReadOnly()`                              | **Read-only**: fetched but never modified; health still contributes                                                 |
+| `component.Delete()` / `component.DeleteWhen(cond)` | **Delete**: removed from the cluster (unconditionally, or when `cond` is true); does not contribute to health       |
+| `component.GatedBy(gate)`                           | Deletes the resource when the feature gate is disabled; managed when enabled                                        |
+| `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)                   |
+| `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                              |
+| `component.ReadOnly(), component.BlockOnAbsence()`  | **Read-only with watch-driven retry**: NotFound records a blocked status and short-circuits the remaining resources |
+| `component.ReadOnly(), component.IgnoreIfAbsent()`  | **Optional read-only**: NotFound is silently ignored; last-known state preserved                                    |
 
-### Building Resource Options with Feature Gating
+A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
+`Delete()`, `DeleteWhen()`, and `GatedBy()`; combining them is a build error. To conditionally include a read-only
+resource, use [`IncludeWhen`](#includewhen), which omits the resource without deleting it.
 
-When a resource's lifecycle depends on a feature gate or runtime conditions, use `ResourceOptionsBuilder` to construct
-the options declaratively. The builder integrates with the [feature system](../pkg/feature/) so that entire resources
-can be conditionally created or deleted based on feature state.
+### Conditional and Optional Resources
 
-```go
-opts, err := component.NewResourceOptionsBuilder().
-    WithFeatureGate(metricsFeature).
-    Auxiliary().
-    Build()
-if err != nil {
-    return err
-}
-
-builder.WithResource(exporterService, opts)
-```
-
-The builder evaluates all conditions at `Build()` time and produces a plain `ResourceOptions` value. The `WithResource`
-signature is unchanged.
-
-**Methods:**
-
-| Method                            | Effect                                                                                                                                                                                                                                                                                                                                                                 |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WithFeatureGate(f feature.Gate)` | Gates the resource on a feature. When disabled, the resource is deleted.                                                                                                                                                                                                                                                                                               |
-| `When(truth bool)`                | Adds a boolean condition (AND logic). If any condition is false, the resource is deleted. Calls are additive.                                                                                                                                                                                                                                                          |
-| `Auxiliary()`                     | Sets participation mode to `Auxiliary` (resource does not affect component health).                                                                                                                                                                                                                                                                                    |
-| `ReadOnly()`                      | Marks the resource as read-only. If the resource is also gated by a disabled feature, deletion takes precedence over read-only.                                                                                                                                                                                                                                        |
-| `BlockOnAbsence()`                | Opts a read-only resource into guard-blocked semantics on NotFound. Requires `ReadOnly()` and is mutually exclusive with `IgnoreIfAbsent()`; `Build()` errors otherwise. Requires a watch on the resource's type to avoid stalling until the periodic resync.                                                                                                          |
-| `IgnoreIfAbsent()`                | Opts a read-only resource into "optional" semantics: a NotFound is silently ignored, the entry is skipped, no condition or observation is reported, and the data extractor is not invoked. State recorded from earlier reconciles is preserved across an absence. Requires `ReadOnly()` and is mutually exclusive with `BlockOnAbsence()`; `Build()` errors otherwise. |
-
-For the common case of gating a resource on a single feature, use the convenience function:
+Pass functional options directly on the `WithResource` call to express feature gating, auxiliary participation, or any
+combination:
 
 ```go
-opts, err := component.ResourceOptionsFor(tracingFeature)
-```
-
-**Resolution rules:**
-
-1. If the feature is non-nil and evaluates to disabled, the resource is deleted.
-2. If any When condition evaluates to false, the resource is deleted.
-3. Deletion takes precedence over read-only mode.
-4. Participation mode is preserved regardless of deletion state.
-
-**Example: mixed feature-gated and static resources:**
-
-```go
-tracingOpts, err := component.ResourceOptionsFor(
-    feature.NewVersionGate(owner.Spec.Version, nil).When(owner.Spec.TracingEnabled),
-)
-if err != nil {
-    return err
-}
-
-comp, err := component.NewComponentBuilder().
-    WithName("api-server").
-    WithConditionType("ApiServerReady").
-    WithResource(apiDeployment, component.ResourceOptions{}).
-    WithResource(jaegerSidecar, tracingOpts).
+component.NewComponentBuilder().
+    WithName("api").
+    WithConditionType("ApiReady").
+    WithResource(apiDeployment).
+    WithResource(exporter, component.GatedBy(tracingGate), component.Auxiliary()).
     Build()
 ```
 
-When `TracingEnabled` is true, the Jaeger sidecar is created and managed. When false, it is deleted from the cluster.
+When `tracingGate` is disabled, the exporter is deleted from the cluster. When enabled, it is managed but does not block
+the component from becoming Ready.
+
+#### IncludeWhen vs. GatedBy: two different axes
+
+These two look similar but answer different questions, and picking the wrong one either deletes a resource you do not
+own or fails to clean up one you do:
+
+- **`GatedBy` / `DeleteWhen` — conditionally _render_ a resource the component owns.** When the condition turns off, the
+  resource is **deleted** from the cluster. Reach for these to make an owned resource (a Deployment, a ConfigMap) exist
+  for some states and be removed for others.
+- **`IncludeWhen` — conditionally _include_ a resource, never deleting it.** When the condition is false the resource is
+  omitted entirely: not created, read, or deleted, and its constructor is never called.
+
+`IncludeWhen`'s primary purpose is **optional, externally-owned resources that may or may not exist** — most commonly a
+read-only reference to a Secret or ConfigMap owned by the user or another operator, behind an optional spec field.
+Because construction is deferred behind the `func() Resource` closure, the builder may safely dereference the optional
+input that determined inclusion.
+
+```go
+// Optional, externally-owned read-only reference. Construction is deferred, so
+// the closure only dereferences LicenseSecretRef when it is non-nil.
+builder.IncludeWhen(spec.LicenseSecretRef != nil, func() component.Resource {
+    r := spec.LicenseSecretRef
+    return common.SecretRef(r.Name, r.Namespace, hash)
+}, component.ReadOnly(), component.BlockOnAbsence())
+```
+
+A secondary use is **migrating a resource from tracked to untracked without deleting it**: passing `include = false`
+leaves an already-present resource in place, unmanaged, rather than removing it from the cluster the way `GatedBy` or
+`DeleteWhen` would.
 
 ## Component Feature Gates
 
@@ -152,8 +139,8 @@ comp, err := component.NewComponentBuilder().
     WithName("monitoring-sidecar").
     WithConditionType("MonitoringReady").
     WithFeatureGate(monitoringFeature).
-    WithResource(exporterDeployment, component.ResourceOptions{}).
-    WithResource(exporterService, component.ResourceOptions{}).
+    WithResource(exporterDeployment).
+    WithResource(exporterService).
     Suspend(owner.Spec.Suspended).
     Build()
 ```
@@ -196,8 +183,8 @@ comp, err := component.NewComponentBuilder().
     WithConditionType("ApiServerReady").
     WithPrerequisite(component.DependsOn("DatabaseReady")).
     WithPrerequisite(component.DependsOn("CacheReady")).
-    WithResource(apiDeployment, component.ResourceOptions{}).
-    WithResource(apiService, component.ResourceOptions{}).
+    WithResource(apiDeployment).
+    WithResource(apiService).
     Suspend(owner.Spec.Suspended).
     Build()
 ```
@@ -336,8 +323,7 @@ configuration is needed; the framework detects the incompatibility and logs an i
 **Garbage collection caveat:** Without an owner reference, cluster-scoped resources are **not** automatically deleted
 when the owner is removed. To ensure cleanup, either:
 
-- Register the resource with `ResourceOptions{Delete: true}` so it is removed during reconciliation when no longer
-  needed.
+- Register the resource with `component.Delete()` so it is removed during reconciliation when no longer needed.
 - Use a finalizer on the owner CRD to clean up cluster-scoped resources before the owner is deleted.
 
 If the owner CRD is itself cluster-scoped, owner references are set normally on all resources regardless of their scope.
@@ -634,8 +620,8 @@ func buildCloudComponent(owner *v1alpha1.MyApp, roleARN *string) (*component.Com
     return component.NewComponentBuilder().
         WithName("cloud-resources").
         WithConditionType("CloudResourcesReady").
-        WithResource(roleRes, component.ResourceOptions{}).
-        WithResource(bucketRes, component.ResourceOptions{}).
+        WithResource(roleRes).
+        WithResource(bucketRes).
         Build()
 }
 ```

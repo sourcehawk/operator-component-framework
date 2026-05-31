@@ -93,8 +93,8 @@ var _ = Describe("Multi-Resource Component", func() {
 				return component.NewComponentBuilder().
 					WithName("multi-resource").
 					WithConditionType("E2EReady").
-					WithResource(depRes, component.ResourceOptions{}).
-					WithResource(cmRes, component.ResourceOptions{}).
+					WithResource(depRes).
+					WithResource(cmRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -132,8 +132,8 @@ var _ = Describe("Multi-Resource Component", func() {
 				return component.NewComponentBuilder().
 					WithName("suspend-test").
 					WithConditionType("E2EReady").
-					WithResource(depRes, component.ResourceOptions{}).
-					WithResource(cmRes, component.ResourceOptions{}).
+					WithResource(depRes).
+					WithResource(cmRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -185,10 +185,8 @@ var _ = Describe("Multi-Resource Component", func() {
 				return component.NewComponentBuilder().
 					WithName("auxiliary-test").
 					WithConditionType("E2EReady").
-					WithResource(depRes, component.ResourceOptions{}).
-					WithResource(auxRes, component.ResourceOptions{
-						ParticipationMode: component.ParticipationModeAuxiliary,
-					}).
+					WithResource(depRes).
+					WithResource(auxRes, component.Auxiliary()).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -244,8 +242,8 @@ var _ = Describe("Multi-Resource Component", func() {
 				return component.NewComponentBuilder().
 					WithName("guard-test").
 					WithConditionType("E2EReady").
-					WithResource(cmRes, component.ResourceOptions{}).
-					WithResource(guardedCmRes, component.ResourceOptions{}).
+					WithResource(cmRes).
+					WithResource(guardedCmRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -343,8 +341,8 @@ var _ = Describe("Multi-Resource Component", func() {
 				return component.NewComponentBuilder().
 					WithName("extract-guard-mutate-test").
 					WithConditionType("E2EReady").
-					WithResource(cmRes, component.ResourceOptions{}).
-					WithResource(bucketRes, component.ResourceOptions{}).
+					WithResource(cmRes).
+					WithResource(bucketRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})

@@ -56,7 +56,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	infra, err := component.NewComponentBuilder().
 		WithName("infra").
 		WithConditionType("InfraReady").
-		WithResource(cmResource, component.ResourceOptions{}).
+		WithResource(cmResource).
 		Build()
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	app, err := component.NewComponentBuilder().
 		WithName("app").
 		WithConditionType("AppReady").
-		WithResource(deployResource, component.ResourceOptions{}).
+		WithResource(deployResource).
 		WithPrerequisite(component.DependsOn("InfraReady")).
 		Suspend(owner.Spec.Suspended).
 		Build()

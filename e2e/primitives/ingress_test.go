@@ -261,7 +261,7 @@ var _ = Describe("Ingress Primitive", Label("ingress"), func() {
 				return component.NewComponentBuilder().
 					WithName("e2e-grace").
 					WithConditionType("E2EReady").
-					WithResource(res, component.ResourceOptions{}).
+					WithResource(res).
 					WithGracePeriod(gracePeriod).
 					Build()
 			})

@@ -213,7 +213,7 @@ var _ = Describe("PVC Primitive", Label("pvc"), func() {
 				return component.NewComponentBuilder().
 					WithName("e2e-grace").
 					WithConditionType("E2EReady").
-					WithResource(res, component.ResourceOptions{}).
+					WithResource(res).
 					WithGracePeriod(gracePeriod).
 					Build()
 			})

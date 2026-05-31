@@ -45,7 +45,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	comp, err := component.NewComponentBuilder().
 		WithName("certificate").
 		WithConditionType("CertificateReady").
-		WithResource(certResource, component.ResourceOptions{}).
+		WithResource(certResource).
 		Build()
 	if err != nil {
 		return err

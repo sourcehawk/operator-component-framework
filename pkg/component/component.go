@@ -116,7 +116,7 @@ type Component struct {
 // reconcileEntry pairs a resource with its configuration options.
 type reconcileEntry struct {
 	Resource Resource
-	Options  ResourceOptions
+	Options  resourceOptions
 }
 
 // GetName returns the name of the component, which is used for logging and identification.

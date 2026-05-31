@@ -278,8 +278,8 @@ if err != nil {
 }
 
 comp, err := component.NewComponentBuilder().
-    WithResource(cmResource, component.ResourceOptions{}).  // reconciled first
-    WithResource(deployResource, component.ResourceOptions{}).
+    WithResource(cmResource).  // reconciled first
+    WithResource(deployResource).
     Build()
 ```
 

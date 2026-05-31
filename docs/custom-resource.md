@@ -360,8 +360,8 @@ In the last row, convergence considers the resource non-healthy (still scaling d
 everything is fine.
 
 If this inconsistency is intentional (e.g., a custom grace handler that deliberately reports Healthy for a resource that
-has not fully converged), set `SuppressGraceInconsistencyWarning: true` on the resource's `ResourceOptions` to suppress
-the warning log.
+has not fully converged), pass `component.SuppressGraceInconsistencyWarning()` to `WithResource` to suppress the warning
+log.
 
 #### Status Constants Reference
 
@@ -698,7 +698,7 @@ func buildGameComponent(owner *MyOperatorCR) (*component.Component, error) {
     return component.NewComponentBuilder().
         WithName("game-server").
         WithConditionType("GameServerReady").
-        WithResource(res, component.ResourceOptions{}).
+        WithResource(res).
         WithGracePeriod(5 * time.Minute).
         Suspend(owner.Spec.Suspended).
         Build()
@@ -754,5 +754,5 @@ methods.
 | `pkg/generic`            | Generic resource types, builders, `ApplyMutations` helper |
 | `pkg/feature`            | `Mutation`, `Gate`, `VersionGate`, `NewVersionGate`       |
 | `pkg/component/concepts` | Lifecycle interfaces and status type constants            |
-| `pkg/component`          | Component builder, `ResourceOptions`, reconciliation      |
+| `pkg/component`          | Component builder, resource registration, reconciliation  |
 | `pkg/primitives/*`       | Built-in implementations to use as reference              |

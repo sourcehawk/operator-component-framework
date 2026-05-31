@@ -110,7 +110,7 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_
 		comp, err = component.NewComponentBuilder().
 			WithName("e2e-test").
 			WithConditionType("E2EReady").
-			WithResource(resource, component.ResourceOptions{}).
+			WithResource(resource).
 			Suspend(owner.Spec.Suspended).
 			Build()
 	default:

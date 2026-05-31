@@ -82,9 +82,9 @@ func DeleteWhen(condition bool) ResourceOption {
 }
 
 // GatedBy gates the resource's existence on a feature.Gate. When the gate is
-// disabled the resource is marked for deletion; when enabled (or nil) the
-// resource is managed normally. A gate whose evaluation fails produces a
-// resolution error returned by Build.
+// disabled the resource is marked for deletion; when enabled the resource is
+// managed normally. A nil gate is a no-op (treated as always enabled). A gate
+// whose evaluation fails produces a resolution error returned by Build.
 func GatedBy(gate feature.Gate) ResourceOption {
 	return func(c *resourceConfig) { c.gate = gate }
 }

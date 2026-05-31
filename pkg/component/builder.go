@@ -15,6 +15,10 @@ import (
 type Builder struct {
 	component   *Component
 	buildErrors []error
+	// resourceErrors maps a resource Identity() to a pending resolution error.
+	// A successful re-registration of the same identity clears the entry so
+	// the earlier error is not surfaced by Build.
+	resourceErrors map[string]error
 
 	nameSupplied          bool
 	conditionTypeSupplied bool
@@ -34,6 +38,7 @@ func NewComponentBuilder() *Builder {
 			gracePeriod:    time.Duration(0),
 			resourceLookup: make(map[string]Resource),
 		},
+		resourceErrors: make(map[string]error),
 	}
 }
 
@@ -57,6 +62,10 @@ func (b *Builder) Build() (*Component, error) {
 		b.buildErrors = append(b.buildErrors, errors.New(
 			"condition type must be supplied using WithConditionType",
 		))
+	}
+
+	for _, err := range b.resourceErrors {
+		b.buildErrors = append(b.buildErrors, err)
 	}
 
 	if len(b.buildErrors) > 0 {
@@ -119,10 +128,8 @@ func (b *Builder) WithConditionType(conditionType ConditionType) *Builder {
 func (b *Builder) WithResource(resource Resource, opts ...ResourceOption) *Builder {
 	options, err := resolveResourceOptions(opts)
 	if err != nil {
-		b.buildErrors = append(
-			b.buildErrors,
-			fmt.Errorf("resource %q in component %q: %w", resource.Identity(), b.component.name, err),
-		)
+		wrapped := fmt.Errorf("resource %q in component %q: %w", resource.Identity(), b.component.name, err)
+		b.resourceErrors[resource.Identity()] = wrapped
 		return b
 	}
 
@@ -137,6 +144,10 @@ func (b *Builder) WithResource(resource Resource, opts ...ResourceOption) *Build
 		)
 		return b
 	}
+
+	// Clear any prior resolution error for this identity: a successful
+	// re-registration supersedes the earlier failure.
+	delete(b.resourceErrors, resource.Identity())
 
 	b.component.resourceLookup[resource.Identity()] = resource
 

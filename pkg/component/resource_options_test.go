@@ -21,6 +21,7 @@ type errorFeature struct{}
 func (f *errorFeature) Enabled() (bool, error) { return false, fmt.Errorf("feature evaluation failed") }
 
 func TestResolveResourceOptions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		opts    []ResourceOption
@@ -153,6 +154,7 @@ func TestResolveResourceOptions(t *testing.T) {
 }
 
 func TestResolveResourceOptions_ValidationErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		opts      []ResourceOption

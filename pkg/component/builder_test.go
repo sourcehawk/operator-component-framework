@@ -303,6 +303,24 @@ func TestBuilder_IncludeWhen(t *testing.T) {
 		assert.Empty(t, comp.resourceLookup)
 	})
 
+	t.Run("include true with no opts registers as managed required", func(t *testing.T) {
+		t.Parallel()
+		res := &MockResource{}
+		res.On("Identity").Return("v1/ConfigMap/managed")
+
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			IncludeWhen(true, func() Resource { return res }).
+			Build()
+
+		require.NoError(t, err)
+		require.Len(t, comp.reconcileResources, 1)
+		assert.Equal(t, res, comp.reconcileResources[0].Resource)
+		assert.False(t, comp.reconcileResources[0].Options.ReadOnly)
+		assert.Equal(t, ParticipationModeRequired, comp.reconcileResources[0].Options.ParticipationMode)
+	})
+
 	t.Run("omitted resource does not trip duplicate check", func(t *testing.T) {
 		t.Parallel()
 		res := &MockResource{}
@@ -335,4 +353,19 @@ func TestBuilder_WithResource_OptionResolutionError(t *testing.T) {
 	assert.Nil(t, comp)
 	assert.Contains(t, err.Error(), "v1/Secret/bad")
 	assert.Contains(t, err.Error(), "IgnoreIfAbsent requires ReadOnly")
+}
+
+func TestBuilder_WithResource_ResolutionErrorDoesNotRegister(t *testing.T) {
+	t.Parallel()
+	res := &MockResource{}
+	res.On("Identity").Return("v1/Secret/retry")
+
+	b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
+	b.WithResource(res, IgnoreIfAbsent()) // resolution error: IgnoreIfAbsent requires ReadOnly
+	b.WithResource(res, ReadOnly())       // valid: must NOT be rejected as a duplicate
+
+	comp, err := b.Build()
+	require.NoError(t, err)
+	require.Len(t, comp.reconcileResources, 1)
+	assert.True(t, comp.reconcileResources[0].Options.ReadOnly)
 }

@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "feature-dev-workflow@feature-dev-workflow": true,
+    "superpowers@claude-plugins-official": true
+  }
+}

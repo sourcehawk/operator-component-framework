@@ -362,10 +362,15 @@ func TestBuilder_WithResource_ResolutionErrorDoesNotRegister(t *testing.T) {
 
 	b := NewComponentBuilder().WithName("test").WithConditionType("Ready")
 	b.WithResource(res, IgnoreIfAbsent()) // resolution error: IgnoreIfAbsent requires ReadOnly
-	b.WithResource(res, ReadOnly())       // valid: must NOT be rejected as a duplicate
 
+	// The errored resource must not be registered, so it neither masks nor is
+	// masked by other registrations through the duplicate-Identity check.
+	assert.Empty(t, b.component.resourceLookup)
+	assert.Empty(t, b.component.reconcileResources)
+
+	// The resolution error is still surfaced at Build time (fail loudly).
 	comp, err := b.Build()
-	require.NoError(t, err)
-	require.Len(t, comp.reconcileResources, 1)
-	assert.True(t, comp.reconcileResources[0].Options.ReadOnly)
+	require.Error(t, err)
+	assert.Nil(t, comp)
+	assert.Contains(t, err.Error(), "IgnoreIfAbsent requires ReadOnly")
 }

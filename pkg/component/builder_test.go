@@ -336,6 +336,31 @@ func TestBuilder_IncludeWhen(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, comp.resourceLookup, 1)
 	})
+
+	t.Run("nil build function with include true records a build error", func(t *testing.T) {
+		t.Parallel()
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			IncludeWhen(true, nil).
+			Build()
+
+		require.Error(t, err)
+		assert.Nil(t, comp)
+		assert.Contains(t, err.Error(), "nil build function")
+	})
+
+	t.Run("nil build function with include false is ignored", func(t *testing.T) {
+		t.Parallel()
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			IncludeWhen(false, nil).
+			Build()
+
+		require.NoError(t, err)
+		assert.Empty(t, comp.reconcileResources)
+	})
 }
 
 func TestBuilder_WithResource_OptionResolutionError(t *testing.T) {

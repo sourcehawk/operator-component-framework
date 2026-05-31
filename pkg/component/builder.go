@@ -183,9 +183,17 @@ func (b *Builder) WithResource(resource Resource, opts ...ResourceOption) *Build
 // an already-present resource in place, unmanaged, rather than removing it.
 //
 // When include is true the resource is registered exactly as WithResource with
-// the same options.
+// the same options. A nil build function (when include is true) is recorded as a
+// build error rather than panicking.
 func (b *Builder) IncludeWhen(include bool, build func() Resource, opts ...ResourceOption) *Builder {
 	if !include {
+		return b
+	}
+	if build == nil {
+		b.buildErrors = append(
+			b.buildErrors,
+			fmt.Errorf("nil build function passed to IncludeWhen in component %q", b.component.name),
+		)
 		return b
 	}
 	return b.WithResource(build(), opts...)

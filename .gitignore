@@ -39,7 +39,8 @@ tmp/
 # Ai slob
 .ai/scripts
 .junie
-.claude
+.claude/*
+!.claude/settings.json
 .context
 CLAUDE.md
 posts

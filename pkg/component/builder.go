@@ -4,6 +4,7 @@ package component
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -113,32 +114,44 @@ func (b *Builder) WithConditionType(conditionType ConditionType) *Builder {
 // SuppressGraceInconsistencyWarning). With no options the resource is created or
 // updated and is required for the component to become Ready.
 //
-// If a resource with the same Identity() is already registered, or if the
-// supplied options fail to resolve (a feature-gate evaluation error or an invalid
-// flag combination), a validation error is recorded and returned by Build.
+// A nil resource (a nil interface or a typed-nil pointer) is rejected with a
+// build error rather than panicking. If a resource with the same Identity() is
+// already registered, or if the supplied options fail to resolve (a feature-gate
+// evaluation error or an invalid flag combination), a validation error is
+// recorded and returned by Build.
 func (b *Builder) WithResource(resource Resource, opts ...ResourceOption) *Builder {
-	options, err := resolveResourceOptions(opts)
-	if err != nil {
+	if isNilResource(resource) {
 		b.buildErrors = append(
 			b.buildErrors,
-			fmt.Errorf("resource %q in component %q: %w", resource.Identity(), b.component.name, err),
+			fmt.Errorf("nil resource registered in component %q", b.component.name),
 		)
 		return b
 	}
 
-	if _, ok := b.component.resourceLookup[resource.Identity()]; ok {
+	identity := resource.Identity()
+
+	options, err := resolveResourceOptions(opts)
+	if err != nil {
+		b.buildErrors = append(
+			b.buildErrors,
+			fmt.Errorf("resource %q in component %q: %w", identity, b.component.name, err),
+		)
+		return b
+	}
+
+	if _, ok := b.component.resourceLookup[identity]; ok {
 		b.buildErrors = append(
 			b.buildErrors,
 			fmt.Errorf(
 				"duplicate resource %q in component %q (delete=%t, readOnly=%t, mode=%s)",
-				resource.Identity(),
+				identity,
 				b.component.name, options.Delete, options.ReadOnly, options.ParticipationMode,
 			),
 		)
 		return b
 	}
 
-	b.component.resourceLookup[resource.Identity()] = resource
+	b.component.resourceLookup[identity] = resource
 
 	if options.Delete {
 		b.component.deleteResources = append(b.component.deleteResources, resource)
@@ -167,6 +180,27 @@ func (b *Builder) IncludeWhen(include bool, build func() Resource, opts ...Resou
 		return b
 	}
 	return b.WithResource(build(), opts...)
+}
+
+// isNilResource reports whether r is a nil interface or wraps a nil value
+// (a typed-nil pointer, map, slice, func, or channel). Either form would panic
+// when the resource's methods are invoked, so WithResource rejects it with a
+// build error rather than letting the panic escape.
+//
+// It does not detect a non-nil resource that is only partially constructed
+// (e.g. a non-nil wrapper whose internal state is nil); such a resource passes
+// this check and may still panic when used.
+func isNilResource(r Resource) bool {
+	if r == nil {
+		return true
+	}
+	v := reflect.ValueOf(r)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.Interface:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // WithGracePeriod configures a grace duration for the component's convergence to a Ready state.

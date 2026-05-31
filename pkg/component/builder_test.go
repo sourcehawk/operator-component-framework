@@ -355,6 +355,51 @@ func TestBuilder_WithResource_OptionResolutionError(t *testing.T) {
 	assert.Contains(t, err.Error(), "IgnoreIfAbsent requires ReadOnly")
 }
 
+func TestBuilder_WithResource_NilResource(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil interface records a build error", func(t *testing.T) {
+		t.Parallel()
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			WithResource(nil).
+			Build()
+
+		require.Error(t, err)
+		assert.Nil(t, comp)
+		assert.Contains(t, err.Error(), "nil resource")
+	})
+
+	t.Run("typed-nil pointer records a build error instead of panicking", func(t *testing.T) {
+		t.Parallel()
+		var typedNil *MockResource // non-nil interface wrapping a nil pointer
+
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			WithResource(typedNil).
+			Build()
+
+		require.Error(t, err)
+		assert.Nil(t, comp)
+		assert.Contains(t, err.Error(), "nil resource")
+	})
+
+	t.Run("IncludeWhen surfaces a nil build result as a build error", func(t *testing.T) {
+		t.Parallel()
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			IncludeWhen(true, func() Resource { return nil }).
+			Build()
+
+		require.Error(t, err)
+		assert.Nil(t, comp)
+		assert.Contains(t, err.Error(), "nil resource")
+	})
+}
+
 func TestBuilder_WithResource_ResolutionErrorDoesNotRegister(t *testing.T) {
 	t.Parallel()
 	res := &MockResource{}

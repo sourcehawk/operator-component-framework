@@ -19,8 +19,8 @@ import (
 // IncludeWhen (present only when a condition holds).
 type ResourceOption func(*resourceConfig)
 
-// resourceConfig is the mutable target that ResourceOptions write into before
-// resolution.
+// resourceConfig is the mutable target that ResourceOption functions write into
+// before resolution.
 type resourceConfig struct {
 	readOnly                          bool
 	deleteConditions                  []bool

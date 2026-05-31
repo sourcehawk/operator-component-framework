@@ -84,15 +84,17 @@ func DeleteWhen(condition bool) ResourceOption {
 	return func(c *resourceConfig) { c.deleteConditions = append(c.deleteConditions, condition) }
 }
 
-// GatedBy gates the resource's existence on a feature.Gate. When the gate is
-// disabled the resource is marked for deletion; when enabled the resource is
-// managed normally. A nil gate is a no-op (treated as always enabled). A gate
-// whose evaluation fails produces a resolution error returned by Build.
+// GatedBy conditionally renders an owned resource based on a feature.Gate: it is
+// the option to reach for when a resource the component owns should exist for
+// some feature states and be removed for others. When the gate is disabled the
+// resource is marked for deletion; when enabled it is managed normally. A nil
+// gate is a no-op (treated as always enabled). A gate whose evaluation fails
+// produces a resolution error returned by Build.
 //
 // Because a disabled gate deletes the resource, GatedBy is mutually exclusive
-// with ReadOnly; combining them is a configuration error returned by Build. To
-// conditionally include a read-only resource, evaluate the gate yourself and use
-// IncludeWhen, which omits the resource without deleting it.
+// with ReadOnly; combining them is a configuration error returned by Build. For
+// an optional resource that must never be deleted (a read-only reference owned
+// by someone else), use IncludeWhen instead, which omits rather than deletes.
 func GatedBy(gate feature.Gate) ResourceOption {
 	return func(c *resourceConfig) { c.gate = gate }
 }

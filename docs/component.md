@@ -99,24 +99,34 @@ component.NewComponentBuilder().
 When `tracingGate` is disabled, the exporter is deleted from the cluster. When enabled, it is managed but does not block
 the component from becoming Ready.
 
-#### IncludeWhen
+#### IncludeWhen vs. GatedBy: two different axes
 
-`IncludeWhen` omits a resource entirely when a condition is false: the resource is not created, read, or deleted, and
-its constructor is never called. This is useful for optional, externally-owned resources whose constructor would
-dereference a nil optional input.
+These two look similar but answer different questions, and picking the wrong one either deletes a resource you do not
+own or fails to clean up one you do:
+
+- **`GatedBy` / `DeleteWhen` — conditionally _render_ a resource the component owns.** When the condition turns off, the
+  resource is **deleted** from the cluster. Reach for these to make an owned resource (a Deployment, a ConfigMap) exist
+  for some states and be removed for others.
+- **`IncludeWhen` — conditionally _include_ a resource, never deleting it.** When the condition is false the resource is
+  omitted entirely: not created, read, or deleted, and its constructor is never called.
+
+`IncludeWhen`'s primary purpose is **optional, externally-owned resources that may or may not exist** — most commonly a
+read-only reference to a Secret or ConfigMap owned by the user or another operator, behind an optional spec field.
+Because construction is deferred behind the `func() Resource` closure, the builder may safely dereference the optional
+input that determined inclusion.
 
 ```go
-// IncludeWhen defers construction and omits the resource entirely when the
-// condition is false (no create, read, or delete). Use it for optional inputs
-// that cannot be constructed when absent.
+// Optional, externally-owned read-only reference. Construction is deferred, so
+// the closure only dereferences LicenseSecretRef when it is non-nil.
 builder.IncludeWhen(spec.LicenseSecretRef != nil, func() component.Resource {
     r := spec.LicenseSecretRef
     return common.SecretRef(r.Name, r.Namespace, hash)
 }, component.ReadOnly(), component.BlockOnAbsence())
 ```
 
-Contrast with `DeleteWhen`, which removes an already-built resource from the cluster when its condition becomes false.
-`IncludeWhen` skips the resource registration entirely; `DeleteWhen` registers the resource for deletion.
+A secondary use is **migrating a resource from tracked to untracked without deleting it**: passing `include = false`
+leaves an already-present resource in place, unmanaged, rather than removing it from the cluster the way `GatedBy` or
+`DeleteWhen` would.
 
 ## Component Feature Gates
 

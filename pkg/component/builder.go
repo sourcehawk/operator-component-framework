@@ -165,13 +165,22 @@ func (b *Builder) WithResource(resource Resource, opts ...ResourceOption) *Build
 	return b
 }
 
-// IncludeWhen registers build()'s resource only when include is true.
+// IncludeWhen registers build()'s resource only when include is true. Its
+// primary purpose is optional, externally-owned resources that may or may not
+// exist: most commonly a read-only reference to a Secret or ConfigMap owned by
+// the user or another operator, behind an optional spec field.
 //
-// When include is false the resource is omitted entirely (not created, read, or
-// deleted), build is never called, and the resource takes no part in the
+// When include is false the resource is omitted entirely: build is never called,
+// the resource is never created, read, or deleted, and it takes no part in the
 // duplicate-Identity() check. Because build runs only when include is true, it
-// may safely dereference the optional inputs that determined include. Contrast
-// DeleteWhen, which removes an already-built resource from the cluster.
+// may safely dereference the optional inputs that determined include.
+//
+// IncludeWhen never deletes, which is the key distinction from GatedBy and
+// DeleteWhen. Reach for GatedBy (or DeleteWhen) to conditionally render a
+// resource the component owns, which is removed from the cluster when its
+// condition turns off. Reach for IncludeWhen to include an optional resource, or
+// to stop managing a resource without deleting it: passing include=false leaves
+// an already-present resource in place, unmanaged, rather than removing it.
 //
 // When include is true the resource is registered exactly as WithResource with
 // the same options.

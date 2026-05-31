@@ -44,21 +44,14 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		return err
 	}
 
-	// SuppressGraceInconsistencyWarning tells the framework not to log a
-	// warning when the custom grace handler reports Healthy while the
-	// convergence handler reports non-healthy. This is intentional: the
-	// deployment is a soft dependency and should not block the component.
-	opts, err := component.NewResourceOptionsBuilder().
-		SuppressGraceInconsistencyWarning().
-		Build()
-	if err != nil {
-		return err
-	}
-
 	comp, err := component.NewComponentBuilder().
 		WithName("monitoring").
 		WithConditionType("MonitoringReady").
-		WithResource(deployResource, opts).
+		// SuppressGraceInconsistencyWarning tells the framework not to log a
+		// warning when the custom grace handler reports Healthy while the
+		// convergence handler reports non-healthy. This is intentional: the
+		// deployment is a soft dependency and should not block the component.
+		WithResource(deployResource, component.SuppressGraceInconsistencyWarning()).
 		WithGracePeriod(5 * time.Second).
 		Build()
 	if err != nil {

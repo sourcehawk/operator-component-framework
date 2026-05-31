@@ -60,8 +60,8 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	comp, err := component.NewComponentBuilder().
 		WithName("database").
 		WithConditionType("DatabaseReady").
-		WithResource(cmResource, component.ResourceOptions{}).
-		WithResource(secretResource, component.ResourceOptions{}).
+		WithResource(cmResource).
+		WithResource(secretResource).
 		Build()
 	if err != nil {
 		return err

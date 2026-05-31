@@ -48,20 +48,13 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		return err
 	}
 
-	// Gate the ConfigMap at the resource level: when metrics are disabled the
-	// framework deletes the ConfigMap and excludes it from health aggregation.
-	cmOpts, err := component.NewResourceOptionsBuilder().
-		When(owner.Spec.EnableMetrics).
-		Build()
-	if err != nil {
-		return err
-	}
-
 	comp, err := component.NewComponentBuilder().
 		WithName("example-app").
 		WithConditionType("AppReady").
-		WithResource(deployResource, component.ResourceOptions{}).
-		WithResource(cmResource, cmOpts).
+		WithResource(deployResource).
+		// Gate the ConfigMap at the resource level: when metrics are disabled the
+		// framework deletes the ConfigMap.
+		WithResource(cmResource, component.DeleteWhen(!owner.Spec.EnableMetrics)).
 		Suspend(owner.Spec.Suspended).
 		Build()
 	if err != nil {

@@ -104,11 +104,6 @@ func TestResolveResourceOptions(t *testing.T) {
 			want: resourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired},
 		},
 		{
-			name: "ReadOnly forced false when deleted",
-			opts: []ResourceOption{GatedBy(&disabledFeature{}), ReadOnly()},
-			want: resourceOptions{Delete: true, ReadOnly: false, ParticipationMode: ParticipationModeRequired},
-		},
-		{
 			name: "SuppressGraceInconsistencyWarning sets flag",
 			opts: []ResourceOption{SuppressGraceInconsistencyWarning()},
 			want: resourceOptions{SuppressGraceInconsistencyWarning: true, ParticipationMode: ParticipationModeRequired},
@@ -119,19 +114,9 @@ func TestResolveResourceOptions(t *testing.T) {
 			want: resourceOptions{ReadOnly: true, BlockOnAbsence: true, ParticipationMode: ParticipationModeRequired},
 		},
 		{
-			name: "BlockOnAbsence preserved when deletion forced",
-			opts: []ResourceOption{GatedBy(&disabledFeature{}), ReadOnly(), BlockOnAbsence()},
-			want: resourceOptions{Delete: true, ReadOnly: false, BlockOnAbsence: true, ParticipationMode: ParticipationModeRequired},
-		},
-		{
 			name: "IgnoreIfAbsent alongside ReadOnly",
 			opts: []ResourceOption{ReadOnly(), IgnoreIfAbsent()},
 			want: resourceOptions{ReadOnly: true, IgnoreIfAbsent: true, ParticipationMode: ParticipationModeRequired},
-		},
-		{
-			name: "IgnoreIfAbsent preserved when deletion forced",
-			opts: []ResourceOption{GatedBy(&disabledFeature{}), ReadOnly(), IgnoreIfAbsent()},
-			want: resourceOptions{Delete: true, ReadOnly: false, IgnoreIfAbsent: true, ParticipationMode: ParticipationModeRequired},
 		},
 		{
 			name: "last GatedBy wins",
@@ -176,9 +161,34 @@ func TestResolveResourceOptions_ValidationErrors(t *testing.T) {
 			wantErrIs: "BlockOnAbsence and IgnoreIfAbsent are mutually exclusive",
 		},
 		{
-			name:      "BlockOnAbsence + ReadOnly + disabled gate does not error",
+			name:      "ReadOnly with Delete errors",
+			opts:      []ResourceOption{ReadOnly(), Delete()},
+			wantErrIs: "ReadOnly is mutually exclusive with Delete and DeleteWhen",
+		},
+		{
+			name:      "ReadOnly with DeleteWhen(true) errors",
+			opts:      []ResourceOption{ReadOnly(), DeleteWhen(true)},
+			wantErrIs: "ReadOnly is mutually exclusive with Delete and DeleteWhen",
+		},
+		{
+			name:      "ReadOnly with DeleteWhen(false) errors on presence, not value",
+			opts:      []ResourceOption{ReadOnly(), DeleteWhen(false)},
+			wantErrIs: "ReadOnly is mutually exclusive with Delete and DeleteWhen",
+		},
+		{
+			name:      "ReadOnly with disabled GatedBy errors",
+			opts:      []ResourceOption{ReadOnly(), GatedBy(&disabledFeature{})},
+			wantErrIs: "ReadOnly is mutually exclusive with GatedBy",
+		},
+		{
+			name:      "ReadOnly with enabled GatedBy errors on presence, not value",
+			opts:      []ResourceOption{ReadOnly(), GatedBy(&enabledFeature{})},
+			wantErrIs: "ReadOnly is mutually exclusive with GatedBy",
+		},
+		{
+			name:      "ReadOnly with BlockOnAbsence and disabled gate now errors on gate",
 			opts:      []ResourceOption{GatedBy(&disabledFeature{}), ReadOnly(), BlockOnAbsence()},
-			wantErrIs: "",
+			wantErrIs: "ReadOnly is mutually exclusive with GatedBy",
 		},
 	}
 

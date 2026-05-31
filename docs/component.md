@@ -78,6 +78,10 @@ control how the component interacts with the resource:
 | `component.ReadOnly(), component.BlockOnAbsence()`  | **Read-only with watch-driven retry**: NotFound records a blocked status and short-circuits the remaining resources |
 | `component.ReadOnly(), component.IgnoreIfAbsent()`  | **Optional read-only**: NotFound is silently ignored; last-known state preserved                                    |
 
+A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
+`Delete()`, `DeleteWhen()`, and `GatedBy()`; combining them is a build error. To conditionally include a read-only
+resource, use [`IncludeWhen`](#includewhen), which omits the resource without deleting it.
+
 ### Conditional and Optional Resources
 
 Pass functional options directly on the `WithResource` call to express feature gating, auxiliary participation, or any

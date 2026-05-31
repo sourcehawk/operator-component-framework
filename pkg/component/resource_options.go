@@ -60,9 +60,11 @@ type resourceOptions struct {
 }
 
 // ReadOnly marks the resource as read-only: the component fetches its current
-// state but never creates or updates it. If the resource is also marked for
-// deletion (a disabled GatedBy gate or a true DeleteWhen condition), deletion
-// takes precedence and ReadOnly is forced off.
+// state but never creates, updates, or deletes it. A read-only resource is not
+// owned by the component, so it is mutually exclusive with every deletion
+// trigger: combining ReadOnly with Delete, DeleteWhen, or GatedBy is a
+// configuration error returned by Build. To conditionally include a read-only
+// resource, use IncludeWhen, which omits the resource without ever deleting it.
 func ReadOnly() ResourceOption {
 	return func(c *resourceConfig) { c.readOnly = true }
 }
@@ -75,8 +77,9 @@ func Delete() ResourceOption {
 
 // DeleteWhen marks the resource for removal from the cluster when condition is
 // true. Calls are additive with OR semantics: the resource is deleted if any
-// supplied condition is true (or a GatedBy gate is disabled). When a resource is
-// deleted, ReadOnly is forced off (deletion takes precedence).
+// supplied condition is true (or a GatedBy gate is disabled). Mutually exclusive
+// with ReadOnly, since a read-only resource is never deleted; combining them is
+// a configuration error returned by Build.
 func DeleteWhen(condition bool) ResourceOption {
 	return func(c *resourceConfig) { c.deleteConditions = append(c.deleteConditions, condition) }
 }
@@ -85,6 +88,11 @@ func DeleteWhen(condition bool) ResourceOption {
 // disabled the resource is marked for deletion; when enabled the resource is
 // managed normally. A nil gate is a no-op (treated as always enabled). A gate
 // whose evaluation fails produces a resolution error returned by Build.
+//
+// Because a disabled gate deletes the resource, GatedBy is mutually exclusive
+// with ReadOnly; combining them is a configuration error returned by Build. To
+// conditionally include a read-only resource, evaluate the gate yourself and use
+// IncludeWhen, which omits the resource without deleting it.
 func GatedBy(gate feature.Gate) ResourceOption {
 	return func(c *resourceConfig) { c.gate = gate }
 }
@@ -130,7 +138,7 @@ func resolveResourceOptions(opts []ResourceOption) (resourceOptions, error) {
 }
 
 // resolve validates the configuration, evaluates the feature gate and delete
-// conditions, applies deletion precedence, and returns the resolved options.
+// conditions, and returns the resolved options.
 func (c *resourceConfig) resolve() (resourceOptions, error) {
 	if c.blockOnAbsence && c.ignoreIfAbsent {
 		return resourceOptions{}, errors.New(
@@ -142,6 +150,22 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 	}
 	if c.ignoreIfAbsent && !c.readOnly {
 		return resourceOptions{}, errors.New("resource option IgnoreIfAbsent requires ReadOnly")
+	}
+
+	// A read-only resource is not owned by the component, so it must never be
+	// deleted. Combining ReadOnly with any deletion trigger is a configuration
+	// error; use IncludeWhen to conditionally include a read-only resource.
+	if c.readOnly && len(c.deleteConditions) > 0 {
+		return resourceOptions{}, errors.New(
+			"resource option ReadOnly is mutually exclusive with Delete and DeleteWhen; " +
+				"use IncludeWhen to conditionally include a read-only resource",
+		)
+	}
+	if c.readOnly && c.gate != nil {
+		return resourceOptions{}, errors.New(
+			"resource option ReadOnly is mutually exclusive with GatedBy; " +
+				"use IncludeWhen to conditionally include a read-only resource",
+		)
 	}
 
 	shouldDelete := false
@@ -168,9 +192,11 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 		mode = ParticipationModeRequired
 	}
 
+	// ReadOnly and shouldDelete cannot both be set: the validation above rejects
+	// any read-only resource that carries a deletion trigger.
 	return resourceOptions{
 		Delete:                            shouldDelete,
-		ReadOnly:                          c.readOnly && !shouldDelete,
+		ReadOnly:                          c.readOnly,
 		ParticipationMode:                 mode,
 		SuppressGraceInconsistencyWarning: c.suppressGraceInconsistencyWarning,
 		BlockOnAbsence:                    c.blockOnAbsence,

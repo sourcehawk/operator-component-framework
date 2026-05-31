@@ -86,7 +86,7 @@ graph TB
 go get github.com/sourcehawk/operator-component-framework
 ```
 
-Requires Go 1.25.6+ and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) v0.22 or later. See
+Requires Go 1.26+ and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) v0.22 or later. See
 [Compatibility](docs/compatibility.md) for the full support matrix.
 
 ## Quick Start

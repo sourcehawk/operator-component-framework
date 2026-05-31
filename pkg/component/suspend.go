@@ -167,7 +167,7 @@ func suspendResource(
 
 		rec.Recorder.Eventf(
 			rec.Owner, v1.EventTypeNormal, "ResourceDeleted",
-			fmt.Sprintf("Resource %s deleted on suspension", resource.Identity()),
+			"Resource %s deleted on suspension", resource.Identity(),
 		)
 
 		return suspension, nil

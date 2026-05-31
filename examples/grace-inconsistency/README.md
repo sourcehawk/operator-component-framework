@@ -1,7 +1,7 @@
 # Grace Inconsistency Suppression
 
-This example demonstrates how to suppress the **grace inconsistency warning** using `SuppressGraceInconsistencyWarning`
-in `ResourceOptions`.
+This example demonstrates how to suppress the **grace inconsistency warning** using the
+`component.SuppressGraceInconsistencyWarning()` resource option.
 
 ## What it shows
 
@@ -9,7 +9,7 @@ in `ResourceOptions`.
   regardless of replica readiness. This is intentional for a soft-dependency resource like a monitoring sidecar.
 - **Inconsistency**: The convergence handler reports non-healthy (0 ready replicas), while the grace handler reports
   healthy. By default the framework logs a warning about this mismatch.
-- **Suppression**: `NewResourceOptionsBuilder().SuppressGraceInconsistencyWarning().Build()` tells the framework the
+- **Suppression**: passing `component.SuppressGraceInconsistencyWarning()` to `WithResource` tells the framework the
   inconsistency is deliberate, silencing the warning.
 - **Grace period**: The component uses `WithGracePeriod(5 * time.Second)` to set the window during which the grace
   handler is consulted.

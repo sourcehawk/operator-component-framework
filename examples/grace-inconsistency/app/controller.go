@@ -13,7 +13,8 @@ import (
 
 // Controller reconciles an ExampleApp with a Deployment that has a custom grace
 // handler intentionally returning Healthy while the convergence handler may
-// report non-healthy. The inconsistency warning is suppressed via ResourceOptions.
+// report non-healthy. The inconsistency warning is suppressed via the
+// SuppressGraceInconsistencyWarning() option.
 type Controller struct {
 	client.Client
 	Scheme   *runtime.Scheme

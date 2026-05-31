@@ -16,9 +16,8 @@ manages two resources: a Deployment and a ConfigMap.
   registered before `BackwardCompatV1Container`. This ensures it always sees the baseline name, even though the backward
   compat mutation renames the container for older versions. The env var edit carries through the rename because the
   backward compat mutation only overwrites `Name` and `Ports`, not `Env`.
-- **Resource-level gating**: The ConfigMap is registered with
-  `NewResourceOptionsBuilder().When(owner.Spec.EnableMetrics).Build()`. When metrics are disabled, the framework deletes
-  the ConfigMap entirely rather than leaving an empty one behind.
+- **Resource-level gating**: The ConfigMap is registered with `component.DeleteWhen(!owner.Spec.EnableMetrics)`. When
+  metrics are disabled, the framework deletes the ConfigMap entirely rather than leaving an empty one behind.
 - **Mutation-level gating within a resource**: `MetricsConfigMutation` on the ConfigMap is separately boolean-gated,
   showing that gating can happen at both the resource and mutation levels.
 - **Suspension**: The component supports suspension via `Suspend(owner.Spec.Suspended)`.

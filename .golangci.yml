@@ -34,6 +34,8 @@ linters:
     - unused
     - whitespace
   settings:
+    goconst:
+      ignore-tests: true
     revive:
       rules:
         - name: blank-imports
@@ -62,6 +64,11 @@ linters:
           - goconst
           - revive
         path: _test\.go
+      # Illustrative examples and e2e scaffolding favour inline literals for
+      # readability; goconst's value is in the reusable library code under pkg/.
+      - linters:
+          - goconst
+        path: ^(examples|e2e)/
       - linters:
           - revive
         text: dot-imports

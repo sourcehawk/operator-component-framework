@@ -282,15 +282,15 @@ and `WebInterfaceReady` independently, those are two components.
 dbComp, err := component.NewComponentBuilder().
     WithName("database").
     WithConditionType("DatabaseReady").
-    WithResource(statefulSet, component.ResourceOptions{}).
-    WithResource(dbService, component.ResourceOptions{}).
+    WithResource(statefulSet).
+    WithResource(dbService).
     Build()
 
 webComp, err := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
-    WithResource(deployment, component.ResourceOptions{}).
-    WithResource(ingress, component.ResourceOptions{}).
+    WithResource(deployment).
+    WithResource(ingress).
     Build()
 ```
 
@@ -382,8 +382,8 @@ If resource B needs data extracted from resource A, register A first:
 comp, err := component.NewComponentBuilder().
     WithName("cloud-resources").
     WithConditionType("CloudReady").
-    WithResource(roleRes, component.ResourceOptions{}).    // Applied first, ARN extracted
-    WithResource(bucketRes, component.ResourceOptions{}).  // Guard checks ARN, applied second
+    WithResource(roleRes).    // Applied first, ARN extracted
+    WithResource(bucketRes).  // Guard checks ARN, applied second
     Build()
 ```
 
@@ -571,14 +571,14 @@ orchestrating the ordering in the controller.
 dbComp, err := component.NewComponentBuilder().
     WithName("database").
     WithConditionType("DatabaseReady").
-    WithResource(statefulSet, component.ResourceOptions{}).
+    WithResource(statefulSet).
     Build()
 
 webComp, err := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
     WithPrerequisite(component.DependsOn("DatabaseReady")).
-    WithResource(deployment, component.ResourceOptions{}).
+    WithResource(deployment).
     Build()
 ```
 
@@ -606,8 +606,8 @@ comp, err := component.NewComponentBuilder().
     WithName("monitoring").
     WithConditionType("MonitoringReady").
     WithFeatureGate(feature.NewVersionGate(owner.Spec.Version, nil).When(owner.Spec.MonitoringEnabled)).
-    WithResource(exporterDeployment, component.ResourceOptions{}).
-    WithResource(exporterService, component.ResourceOptions{}).
+    WithResource(exporterDeployment).
+    WithResource(exporterService).
     Build()
 ```
 
@@ -643,15 +643,11 @@ auxiliary resource still fails the reconciliation. The only difference is that a
 does not affect whether the component condition becomes Ready.
 
 ```go
-opts, _ := component.NewResourceOptionsBuilder().
-    Auxiliary().
-    Build()
-
 comp, _ := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
-    WithResource(deployment, component.ResourceOptions{}).  // Required for Ready
-    WithResource(metricsExporter, opts).                    // Not required for Ready
+    WithResource(deployment).                              // Required for Ready
+    WithResource(metricsExporter, component.Auxiliary()).  // Not required for Ready
     Build()
 ```
 
@@ -663,21 +659,17 @@ halts the reconciliation pipeline, and that must be visible in the condition.
 
 ## Use Feature Gating for Conditional Resources
 
-When an entire resource should only exist based on a feature flag or version constraint, use the resource options
-builder with a feature gate rather than conditionally calling `WithResource()` in the controller.
+When an entire resource should only exist based on a feature flag or version constraint, pass `component.GatedBy(gate)`
+to `WithResource` rather than conditionally calling `WithResource()` in the controller.
 
 ```go
 tracingGate := feature.NewVersionGate(owner.Spec.Version, nil).When(owner.Spec.TracingEnabled)
 
-opts, _ := component.NewResourceOptionsBuilder().
-    WithFeatureGate(tracingGate).
-    Build()
-
 comp, _ := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
-    WithResource(deployment, component.ResourceOptions{}).
-    WithResource(jaegerSidecar, opts).
+    WithResource(deployment).
+    WithResource(jaegerSidecar, component.GatedBy(tracingGate)).
     Build()
 ```
 
@@ -694,7 +686,7 @@ periods give the component time to converge before the framework escalates the c
 comp, _ := component.NewComponentBuilder().
     WithName("web-interface").
     WithConditionType("WebInterfaceReady").
-    WithResource(deployment, component.ResourceOptions{}).
+    WithResource(deployment).
     WithGracePeriod(5 * time.Minute).
     Build()
 ```
@@ -717,7 +709,7 @@ using `Delete: true` in resource options or a finalizer on the owner CRD:
 comp, _ := component.NewComponentBuilder().
     WithName("rbac").
     WithConditionType("RBACReady").
-    WithResource(clusterRole, component.ResourceOptions{Delete: true}).
+    WithResource(clusterRole, component.Delete()).
     Build()
 ```
 

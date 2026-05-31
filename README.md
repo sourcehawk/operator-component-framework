@@ -224,9 +224,9 @@ func NewWebInterfaceComponent(owner *MyOperatorCR) (*component.Component, error)
     return component.NewComponentBuilder().
         WithName("web-interface").
         WithConditionType("WebInterfaceReady").
-        WithResource(configMap, component.ResourceOptions{}).
-        WithResource(deployment, component.ResourceOptions{}).
-        WithResource(service, component.ResourceOptions{}).
+        WithResource(configMap).
+        WithResource(deployment).
+        WithResource(service).
         WithGracePeriod(5 * time.Minute).
         Suspend(owner.Spec.Suspended).
         Build()
@@ -323,8 +323,8 @@ func NewAPIGatewayComponent(owner *MyOperatorCR) (*component.Component, error) {
         WithConditionType("APIGatewayReady").
         WithFeatureGate(feature.NewVersionGate(version, versionConstraints).When(spec.GatewayEnabled)).
         WithPrerequisite(component.DependsOn("DatabaseReady")).
-        WithResource(gatewayDep, component.ResourceOptions{}).
-        WithResource(gatewaySvc, component.ResourceOptions{}).
+        WithResource(gatewayDep).
+        WithResource(gatewaySvc).
         Build()
 }
 ```
@@ -336,13 +336,8 @@ within a component.
 
 ```go
 // Feature-gated: created when enabled, deleted when disabled.
-metricsOpts, _ := component.NewResourceOptionsBuilder().
-    WithFeatureGate(metricsGate).
-    Auxiliary().
-    Build()
-
-builder.WithResource(metricsExporter, metricsOpts)
-builder.WithResource(externalCRD, component.ResourceOptions{ReadOnly: true})
+builder.WithResource(metricsExporter, component.GatedBy(metricsGate), component.Auxiliary())
+builder.WithResource(externalCRD, component.ReadOnly())
 ```
 
 ### Built-in Primitives

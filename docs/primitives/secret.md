@@ -259,8 +259,8 @@ if err != nil {
 }
 
 comp, err := component.NewComponentBuilder().
-    WithResource(secretResource, component.ResourceOptions{}).  // reconciled first
-    WithResource(deployResource, component.ResourceOptions{}).
+    WithResource(secretResource).  // reconciled first
+    WithResource(deployResource).
     Build()
 ```
 

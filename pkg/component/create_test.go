@@ -498,7 +498,7 @@ func TestReconcileResources_BlockOnAbsence(t *testing.T) {
 
 		entry := reconcileEntry{
 			Resource: resource,
-			Options:  ResourceOptions{ReadOnly: true, BlockOnAbsence: true},
+			Options:  resourceOptions{ReadOnly: true, BlockOnAbsence: true},
 		}
 
 		// When
@@ -524,7 +524,7 @@ func TestReconcileResources_BlockOnAbsence(t *testing.T) {
 
 		entry := reconcileEntry{
 			Resource: resource,
-			Options:  ResourceOptions{ReadOnly: true},
+			Options:  resourceOptions{ReadOnly: true},
 		}
 
 		_, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
@@ -547,8 +547,8 @@ func TestReconcileResources_BlockOnAbsence(t *testing.T) {
 		follower := &MockResource{}
 
 		entries := []reconcileEntry{
-			{Resource: leader, Options: ResourceOptions{ReadOnly: true, BlockOnAbsence: true}},
-			{Resource: follower, Options: ResourceOptions{ReadOnly: true}},
+			{Resource: leader, Options: resourceOptions{ReadOnly: true, BlockOnAbsence: true}},
+			{Resource: follower, Options: resourceOptions{ReadOnly: true}},
 		}
 
 		results, err := reconcileResources(ctx, reconcileContext, entries, "comp", mapper)
@@ -588,7 +588,7 @@ func TestReconcileResources_IgnoreIfAbsent(t *testing.T) {
 
 		entry := reconcileEntry{
 			Resource: resource,
-			Options:  ResourceOptions{ReadOnly: true, IgnoreIfAbsent: true},
+			Options:  resourceOptions{ReadOnly: true, IgnoreIfAbsent: true},
 		}
 
 		results, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
@@ -621,8 +621,8 @@ func TestReconcileResources_IgnoreIfAbsent(t *testing.T) {
 		follower.On("Identity").Return("v1/Secret/present-follower")
 
 		entries := []reconcileEntry{
-			{Resource: leader, Options: ResourceOptions{ReadOnly: true, IgnoreIfAbsent: true}},
-			{Resource: follower, Options: ResourceOptions{ReadOnly: true}},
+			{Resource: leader, Options: resourceOptions{ReadOnly: true, IgnoreIfAbsent: true}},
+			{Resource: follower, Options: resourceOptions{ReadOnly: true}},
 		}
 
 		_, err := reconcileResources(ctx, reconcileContext, entries, "comp", mapper)
@@ -644,7 +644,7 @@ func TestReconcileResources_IgnoreIfAbsent(t *testing.T) {
 
 		entry := reconcileEntry{
 			Resource: resource,
-			Options:  ResourceOptions{ReadOnly: true},
+			Options:  resourceOptions{ReadOnly: true},
 		}
 
 		_, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)

@@ -150,7 +150,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Waiting for creation",
 			}, nil)
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}}}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -183,7 +183,7 @@ var _ = Describe("Component Reconciler", func() {
 				Reason: "Read-only healthy",
 			}, nil)
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired}}}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -212,7 +212,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Identity").Return("ConfigMap/test-no-mutate-cm")
 			res.On("Object").Return(cm, nil)
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ReadOnly: true}}}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ReadOnly: true}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -260,8 +260,8 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 
 			comp.reconcileResources = []reconcileEntry{
-				{Resource: res1, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}},
-				{Resource: res2, Options: ResourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired}},
+				{Resource: res1, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}},
+				{Resource: res2, Options: resourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired}},
 			}
 
 			// When
@@ -448,7 +448,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(nil, fmt.Errorf("read error"))
 			res.On("Identity").Return("failing-read-resource")
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ReadOnly: true}}}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ReadOnly: true}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -580,8 +580,8 @@ var _ = Describe("Component Reconciler", func() {
 			c, err := NewComponentBuilder().
 				WithName("test-comp").
 				WithConditionType("Ready").
-				WithResource(rReq, ResourceOptions{ParticipationMode: ParticipationModeRequired}).
-				WithResource(rAux, ResourceOptions{ParticipationMode: ParticipationModeAuxiliary}).
+				WithResource(rReq).
+				WithResource(rAux, Auxiliary()).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -632,8 +632,8 @@ var _ = Describe("Component Reconciler", func() {
 			c, err := NewComponentBuilder().
 				WithName("test-comp").
 				WithConditionType("Ready").
-				WithResource(resAlive, ResourceOptions{}). // Default mode (Required)
-				WithResource(resComp, ResourceOptions{}).  // Default mode (Required)
+				WithResource(resAlive). // Default mode (Required)
+				WithResource(resComp).  // Default mode (Required)
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -698,11 +698,9 @@ var _ = Describe("Component Reconciler", func() {
 				m.On("ConvergingStatus", concepts.ConvergingOperationCreated).Return(status, nil)
 
 				c, _ := NewComponentBuilder().
-					WithName(name+"-comp").
+					WithName(name + "-comp").
 					WithConditionType("Ready").
-					WithResource(res, ResourceOptions{
-						ParticipationMode: ParticipationModeRequired,
-					}).
+					WithResource(res).
 					Build()
 
 				err := c.Reconcile(ctx, recCtx)
@@ -747,9 +745,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("grace-comp").
 				WithConditionType("Ready").
 				WithGracePeriod(gracePeriod).
-				WithResource(res, ResourceOptions{
-					ParticipationMode: ParticipationModeRequired,
-				}).
+				WithResource(res).
 				Build()
 
 			// 1. Initial reconcile to set the condition and its transition time
@@ -786,9 +782,7 @@ var _ = Describe("Component Reconciler", func() {
 			c, _ := NewComponentBuilder().
 				WithName("sus-comp").
 				WithConditionType("Ready").
-				WithResource(res, ResourceOptions{
-					ParticipationMode: ParticipationModeRequired,
-				}).
+				WithResource(res).
 				Suspend(true).
 				Build()
 
@@ -925,7 +919,7 @@ var _ = Describe("Component Reconciler", func() {
 			c, err := NewComponentBuilder().
 				WithName("ext-comp").
 				WithConditionType("ExtReady").
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 
 			Expect(err).NotTo(HaveOccurred())
@@ -957,7 +951,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("gate-test").
 				WithConditionType("TestComponentReady").
 				WithFeatureGate(gate).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -994,7 +988,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("gate-enabled-test").
 				WithConditionType("TestComponentReady").
 				WithFeatureGate(gate).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1018,7 +1012,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("gate-sus-test").
 				WithConditionType("TestComponentReady").
 				WithFeatureGate(gate).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Suspend(true).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
@@ -1060,7 +1054,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("gate-noexist-test").
 				WithConditionType("TestComponentReady").
 				WithFeatureGate(gate).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1082,7 +1076,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("prereq-test").
 				WithConditionType("TestComponentReady").
 				WithPrerequisite(prereq).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1113,7 +1107,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("prereq-met-test").
 				WithConditionType("TestComponentReady").
 				WithPrerequisite(prereq).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1147,7 +1141,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("barrier-pass-test").
 				WithConditionType("TestComponentReady").
 				WithPrerequisite(prereq).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1174,7 +1168,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("prereq-sus-test").
 				WithConditionType("TestComponentReady").
 				WithPrerequisite(prereq).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Suspend(true).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
@@ -1208,7 +1202,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithName("prereq-then-sus-test").
 				WithConditionType("TestComponentReady").
 				WithPrerequisite(prereq).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1241,7 +1235,7 @@ var _ = Describe("Component Reconciler", func() {
 				WithConditionType("TestComponentReady").
 				WithFeatureGate(gate).
 				WithPrerequisite(prereq).
-				WithResource(res, ResourceOptions{}).
+				WithResource(res).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1330,7 +1324,7 @@ var _ = Describe("Component Reconciler", func() {
 			}, nil)
 			res.On("Identity").Return("v1/ConfigMap/guarded-cm")
 
-			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}}}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -1509,8 +1503,8 @@ var _ = Describe("Component Reconciler", func() {
 			guarded.On("Identity").Return("v1/ConfigMap/guarded")
 
 			comp.reconcileResources = []reconcileEntry{
-				{Resource: alive, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}},
-				{Resource: guarded, Options: ResourceOptions{ParticipationMode: ParticipationModeRequired}},
+				{Resource: alive, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}},
+				{Resource: guarded, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}},
 			}
 
 			// When
@@ -1581,8 +1575,8 @@ func TestComponentPreview(t *testing.T) {
 
 		b := NewComponentBuilder()
 		b.WithName("t").WithConditionType("Ready")
-		b.WithResource(r1, ResourceOptions{})
-		b.WithResource(r2, ResourceOptions{})
+		b.WithResource(r1)
+		b.WithResource(r2)
 		comp, err := b.Build()
 		require.NoError(t, err)
 
@@ -1606,9 +1600,9 @@ func TestComponentPreview(t *testing.T) {
 
 		b := NewComponentBuilder()
 		b.WithName("t").WithConditionType("Ready")
-		b.WithResource(managed, ResourceOptions{})
-		b.WithResource(readOnly, ResourceOptions{ReadOnly: true})
-		b.WithResource(del, ResourceOptions{Delete: true})
+		b.WithResource(managed)
+		b.WithResource(readOnly, ReadOnly())
+		b.WithResource(del, Delete())
 		comp, err := b.Build()
 		require.NoError(t, err)
 
@@ -1626,7 +1620,7 @@ func TestComponentPreview(t *testing.T) {
 
 		b := NewComponentBuilder()
 		b.WithName("t").WithConditionType("Ready")
-		b.WithResource(plain, ResourceOptions{})
+		b.WithResource(plain)
 		comp, err := b.Build()
 		require.NoError(t, err)
 
@@ -1642,7 +1636,7 @@ func TestComponentPreview(t *testing.T) {
 
 		b := NewComponentBuilder()
 		b.WithName("t").WithConditionType("Ready")
-		b.WithResource(failing, ResourceOptions{})
+		b.WithResource(failing)
 		comp, err := b.Build()
 		require.NoError(t, err)
 
@@ -1658,7 +1652,7 @@ func TestComponentPreview(t *testing.T) {
 
 		b := NewComponentBuilder()
 		b.WithName("t").WithConditionType("Ready")
-		b.WithResource(nilRes, ResourceOptions{})
+		b.WithResource(nilRes)
 		comp, err := b.Build()
 		require.NoError(t, err)
 
@@ -1678,9 +1672,9 @@ func TestComponentResource(t *testing.T) {
 
 	b := NewComponentBuilder()
 	b.WithName("t").WithConditionType("Ready")
-	b.WithResource(managed, ResourceOptions{})
-	b.WithResource(readOnly, ResourceOptions{ReadOnly: true})
-	b.WithResource(del, ResourceOptions{Delete: true})
+	b.WithResource(managed)
+	b.WithResource(readOnly, ReadOnly())
+	b.WithResource(del, Delete())
 	comp, err := b.Build()
 	require.NoError(t, err)
 

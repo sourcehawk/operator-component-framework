@@ -96,9 +96,9 @@ func TestBuilder_WithResource(t *testing.T) {
 	b := NewComponentBuilder()
 	b.WithName("test").WithConditionType("Ready")
 
-	b.WithResource(res1, ResourceOptions{Delete: false, ReadOnly: false}) // create
-	b.WithResource(res2, ResourceOptions{Delete: false, ReadOnly: true})  // read-only
-	b.WithResource(res3, ResourceOptions{Delete: true, ReadOnly: false})  // delete
+	b.WithResource(res1)             // create
+	b.WithResource(res2, ReadOnly()) // read-only
+	b.WithResource(res3, Delete())   // delete
 
 	comp, err := b.Build()
 	require.NoError(t, err)
@@ -124,8 +124,8 @@ func TestBuilder_DuplicateResource(t *testing.T) {
 	b := NewComponentBuilder()
 	b.WithName("test").WithConditionType("Ready")
 
-	b.WithResource(res1, ResourceOptions{})
-	b.WithResource(res1, ResourceOptions{})
+	b.WithResource(res1)
+	b.WithResource(res1)
 
 	comp, err := b.Build()
 	require.Error(t, err)
@@ -244,9 +244,9 @@ func TestBuilder_BuildErrorAggregation(t *testing.T) {
 	b := NewComponentBuilder()
 	b.WithName("test").WithConditionType("Ready")
 
-	b.WithResource(res1, ResourceOptions{})
-	b.WithResource(res1, ResourceOptions{}) // Duplicate error
-	b.WithGracePeriod(-1 * time.Second)     // Grace period error
+	b.WithResource(res1)
+	b.WithResource(res1)                // Duplicate error
+	b.WithGracePeriod(-1 * time.Second) // Grace period error
 
 	comp, err := b.Build()
 	require.Error(t, err)
@@ -262,4 +262,77 @@ func TestBuilder_BuildErrorAggregation(t *testing.T) {
 		assert.Contains(t, err.Error(), "duplicate resource")
 		assert.Contains(t, err.Error(), "grace period must be positive")
 	}
+}
+
+func TestBuilder_IncludeWhen(t *testing.T) {
+	t.Parallel()
+
+	t.Run("include true registers and applies options", func(t *testing.T) {
+		t.Parallel()
+		res := &MockResource{}
+		res.On("Identity").Return("v1/Secret/included")
+
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			IncludeWhen(true, func() Resource { return res }, ReadOnly()).
+			Build()
+
+		require.NoError(t, err)
+		require.Len(t, comp.reconcileResources, 1)
+		assert.Equal(t, res, comp.reconcileResources[0].Resource)
+		assert.True(t, comp.reconcileResources[0].Options.ReadOnly)
+	})
+
+	t.Run("include false omits resource and never calls build", func(t *testing.T) {
+		t.Parallel()
+		called := false
+
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			IncludeWhen(false, func() Resource {
+				called = true
+				return &MockResource{}
+			}, ReadOnly()).
+			Build()
+
+		require.NoError(t, err)
+		assert.False(t, called, "build must not be called when include is false")
+		assert.Empty(t, comp.reconcileResources)
+		assert.Empty(t, comp.resourceLookup)
+	})
+
+	t.Run("omitted resource does not trip duplicate check", func(t *testing.T) {
+		t.Parallel()
+		res := &MockResource{}
+		res.On("Identity").Return("v1/Secret/dup")
+
+		comp, err := NewComponentBuilder().
+			WithName("test").
+			WithConditionType("Ready").
+			WithResource(res).
+			IncludeWhen(false, func() Resource { return res }).
+			Build()
+
+		require.NoError(t, err)
+		assert.Len(t, comp.resourceLookup, 1)
+	})
+}
+
+func TestBuilder_WithResource_OptionResolutionError(t *testing.T) {
+	t.Parallel()
+	res := &MockResource{}
+	res.On("Identity").Return("v1/Secret/bad")
+
+	comp, err := NewComponentBuilder().
+		WithName("test").
+		WithConditionType("Ready").
+		WithResource(res, IgnoreIfAbsent()). // requires ReadOnly
+		Build()
+
+	require.Error(t, err)
+	assert.Nil(t, comp)
+	assert.Contains(t, err.Error(), "v1/Secret/bad")
+	assert.Contains(t, err.Error(), "IgnoreIfAbsent requires ReadOnly")
 }

@@ -15,8 +15,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -320,7 +320,7 @@ var _ = Describe("HPA Primitive", Label("hpa"), func() {
 				return component.NewComponentBuilder().
 					WithName("e2e-grace").
 					WithConditionType("E2EReady").
-					WithResource(res, component.ResourceOptions{}).
+					WithResource(res).
 					WithGracePeriod(gracePeriod).
 					Build()
 			})

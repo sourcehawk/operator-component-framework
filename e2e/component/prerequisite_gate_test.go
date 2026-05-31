@@ -85,8 +85,8 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					WithName("gate-test").
 					WithConditionType("E2EReady").
 					WithFeatureGate(gate).
-					WithResource(depRes, component.ResourceOptions{}).
-					WithResource(cmRes, component.ResourceOptions{}).
+					WithResource(depRes).
+					WithResource(cmRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -141,7 +141,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					WithName("gate-enable-test").
 					WithConditionType("E2EReady").
 					WithFeatureGate(gate).
-					WithResource(cmRes, component.ResourceOptions{}).
+					WithResource(cmRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -191,7 +191,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					WithName("gate-sus-test").
 					WithConditionType("E2EReady").
 					WithFeatureGate(gate).
-					WithResource(cmRes, component.ResourceOptions{}).
+					WithResource(cmRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -228,8 +228,8 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					WithName("prereq-test").
 					WithConditionType("E2EReady").
 					WithPrerequisite(prereq).
-					WithResource(cmRes, component.ResourceOptions{}).
-					WithResource(depRes, component.ResourceOptions{}).
+					WithResource(cmRes).
+					WithResource(depRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -282,7 +282,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					WithName("barrier-test").
 					WithConditionType("E2EReady").
 					WithPrerequisite(prereq).
-					WithResource(cmRes, component.ResourceOptions{}).
+					WithResource(cmRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -327,7 +327,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					WithName("sus-prereq-test").
 					WithConditionType("E2EReady").
 					WithPrerequisite(prereq).
-					WithResource(depRes, component.ResourceOptions{}).
+					WithResource(depRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})
@@ -366,7 +366,7 @@ var _ = Describe("Component Feature Gate and Prerequisite", func() {
 					WithName("prereq-sus-test").
 					WithConditionType("E2EReady").
 					WithPrerequisite(prereq).
-					WithResource(depRes, component.ResourceOptions{}).
+					WithResource(depRes).
 					Suspend(owner.Spec.Suspended).
 					Build()
 			})

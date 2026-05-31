@@ -115,7 +115,7 @@ var _ = Describe("Unstructured Workload Primitive", Label("unstructured-workload
 				return component.NewComponentBuilder().
 					WithName("e2e-uns-degraded").
 					WithConditionType("E2EReady").
-					WithResource(res, component.ResourceOptions{}).
+					WithResource(res).
 					WithGracePeriod(gracePeriod).
 					Build()
 			})

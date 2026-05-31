@@ -233,7 +233,7 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 				return component.NewComponentBuilder().
 					WithName("e2e-degraded").
 					WithConditionType("E2EReady").
-					WithResource(res, component.ResourceOptions{}).
+					WithResource(res).
 					WithGracePeriod(gracePeriod).
 					Build()
 			})
@@ -285,7 +285,7 @@ var _ = Describe("Pod Primitive", Label("pod"), func() {
 				return component.NewComponentBuilder().
 					WithName("e2e-down").
 					WithConditionType("E2EReady").
-					WithResource(res, component.ResourceOptions{}).
+					WithResource(res).
 					WithGracePeriod(gracePeriod).
 					Build()
 			})

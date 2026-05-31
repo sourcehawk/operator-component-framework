@@ -29,6 +29,11 @@ func TestResolveResourceOptions(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			name: "nil options are ignored",
+			opts: []ResourceOption{nil, ReadOnly(), nil},
+			want: resourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired},
+		},
+		{
 			name: "no options produces required defaults",
 			opts: nil,
 			want: resourceOptions{ParticipationMode: ParticipationModeRequired},

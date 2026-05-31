@@ -17,6 +17,9 @@ import (
 // resource that is present in the reconcile set. Whether a resource is present
 // at all is the presence axis, controlled by WithResource (always present) and
 // IncludeWhen (present only when a condition holds).
+//
+// A nil ResourceOption is ignored, so a conditionally-assigned option
+// (var opt ResourceOption; ...) may be passed without a nil check.
 type ResourceOption func(*resourceConfig)
 
 // resourceConfig is the mutable target that ResourceOption functions write into
@@ -134,6 +137,9 @@ func SuppressGraceInconsistencyWarning() ResourceOption {
 func resolveResourceOptions(opts []ResourceOption) (resourceOptions, error) {
 	cfg := &resourceConfig{}
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
 		opt(cfg)
 	}
 	return cfg.resolve()

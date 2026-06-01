@@ -4,6 +4,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -11,6 +12,11 @@ import (
 // Mutation defines a mutation that is applied to a daemonset Mutator
 // only if its associated feature.VersionGate is enabled.
 type Mutation feature.Mutation[*Mutator]
+
+// Compile-time guarantee that *Mutator satisfies the shared workload editing
+// surface. If a future change renames or removes a shared method, this breaks
+// the build here instead of drifting silently in downstream consumers.
+var _ primitives.WorkloadMutator = (*Mutator)(nil)
 
 type containerEdit struct {
 	selector selectors.ContainerSelector

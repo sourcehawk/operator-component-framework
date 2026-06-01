@@ -113,3 +113,4 @@ nav:
       - Testing: testing.md
   - Reference:
       - Compatibility: compatibility.md
+      - Go API ↗: https://pkg.go.dev/github.com/sourcehawk/operator-component-framework

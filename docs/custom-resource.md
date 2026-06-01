@@ -1,86 +1,100 @@
-# Custom Resource Implementation Guide
+# Custom Resources
 
-This guide explains how to implement custom resource wrappers for Kubernetes objects not covered by the
-[built-in primitives](primitives.md). The framework provides a set of generic building blocks in `pkg/generic` that
-handle reconciliation mechanics, mutation sequencing, suspension, and data extraction. Your custom resource wraps these
-generics with type-specific logic.
+This guide is for operator authors who need to manage a Kubernetes object that the [built-in primitives](primitives.md)
+do not cover. The built-in set handles the common kinds (Deployments, StatefulSets, ConfigMaps, Services, and more) and
+is highly customizable through status handlers, suspension logic, mutations, and data extractors. Reach for a custom
+resource only when the kind you manage has no matching primitive:
+
+- A **custom CRD** defined by your project or a third-party operator.
+- A **standard Kubernetes kind** that the built-in set does not yet wrap.
+
+The `pkg/generic` package provides the building blocks: it handles reconciliation mechanics, the plan-and-apply mutation
+flow, suspension, guards, and data extraction. Your package wraps a generic resource with kind-specific identity,
+status, and mutator logic, exactly the way the built-in primitives do.
+
+!!! note "If your CRD has no typed Go struct"
+
+    You can manage any CRD without writing a wrapper at all by using the unstructured static primitive
+    (`pkg/primitives/unstructured/static`). See [Unstructured Primitives](primitives.md#unstructured-primitives). This
+    guide covers the wrapper pattern, which gives you a typed, self-documenting API for a kind you manage often.
 
 ---
 
-## When to Implement a Custom Resource
+## Steps
 
-The built-in primitives cover common Kubernetes types (Deployments, ConfigMaps, Services, etc.) and are highly
-customizable: you can override status handlers, suspension logic, mutation behavior, and data extractors without leaving
-the primitive API. Implement a custom resource when the Kubernetes type you need to manage has no corresponding built-in
-primitive:
+1. [Choose a resource category](#1-choose-a-resource-category)
+2. [Define the mutation type alias](#2-define-the-mutation-type-alias)
+3. [Implement the mutator](#3-implement-the-mutator)
+4. [Implement status handlers](#4-implement-status-handlers)
+5. [Implement the builder](#5-implement-the-builder)
+6. [Implement the resource](#6-implement-the-resource)
+7. [Define feature mutations](#7-define-feature-mutations)
+8. [Register with a component](#8-register-with-a-component)
 
-- A **custom CRD** defined by your project or a third-party operator
-- A **standard Kubernetes type** not yet covered by the built-in set
+A custom resource is three wrapped pieces. The builder configures and validates, producing a resource; the resource
+delegates lifecycle methods to a generic base; the mutator records and applies changes to the Kubernetes object.
 
----
-
-## Architecture
-
-A custom resource implementation consists of three pieces:
-
+```mermaid
+flowchart LR
+    Builder -->|Build| Resource
+    Resource -->|owns base| Base["generic.*Resource"]
+    Resource -->|Mutate constructs| Mutator
+    Mutator -->|Apply| Object["Kubernetes object"]
 ```
-Builder            → configures and validates the resource
-  └─ Resource      → thin wrapper delegating to a generic resource
-       └─ Mutator  → records and applies mutations to the Kubernetes object
-```
 
-Each piece wraps a corresponding generic type from `pkg/generic`:
+| Your type  | Wraps                                                         |
+| ---------- | ------------------------------------------------------------- |
+| `Builder`  | `generic.WorkloadBuilder[T, *Mutator]` (or one per category)  |
+| `Resource` | `generic.WorkloadResource[T, *Mutator]` (or one per category) |
+| `Mutator`  | Implements `generic.FeatureMutator`                           |
 
-| Your Type  | Wraps                                             |
-| ---------- | ------------------------------------------------- |
-| `Builder`  | `generic.WorkloadBuilder[T, *Mutator]` (or other) |
-| `Resource` | `generic.WorkloadResource[T, *Mutator]`           |
-| `Mutator`  | Implements `generic.FeatureMutator`               |
+The examples below build a `MessageQueue` CRD (`messagequeues.example.io/v1`), a long-running broker with replica-based
+health, so it is a **workload**. [Step 4](#4-implement-status-handlers) and the
+[category notes](#category-specific-notes) show the other categories.
 
 ---
 
-## Choosing a Resource Category
+## 1. Choose a resource category
 
-The framework defines four resource categories. Each maps to a generic resource type with different lifecycle
-interfaces:
+The framework defines four resource categories. Each maps to a generic resource type with a different set of lifecycle
+interfaces. For the full description of each interface and the runtime string values it reports, see
+[Lifecycle Interfaces](primitives.md#lifecycle-interfaces).
 
-| Category        | Generic Type                  | Lifecycle Interfaces                                                     | Use When                                               |
+| Category        | Generic type                  | Lifecycle interfaces                                                     | Use when                                               |
 | --------------- | ----------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------ |
 | **Workload**    | `generic.WorkloadResource`    | `Alive`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable`       | Long-running processes with replica-based health       |
 | **Static**      | `generic.StaticResource`      | `Guardable`, `DataExtractable`                                           | Configuration objects with no runtime health semantics |
 | **Task**        | `generic.TaskResource`        | `Completable`, `Suspendable`, `Guardable`, `DataExtractable`             | Run-to-completion workloads                            |
-| **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable` | External dependency objects (services, ingresses)      |
+| **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable` | External-dependency objects (services, ingresses)      |
 
-Pick the category that matches your CRD's lifecycle. A CRD that manages a long-running process and needs health tracking
-is a **Workload**. A CRD that represents static configuration is **Static**. The rest of this guide uses Workload as the
-primary example; the pattern is identical for other categories with fewer handlers to implement.
+In addition to the category-specific interfaces, every generic resource also satisfies
+[`concepts.Previewable`](primitives.md#lifecycle-interfaces) and `concepts.MutationInspector`, and your wrapper exposes
+both. They are covered in [Step 6](#6-implement-the-resource).
 
-For a detailed description of each lifecycle interface and its status values, see [Resource Primitives](primitives.md).
+The rest of the guide uses Workload as the primary example. The pattern is identical for the other categories, with
+fewer handlers to implement.
 
 ---
 
-## Step-by-Step Implementation
+## 2. Define the mutation type alias
 
-The following sections walk through implementing a custom resource for a hypothetical `GameServer` CRD
-(`gameservers.example.io/v1`). This CRD manages a long-running game server process, making it a workload resource.
-
-### 1. Define the Mutation Type Alias
-
-Create a type alias for `feature.Mutation` parameterized on your mutator type. This gives callers a clean name to use
-when defining feature mutations.
+Create a type alias for `feature.Mutation` parameterized on your mutator. This gives callers a clean name when defining
+feature mutations, mirroring the `Mutation` alias each built-in primitive exports.
 
 ```go
-package gameserver
+package messagequeue
 
 import "github.com/sourcehawk/operator-component-framework/pkg/feature"
 
-// Mutation defines a feature-gated mutation applied to a GameServer resource.
+// Mutation defines a feature-gated mutation applied to a MessageQueue resource.
 type Mutation = feature.Mutation[*Mutator]
 ```
 
-### 2. Implement the Mutator
+---
 
-The mutator is responsible for recording mutation intent and applying it in a single controlled pass. It must implement
+## 3. Implement the mutator
+
+The mutator records mutation intent and applies it in a single controlled pass. It must implement
 `generic.FeatureMutator`:
 
 ```go
@@ -90,22 +104,17 @@ type FeatureMutator interface {
 }
 ```
 
-`Apply()` executes all recorded mutations against the underlying object. `NextFeature()` advances to a new feature scope
-The framework calls it between each registered mutation to maintain per-feature ordering boundaries.
+`Apply()` executes all recorded mutations against the underlying object. `NextFeature()` advances to a new feature
+scope; the framework calls it between each registered mutation to maintain per-feature ordering boundaries.
 
-#### The Plan-and-Apply Pattern
+### Plan and apply
 
-Mutator methods **record intent** rather than modifying the object directly. The framework calls `Apply()` once after
-all mutations have been recorded. This pattern ensures:
-
-- Mutations are applied in a single controlled pass
-- Feature boundaries are preserved via `NextFeature()`
-- Multiple mutations targeting the same fields resolve predictably
-
-Here is a mutator for the `GameServer` CRD:
+Mutator methods **record intent** rather than modifying the object directly. The framework calls `Apply()` once, after
+all mutations have been recorded. This is the same plan-and-apply model the built-in primitives use; see
+[The Mutation System](primitives.md#the-mutation-system) for the rationale and the ordering guarantees.
 
 ```go
-package gameserver
+package messagequeue
 
 import (
     examplev1 "example.io/api/v1"
@@ -113,25 +122,26 @@ import (
 
 // featurePlan groups all mutation operations recorded by a single feature.
 type featurePlan struct {
-    replicaOps []func(*examplev1.GameServerSpec)
-    configOps  []func(*examplev1.GameServerSpec)
+    replicaOps []func(*examplev1.MessageQueueSpec)
+    configOps  []func(*examplev1.MessageQueueSpec)
 }
 
-// Mutator records mutation intent for a GameServer and applies changes in one pass.
+// Mutator records mutation intent for a MessageQueue and applies changes in one pass.
 //
 // It maintains feature boundaries: each feature's mutations are planned together
 // and applied in the order the features were registered.
 type Mutator struct {
-    current *examplev1.GameServer
+    current *examplev1.MessageQueue
 
     plans  []featurePlan
     active *featurePlan
 }
 
-// NewMutator creates a new Mutator for the given GameServer.
+// NewMutator creates a new Mutator for the given MessageQueue.
+//
 // The constructor creates the initial feature scope, so mutations can be
 // registered immediately.
-func NewMutator(current *examplev1.GameServer) *Mutator {
+func NewMutator(current *examplev1.MessageQueue) *Mutator {
     m := &Mutator{current: current}
     m.NextFeature()
     return m
@@ -147,21 +157,21 @@ func (m *Mutator) NextFeature() {
     m.active = &m.plans[len(m.plans)-1]
 }
 
-// SetMaxPlayers records intent to set the maximum player count.
-func (m *Mutator) SetMaxPlayers(count int32) {
-    m.active.configOps = append(m.active.configOps, func(spec *examplev1.GameServerSpec) {
-        spec.MaxPlayers = count
+// SetMaxConnections records intent to set the maximum connection count.
+func (m *Mutator) SetMaxConnections(count int32) {
+    m.active.configOps = append(m.active.configOps, func(spec *examplev1.MessageQueueSpec) {
+        spec.MaxConnections = count
     })
 }
 
 // SetReplicas records intent to set the replica count.
 func (m *Mutator) SetReplicas(replicas int32) {
-    m.active.replicaOps = append(m.active.replicaOps, func(spec *examplev1.GameServerSpec) {
+    m.active.replicaOps = append(m.active.replicaOps, func(spec *examplev1.MessageQueueSpec) {
         spec.Replicas = &replicas
     })
 }
 
-// Apply executes all recorded mutations against the GameServer.
+// Apply executes all recorded mutations against the MessageQueue.
 // Features are applied in registration order. Within each feature,
 // replica operations are applied before config operations.
 func (m *Mutator) Apply() error {
@@ -178,30 +188,41 @@ func (m *Mutator) Apply() error {
 }
 ```
 
-#### Mutator Design Guidelines
+!!! note "Mutator design"
 
-- **Record, don't mutate.** Methods like `SetMaxPlayers` append to the active feature plan. They do not touch `current`
-  directly.
-- **Scope per feature.** `NextFeature()` creates a new plan scope. The framework calls it between each registered
-  mutation so that each feature's operations are grouped and applied in registration order. `Apply()` iterates over
-  plans sequentially, giving each feature a consistent view of the object as modified by all previous features.
-- **Keep it typed.** Expose domain-specific methods (`SetMaxPlayers`, `SetReplicas`) rather than generic ones. This
-  makes feature mutations self-documenting and prevents callers from bypassing the plan-and-apply sequence.
+    - **Record, don't mutate.** Methods like `SetMaxConnections` append to the active feature plan. They do not touch
+      `current` directly.
+    - **Scope per feature.** `NextFeature()` opens a new plan scope. The framework calls it between registered mutations
+      so each feature's operations are grouped and applied in registration order. `Apply()` iterates plans
+      sequentially, so each feature sees the object as modified by all previous features.
+    - **Keep it typed.** Expose domain-specific methods (`SetMaxConnections`, `SetReplicas`) rather than generic ones.
+      This makes feature mutations self-documenting and keeps callers on the plan-and-apply path. The built-in workload
+      mutators follow the same approach, layering convenience wrappers such as `EnsureReplicas` over lower-level edits.
 
-### 3. Implement Status Handlers
+---
 
-Status handlers translate your CRD's runtime state into framework status types. Which handlers you need depends on your
-resource category.
+## 4. Implement status handlers
 
-#### Workload Handlers
+Status handlers translate your CRD's runtime state into framework status types. Which handlers you need depends on the
+category.
 
-A workload resource requires a convergence status handler. `Build()` returns an error if it is not set. All other
-handlers (grace, suspension status, suspension mutation, delete-on-suspend) default to safe no-ops at the generic layer:
-grace defaults to Healthy, suspension status to Suspended, suspension mutation is a no-op, and delete-on-suspend returns
-false. Register custom handlers only when your CRD needs domain-specific behavior:
+### Required versus optional handlers
+
+The generic builder's `Build()` fails if the convergence handler is missing. For workload and task resources this is the
+converging-status handler registered with `WithCustomConvergeStatus`; for integration resources it is the
+operational-status handler registered with `WithCustomOperationalStatus`. Every other handler defaults to a safe value
+at the generic layer:
+
+- Grace status defaults to `Healthy` (workload and integration only).
+- Suspension status defaults to `Suspended`.
+- The suspension mutation defaults to a no-op.
+- The delete-on-suspend decision defaults to `false`.
+
+Register custom handlers only where your CRD has domain-specific behavior. The workload handlers below mirror what
+`pkg/primitives/deployment` registers by default.
 
 ```go
-package gameserver
+package messagequeue
 
 import (
     "fmt"
@@ -210,16 +231,24 @@ import (
     examplev1 "example.io/api/v1"
 )
 
-// DefaultConvergingStatusHandler reports whether the GameServer has reached its desired state.
+// DefaultConvergingStatusHandler reports whether the MessageQueue has reached its desired state.
 func DefaultConvergingStatusHandler(
-    op concepts.ConvergingOperation, gs *examplev1.GameServer,
+    op concepts.ConvergingOperation, mq *examplev1.MessageQueue,
 ) (concepts.AliveStatusWithReason, error) {
     desired := int32(1)
-    if gs.Spec.Replicas != nil {
-        desired = *gs.Spec.Replicas
+    if mq.Spec.Replicas != nil {
+        desired = *mq.Spec.Replicas
     }
 
-    if gs.Status.ReadyReplicas == desired {
+    // Defer to the generation check first, so readiness fields are not read while
+    // the CRD's own controller is still behind the latest spec.
+    if status := concepts.StaleGenerationStatus(
+        op, mq.Status.ObservedGeneration, mq.Generation, "messagequeue",
+    ); status != nil {
+        return *status, nil
+    }
+
+    if mq.Status.ReadyReplicas == desired {
         return concepts.AliveStatusWithReason{
             Status: concepts.AliveConvergingStatusHealthy,
             Reason: "All replicas are ready",
@@ -238,32 +267,32 @@ func DefaultConvergingStatusHandler(
 
     return concepts.AliveStatusWithReason{
         Status: status,
-        Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", gs.Status.ReadyReplicas, desired),
+        Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", mq.Status.ReadyReplicas, desired),
     }, nil
 }
 
-// DefaultGraceStatusHandler reports health during convergence.
-func DefaultGraceStatusHandler(gs *examplev1.GameServer) (concepts.GraceStatusWithReason, error) {
+// DefaultGraceStatusHandler reports health once the grace period has expired.
+func DefaultGraceStatusHandler(mq *examplev1.MessageQueue) (concepts.GraceStatusWithReason, error) {
     desired := int32(1)
-    if gs.Spec.Replicas != nil {
-        desired = *gs.Spec.Replicas
+    if mq.Spec.Replicas != nil {
+        desired = *mq.Spec.Replicas
     }
 
-    // Use == rather than >= so that grace and convergence agree on replica state.
+    // Use == rather than >= so grace and convergence agree on replica state.
     // Both handlers evaluate the same object in the same reconcile loop, so grace
-    // must not return Healthy for a state that convergence considers non-healthy
+    // must not return Healthy for a state convergence considers non-healthy
     // (e.g. ReadyReplicas > desired during scale-down).
-    if gs.Status.ReadyReplicas == desired {
+    if mq.Status.ReadyReplicas == desired {
         return concepts.GraceStatusWithReason{
             Status: concepts.GraceStatusHealthy,
             Reason: "All replicas are ready",
         }, nil
     }
 
-    if gs.Status.ReadyReplicas > 0 {
+    if mq.Status.ReadyReplicas > 0 {
         return concepts.GraceStatusWithReason{
             Status: concepts.GraceStatusDegraded,
-            Reason: "GameServer partially available",
+            Reason: "MessageQueue partially available",
         }, nil
     }
 
@@ -273,44 +302,41 @@ func DefaultGraceStatusHandler(gs *examplev1.GameServer) (concepts.GraceStatusWi
     }, nil
 }
 
-// DefaultSuspensionStatusHandler reports whether the GameServer has been suspended.
+// DefaultSuspensionStatusHandler reports progress towards a suspended state.
 func DefaultSuspensionStatusHandler(
-    gs *examplev1.GameServer,
+    mq *examplev1.MessageQueue,
 ) (concepts.SuspensionStatusWithReason, error) {
-    if gs.Status.Replicas == 0 {
+    if mq.Status.Replicas == 0 {
         return concepts.SuspensionStatusWithReason{
             Status: concepts.SuspensionStatusSuspended,
-            Reason: "GameServer scaled to zero",
+            Reason: "MessageQueue scaled to zero",
         }, nil
     }
 
     return concepts.SuspensionStatusWithReason{
         Status: concepts.SuspensionStatusSuspending,
-        Reason: fmt.Sprintf("%d replicas still running", gs.Status.Replicas),
+        Reason: fmt.Sprintf("%d replicas still running", mq.Status.Replicas),
     }, nil
 }
 
-// DefaultSuspendMutationHandler scales the GameServer to zero replicas.
+// DefaultSuspendMutationHandler scales the MessageQueue to zero replicas.
 func DefaultSuspendMutationHandler(m *Mutator) error {
     m.SetReplicas(0)
     return nil
 }
 
 // DefaultDeleteOnSuspendHandler returns false: keep the resource, just scale down.
-func DefaultDeleteOnSuspendHandler(_ *examplev1.GameServer) bool {
+func DefaultDeleteOnSuspendHandler(_ *examplev1.MessageQueue) bool {
     return false
 }
 ```
 
-#### Convergence and Grace Status Consistency
+### Keeping convergence and grace consistent
 
-The convergence handler and the grace handler evaluate the same object in the same reconcile loop with no refetch
-between them. The grace handler must not return Healthy for any object state where the convergence handler returns
-non-healthy. If this happens, one of the two handlers is misconfigured, and the component will log a warning.
-
-When convergence returns Healthy, the component is satisfied and grace is never called. For all other states, grace must
-not contradict convergence by returning Healthy. The following table shows a consistent pair of handlers for a
-Deployment with 3 desired replicas:
+The convergence handler and the grace handler evaluate the same object in the same reconcile loop, with no refetch
+between them. When convergence returns `Healthy` the component is satisfied and grace is never called. For every other
+state, grace must not contradict convergence by returning `Healthy`. The table below shows a consistent pair for a
+workload with three desired replicas:
 
 | Desired | Ready | Convergence | Grace        |
 | ------- | ----- | ----------- | ------------ |
@@ -319,25 +345,18 @@ Deployment with 3 desired replicas:
 | 3       | 3     | Healthy     | (not called) |
 | 3       | 5     | Scaling     | Degraded     |
 
-A misconfigured grace handler that reports Healthy when the resource has not converged breaks this invariant:
+If grace reported `Healthy` in the last row, it would tell the component everything is fine while convergence still
+considers the resource non-healthy (scaling down). The component logs a warning when it detects this. If the
+inconsistency is intentional, pass the `component.SuppressGraceInconsistencyWarning()` resource option to `WithResource`
+([Step 8](#8-register-with-a-component)) to silence the log.
 
-| Desired | Ready | Convergence | Grace        |
-| ------- | ----- | ----------- | ------------ |
-| 3       | 0     | Creating    | Down         |
-| 3       | 1     | Scaling     | Degraded     |
-| 3       | 3     | Healthy     | (not called) |
-| 3       | 5     | Scaling     | **Healthy**  |
+### Status constants reference
 
-In the last row, convergence considers the resource non-healthy (still scaling down), but grace tells the component
-everything is fine.
+These are the runtime **string values** each lifecycle status reports. They appear in the component's conditions and in
+golden snapshots, so use the exact strings. [Lifecycle Interfaces](primitives.md#lifecycle-interfaces) gives the
+authoritative interface-to-value mapping; the table here is the implementer's quick reference.
 
-If this inconsistency is intentional (e.g., a custom grace handler that deliberately reports Healthy for a resource that
-has not fully converged), pass `component.SuppressGraceInconsistencyWarning()` to `WithResource` to suppress the warning
-log.
-
-#### Status Constants Reference
-
-| Category              | Status Type                      | Constant Name                   | String Value        |
+| Category              | Status type                      | Constant                        | String value        |
 | --------------------- | -------------------------------- | ------------------------------- | ------------------- |
 | Workload              | `concepts.AliveConvergingStatus` | `AliveConvergingStatusHealthy`  | `Healthy`           |
 |                       |                                  | `AliveConvergingStatusCreating` | `Creating`          |
@@ -360,12 +379,25 @@ log.
 | All                   | `concepts.GuardStatus`           | `GuardStatusBlocked`            | `Blocked`           |
 |                       |                                  | `GuardStatusUnblocked`          | `Unblocked`         |
 
-### 4. Implement the Builder
+!!! note "`Unblocked` is an internal signal"
 
-The builder wraps the generic builder, registers default handlers, and exposes a fluent configuration API.
+    `GuardStatusUnblocked` is never written to a condition. It is the control value the framework uses to decide whether
+    to proceed with a resource. Only `Blocked` surfaces in status.
+
+---
+
+## 5. Implement the builder
+
+The builder wraps the generic builder, registers default handlers in its constructor, and exposes a fluent configuration
+API. It validates and returns the concrete `Resource` from `Build()`.
+
+The identity function is required and must produce a stable, unique identity for the object. The framework's convention,
+used by every built-in primitive, is `<groupversion>/<Kind>/<namespace>/<name>` (for example
+`apps/v1/Deployment/<namespace>/<name>`, or `v1/Service/<namespace>/<name>` for core-group kinds). Cluster-scoped kinds
+omit the namespace segment. Follow this format so identities stay consistent and collision-free across your operator.
 
 ```go
-package gameserver
+package messagequeue
 
 import (
     "fmt"
@@ -376,26 +408,26 @@ import (
     examplev1 "example.io/api/v1"
 )
 
-// Builder configures and validates a GameServer resource.
+// Builder configures and validates a MessageQueue resource.
 type Builder struct {
-    base *generic.WorkloadBuilder[*examplev1.GameServer, *Mutator]
+    base *generic.WorkloadBuilder[*examplev1.MessageQueue, *Mutator]
 }
 
-// NewBuilder creates a Builder with the provided GameServer as the desired base state.
+// NewBuilder creates a Builder with the provided MessageQueue as the desired base state.
 //
 // The object must have Name and Namespace set.
-func NewBuilder(gs *examplev1.GameServer) *Builder {
-    identityFunc := func(gs *examplev1.GameServer) string {
-        return fmt.Sprintf("gameservers.example.io/v1/GameServer/%s/%s", gs.Namespace, gs.Name)
+func NewBuilder(mq *examplev1.MessageQueue) *Builder {
+    identityFunc := func(mq *examplev1.MessageQueue) string {
+        return fmt.Sprintf("messagequeues.example.io/v1/MessageQueue/%s/%s", mq.Namespace, mq.Name)
     }
 
-    base := generic.NewWorkloadBuilder[*examplev1.GameServer, *Mutator](
-        gs,
+    base := generic.NewWorkloadBuilder[*examplev1.MessageQueue, *Mutator](
+        mq,
         identityFunc,
         NewMutator,
     )
 
-    // Register default handlers.
+    // Register domain-specific defaults.
     base.
         WithCustomConvergeStatus(DefaultConvergingStatusHandler).
         WithCustomGraceStatus(DefaultGraceStatusHandler).
@@ -415,15 +447,25 @@ func (b *Builder) WithMutation(ms ...Mutation) *Builder {
     return b
 }
 
-// WithDataExtractor registers a data extractor to run after reconciliation.
-func (b *Builder) WithDataExtractor(extractor func(examplev1.GameServer) error) *Builder {
+// WithGuard registers a guard precondition evaluated before the object is applied.
+// If the guard returns Blocked, this resource and all resources after it in the
+// component are skipped. Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(
+    guard func(examplev1.MessageQueue) (concepts.GuardStatusWithReason, error),
+) *Builder {
+    b.base.WithGuard(generic.WrapGuard(guard))
+    return b
+}
+
+// WithDataExtractor registers a data extractor to run after the resource is processed.
+func (b *Builder) WithDataExtractor(extractor func(examplev1.MessageQueue) error) *Builder {
     b.base.WithDataExtractor(generic.WrapExtractor(extractor))
     return b
 }
 
 // WithCustomConvergeStatus overrides the default convergence status handler.
 func (b *Builder) WithCustomConvergeStatus(
-    handler func(concepts.ConvergingOperation, *examplev1.GameServer) (concepts.AliveStatusWithReason, error),
+    handler func(concepts.ConvergingOperation, *examplev1.MessageQueue) (concepts.AliveStatusWithReason, error),
 ) *Builder {
     b.base.WithCustomConvergeStatus(handler)
     return b
@@ -431,39 +473,9 @@ func (b *Builder) WithCustomConvergeStatus(
 
 // WithCustomGraceStatus overrides the default grace status handler.
 func (b *Builder) WithCustomGraceStatus(
-    handler func(*examplev1.GameServer) (concepts.GraceStatusWithReason, error),
+    handler func(*examplev1.MessageQueue) (concepts.GraceStatusWithReason, error),
 ) *Builder {
     b.base.WithCustomGraceStatus(handler)
-    return b
-}
-
-// WithCustomSuspendStatus overrides the default suspension status handler.
-func (b *Builder) WithCustomSuspendStatus(
-    handler func(*examplev1.GameServer) (concepts.SuspensionStatusWithReason, error),
-) *Builder {
-    b.base.WithCustomSuspendStatus(handler)
-    return b
-}
-
-// WithCustomSuspendMutation overrides the default suspension mutation handler.
-func (b *Builder) WithCustomSuspendMutation(handler func(*Mutator) error) *Builder {
-    b.base.WithCustomSuspendMutation(handler)
-    return b
-}
-
-// WithCustomSuspendDeletionDecision overrides the default delete-on-suspend decision.
-func (b *Builder) WithCustomSuspendDeletionDecision(handler func(*examplev1.GameServer) bool) *Builder {
-    b.base.WithCustomSuspendDeletionDecision(handler)
-    return b
-}
-
-// WithGuard registers a guard precondition that is evaluated before the object
-// is applied. If the guard returns Blocked, the resource and all resources after
-// it in the component are skipped. Passing nil clears any previously registered guard.
-func (b *Builder) WithGuard(
-    guard func(examplev1.GameServer) (concepts.GuardStatusWithReason, error),
-) *Builder {
-    b.base.WithGuard(generic.WrapGuard(guard))
     return b
 }
 
@@ -477,26 +489,31 @@ func (b *Builder) Build() (*Resource, error) {
 }
 ```
 
-#### Builder Pattern Guidelines
+The builder exposes `WithCustomSuspendStatus`, `WithCustomSuspendMutation`, and `WithCustomSuspendDeletionDecision` the
+same way if callers need to override suspension behavior after construction; they are omitted above for brevity.
 
-- **Only the convergence handler is required.** The generic builder's `Build()` returns an error if the convergence
-  status handler is not set (`ConvergingStatus` for workload/task, `OperationalStatus` for integration). Grace and
-  suspension handlers default to safe no-ops at the generic layer, so you only need to override them if your CRD has
-  domain-specific behavior for those lifecycle phases.
-- **Register domain-specific defaults in the constructor.** Override the generic defaults where your CRD has meaningful
-  semantics (e.g., a grace handler that inspects replica counts, a suspension handler that scales to zero).
-- **Return `*Builder` from every method.** This enables the fluent chaining pattern used throughout the framework.
-- **Validate in `Build()`.** The generic builder's `Build()` validates that the object has a name, namespace (for
-  namespaced resources), identity function, mutator factory, and convergence handler. Add any custom validation after
-  calling the generic build.
+!!! note "Builder conventions"
 
-### 5. Implement the Resource
+    - **`generic.WrapGuard` and `generic.WrapExtractor`** convert value-receiver callbacks (`func(T)`) into the
+      pointer-receiver form (`func(*T)`) the generic layer expects, so your public API can take the kind by value. The
+      built-in builders use both.
+    - **Register defaults in the constructor.** Set the handlers your CRD has meaningful semantics for, then let callers
+      override them per resource.
+    - **Return `*Builder` from every method** for fluent chaining.
+    - **Validate in `Build()`.** The generic build checks for a non-nil object, a name, a namespace (unless
+      [cluster-scoped](#cluster-scoped-resources)), an identity function, a mutator factory, the required convergence
+      handler, and that mutation names are unique. Add any custom validation after the generic build returns.
 
-The resource is a thin wrapper that delegates every interface method to the generic resource. This layer exists so that
-your package exports concrete types rather than generic ones.
+---
+
+## 6. Implement the resource
+
+The resource is a thin wrapper that delegates every interface method to the generic base. This layer exists so your
+package exports a concrete type rather than a generic one. List the interfaces it satisfies in its GoDoc, matching how
+the built-in `Resource` types document themselves.
 
 ```go
-package gameserver
+package messagequeue
 
 import (
     "github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -505,7 +522,7 @@ import (
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Resource manages a GameServer within a component's reconciliation loop.
+// Resource manages a MessageQueue within a component's reconciliation loop.
 //
 // It implements:
 //   - component.Resource (Identity, Object, Mutate)
@@ -515,8 +532,10 @@ import (
 //   - concepts.Guardable (GuardStatus)
 //   - concepts.DataExtractable (ExtractData)
 //   - concepts.ObservationRecorder (RecordObservation)
+//   - concepts.Previewable (Preview)
+//   - concepts.MutationInspector (RegisteredMutations, FiringSet)
 type Resource struct {
-    base *generic.WorkloadResource[*examplev1.GameServer, *Mutator]
+    base *generic.WorkloadResource[*examplev1.MessageQueue, *Mutator]
 }
 
 func (r *Resource) Identity() string {
@@ -562,75 +581,109 @@ func (r *Resource) ExtractData() error {
 func (r *Resource) RecordObservation(observed client.Object) error {
     return r.base.RecordObservation(observed)
 }
+
+// Preview renders the desired state with all feature mutations applied, without
+// touching the resource's internal state or contacting the cluster.
+func (r *Resource) Preview() (client.Object, error) {
+    return r.base.Preview()
+}
+
+// RegisteredMutations returns the names of every mutation registered on the resource.
+func (r *Resource) RegisteredMutations() []string {
+    return r.base.RegisteredMutations()
+}
+
+// FiringSet returns the names of registered mutations whose gate fires at the built version.
+func (r *Resource) FiringSet() ([]string, error) {
+    return r.base.FiringSet()
+}
+
+// Compile-time guarantee that the wrapper exposes the inspection surface.
+var _ concepts.MutationInspector = (*Resource)(nil)
 ```
 
-Forward `RecordObservation` whenever the resource may be registered as read-only with a data extractor. The framework
-uses it to feed the fetched cluster object back to the resource before extraction runs; without it, the extractor would
-see the inert base passed to the builder rather than live cluster state.
+!!! warning "Do not omit `Preview`"
 
-Which methods to include depends on your resource category:
+    `Preview()` satisfies `concepts.Previewable`. Without it, `component.Preview()` fails at runtime and golden snapshot
+    tests cannot render the resource. Every built-in resource delegates `Preview()` to its base; so must yours.
 
-| Category    | Typical Methods                                                                                                                                                        |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation` |
-| Static      | `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`, `RecordObservation`                                                                                      |
-| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`                |
-| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation` |
+`RegisteredMutations()` and `FiringSet()` satisfy `concepts.MutationInspector`. Nothing in the reconcile path calls
+them, but [version-matrix golden generation](testing.md) uses them to introspect which mutations a resource registers
+and which fire at a given version. Delegate both to the base, as shown.
 
-### 6. Define Feature Mutations
+Forward `RecordObservation` whenever the resource may be registered read-only with a data extractor. The framework feeds
+the fetched cluster object back to the resource before extraction runs; without it, the extractor would see the inert
+base passed to the builder rather than live cluster state.
 
-Feature mutations use the `Mutation` type alias you defined earlier. Each mutation declares a name, an optional feature
-gate, and a function that calls mutator methods to record intent.
+Which methods to include depends on the category:
+
+| Category    | Methods to include                                                                                                                                                                                                    |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet` |
+| Static      | `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet`                                                                                      |
+| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet`                |
+| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet` |
+
+For task and integration resources, `ConvergingStatus` returns `concepts.CompletionStatusWithReason` and
+`concepts.OperationalStatusWithReason` respectively, matching the generic base method signature.
+
+---
+
+## 7. Define feature mutations
+
+Feature mutations use the `Mutation` alias from [Step 2](#2-define-the-mutation-type-alias). Each declares a name, an
+optional feature gate, and a function that calls mutator methods to record intent. Name every mutation: the name is what
+gating and error reporting refer to, and the builder rejects duplicate names within a resource.
 
 ```go
 package features
 
 import (
     "github.com/sourcehawk/operator-component-framework/pkg/feature"
-    "example.io/gameserver"
+    "example.io/messagequeue"
 )
 
-// HighCapacityMode increases the max player count for versions >= 2.0.0.
-func HighCapacityMode(version string) gameserver.Mutation {
-    return gameserver.Mutation{
-        Name:    "high-capacity-mode",
-        Feature: feature.NewVersionGate(version, myVersionConstraints),
-        Mutate: func(m *gameserver.Mutator) error {
-            m.SetMaxPlayers(200)
+// HighThroughputMode raises the connection ceiling for versions >= 2.0.0.
+func HighThroughputMode(version string) messagequeue.Mutation {
+    return messagequeue.Mutation{
+        Name:    "high-throughput-mode",
+        Feature: feature.NewVersionGate(version, versionConstraints),
+        Mutate: func(m *messagequeue.Mutator) error {
+            m.SetMaxConnections(2000)
             return nil
         },
     }
 }
 
-// CompetitiveMode enables competitive settings when the flag is set.
-func CompetitiveMode(version string, enabled bool) gameserver.Mutation {
-    return gameserver.Mutation{
-        Name:    "competitive-mode",
+// ConstrainedMode caps connections when the flag is set.
+func ConstrainedMode(version string, enabled bool) messagequeue.Mutation {
+    return messagequeue.Mutation{
+        Name:    "constrained-mode",
         Feature: feature.NewVersionGate(version, nil).When(enabled),
-        Mutate: func(m *gameserver.Mutator) error {
-            m.SetMaxPlayers(10)
+        Mutate: func(m *messagequeue.Mutator) error {
+            m.SetMaxConnections(100)
             return nil
         },
     }
 }
 
-// DefaultSettings returns baseline mutations applied to every GameServer regardless of feature flags.
+// DefaultSettings returns baseline mutations applied to every MessageQueue.
 // The version parameter is forwarded to any version-aware mutations in the set.
-func DefaultSettings(version string) []gameserver.Mutation {
-    return []gameserver.Mutation{
+func DefaultSettings(version string) []messagequeue.Mutation {
+    return []messagequeue.Mutation{
         {
             Name:    "default-replicas",
             Feature: nil, // always applied
-            Mutate: func(m *gameserver.Mutator) error {
+            Mutate: func(m *messagequeue.Mutator) error {
                 m.SetReplicas(1)
                 return nil
             },
         },
         {
-            Name:    "default-max-players",
+            Name:    "default-max-connections",
             Feature: feature.NewVersionGate(version, nil),
-            Mutate: func(m *gameserver.Mutator) error {
-                m.SetMaxPlayers(100)
+            Mutate: func(m *messagequeue.Mutator) error {
+                m.SetMaxConnections(500)
                 return nil
             },
         },
@@ -638,29 +691,33 @@ func DefaultSettings(version string) []gameserver.Mutation {
 }
 ```
 
-Mutations are applied in registration order. When a mutation's `Feature` is nil or reports `Enabled() == true`, its
-`Mutate` function is called with the mutator. When `Enabled()` returns false, the mutation is skipped.
+Mutations apply in registration order. When a mutation's `Feature` is nil or its gate reports enabled, its `Mutate`
+function runs; otherwise it is skipped. For the gating model (version gates, boolean `When` conditions, and how the two
+combine) see [Version-Gated Mutations](primitives.md#version-gated-mutations) and
+[Boolean-Gated Mutations](primitives.md#boolean-gated-mutations).
 
-### 7. Register with a Component
+---
 
-Use your custom resource with the component builder exactly like a built-in primitive:
+## 8. Register with a component
+
+Use your custom resource with the component builder exactly like a built-in primitive.
 
 ```go
-func buildGameComponent(owner *MyOperatorCR) (*component.Component, error) {
-    gs := &examplev1.GameServer{
+func buildQueueComponent(owner *MyOperatorCR) (*component.Component, error) {
+    mq := &examplev1.MessageQueue{
         ObjectMeta: metav1.ObjectMeta{
-            Name:      "main-server",
+            Name:      "main-queue",
             Namespace: owner.Namespace,
         },
-        Spec: examplev1.GameServerSpec{
-            Replicas:   ptr.To(int32(3)),
-            MaxPlayers: 100,
+        Spec: examplev1.MessageQueueSpec{
+            Replicas:       ptr.To(int32(3)),
+            MaxConnections: 500,
         },
     }
 
-    res, err := gameserver.NewBuilder(gs).
-        WithMutation(features.HighCapacityMode(owner.Spec.Version)).
-        WithMutation(features.CompetitiveMode(owner.Spec.Version, owner.Spec.Competitive)).
+    res, err := messagequeue.NewBuilder(mq).
+        WithMutation(features.HighThroughputMode(owner.Spec.Version)).
+        WithMutation(features.ConstrainedMode(owner.Spec.Version, owner.Spec.Constrained)).
         WithMutation(features.DefaultSettings(owner.Spec.Version)...). // spread a []Mutation slice
         Build()
     if err != nil {
@@ -668,8 +725,8 @@ func buildGameComponent(owner *MyOperatorCR) (*component.Component, error) {
     }
 
     return component.NewComponentBuilder().
-        WithName("game-server").
-        WithConditionType("GameServerReady").
+        WithName("message-queue").
+        WithConditionType("MessageQueueReady").
         WithResource(res).
         WithGracePeriod(5 * time.Minute).
         Suspend(owner.Spec.Suspended).
@@ -677,54 +734,130 @@ func buildGameComponent(owner *MyOperatorCR) (*component.Component, error) {
 }
 ```
 
+For the component reconciliation lifecycle, status aggregation, and resource options such as `ReadOnly()`,
+`Auxiliary()`, and `BlockOnAbsence()`, see the [Component](component.md) page.
+
 ---
 
 ## Cluster-Scoped Resources
 
-For cluster-scoped CRDs, call `MarkClusterScoped()` on the generic builder before building. This changes validation to
-reject a non-empty namespace instead of requiring one.
-
-The generic builder exposes this through the embedded `BaseBuilder`:
+For cluster-scoped CRDs, call `MarkClusterScoped()` on the generic builder before building. Validation then rejects a
+non-empty namespace instead of requiring one, and the identity function should omit the namespace segment.
 
 ```go
-func NewBuilder(gs *examplev1.GameServer) *Builder {
-    base := generic.NewWorkloadBuilder[*examplev1.GameServer, *Mutator](gs, identityFunc, NewMutator)
+func NewBuilder(mq *examplev1.MessageQueue) *Builder {
+    base := generic.NewWorkloadBuilder[*examplev1.MessageQueue, *Mutator](mq, identityFunc, NewMutator)
     base.MarkClusterScoped()
     // ... register handlers ...
     return &Builder{base: base}
 }
 ```
 
+See [Cluster-Scoped Primitives](primitives.md#cluster-scoped-primitives) for the ownership and garbage-collection
+implications.
+
 ---
 
 ## Category-Specific Notes
 
-### Static Resources
+### Static resources
 
-Static resources have the simplest implementation. They do not participate in convergence or suspension reporting. The
-builder uses `generic.NewStaticBuilder` and only supports `WithMutation` and `WithDataExtractor`. The resource wrapper
-only needs `Identity`, `Object`, `Mutate`, and `ExtractData`.
+Static resources have the simplest implementation. They do not participate in convergence, grace, or suspension
+reporting. The builder uses `generic.NewStaticBuilder`, which supports `WithMutation`, `WithGuard`, and
+`WithDataExtractor`. The resource wrapper needs only `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`,
+`RecordObservation`, `Preview`, `RegisteredMutations`, and `FiringSet`. `pkg/primitives/configmap` is a complete
+reference.
 
-### Task Resources
+### Task resources
 
-Task resources use `concepts.CompletionStatusWithReason` instead of `AliveStatusWithReason` for convergence. The
-converging status handler reports `Completed`, `Running`, `Pending`, or `Failing`.
+Task resources use `generic.NewTaskBuilder` and report convergence as `concepts.CompletionStatusWithReason` instead of
+`AliveStatusWithReason`. The converging handler, registered with `WithCustomConvergeStatus`, reports `Completed`,
+`TaskRunning`, `TaskPending`, or `TaskFailing`.
 
-### Integration Resources
+### Integration resources
 
-Integration resources use `concepts.OperationalStatusWithReason` for convergence. The status handler reports
-`Operational`, `Pending`, or `Failing`. They also implement `Graceful` for health assessment after grace period expiry,
-with a default handler that reports Healthy. The resource wrapper should include `GraceStatus` alongside the other
-methods.
+Integration resources use `generic.NewIntegrationBuilder` and report convergence as
+`concepts.OperationalStatusWithReason`. The handler is registered with `WithCustomOperationalStatus` (not
+`WithCustomConvergeStatus`) and reports `Operational`, `OperationPending`, or `OperationFailing`. Integration resources
+also implement `Graceful`, defaulting to `Healthy`. The resource wrapper includes `GraceStatus` alongside the other
+methods. A minimal integration builder for a `DNSRecord` CRD whose readiness depends on an external provider assigning a
+record ID:
+
+```go
+package dnsrecord
+
+import (
+    "fmt"
+
+    "github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+    "github.com/sourcehawk/operator-component-framework/pkg/generic"
+    examplev1 "example.io/api/v1"
+)
+
+// Builder configures and validates a DNSRecord integration resource.
+type Builder struct {
+    base *generic.IntegrationBuilder[*examplev1.DNSRecord, *Mutator]
+}
+
+// DefaultOperationalStatusHandler reports the DNSRecord operational once the
+// external provider has assigned a record ID.
+func DefaultOperationalStatusHandler(
+    _ concepts.ConvergingOperation, r *examplev1.DNSRecord,
+) (concepts.OperationalStatusWithReason, error) {
+    if r.Status.RecordID != "" {
+        return concepts.OperationalStatusWithReason{
+            Status: concepts.OperationalStatusOperational,
+            Reason: "Record provisioned by provider",
+        }, nil
+    }
+
+    return concepts.OperationalStatusWithReason{
+        Status: concepts.OperationalStatusPending,
+        Reason: "Awaiting record ID from provider",
+    }, nil
+}
+
+// NewBuilder creates a Builder with the provided DNSRecord as the desired base state.
+func NewBuilder(record *examplev1.DNSRecord) *Builder {
+    identityFunc := func(r *examplev1.DNSRecord) string {
+        return fmt.Sprintf("dnsrecords.example.io/v1/DNSRecord/%s/%s", r.Namespace, r.Name)
+    }
+
+    base := generic.NewIntegrationBuilder[*examplev1.DNSRecord, *Mutator](
+        record,
+        identityFunc,
+        NewMutator,
+    )
+
+    base.WithCustomOperationalStatus(DefaultOperationalStatusHandler)
+
+    return &Builder{base: base}
+}
+
+// Build validates the configuration and returns the initialized Resource.
+func (b *Builder) Build() (*Resource, error) {
+    genericRes, err := b.base.Build()
+    if err != nil {
+        return nil, err
+    }
+    return &Resource{base: genericRes}, nil
+}
+```
+
+`pkg/primitives/service` is a complete integration reference, including a grace handler that mirrors the operational
+logic.
 
 ---
 
 ## Reference
 
-| Package                  | Contains                                                  |
-| ------------------------ | --------------------------------------------------------- |
-| `pkg/generic`            | Generic resource types, builders, `ApplyMutations` helper |
-| `pkg/feature`            | `Mutation`, `Gate`, `VersionGate`, `NewVersionGate`       |
-| `pkg/component/concepts` | Lifecycle interfaces and status type constants            |
-| `pkg/component`          | Component builder, resource registration, reconciliation  |
-| `pkg/primitives/*`       | Built-in implementations to use as reference              |
+| Package                  | Contains                                                       |
+| ------------------------ | -------------------------------------------------------------- |
+| `pkg/generic`            | Generic resource types, builders, `WrapGuard`, `WrapExtractor` |
+| `pkg/feature`            | `Mutation`, `Gate`, `VersionGate`, `NewVersionGate`            |
+| `pkg/component/concepts` | Lifecycle interfaces and status type constants                 |
+| `pkg/component`          | Component builder, resource registration, reconciliation       |
+| `pkg/primitives/*`       | Built-in implementations to use as references                  |
+
+For a complete, runnable wrapper of a third-party CRD (using the unstructured static builder rather than a typed
+struct), see `examples/custom-resource`. </content> </invoke>

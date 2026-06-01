@@ -51,7 +51,6 @@ func defaultCluster() *app.ExampleApp {
 var gen = goldengen.New(goldengen.Config[*app.ExampleApp]{
 	Dir:      "testdata/version_matrix",
 	Versions: []string{"8.7.0", "8.8.2", "8.9.0"},
-	Scheme:   scheme,
 	Fixtures: []goldengen.Fixture[*app.ExampleApp]{{
 		Name: "default",
 		Spec: defaultCluster(),

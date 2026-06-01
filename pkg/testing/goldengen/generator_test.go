@@ -18,7 +18,6 @@ func configForStatefulSet(dir string) goldengen.Config[*appsv1.StatefulSet] {
 	return goldengen.Config[*appsv1.StatefulSet]{
 		Dir:      dir,
 		Versions: []string{"1.0.0", "2.0.0"},
-		Scheme:   testScheme(),
 		Fixtures: []goldengen.Fixture[*appsv1.StatefulSet]{{
 			Name: "default",
 			Spec: baseStatefulSet(),
@@ -63,8 +62,8 @@ func TestGeneratorRunWritesGoldensAndManifest(t *testing.T) {
 	assert.FileExists(t, filepath.Join(dir, "default", "2.0.0.yaml"))
 	assert.FileExists(t, filepath.Join(dir, "manifest.yaml"))
 
-	// Exactly one golden per regime: 1.0.0 and 2.0.0 are distinct regimes, so no
-	// third golden exists for the swept version that shares 1.0.0's firing-set.
+	// Exactly one golden per regime: the sweep has two versions (1.0.0 and 2.0.0)
+	// with distinct firing-sets, so each is its own regime with its own golden.
 	gold200, err := os.ReadFile(filepath.Join(dir, "default", "2.0.0.yaml"))
 	require.NoError(t, err)
 	assert.Contains(t, string(gold200), "kind: StatefulSet")

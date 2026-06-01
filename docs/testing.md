@@ -90,7 +90,6 @@ function accepts).
 var gen = goldengen.New(goldengen.Config[*app.ExampleApp]{
 	Dir:      "testdata/version_matrix",
 	Versions: []string{"8.7.0", "8.8.2", "8.9.0"},
-	Scheme:   scheme,
 	Fixtures: []goldengen.Fixture[*app.ExampleApp]{{
 		Name: "default",
 		Spec: defaultCluster(),
@@ -120,7 +119,6 @@ The fields:
 
 - **`Dir`** roots the generated goldens and the manifest.
 - **`Versions`** is the version universe to sweep, in the order you supply (see [version ordering](#version-ordering)).
-- **`Scheme`** resolves `TypeMeta` when serializing, exactly as `golden.WithScheme` does.
 - **`Fixtures`** are the specs to build and assert. Each names its own golden subdirectory.
 - **`Exclude`** (omitted above) lists registered mutation names you deliberately leave unasserted, so they do not fail
   the [completeness check](#completeness-accounting). It does not affect gating or golden generation.
@@ -246,20 +244,20 @@ boundary, or a mutation that started or stopped firing.
 
 ## YAML matrix loader
 
-The matrix can be declared in YAML instead of Go, keeping the version universe and fixtures as data while the build and
-scheme stay in code. `LoadMatrix` reads the file and returns a ready-to-run `Config[T]`:
+The matrix can be declared in YAML instead of Go, keeping the version universe and fixtures as data while the build
+function stays in code. `LoadMatrix` reads the file and returns a ready-to-run `Config[T]`:
 
 ```go
 func LoadMatrix[T any](
 	path string,
 	newSpec func() T,
 	build func(version string, spec T) (Unit, error),
-	scheme *runtime.Scheme,
 ) (Config[T], error)
 ```
 
-`newSpec` returns a fresh, empty spec to unmarshal each fixture into; `build` and `scheme` are the same callbacks you
-would set on a Go `Config`. The returned config is validated before it is returned.
+`newSpec` returns a fresh, empty spec to unmarshal each fixture into; `build` is the same callback you would set on a Go
+`Config`, and it supplies the scheme by passing it to `goldengen.Resource` or `goldengen.Component`. The returned config
+is validated before it is returned.
 
 A matrix file mirrors `Config` minus the Go-only `build` and `scheme`. Each fixture supplies its spec either inline
 under `spec:` or from an external file under `specFile:` (resolved relative to the matrix file), exactly one of the two:

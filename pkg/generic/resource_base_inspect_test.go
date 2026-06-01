@@ -53,6 +53,17 @@ func TestBaseResourceFiringSet(t *testing.T) {
 	assert.Equal(t, []string{"Always", "On"}, firing)
 }
 
+func TestBaseResourceFiringSetDeduplicates(t *testing.T) {
+	base := newBase(
+		generic.Mutation[noopMutator]{Name: "A", Feature: staticGate{enabled: true}},
+		generic.Mutation[noopMutator]{Name: "B"},                                     // nil gate -> fires
+		generic.Mutation[noopMutator]{Name: "A", Feature: staticGate{enabled: true}}, // duplicate firing name
+	)
+	firing, err := base.FiringSet()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"A", "B"}, firing)
+}
+
 func TestBaseResourceFiringSetGateError(t *testing.T) {
 	base := newBase(
 		generic.Mutation[noopMutator]{Name: "Bad", Feature: staticGate{err: errors.New("boom")}},

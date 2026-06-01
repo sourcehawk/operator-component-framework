@@ -13,7 +13,6 @@ func TestConfigValidate(t *testing.T) {
 	valid := goldengen.Config[*corev1.ConfigMap]{
 		Dir:      "td",
 		Versions: []string{"1.0.0", "2.0.0"},
-		Scheme:   testScheme(),
 		Fixtures: []goldengen.Fixture[*corev1.ConfigMap]{{
 			Name: "default", Spec: &corev1.ConfigMap{},
 			Requires: []goldengen.Expect{{Name: "A"}, {Name: "B", For: "2.0.0"}},
@@ -70,6 +69,26 @@ func TestConfigValidate(t *testing.T) {
 			Name: "default", Spec: &corev1.ConfigMap{},
 			Forbids: []goldengen.Expect{{Name: ""}},
 		}}
+		require.Error(t, bad.Validate())
+	})
+
+	t.Run("empty version string", func(t *testing.T) {
+		bad := valid
+		bad.Versions = []string{"1.0.0", ""}
+		require.Error(t, bad.Validate())
+	})
+
+	t.Run("duplicate version", func(t *testing.T) {
+		bad := valid
+		bad.Versions = []string{"1.0.0", "2.0.0", "1.0.0"}
+		err := bad.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "1.0.0")
+	})
+
+	t.Run("empty exclude entry", func(t *testing.T) {
+		bad := valid
+		bad.Exclude = []string{""}
 		require.Error(t, bad.Validate())
 	})
 }

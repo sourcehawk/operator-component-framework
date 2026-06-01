@@ -1,10 +1,6 @@
 package goldengen
 
-import (
-	"fmt"
-
-	"k8s.io/apimachinery/pkg/runtime"
-)
+import "fmt"
 
 // Expect is an assertion that a named mutation fires (Requires) or does not fire
 // (Forbids) over a fixture's version sweep. For is optional; when set it must be a
@@ -41,8 +37,6 @@ type Config[T any] struct {
 	// Exclude lists registered mutation Names deliberately left unaccounted by the
 	// completeness check. It does not affect gating or golden generation.
 	Exclude []string
-	// Scheme resolves TypeMeta when serializing rendered objects.
-	Scheme *runtime.Scheme
 	// Fixtures are the specs to build and assert across the version sweep.
 	Fixtures []Fixture[T]
 	// Build materializes a Unit from a fixture spec at a version.
@@ -66,7 +60,19 @@ func (c Config[T]) Validate() error {
 
 	known := make(map[string]struct{}, len(c.Versions))
 	for _, v := range c.Versions {
+		if v == "" {
+			return fmt.Errorf("goldengen: Versions must not contain an empty string")
+		}
+		if _, dup := known[v]; dup {
+			return fmt.Errorf("goldengen: duplicate version %q in Versions", v)
+		}
 		known[v] = struct{}{}
+	}
+
+	for _, name := range c.Exclude {
+		if name == "" {
+			return fmt.Errorf("goldengen: Exclude must not contain an empty string")
+		}
 	}
 
 	seenFixture := make(map[string]struct{}, len(c.Fixtures))

@@ -22,7 +22,6 @@ func configWithRegistered(t *testing.T, registered, requires, exclude []string) 
 		Dir:      "testdata/accounting",
 		Versions: []string{"1.0.0"},
 		Exclude:  exclude,
-		Scheme:   testScheme(),
 		Fixtures: []goldengen.Fixture[*struct{}]{{
 			Name:     "default",
 			Spec:     &struct{}{},

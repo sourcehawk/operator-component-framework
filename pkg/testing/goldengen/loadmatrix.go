@@ -6,13 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 )
 
 // matrixFile is the on-disk shape of a version matrix. It mirrors Config without
-// the Go-only Build and Scheme, which LoadMatrix takes as arguments. The struct
-// tags are JSON because sigs.k8s.io/yaml converts YAML to JSON before unmarshalling.
+// the Go-only Build, which LoadMatrix takes as an argument. The struct tags are
+// JSON because sigs.k8s.io/yaml converts YAML to JSON before unmarshalling.
 type matrixFile struct {
 	Dir      string              `json:"dir"`
 	Versions []string            `json:"versions"`
@@ -55,18 +54,21 @@ func toExpects(in []matrixExpect) []Expect {
 }
 
 // LoadMatrix reads a YAML matrix file at path and returns a Config ready to run.
-// The file mirrors Config without its Go-only fields: Build and Scheme are supplied
-// here as arguments. Each fixture's CR comes from either an inline spec or an
-// external specFile (exactly one of the two); the CR is unmarshalled into a fresh
-// T from newSpec. A specFile path is resolved relative to the matrix file's
-// directory. Supplying both spec and specFile, or neither, is a load error. The
-// resulting Config is validated via Config.Validate before it is returned, so
-// invariants such as every Expect.For being a member of versions are enforced.
+// The file mirrors Config without its Go-only Build, which is supplied here as an
+// argument. Each fixture's CR comes from either an inline spec or an external
+// specFile (exactly one of the two); the CR is unmarshalled into a fresh T from
+// newSpec. A specFile path is resolved relative to the matrix file's directory.
+// Supplying both spec and specFile, or neither, is a load error. The resulting
+// Config is validated via Config.Validate before it is returned, so invariants
+// such as every Expect.For being a member of versions are enforced.
+//
+// The scheme used to serialize rendered objects is supplied by the build function,
+// which passes it to goldengen.Resource or goldengen.Component when it constructs
+// each Unit.
 func LoadMatrix[T any](
 	path string,
 	newSpec func() T,
 	build func(version string, spec T) (Unit, error),
-	scheme *runtime.Scheme,
 ) (Config[T], error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -83,7 +85,6 @@ func LoadMatrix[T any](
 		Dir:      mf.Dir,
 		Versions: mf.Versions,
 		Exclude:  mf.Exclude,
-		Scheme:   scheme,
 		Build:    build,
 	}
 

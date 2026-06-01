@@ -26,7 +26,7 @@ func cmBuildFn(_ string, spec *corev1.ConfigMap) (goldengen.Unit, error) {
 }
 
 func TestLoadMatrixInline(t *testing.T) {
-	cfg, err := goldengen.LoadMatrix("testdata/matrix_inline.yaml", newCM, cmBuildFn, testScheme())
+	cfg, err := goldengen.LoadMatrix("testdata/matrix_inline.yaml", newCM, cmBuildFn)
 	require.NoError(t, err)
 	require.NoError(t, cfg.Validate())
 
@@ -50,7 +50,7 @@ func TestLoadMatrixInline(t *testing.T) {
 }
 
 func TestLoadMatrixSpecFile(t *testing.T) {
-	cfg, err := goldengen.LoadMatrix("testdata/matrix_specfile.yaml", newCM, cmBuildFn, testScheme())
+	cfg, err := goldengen.LoadMatrix("testdata/matrix_specfile.yaml", newCM, cmBuildFn)
 	require.NoError(t, err)
 	require.NoError(t, cfg.Validate())
 
@@ -61,7 +61,7 @@ func TestLoadMatrixSpecFile(t *testing.T) {
 }
 
 func TestLoadMatrixRunnable(t *testing.T) {
-	cfg, err := goldengen.LoadMatrix("testdata/matrix_inline.yaml", newCM, cmBuildFn, testScheme())
+	cfg, err := goldengen.LoadMatrix("testdata/matrix_inline.yaml", newCM, cmBuildFn)
 	require.NoError(t, err)
 
 	// The produced Config must be runnable: Build yields a Unit that renders.
@@ -84,7 +84,7 @@ func TestLoadMatrixErrors(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := goldengen.LoadMatrix(tc.path, newCM, cmBuildFn, testScheme())
+			_, err := goldengen.LoadMatrix(tc.path, newCM, cmBuildFn)
 			require.Error(t, err)
 		})
 	}

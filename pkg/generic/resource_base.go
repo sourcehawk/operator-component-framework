@@ -48,24 +48,29 @@ func (r *BaseResource[T, M]) RegisteredMutations() []string {
 	return names
 }
 
-// FiringSet returns the Names of registered mutations whose gate is enabled for the
-// version the resource was built at, in registration order. A mutation with a nil
-// Feature fires unconditionally. It returns an error if any gate's Enabled
-// evaluation fails. It satisfies concepts.MutationInspector.
+// FiringSet returns the deduplicated Names of registered mutations whose gate is
+// enabled for the version the resource was built at, in first-occurrence
+// registration order. A mutation with a nil Feature fires unconditionally. It
+// returns an error if any gate's Enabled evaluation fails. It satisfies
+// concepts.MutationInspector.
 func (r *BaseResource[T, M]) FiringSet() ([]string, error) {
+	seen := make(map[string]struct{}, len(r.Mutations))
 	firing := make([]string, 0, len(r.Mutations))
 	for _, m := range r.Mutations {
-		if m.Feature == nil {
-			firing = append(firing, m.Name)
+		if m.Feature != nil {
+			enabled, err := m.Feature.Enabled()
+			if err != nil {
+				return nil, fmt.Errorf("evaluating gate for mutation %q: %w", m.Name, err)
+			}
+			if !enabled {
+				continue
+			}
+		}
+		if _, ok := seen[m.Name]; ok {
 			continue
 		}
-		enabled, err := m.Feature.Enabled()
-		if err != nil {
-			return nil, fmt.Errorf("evaluating gate for mutation %q: %w", m.Name, err)
-		}
-		if enabled {
-			firing = append(firing, m.Name)
-		}
+		seen[m.Name] = struct{}{}
+		firing = append(firing, m.Name)
 	}
 	return firing, nil
 }

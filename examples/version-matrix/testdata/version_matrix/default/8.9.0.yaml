@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: demo
+  name: demo-db
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  serviceName: demo
+  template:
+    metadata:
+      labels:
+        app: demo
+    spec:
+      containers:
+      - env:
+        - name: CLUSTER_DISCOVERY
+          value: unified-raft
+        image: example/db:8.9.0
+        name: db
+        resources: {}
+  updateStrategy: {}
+status:
+  availableReplicas: 0
+  replicas: 0

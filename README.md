@@ -401,6 +401,7 @@ See the [Custom Resource Implementation Guide](docs/custom-resource.md) for a co
 | [Custom Resources](docs/custom-resource.md) | Implementing custom resource wrappers using the generic building blocks |
 | [Guidelines](docs/guidelines.md)            | Recommended patterns for structuring operators built with the framework |
 | [Compatibility](docs/compatibility.md)      | Supported Kubernetes and controller-runtime versions, version policy    |
+| [Testing](docs/testing.md)                  | Golden snapshots and version-matrix golden generation                   |
 
 ## Contributing
 

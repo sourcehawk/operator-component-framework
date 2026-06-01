@@ -2,16 +2,53 @@
 
 A Go framework for building Kubernetes operators that stay maintainable as they grow.
 
+## Start here
+
+New to the framework? Start with **Getting Started**. Already building and looking for patterns? Read **Guidelines**.
+
+<div class="grid cards" markdown>
+
+<!-- prettier-ignore -->
+- :material-rocket-launch-outline: **[Getting Started](getting-started.md)**
+
+    Build your first component step by step.
+
+- :material-cube-outline: **[Component](component.md)**
+
+    Lifecycle, status model, and reconciliation phases.
+
+- :material-shape-outline: **[Primitives](primitives.md)**
+
+    Typed wrappers over Kubernetes resources with builders, mutators, and feature gating.
+
+- :material-source-branch: **[Custom Resources](custom-resource.md)**
+
+    Build custom resource wrappers with `pkg/generic`.
+
+- :material-book-open-variant: **[Guidelines](guidelines.md)**
+
+    Patterns for structuring operators well.
+
+- :material-test-tube: **[Testing](testing.md)**
+
+    Golden snapshots and version-matrix golden generation.
+
+</div>
+
 ## Why this exists
 
-Operators tend to accumulate the same problems. Status conditions are assembled by hand, and aggregating them into a
-single owner condition without provoking update conflicts is fiddly to get right. Reconcilers grow into fat,
-hard-to-test functions that mix construction, ordering, health checks, and status writes. Version-gating logic ends up
-scattered through the reconcile path as conditionals that are easy to break and hard to review.
+A Kubernetes operator does far more than create resources. For every resource it manages, a controller has to construct
+the desired object, apply it without overwriting fields it does not own, decide whether the resource is healthy, fold
+that health into a status condition on the owner, and adapt behavior to feature flags and the application versions it
+supports. Written by hand, this logic collects in the reconciler until it is large, repetitive, and hard to test, and
+the part you actually care about, what your operator does, is buried under mechanics that every operator repeats.
 
-This framework moves that work into two reusable layers, **components** and **resource primitives**, that sit between
-your reconciler and the Kubernetes objects it manages. Reconciliation mechanics, health aggregation, and feature gating
-live in the framework, so controllers stay thin and the version-specific behavior lives in named, testable mutations.
+This framework gives you two reusable layers, **components** and **resource primitives**, that sit between your
+reconciler and the Kubernetes objects it manages. You declare the desired state of each resource and the behavior that
+varies by flag or version. The framework handles server-side apply, per-resource health, aggregation into a single owner
+condition without update conflicts, lifecycle (grace periods, suspension, prerequisites, guards), and feature gating.
+Controllers stay thin, version-specific behavior lives in small named mutations you can test in isolation, and you keep
+full control where it matters.
 
 ## Key features
 
@@ -55,36 +92,3 @@ return comp.Reconcile(ctx, recCtx)
 
 [Getting Started](getting-started.md) walks through building `deployResource` and `cmResource` and wiring the reconcile
 loop end to end.
-
-## Where to go next
-
-New to the framework? Start with **Getting Started**. Already building and looking for patterns? Read **Guidelines**.
-
-<div class="grid cards" markdown>
-
-<!-- prettier-ignore -->
-- :material-rocket-launch-outline: **[Getting Started](getting-started.md)**
-
-    Build your first component step by step.
-
-- :material-cube-outline: **[Component](component.md)**
-
-    Lifecycle, status model, and reconciliation phases.
-
-- :material-shape-outline: **[Primitives](primitives.md)**
-
-    Typed wrappers over Kubernetes resources with builders, mutators, and feature gating.
-
-- :material-source-branch: **[Custom Resources](custom-resource.md)**
-
-    Build custom resource wrappers with `pkg/generic`.
-
-- :material-book-open-variant: **[Guidelines](guidelines.md)**
-
-    Patterns for structuring operators well.
-
-- :material-test-tube: **[Testing](testing.md)**
-
-    Golden snapshots and version-matrix golden generation.
-
-</div>

@@ -259,8 +259,8 @@ func LoadMatrix[T any](
 `Config`, and it supplies the scheme by passing it to `goldengen.Resource` or `goldengen.Component`. The returned config
 is validated before it is returned.
 
-A matrix file mirrors `Config` minus the Go-only `build` and `scheme`. Each fixture supplies its spec either inline
-under `spec:` or from an external file under `specFile:` (resolved relative to the matrix file), exactly one of the two:
+A matrix file mirrors `Config` minus the Go-only `build`. Each fixture supplies its spec either inline under `spec:` or
+from an external file under `specFile:` (resolved relative to the matrix file), exactly one of the two:
 
 ```yaml
 dir: testdata/version_matrix
@@ -294,7 +294,7 @@ fixtures:
 ```go
 cfg, err := goldengen.LoadMatrix("testdata/matrix.yaml",
 	func() *app.ExampleApp { return &app.ExampleApp{} },
-	buildUnit, scheme)
+	buildUnit)
 require.NoError(t, err)
 
 gen := goldengen.New(cfg).WithUpdate(*update)

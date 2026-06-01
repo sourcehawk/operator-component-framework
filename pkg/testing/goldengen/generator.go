@@ -27,22 +27,31 @@ func (g *Generator[T]) WithUpdate(enabled bool) *Generator[T] {
 	return g
 }
 
-// AssertComplete proves every registered mutation is accounted for and returns an
-// exit code for the consumer's TestMain to pass to os.Exit:
+// AssertComplete proves that every registered mutation is consciously accounted
+// for: each one is either exercised by at least one fixture, by being named in
+// that fixture's Requires (which makes Run assert it actually fires), or it is
+// explicitly listed in Config.Exclude as deliberately not covered. Nothing
+// registered may slip through both untested and unexcluded. It is the guard that a
+// newly added mutation forces exactly one decision: cover it or exclude it.
+//
+// It is called from the consumer's TestMain so its result gates the package's exit
+// code:
 //
 //	func TestMain(m *testing.M) { os.Exit(gen.AssertComplete(m.Run())) }
 //
-// Accounting holds when the universe of registered mutation Names across all
-// fixtures equals union(Requires names across fixtures) ∪ Exclude, with no empty
-// names. The registered universe is gathered by building each fixture once at the
-// first version, since registration is version-independent.
+// Concretely, accounting holds when union(Requires names across all fixtures) plus
+// Config.Exclude equals the set of registered mutation Names. The registered
+// universe is gathered by building each fixture once (registration is
+// version-independent). Forbids does not count toward coverage: forbidding a
+// mutation asserts where it must not fire, which is not evidence that it works, so
+// a mutation that only ever appears in Forbids is still unaccounted.
 //
-// It returns code unchanged when that code is already nonzero (the tests already
-// failed, so accounting noise would only obscure the failure) or when accounting
-// holds. Otherwise it prints the violations to stderr and returns a nonzero code.
-// Violations are: a registered mutation neither required nor excluded; a stale
-// Exclude or Requires name not registered by any fixture; and an empty registered
-// mutation Name.
+// It returns code unchanged when code is already nonzero (the tests failed, so
+// accounting noise would only obscure that) or when accounting holds. Otherwise it
+// prints the violations to stderr and returns a nonzero code. Violations are: a
+// registered mutation neither required by any fixture nor excluded; a stale Exclude
+// or Requires name not registered by any fixture; and an empty registered mutation
+// Name.
 func (g *Generator[T]) AssertComplete(code int) int {
 	if code != 0 {
 		return code

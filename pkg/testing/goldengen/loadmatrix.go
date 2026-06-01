@@ -127,7 +127,9 @@ func loadFixtureSpec[T any](ff matrixFixtureFile, baseDir string, newSpec func()
 	}
 
 	spec := newSpec()
-	if err := yaml.Unmarshal(data, spec); err != nil {
+	// Unmarshal into &spec rather than spec so a value-type T works too: a pointer
+	// T (the common case) is populated in place, and a value T becomes addressable.
+	if err := yaml.Unmarshal(data, &spec); err != nil {
 		return zero, fmt.Errorf("fixture %q spec: %w", ff.Name, err)
 	}
 	return spec, nil

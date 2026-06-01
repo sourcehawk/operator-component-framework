@@ -27,7 +27,10 @@ var scheme = newScheme()
 // newScheme returns a scheme with the apps and core Kubernetes types plus the
 // example CRD registered.
 func newScheme() *runtime.Scheme {
-	s := clientgoscheme.Scheme
+	s := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(s); err != nil {
+		panic(err)
+	}
 	if err := app.AddToScheme(s); err != nil {
 		panic(err)
 	}

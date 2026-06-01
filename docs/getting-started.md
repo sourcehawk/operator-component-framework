@@ -362,14 +362,15 @@ This entry point uses `ctrl "sigs.k8s.io/controller-runtime"` for `ctrl.Request`
 the owner's `Status.Conditions` carries one `AppReady` condition reflecting the aggregated health of the Deployment and
 ConfigMap.
 
-## Step 6: Add a golden test
+## Step 6: Test the resource
 
-A golden test renders a resource to YAML and compares it against a checked-in snapshot. It catches unintended changes to
-the rendered output, including changes a mutation makes for a given flag value. Use `golden.AssertYAML` for a single
-resource, with a `-update` flag to regenerate the snapshot.
+A resource test answers two questions: do the right mutations fire for a given spec, and does the rendered output match
+what you expect? Build the resource through the same factory the reconciler uses, then assert both.
 
-For typed Kubernetes objects, pass a scheme through `golden.WithScheme` so the serialized output carries `apiVersion`
-and `kind`.
+`res.FiringSet()`, from `concepts.MutationInspector` (which every built-in primitive implements), returns the names of
+the mutations that fire for the resource's version and flags. A golden test then pins the rendered YAML against a
+checked-in snapshot: `golden.AssertYAML` does the comparison, `golden.WithScheme` makes the output carry `apiVersion`
+and `kind` for typed objects, and the `-update` flag regenerates the snapshot.
 
 ```go
 package resources_test
@@ -378,20 +379,20 @@ import (
     "flag"
     "testing"
 
-    "github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+    "github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
     "github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
+    "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
     appsv1 "k8s.io/api/apps/v1"
     "k8s.io/apimachinery/pkg/runtime"
 
     "your.module/app"
-    "your.module/features"
     "your.module/resources"
 )
 
 var update = flag.Bool("update", false, "update golden files")
 
-func TestDeploymentShape(t *testing.T) {
+func TestDeploymentResource(t *testing.T) {
     scheme := runtime.NewScheme()
     require.NoError(t, appsv1.AddToScheme(scheme))
 
@@ -399,25 +400,36 @@ func TestDeploymentShape(t *testing.T) {
     owner.Name = "my-app"
     owner.Namespace = "default"
 
-    res, err := deployment.NewBuilder(resources.BaseDeployment(owner)).
-        WithMutation(features.DebugLoggingMutation(owner.Spec.EnableDebugLogging)).
-        Build()
+    // Build the resource exactly as the reconciler does.
+    res, err := resources.NewDeploymentResource(owner)
     require.NoError(t, err)
 
-    golden.AssertYAML(t, "testdata/deployment.yaml", res, golden.WithScheme(scheme), golden.Update(*update))
+    // Assert which mutations fire for this spec. Built-in primitives implement
+    // concepts.MutationInspector.
+    inspector, ok := res.(concepts.MutationInspector)
+    require.True(t, ok)
+    firing, err := inspector.FiringSet()
+    require.NoError(t, err)
+    assert.ElementsMatch(t, []string{"DebugLogging"}, firing)
+
+    // Pin the rendered output. The built resource implements golden.Previewer.
+    previewer, ok := res.(golden.Previewer)
+    require.True(t, ok)
+    golden.AssertYAML(t, "testdata/deployment.yaml", previewer, golden.WithScheme(scheme), golden.Update(*update))
 }
 ```
 
 Generate the snapshot, then run the test normally to verify it stays stable:
 
 ```bash
-go test ./resources -run TestDeploymentShape -update
-go test ./resources -run TestDeploymentShape
+go test ./resources -run TestDeploymentResource -update
+go test ./resources -run TestDeploymentResource
 ```
 
-Commit the generated `testdata/deployment.yaml` alongside the test. To assert the rendered output of an entire component
-at once, use `golden.AssertComponentYAML`, which serializes every resource the component would apply into one
-multi-document file.
+Commit the generated `testdata/deployment.yaml` alongside the test. This resource test is one layer of a fuller
+strategy: test each mutation against a baseline, assert which mutations fire at the resource level, and golden the whole
+component with `golden.AssertComponentYAML`. See [Testing](testing.md) for all three layers and for version-matrix
+generation across supported versions.
 
 ## Next steps
 

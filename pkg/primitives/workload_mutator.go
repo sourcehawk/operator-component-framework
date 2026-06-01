@@ -10,19 +10,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// WorkloadMutator is the editing surface shared by every pod-workload mutator:
-// *statefulset.Mutator, *deployment.Mutator, and *daemonset.Mutator. It lets a
-// consumer express one workload-kind-agnostic mutation (for example, emitting a
-// shared set of environment variables on the application container) and apply it
-// to any of those kinds through the per-package LiftMutation adapters.
+// WorkloadMutator is the editing surface shared by the StatefulSet, Deployment,
+// and DaemonSet mutators (*statefulset.Mutator, *deployment.Mutator,
+// *daemonset.Mutator). It lets a consumer express one workload-kind-agnostic
+// mutation (for example, emitting a shared set of environment variables on the
+// application container) and apply it to any of those kinds through the
+// per-package LiftMutation adapters.
 //
-// It is exactly the intersection of the three concrete mutators' editing methods.
+// It is exactly the intersection of those three mutators' editing methods.
 // Kind-specific operations are intentionally excluded and remain on the concrete
 // types: the spec editors (EditStatefulSetSpec, EditDeploymentSpec,
 // EditDaemonSetSpec), EnsureReplicas (absent from the DaemonSet mutator, which
-// has no replica field), and the StatefulSet-only VolumeClaimTemplate methods. The lifecycle methods Apply and
-// NextFeature are also excluded; they are driven by the framework, not by an
-// emitter.
+// has no replica field), and the StatefulSet-only VolumeClaimTemplate methods.
+// The lifecycle methods Apply and NextFeature are also excluded; they are driven
+// by the framework, not by an emitter.
 type WorkloadMutator interface {
 	EditContainers(selector selectors.ContainerSelector, edit func(*editors.ContainerEditor) error)
 	EditInitContainers(selector selectors.ContainerSelector, edit func(*editors.ContainerEditor) error)

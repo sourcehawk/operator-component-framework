@@ -1,0 +1,11 @@
+dir: testdata/goldens
+versions:
+  - 1.0.0
+fixtures:
+  - name: default
+    spec:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: from-inline
+    specFile: fixtures/cm.yaml

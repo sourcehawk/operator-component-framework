@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-file
+  namespace: default
+data:
+  key: value

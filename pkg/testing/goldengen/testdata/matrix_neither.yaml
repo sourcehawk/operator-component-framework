@@ -1,0 +1,7 @@
+dir: testdata/goldens
+versions:
+  - 1.0.0
+fixtures:
+  - name: default
+    requires:
+      - name: A

@@ -1,0 +1,9 @@
+dir: testdata/goldens
+versions:
+  - 1.0.0
+  - 2.0.0
+fixtures:
+  - name: default
+    specFile: fixtures/cm.yaml
+    requires:
+      - name: A

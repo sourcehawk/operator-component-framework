@@ -6,40 +6,6 @@ related resources into **Components**.
 A Component acts as a single behavioral unit: it reconciles multiple resources, manages their shared lifecycle, and
 reports their aggregate health through one condition on the owner CRD.
 
-## Table of Contents
-
-- [Building a Component](#building-a-component)
-  - [Resource Registration Options](#resource-registration-options)
-  - [Conditional and Optional Resources](#conditional-and-optional-resources)
-- [Component Feature Gates](#component-feature-gates)
-- [Prerequisites](#prerequisites)
-  - [Registering Prerequisites](#registering-prerequisites)
-  - [Prerequisite Behavior](#prerequisite-behavior)
-  - [Status Reporting](#status-reporting)
-- [Reconciliation Lifecycle](#reconciliation-lifecycle)
-- [Previewing Desired State](#previewing-desired-state)
-- [Cluster-Scoped Resources](#cluster-scoped-resources)
-- [Status Model](#status-model)
-  - [Alive Resources](#alive-resources-alive-interface)
-  - [Completable Resources](#completable-resources-completable-interface)
-  - [Operational Resources](#operational-resources-operational-interface)
-  - [Static Resources](#static-resources-no-interface)
-  - [Grace States](#grace-states)
-  - [Suspension States](#suspension-states)
-  - [Guard State](#guard-state)
-  - [Prerequisite State](#prerequisite-state)
-  - [Feature Gate State](#feature-gate-state)
-  - [Condition Priority](#condition-priority)
-- [Grace Period](#grace-period)
-- [Suspension Lifecycle](#suspension-lifecycle)
-- [ReconcileContext](#reconcilecontext)
-- [Persisting Status with FlushStatus](#persisting-status-with-flushstatus)
-- [Guards](#guards)
-  - [Registering a Guard](#registering-a-guard)
-  - [Guard Behavior](#guard-behavior)
-  - [Status Reporting](#status-reporting-1)
-- [Best Practices](#best-practices)
-
 ## Building a Component
 
 Components are constructed through a builder. The builder collects resource registrations, configuration, and lifecycle
@@ -80,7 +46,7 @@ control how the component interacts with the resource:
 
 A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
 `Delete()`, `DeleteWhen()`, and `GatedBy()`; combining them is a build error. To conditionally include a read-only
-resource, use [`IncludeWhen`](#includewhen), which omits the resource without deleting it.
+resource, use [`IncludeWhen`](#includewhen-vs-gatedby-two-different-axes), which omits the resource without deleting it.
 
 ### Conditional and Optional Resources
 

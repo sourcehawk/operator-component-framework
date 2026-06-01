@@ -15,28 +15,29 @@ your controllers stay thin and focused on construction and orchestration.
 
 <div class="grid cards" markdown>
 
+<!-- prettier-ignore -->
 - :material-rocket-launch-outline: **[Getting Started](getting-started.md)**
 
-  Build your first component step by step.
+    Build your first component step by step.
 
 - :material-cube-outline: **[Component](component.md)**
 
-  Lifecycle, status model, and reconciliation phases.
+    Lifecycle, status model, and reconciliation phases.
 
 - :material-shape-outline: **[Primitives](primitives.md)**
 
-  Typed wrappers over Kubernetes resources with builders, mutators, and feature gating.
+    Typed wrappers over Kubernetes resources with builders, mutators, and feature gating.
 
 - :material-source-branch: **[Custom Resources](custom-resource.md)**
 
-  Build custom resource wrappers with `pkg/generic`.
+    Build custom resource wrappers with `pkg/generic`.
 
 - :material-book-open-variant: **[Guidelines](guidelines.md)**
 
-  Patterns for structuring operators well.
+    Patterns for structuring operators well.
 
 - :material-test-tube: **[Testing](testing.md)**
 
-  Golden snapshots and version-matrix golden generation.
+    Golden snapshots and version-matrix golden generation.
 
 </div>

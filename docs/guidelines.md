@@ -3,24 +3,6 @@
 Recommendations for structuring operators built with the framework. These are not hard rules. They reflect patterns that
 are effective and pitfalls that are easy to walk into.
 
-## Table of Contents
-
-- [Represent Desired State in the Baseline Object](#represent-desired-state-in-the-baseline-object)
-- [One Component Per Logical Condition](#one-component-per-logical-condition)
-- [Keep Controllers Thin](#keep-controllers-thin)
-- [Resource Registration Order Is Execution Order](#resource-registration-order-is-execution-order)
-- [Mutation Ordering and Container Name Dependencies](#mutation-ordering-and-container-name-dependencies)
-- [Use Data Extraction and Guards for Resource Dependencies](#use-data-extraction-and-guards-for-resource-dependencies)
-  - [Prefer stable values for guard conditions](#prefer-stable-values-for-guard-conditions)
-- [Use Prerequisites for Cross-Component Dependencies](#use-prerequisites-for-cross-component-dependencies)
-- [Use Component Feature Gates for Optional Components](#use-component-feature-gates-for-optional-components)
-- [Mutations Describe Intent, Not Observation](#mutations-describe-intent-not-observation)
-- [Understand Participation Modes](#understand-participation-modes)
-- [Use Feature Gating for Conditional Resources](#use-feature-gating-for-conditional-resources)
-- [Grace Periods Are Convergence Time](#grace-periods-are-convergence-time)
-- [Handle Cluster-Scoped Resources Explicitly](#handle-cluster-scoped-resources-explicitly)
-- [Name Conditions for the Audience Reading Them](#name-conditions-for-the-audience-reading-them)
-
 ## Represent Desired State in the Baseline Object
 
 The core object passed to a primitive builder should represent the latest desired state of the resource. When the

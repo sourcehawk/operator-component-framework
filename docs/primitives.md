@@ -4,29 +4,6 @@ The `primitives` package provides reusable, type-safe wrappers for individual Ku
 the [Component layer](component.md) and raw Kubernetes resources. They handle the complexities of state synchronization,
 mutation, and lifecycle management so operator authors don't have to.
 
-## Table of Contents
-
-- [What a Primitive Is](#what-a-primitive-is)
-- [Primitive Categories](#primitive-categories)
-  - [Static](#static)
-  - [Workload](#workload)
-  - [Task](#task)
-  - [Integration](#integration)
-- [Cluster-Scoped Primitives](#cluster-scoped-primitives)
-- [Lifecycle Interfaces](#lifecycle-interfaces)
-- [Server-Side Apply](#server-side-apply)
-- [Mutation System](#mutation-system)
-- [Mutation Editors](#mutation-editors)
-- [Container Selectors](#container-selectors)
-- [Built-in Primitives](#built-in-primitives)
-- [Usage Examples](#usage-examples)
-  - [Creating a primitive](#creating-a-primitive)
-  - [Adding a mutation](#adding-a-mutation)
-  - [Targeting multiple containers](#targeting-multiple-containers)
-  - [Adding a guard](#adding-a-guard)
-- [Unstructured Primitives](#unstructured-primitives)
-- [Implementing a Custom Resource](#implementing-a-custom-resource)
-
 ## What a Primitive Is
 
 A primitive wraps a specific Kubernetes kind (e.g., `Deployment`, `ConfigMap`) and encapsulates:

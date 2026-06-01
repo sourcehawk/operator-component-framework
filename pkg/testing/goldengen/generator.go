@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -24,6 +25,79 @@ func New[T any](cfg Config[T]) *Generator[T] {
 func (g *Generator[T]) WithUpdate(enabled bool) *Generator[T] {
 	g.update = enabled
 	return g
+}
+
+// AssertComplete proves every registered mutation is accounted for and returns an
+// exit code for the consumer's TestMain to pass to os.Exit:
+//
+//	func TestMain(m *testing.M) { os.Exit(gen.AssertComplete(m.Run())) }
+//
+// Accounting holds when the universe of registered mutation Names across all
+// fixtures equals union(Requires names across fixtures) ∪ Exclude, with no empty
+// names. The registered universe is gathered by building each fixture once at the
+// first version, since registration is version-independent.
+//
+// It returns code unchanged when that code is already nonzero (the tests already
+// failed, so accounting noise would only obscure the failure) or when accounting
+// holds. Otherwise it prints the violations to stderr and returns a nonzero code.
+// Violations are: a registered mutation neither required nor excluded; a stale
+// Exclude or Requires name not registered by any fixture; and an empty registered
+// mutation Name.
+func (g *Generator[T]) AssertComplete(code int) int {
+	if code != 0 {
+		return code
+	}
+	if err := g.cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "goldengen: invalid config: %v\n", err)
+		return 1
+	}
+
+	registered := map[string]struct{}{}
+	for _, f := range g.cfg.Fixtures {
+		unit, err := g.cfg.Build(g.cfg.Versions[0], f.Spec)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "goldengen: build fixture %q for accounting: %v\n", f.Name, err)
+			return 1
+		}
+		for _, name := range unit.RegisteredMutations() {
+			if name == "" {
+				fmt.Fprintf(os.Stderr, "goldengen: fixture %q registers a mutation with an empty Name\n", f.Name)
+				return 1
+			}
+			registered[name] = struct{}{}
+		}
+	}
+
+	accounted := map[string]struct{}{}
+	for _, f := range g.cfg.Fixtures {
+		for _, e := range f.Requires {
+			accounted[e.Name] = struct{}{}
+		}
+	}
+	for _, name := range g.cfg.Exclude {
+		accounted[name] = struct{}{}
+	}
+
+	var violations []string
+	for name := range registered {
+		if _, ok := accounted[name]; !ok {
+			violations = append(violations, fmt.Sprintf("unaccounted mutation %q (require it in a fixture or add it to Exclude)", name))
+		}
+	}
+	for name := range accounted {
+		if _, ok := registered[name]; !ok {
+			violations = append(violations, fmt.Sprintf("stale name %q is required or excluded but not registered by any fixture", name))
+		}
+	}
+
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		for _, v := range violations {
+			fmt.Fprintf(os.Stderr, "goldengen: %s\n", v)
+		}
+		return 1
+	}
+	return code
 }
 
 // fixtureSweep holds, per fixture, the per-version firing-sets and the built units

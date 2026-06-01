@@ -44,7 +44,7 @@ func TestBaseResourceRegisteredMutations(t *testing.T) {
 
 func TestBaseResourceFiringSet(t *testing.T) {
 	base := newBase(
-		generic.Mutation[noopMutator]{Name: "Always"},                                  // nil gate -> fires
+		generic.Mutation[noopMutator]{Name: "Always"},                                   // nil gate -> fires
 		generic.Mutation[noopMutator]{Name: "On", Feature: staticGate{enabled: true}},   // fires
 		generic.Mutation[noopMutator]{Name: "Off", Feature: staticGate{enabled: false}}, // does not fire
 	)

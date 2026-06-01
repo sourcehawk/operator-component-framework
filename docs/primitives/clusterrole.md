@@ -1,27 +1,28 @@
 # ClusterRole Primitive
 
-The `clusterrole` primitive is the framework's built-in static abstraction for managing Kubernetes `ClusterRole`
-resources. It integrates with the component lifecycle and provides a structured mutation API for managing `.rules`,
-`.aggregationRule`, and object metadata.
+The `clusterrole` primitive wraps a Kubernetes `ClusterRole` and manages RBAC policy rules, aggregation rules, and
+object metadata within the component lifecycle.
 
-ClusterRole is cluster-scoped: it has no namespace. The builder validates that the Name is set and that Namespace is
-empty. Setting a namespace on a cluster-scoped resource is rejected.
+!!! warning "Ownership limitation for namespaced owners"
 
-> **Ownership limitation:** During reconciliation, the framework attempts to set a controller reference on managed
-> objects, but only when the owner and dependent scopes are compatible. When a namespaced owner manages a cluster-scoped
-> resource such as a `ClusterRole`, the owner reference is skipped (and this is logged) instead of causing the reconcile
-> to fail. In this case, the `ClusterRole` is **not** owned by the custom resource for Kubernetes garbage-collection or
-> ownership semantics, so it will not be automatically deleted when the owner is removed; you must handle its lifecycle
-> explicitly or use a cluster-scoped owner if automatic cleanup is required.
+    When a namespaced owner manages a cluster-scoped resource such as a `ClusterRole`, the framework cannot set a
+    controller owner reference (the scopes are incompatible). The owner reference is skipped and the skip is logged.
+    The `ClusterRole` is **not** garbage-collected when the owner is deleted. Manage its lifecycle explicitly — for
+    example with a finalizer on the owner — or use a cluster-scoped owner if automatic cleanup is required. See
+    [Cluster-Scoped Resources](../component.md#cluster-scoped-resources) for the full behavior.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                                     |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state                              |
-| **Mutation pipeline** | Typed editors (`PolicyRulesEditor`) for `.rules` and object metadata, with aggregation rule support and a raw escape hatch |
-| **Cluster-scoped**    | No namespace required. Identity format is `rbac.authorization.k8s.io/v1/ClusterRole/<name>`                                |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ClusterRole after each sync cycle                               |
+| Capability           | Interfaces / detail                                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **Static lifecycle** | `component.Resource`. No health tracking, grace periods, or suspension                                                       |
+| **Mutation**         | `PolicyRulesEditor` for `.rules`; `SetAggregationRule` for `.aggregationRule`; `ObjectMetaEditor` for labels and annotations |
+| **Cluster-scoped**   | `MarkClusterScoped()` called during construction; `Build()` rejects a non-empty namespace                                    |
+| **Guard**            | `concepts.Guardable` — blocks reconciliation when a precondition is not met (`Blocked`)                                      |
+| **Data extraction**  | `concepts.DataExtractable` — reads values back after each sync cycle                                                         |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full interface-to-status mapping. For
+cluster-scoped builder behavior, see [Cluster-Scoped Primitives](../primitives.md#cluster-scoped-primitives).
 
 ## Building a ClusterRole Primitive
 
@@ -42,25 +43,29 @@ base := &rbacv1.ClusterRole{
 }
 
 resource, err := clusterrole.NewBuilder(base).
-    WithMutation(MyFeatureMutation(owner.Spec.Version)).
+    WithMutation(CRDAccessMutation(owner.Spec.Version, owner.Spec.ManageCRDs)).
     Build()
 ```
 
+`Build()` returns an error if `Name` is empty or if `Namespace` is non-empty. The constructor calls
+`MarkClusterScoped()` internally, so you do not need to call it manually.
+
+Identity format: `rbac.authorization.k8s.io/v1/ClusterRole/<name>`.
+
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `ClusterRole` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
-
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally:
+Each mutation is a named `clusterrole.Mutation` that receives a `*Mutator` and records edit intent through typed
+editors. See [The Mutation System](../primitives.md#the-mutation-system) for the full model.
 
 ```go
-func PodReadMutation() clusterrole.Mutation {
+func CRDAccessMutation(version string, manageCRDs bool) clusterrole.Mutation {
     return clusterrole.Mutation{
-        Name: "pod-read",
+        Name:    "crd-access",
+        Feature: feature.NewVersionGate(version, nil).When(manageCRDs),
         Mutate: func(m *clusterrole.Mutator) error {
             m.AddRule(rbacv1.PolicyRule{
-                APIGroups: []string{""},
-                Resources: []string{"pods"},
+                APIGroups: []string{"apiextensions.k8s.io"},
+                Resources: []string{"customresourcedefinitions"},
                 Verbs:     []string{"get", "list", "watch"},
             })
             return nil
@@ -69,73 +74,33 @@ func PodReadMutation() clusterrole.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder.
-
-### Boolean-gated mutations
-
-```go
-func SecretAccessMutation(version string, needsSecrets bool) clusterrole.Mutation {
-    return clusterrole.Mutation{
-        Name:    "secret-access",
-        Feature: feature.NewVersionGate(version, nil).When(needsSecrets),
-        Mutate: func(m *clusterrole.Mutator) error {
-            m.AddRule(rbacv1.PolicyRule{
-                APIGroups: []string{""},
-                Resources: []string{"secrets"},
-                Verbs:     []string{"get", "list"},
-            })
-            return nil
-        },
-    }
-}
-```
-
-### Version-gated mutations
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacyRBACMutation(version string) clusterrole.Mutation {
-    return clusterrole.Mutation{
-        Name: "legacy-rbac",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ),
-        Mutate: func(m *clusterrole.Mutator) error {
-            m.AddRule(rbacv1.PolicyRule{
-                APIGroups: []string{"extensions"},
-                Resources: []string{"deployments"},
-                Verbs:     []string{"get", "list"},
-            })
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
+For boolean conditions, chain `.When()` on the gate — see
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations). For version constraints, see
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
 ## Internal Mutation Ordering
 
-The Mutator maintains feature boundaries: each feature's mutations are planned together and applied in the order the
-features were registered. Within each feature, edits are applied in a fixed category order:
+Within a single mutation, edits are applied in this fixed category order regardless of the call order:
 
-| Step | Category         | What it affects                             |
-| ---- | ---------------- | ------------------------------------------- |
-| 1    | Metadata edits   | Labels and annotations on the `ClusterRole` |
-| 2    | Rules edits      | `.rules` entries: EditRules, AddRule        |
-| 3    | Aggregation rule | `.aggregationRule`: SetAggregationRule      |
+| Step | Category         | What it affects                                                               |
+| ---- | ---------------- | ----------------------------------------------------------------------------- |
+| 1    | Metadata edits   | Labels and annotations on the `ClusterRole`                                   |
+| 2    | Rules edits      | `.rules`: `EditRules`, `AddRule`                                              |
+| 3    | Aggregation rule | `.aggregationRule`: `SetAggregationRule` (last call wins within each feature) |
 
-Within each category, edits are applied in their registration order. For aggregation rules, the last
-`SetAggregationRule` call wins within each feature. Later features observe the ClusterRole as modified by all previous
-features.
+Within each category, edits apply in registration order. Later features observe the object as modified by all earlier
+ones.
 
 ## Relevant Editors
 
 ### PolicyRulesEditor
 
-The primary API for modifying `.rules` entries. Use `m.EditRules` for full control:
+The primary API for modifying `.rules`. Use `m.EditRules` for full control. See
+[Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
+
+#### AddRule
+
+`AddRule` appends a `PolicyRule` to the rules slice:
 
 ```go
 m.EditRules(func(e *editors.PolicyRulesEditor) error {
@@ -148,24 +113,9 @@ m.EditRules(func(e *editors.PolicyRulesEditor) error {
 })
 ```
 
-#### AddRule
-
-`AddRule` appends a PolicyRule to the rules slice:
-
-```go
-m.EditRules(func(e *editors.PolicyRulesEditor) error {
-    e.AddRule(rbacv1.PolicyRule{
-        APIGroups: []string{""},
-        Resources: []string{"configmaps"},
-        Verbs:     []string{"get", "list"},
-    })
-    return nil
-})
-```
-
 #### RemoveRuleByIndex
 
-`RemoveRuleByIndex` removes the rule at the given index. It is a no-op if the index is out of bounds:
+`RemoveRuleByIndex` removes the rule at the given index. No-op if the index is out of bounds:
 
 ```go
 m.EditRules(func(e *editors.PolicyRulesEditor) error {
@@ -199,9 +149,8 @@ m.EditRules(func(e *editors.PolicyRulesEditor) error {
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations via `m.EditObjectMetadata`.
-
-Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
+Modifies labels and annotations via `m.EditObjectMetadata`. Available methods: `EnsureLabel`, `RemoveLabel`,
+`EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
 ```go
 m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
@@ -213,7 +162,7 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Convenience Methods
 
-The `Mutator` exposes a convenience wrapper for the most common `.rules` operation:
+The `*Mutator` exposes a direct convenience method for the most common `.rules` operation:
 
 | Method          | Equivalent to                   |
 | --------------- | ------------------------------- |
@@ -235,9 +184,26 @@ m.SetAggregationRule(&rbacv1.AggregationRule{
 })
 ```
 
-Setting the aggregation rule to nil clears it. Within a single feature, the last `SetAggregationRule` call wins.
+Pass `nil` to clear the aggregation rule. Within a single feature, the last `SetAggregationRule` call wins.
 
-## Full Example: Feature-Composed RBAC
+!!! note
+
+    The Kubernetes API ignores `.rules` when `.aggregationRule` is set. The two approaches are mutually exclusive.
+
+## Data Extraction
+
+`WithDataExtractor` runs a callback after successful reconciliation with a value copy of the reconciled ClusterRole:
+
+```go
+resource, err := clusterrole.NewBuilder(base).
+    WithDataExtractor(func(cr rbacv1.ClusterRole) error {
+        sharedState.ClusterRoleName = cr.Name
+        return nil
+    }).
+    Build()
+```
+
+## Full Example
 
 ```go
 func CoreRulesMutation() clusterrole.Mutation {
@@ -280,12 +246,18 @@ written. Neither mutation needs to know about the other.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that always run. Use
+`feature.NewVersionGate(version, constraints)` when version gating is needed, and chain `.When(bool)` for boolean
 conditions.
 
-**Use `SetAggregationRule` for composite roles.** When you want the API server to aggregate rules from multiple
-ClusterRoles based on label selectors, use `SetAggregationRule` instead of managing `.rules` directly. The two
-approaches are mutually exclusive in the Kubernetes API: the API server ignores `.rules` when `.aggregationRule` is set.
+**Use `AddRule` for composable permissions.** `AddRule` lets each feature contribute rules without knowing about others.
+Using `SetRules` (via `Raw`) in multiple features means the last write wins; use that only when full replacement is the
+intended semantics.
 
-**Register mutations in dependency order.** If mutation B relies on a rule added by mutation A, register A first.
+**Use `SetAggregationRule` for composite roles.** When you want the API server to aggregate rules from multiple
+ClusterRoles via label selectors, call `SetAggregationRule` instead of managing `.rules` directly. Do not mix both
+approaches on the same role.
+
+**Cluster-scoped resources are not garbage-collected by namespaced owners.** A namespaced custom resource cannot own a
+cluster-scoped `ClusterRole`. Handle deletion explicitly, for example by adding a finalizer on the owner that deletes
+the `ClusterRole` before the owner is removed.

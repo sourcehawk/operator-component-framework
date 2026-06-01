@@ -1,16 +1,16 @@
 # Job Primitive
 
-The `job` primitive is the framework's built-in task abstraction for managing Kubernetes `Job` resources. It integrates
-fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and metadata,
-following the same pod-template mutation pattern as the Deployment primitive.
+The `job` primitive wraps a Kubernetes `Job` and provides completion tracking, suspension, and a typed mutation API for
+managing job spec, pod spec, and containers as part of the component lifecycle.
 
 ## Capabilities
 
-| Capability              | Detail                                                                                          |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| **Completion tracking** | Monitors Job conditions and reports `Completed`, `TaskRunning`, `TaskPending`, or `TaskFailing` |
-| **Suspension**          | Sets `spec.suspend=true` or deletes the Job (default); reports `Suspending` / `Suspended`       |
-| **Mutation pipeline**   | Typed editors for metadata, job spec, pod spec, and containers                                  |
+| [Lifecycle interface](../primitives.md#lifecycle-interfaces) | Reported status values                                   |
+| ------------------------------------------------------------ | -------------------------------------------------------- |
+| `Completable`                                                | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` |
+| `Suspendable`                                                | `PendingSuspension`, `Suspending`, `Suspended`           |
+| `Guardable`                                                  | `Blocked`                                                |
+| `DataExtractable`                                            | _(side-effecting, no status)_                            |
 
 ## Building a Job Primitive
 
@@ -27,7 +27,7 @@ base := &batchv1.Job{
             Spec: corev1.PodSpec{
                 RestartPolicy: corev1.RestartPolicyOnFailure,
                 Containers: []corev1.Container{
-                    {Name: "migrate", Image: "my-app-migration:latest"},
+                    {Name: "migrate", Image: "migration-tool:latest"},
                 },
             },
         },
@@ -41,65 +41,16 @@ resource, err := job.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `Job` beyond its baseline. Each mutation is a named function that
-receives a `*Mutator` and records edit intent through typed editors.
-
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
+Each mutation is a named `job.Mutation` that receives a `*job.Mutator` and records edits through typed editors.
 
 ```go
-func MyFeatureMutation(version string) job.Mutation {
+func MigrationConfigMutation(version string) job.Mutation {
     return job.Mutation{
-        Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
-        Mutate: func(m *job.Mutator) error {
-            // record edits here
-            return nil
-        },
-    }
-}
-```
-
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-Use `When(bool)` to gate a mutation on a runtime condition:
-
-```go
-func TracingMutation(version string, enabled bool) job.Mutation {
-    return job.Mutation{
-        Name:    "tracing",
-        Feature: feature.NewVersionGate(version, nil).When(enabled),
-        Mutate: func(m *job.Mutator) error {
-            m.EnsureContainerEnvVar(corev1.EnvVar{
-                Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-                Value: "http://otel-collector:4317",
-            })
-            return nil
-        },
-    }
-}
-```
-
-### Version-gated mutations
-
-Pass a `[]feature.VersionConstraint` to gate on a semver range:
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacyMigrationMutation(version string) job.Mutation {
-    return job.Mutation{
-        Name: "legacy-migration-format",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ),
+        Name:    "migration-config",
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *job.Mutator) error {
             m.EditContainers(selectors.ContainerNamed("migrate"), func(e *editors.ContainerEditor) error {
-                e.EnsureEnvVar(corev1.EnvVar{Name: "MIGRATION_FORMAT", Value: "v1"})
+                e.EnsureEnvVar(corev1.EnvVar{Name: "DB_HOST", Value: "db:5432"})
                 return nil
             })
             return nil
@@ -108,16 +59,17 @@ func LegacyMigrationMutation(version string) job.Mutation {
 }
 ```
 
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
+See [the mutation system](../primitives.md#the-mutation-system),
+[boolean gating](../primitives.md#boolean-gated-mutations), and
+[version gating](../primitives.md#version-gated-mutations).
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
-order they are recorded. This ensures structural consistency across mutations.
+Within each feature, edits run in this fixed category order:
 
 | Step | Category                    | What it affects                                                         |
 | ---- | --------------------------- | ----------------------------------------------------------------------- |
-| 1    | Job metadata edits          | Labels and annotations on the `Job` object                              |
+| 1    | Object metadata edits       | Labels and annotations on the `Job` object                              |
 | 2    | JobSpec edits               | Completions, parallelism, backoff limit, deadline, etc.                 |
 | 3    | Pod template metadata edits | Labels and annotations on the pod template                              |
 | 4    | Pod spec edits              | Volumes, tolerations, node selectors, service account, security context |
@@ -126,10 +78,12 @@ order they are recorded. This ensures structural consistency across mutations.
 | 7    | Init container presence     | Adding or removing containers from `spec.template.spec.initContainers`  |
 | 8    | Init container edits        | Env vars, args, resources (snapshot taken after step 7)                 |
 
-Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
-This means a single mutation can add a container and then configure it without selector resolution issues.
+Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same feature.
 
 ## Relevant Editors
+
+For the generic editor and selector concepts, see [mutation editors](../primitives.md#mutation-editors) and
+[container selectors](../primitives.md#container-selectors).
 
 ### JobSpecEditor
 
@@ -146,7 +100,7 @@ m.EditJobSpec(func(e *editors.JobSpecEditor) error {
 })
 ```
 
-For fields not covered by the typed API, use `Raw()`:
+Use `Raw()` for fields the typed API does not cover:
 
 ```go
 m.EditJobSpec(func(e *editors.JobSpecEditor) error {
@@ -180,15 +134,15 @@ m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
-[selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`, combined with a
+[container selector](../primitives.md#container-selectors).
 
 Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
 `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
 m.EditContainers(selectors.ContainerNamed("migrate"), func(e *editors.ContainerEditor) error {
-    e.EnsureEnvVar(corev1.EnvVar{Name: "DB_HOST", Value: "postgres:5432"})
+    e.EnsureEnvVar(corev1.EnvVar{Name: "DB_HOST", Value: "db:5432"})
     e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("500m"))
     return nil
 })
@@ -196,8 +150,8 @@ m.EditContainers(selectors.ContainerNamed("migrate"), func(e *editors.ContainerE
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `Job` object itself, or
-`m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` for the `Job` itself or `m.EditPodTemplateMetadata` for the
+pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
@@ -210,47 +164,87 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Convenience Methods
 
-The `Mutator` exposes convenience wrappers that target all containers at once:
-
 | Method                        | Equivalent to                                                 |
 | ----------------------------- | ------------------------------------------------------------- |
 | `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
 | `RemoveContainerEnvVar(name)` | `EditContainers(AllContainers(), ...)` → `RemoveEnvVar(name)` |
 
+## Workload-Kind-Agnostic Mutations
+
+The `job.Mutator` does not implement `primitives.WorkloadMutator` and therefore does not have a `LiftMutation` adapter.
+The `WorkloadMutator` interface targets Deployment, StatefulSet, and DaemonSet. Write shared mutation logic as a plain
+function accepting `*job.Mutator` and call it directly.
+
+See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the cross-kind pattern.
+
 ## Suspension
 
-Jobs use the Task lifecycle for suspension, which differs from Workloads:
+Jobs use the `Completable` lifecycle rather than `Alive`. The suspension behavior differs from Workload primitives:
 
 - **Default behavior**: `DefaultDeleteOnSuspendHandler` returns `true`, meaning the Job is deleted from the cluster
   during suspension.
 - **Suspend mutation**: `DefaultSuspendMutationHandler` sets `spec.suspend=true`, which prevents the Job controller from
   creating new pods while allowing existing pods to complete.
-- **Suspension status**: `DefaultSuspensionStatusHandler` checks if `spec.suspend=true` and `status.active=0`.
+- **Suspension status**: `DefaultSuspensionStatusHandler` reports `Suspending` if `spec.suspend=true` but active pods
+  remain, and `Suspended` once `spec.suspend=true` and `status.active==0`.
 
-Override any of these via the Builder:
+Override any handler via `WithCustomSuspendDeletionDecision`, `WithCustomSuspendMutation`, or `WithCustomSuspendStatus`
+on the builder:
 
 ```go
 resource, err := job.NewBuilder(base).
     WithCustomSuspendDeletionDecision(func(j *batchv1.Job) bool {
-        return false // Keep the Job in the cluster when suspended
+        return false // keep the Job in the cluster when suspended
     }).
     Build()
 ```
 
+## Full Example
+
+```go
+func MigrationMutation(version string, dbHost string) job.Mutation {
+    return job.Mutation{
+        Name:    "migration",
+        Feature: feature.NewVersionGate(version, nil),
+        Mutate: func(m *job.Mutator) error {
+            m.EditJobSpec(func(e *editors.JobSpecEditor) error {
+                e.SetBackoffLimit(3)
+                e.SetActiveDeadlineSeconds(300)
+                return nil
+            })
+
+            m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+                e.SetServiceAccountName("migration-sa")
+                return nil
+            })
+
+            m.EditContainers(selectors.ContainerNamed("migrate"), func(e *editors.ContainerEditor) error {
+                e.EnsureEnvVar(corev1.EnvVar{Name: "DB_HOST", Value: dbHost})
+                e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("500m"))
+                e.SetResourceLimit(corev1.ResourceMemory, resource.MustParse("256Mi"))
+                return nil
+            })
+
+            return nil
+        },
+    }
+}
+```
+
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+**Jobs are deleted on suspend by default.** Unlike Deployments which scale to zero, Jobs are deleted during suspension.
+Override `WithCustomSuspendDeletionDecision` if you need the Job resource to remain in the cluster.
+
+**Set `RestartPolicy` in the baseline.** Kubernetes requires `spec.template.spec.restartPolicy` to be `OnFailure` or
+`Never` for Jobs. Set it in the desired object passed to `NewBuilder`.
+
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for runtime boolean
 conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
-The internal ordering within each mutation handles intra-mutation dependencies automatically.
-
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
-the same mutation resolve correctly and reconciliation remains idempotent.
+Internal ordering within each mutation handles intra-mutation dependencies automatically.
 
 **Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
 cause unexpected behavior if init containers or sidecar containers are present.
-
-**Jobs are deleted on suspend by default.** Unlike Deployments which scale to zero, Jobs are deleted during suspension.
-Override `WithCustomSuspendDeletionDecision` if you need to keep the Job resource in the cluster.

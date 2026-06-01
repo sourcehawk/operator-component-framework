@@ -1,17 +1,19 @@
 # NetworkPolicy Primitive
 
-The `networkpolicy` primitive is the framework's built-in static abstraction for managing Kubernetes `NetworkPolicy`
-resources. It integrates with the component lifecycle and provides a structured mutation API for managing pod selectors,
-ingress rules, egress rules, and policy types.
+The `networkpolicy` primitive wraps a Kubernetes `NetworkPolicy` and integrates with the component lifecycle as a Static
+resource, providing a structured mutation API for managing pod selectors, ingress rules, egress rules, and policy types.
 
 ## Capabilities
 
 | Capability            | Detail                                                                                                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state              |
-| **Mutation pipeline** | Typed editors for NetworkPolicy spec and object metadata, with a raw escape hatch for free-form access     |
-| **Append semantics**  | Ingress and egress rules have no unique key. `AppendIngressRule`/`AppendEgressRule` append unconditionally |
-| **Data extraction**   | Reads generated or updated values back from the reconciled NetworkPolicy after each sync cycle             |
+| **Mutation pipeline** | Typed editors for NetworkPolicy spec and object metadata, with a `Raw()` escape hatch                      |
+| **Append semantics**  | Ingress and egress rules have no unique key; `AppendIngressRule`/`AppendEgressRule` append unconditionally |
+| **DataExtractable**   | Reads values back from the reconciled NetworkPolicy after each sync cycle via `WithDataExtractor`          |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface
+reports.
 
 ## Building a NetworkPolicy Primitive
 
@@ -41,11 +43,12 @@ resource, err := networkpolicy.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `NetworkPolicy` beyond its baseline. Each mutation is a named
-function that receives a `*Mutator` and records edit intent through typed editors.
+Register mutations with `WithMutation`. The mutation system, boolean-gated mutations, and version-gated mutations are
+explained in [The Mutation System](../primitives.md#the-mutation-system),
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations), and
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. Prefer this
-for mutations that should always run and do not need feature-gate evaluation:
+A kind-specific example appending an ingress rule unconditionally:
 
 ```go
 func HTTPIngressMutation() networkpolicy.Mutation {
@@ -69,74 +72,21 @@ func HTTPIngressMutation() networkpolicy.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-```go
-func MetricsIngressMutation(version string, enableMetrics bool) networkpolicy.Mutation {
-    return networkpolicy.Mutation{
-        Name:    "metrics-ingress",
-        Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
-        Mutate: func(m *networkpolicy.Mutator) error {
-            m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-                port := intstr.FromInt32(9090)
-                tcp := corev1.ProtocolTCP
-                e.AppendIngressRule(networkingv1.NetworkPolicyIngressRule{
-                    Ports: []networkingv1.NetworkPolicyPort{
-                        {Protocol: &tcp, Port: &port},
-                    },
-                })
-                return nil
-            })
-            return nil
-        },
-    }
-}
-```
-
-### Version-gated mutations
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacyNetworkPolicyMutation(version string) networkpolicy.Mutation {
-    return networkpolicy.Mutation{
-        Name: "legacy-policy",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ),
-        Mutate: func(m *networkpolicy.Mutator) error {
-            m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
-                e.SetPolicyTypes([]networkingv1.PolicyType{
-                    networkingv1.PolicyTypeIngress,
-                })
-                return nil
-            })
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
-
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
-recorded:
+Within a single mutation, edits are applied in a fixed category order regardless of recording order:
 
 | Step | Category       | What it affects                                                 |
 | ---- | -------------- | --------------------------------------------------------------- |
 | 1    | Metadata edits | Labels and annotations on the `NetworkPolicy`                   |
 | 2    | Spec edits     | Pod selector, ingress rules, egress rules, policy types via Raw |
 
-Within each category, edits are applied in their registration order. Later features observe the NetworkPolicy as
-modified by all previous features.
+Within each category, edits run in registration order. Later features observe the NetworkPolicy as modified by all
+earlier ones.
 
 ## Relevant Editors
+
+See [Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
 
 ### NetworkPolicySpecEditor
 
@@ -190,8 +140,7 @@ Sets the policy types. Valid values are `networkingv1.PolicyTypeIngress` and `ne
 
 #### Raw Escape Hatch
 
-`Raw()` returns the underlying `*networkingv1.NetworkPolicySpec` for free-form editing when none of the structured
-methods are sufficient:
+`Raw()` returns the underlying `*networkingv1.NetworkPolicySpec` for free-form editing:
 
 ```go
 m.EditNetworkPolicySpec(func(e *editors.NetworkPolicySpecEditor) error {
@@ -218,7 +167,23 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
-## Full Example: Feature-Composed Network Policy
+## Data Extraction
+
+Use `WithDataExtractor` to read values from the reconciled NetworkPolicy after each sync cycle. This is useful when
+downstream resources need to observe the final applied policy (for example, its resource version or assigned labels):
+
+```go
+var policyName string
+
+resource, err := networkpolicy.NewBuilder(base).
+    WithDataExtractor(func(np networkingv1.NetworkPolicy) error {
+        policyName = np.Name
+        return nil
+    }).
+    Build()
+```
+
+## Full Example
 
 ```go
 func HTTPIngressMutation() networkpolicy.Mutation {
@@ -266,14 +231,13 @@ resource, err := networkpolicy.NewBuilder(base).
     Build()
 ```
 
-When `EnableMetrics` is true, the final NetworkPolicy will have both HTTP and metrics ingress rules. When false, only
-the HTTP rule is present. Neither mutation needs to know about the other.
+When `EnableMetrics` is true, the final NetworkPolicy has both HTTP and metrics ingress rules. When false, only the HTTP
+rule is present. Neither mutation needs to know about the other.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
-conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for boolean conditions.
 
 **Use `RemoveIngressRules`/`RemoveEgressRules` for atomic replacement.** Since rules have no unique key, there is no
 upsert-by-key operation. To replace the full set of rules, call `Remove*Rules` first and then add the desired rules.
@@ -282,3 +246,6 @@ Alternatively, use `Raw()` for fine-grained manipulation.
 **Register mutations in dependency order.** If mutation B relies on a rule added by mutation A, register A first. Since
 `AppendIngressRule`/`AppendEgressRule` append unconditionally, the order of registration determines the order of rules
 in the resulting spec.
+
+**NetworkPolicy is Static.** It has no operational status, grace status, or suspension behavior. If the policy applies,
+the resource is considered ready.

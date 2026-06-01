@@ -1,18 +1,21 @@
 # PersistentVolume Primitive
 
-The `pv` primitive is the framework's built-in integration abstraction for managing Kubernetes `PersistentVolume`
-resources. It integrates with the component lifecycle as an Operational, Graceful resource and provides a structured
-mutation API for managing PV spec fields and object metadata.
+The `pv` primitive wraps a Kubernetes `PersistentVolume` and integrates with the component lifecycle as an Integration
+and Graceful resource, providing a structured mutation API for managing PV spec fields and object metadata.
 
 ## Capabilities
 
-| Capability                | Detail                                                                                                                                               |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Integration lifecycle** | Reports `concepts.OperationalStatusOperational`, `concepts.OperationalStatusPending`, or `concepts.OperationalStatusFailing` based on the PV's phase |
-| **Grace status**          | Maps PV phase to grace status: Available/Bound are `Healthy`, Pending is `Degraded`, Released/Failed are `Down`                                      |
-| **Cluster-scoped**        | No namespace in the identity or builder. PersistentVolumes are cluster-scoped resources                                                              |
-| **Mutation pipeline**     | Typed editors for PV spec fields and object metadata, with a raw escape hatch for free-form access                                                   |
-| **Data extraction**       | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle                                                    |
+| Capability            | Detail                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Operational**       | Maps PV phase to `Operational`, `OperationPending`, or `OperationFailing`                              |
+| **Graceful**          | Available/Bound are `Healthy`; Pending is `Degraded`; Released/Failed are `Down`                       |
+| **Cluster-scoped**    | No namespace in the identity or builder. PersistentVolumes are cluster-scoped resources                |
+| **DataExtractable**   | Reads generated or updated values back from the reconciled PersistentVolume after each sync cycle      |
+| **Mutation pipeline** | Typed editors for PV spec fields and object metadata, with a `Raw()` escape hatch for free-form access |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface
+reports. For cluster-scoped handling and owner-reference behavior, see
+[Cluster-Scoped Primitives](../primitives.md#cluster-scoped-primitives).
 
 ## Building a PersistentVolume Primitive
 
@@ -42,34 +45,17 @@ resource, err := pv.NewBuilder(base).
     Build()
 ```
 
-PersistentVolumes are cluster-scoped. The builder validates that Name is set and that Namespace is empty. Setting a
-namespace on the PV object will cause `Build()` to return an error.
+PersistentVolumes are cluster-scoped. The builder validates that `Name` is set and that `Namespace` is empty. Setting a
+namespace on the PV object causes `Build()` to return an error.
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `PersistentVolume` beyond its baseline. Each mutation is a named
-function that receives a `*Mutator` and records edit intent through typed editors.
+Register mutations with `WithMutation`. The mutation system, boolean-gated mutations, and version-gated mutations are
+explained in [The Mutation System](../primitives.md#the-mutation-system),
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations), and
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
-
-```go
-func MyFeatureMutation(version string) pv.Mutation {
-    return pv.Mutation{
-        Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
-        Mutate: func(m *pv.Mutator) error {
-            m.SetStorageClassName("fast-ssd")
-            return nil
-        },
-    }
-}
-```
-
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
+A kind-specific example using the `SetStorageClassName` convenience method:
 
 ```go
 func RetainPolicyMutation(version string, retainEnabled bool) pv.Mutation {
@@ -84,42 +70,21 @@ func RetainPolicyMutation(version string, retainEnabled bool) pv.Mutation {
 }
 ```
 
-### Version-gated mutations
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacyStorageClassMutation(version string) pv.Mutation {
-    return pv.Mutation{
-        Name: "legacy-storage-class",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ),
-        Mutate: func(m *pv.Mutator) error {
-            m.SetStorageClassName("legacy-hdd")
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
-
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
-recorded:
+Within a single mutation, edits are applied in a fixed category order regardless of recording order:
 
 | Step | Category       | What it affects                                                    |
 | ---- | -------------- | ------------------------------------------------------------------ |
 | 1    | Metadata edits | Labels and annotations on the `PersistentVolume`                   |
 | 2    | Spec edits     | PV spec fields: storage class, reclaim policy, mount options, etc. |
 
-Within each category, edits are applied in their registration order. Later features observe the PersistentVolume as
-modified by all previous features.
+Within each category, edits run in registration order. Later features observe the PersistentVolume as modified by all
+earlier ones.
 
 ## Relevant Editors
+
+See [Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
 
 ### PVSpecEditor
 
@@ -149,8 +114,7 @@ m.EditPVSpec(func(e *editors.PVSpecEditor) error {
 
 #### Raw escape hatch
 
-`Raw()` returns the underlying `*corev1.PersistentVolumeSpec` for free-form editing when none of the structured methods
-are sufficient:
+`Raw()` returns the underlying `*corev1.PersistentVolumeSpec` for free-form editing:
 
 ```go
 m.EditPVSpec(func(e *editors.PVSpecEditor) error {
@@ -188,16 +152,15 @@ single edit block.
 
 ## Operational Status
 
-The PV primitive uses the Integration lifecycle. The default operational status handler maps PV phases to framework
-status:
+The PV primitive implements `concepts.Operational`. The default handler maps PV phase to operational status:
 
-| PV Phase  | Operational Status           | Meaning                                |
-| --------- | ---------------------------- | -------------------------------------- |
-| Available | OperationalStatusOperational | PV is ready for binding                |
-| Bound     | OperationalStatusOperational | PV is bound to a PersistentVolumeClaim |
-| Pending   | OperationalStatusPending     | PV is waiting to become available      |
-| Released  | OperationalStatusFailing     | PV was released, not yet reclaimed     |
-| Failed    | OperationalStatusFailing     | PV reclamation has failed              |
+| PV Phase  | Status             | Meaning                                |
+| --------- | ------------------ | -------------------------------------- |
+| Available | `Operational`      | PV is ready for binding                |
+| Bound     | `Operational`      | PV is bound to a PersistentVolumeClaim |
+| Pending   | `OperationPending` | PV is waiting to become available      |
+| Released  | `OperationFailing` | PV was released, not yet reclaimed     |
+| Failed    | `OperationFailing` | PV reclamation has failed              |
 
 Override with `WithCustomOperationalStatus` when your PV requires different readiness logic.
 
@@ -227,7 +190,7 @@ pv.NewBuilder(base).
     })
 ```
 
-## Full Example: Storage-Tier PersistentVolume
+## Full Example
 
 ```go
 func StorageClassMutation(version string) pv.Mutation {
@@ -267,20 +230,15 @@ resource, err := pv.NewBuilder(base).
 **PersistentVolumes are cluster-scoped.** Do not set a namespace on the PV object. The builder rejects namespaced PVs
 with a clear error.
 
-**Use the Integration lifecycle for status.** PVs report `OperationalStatusOperational`, `OperationalStatusPending`, or
-`OperationalStatusFailing` based on their phase. Override with `WithCustomOperationalStatus` only when phase-based
-readiness is insufficient.
-
-**Controller references and garbage collection.** The component reconciliation pipeline attempts to set a controller
+**Understand the garbage collection constraint.** The component reconciliation pipeline attempts to set a controller
 reference on created/updated resources. Because `PersistentVolume` is cluster-scoped, its controller owner must also be
-cluster-scoped. When the owner is namespace-scoped and the PV is cluster-scoped, the framework detects this mismatch and
-**skips setting `ownerReferences`** (logging an informational message) instead of letting the API server reject the
-request. As a result, such PVs will **not** be garbage collected automatically when the owning component is deleted. If
-you need garbage collection for PVs, either:
+cluster-scoped. When the owner is namespace-scoped, the framework detects the mismatch and skips setting
+`ownerReferences` instead of letting the API server reject the request. Such PVs will not be garbage collected
+automatically when the owning component is deleted. Either model the PV under a dedicated cluster-scoped component to
+allow a valid controller reference, or accept that PVs managed from a namespace-scoped component require explicit
+lifecycle handling.
 
-- Model the PV as owned by a dedicated **cluster-scoped** controller/component so a valid controller reference can be
-  set, or
-- Accept that PVs managed from a **namespace-scoped** component will not have `ownerReferences` and handle their
-  lifecycle explicitly (for example, by deleting them in custom logic when appropriate).
+**Use string status values in conditions.** The operational status values that appear in conditions are the runtime
+strings `"Operational"`, `"OperationPending"`, and `"OperationFailing"`, not the Go constant identifiers.
 
 **Register mutations in dependency order.** If mutation B relies on a field set by mutation A, register A first.

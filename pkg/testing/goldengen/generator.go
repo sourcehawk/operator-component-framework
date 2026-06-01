@@ -85,11 +85,7 @@ func (g *Generator[T]) Run(t *testing.T) {
 				if err := writeOrCompareGolden(path, y, g.update); err != nil {
 					t.Errorf("%v", err)
 				}
-				fm.Regimes = append(fm.Regimes, RegimeManifest{
-					Representative: r.Representative,
-					Versions:       r.Versions,
-					Firing:         r.Firing,
-				})
+				fm.Regimes = append(fm.Regimes, RegimeManifest(r))
 			}
 			manifest.Fixtures = append(manifest.Fixtures, fm)
 		})

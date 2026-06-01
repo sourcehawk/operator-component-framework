@@ -53,7 +53,7 @@ func Resource(res ResourcePreviewer, scheme *runtime.Scheme) Unit {
 }
 
 func (u resourceUnit) RegisteredMutations() []string { return u.res.RegisteredMutations() }
-func (u resourceUnit) FiringSet() ([]string, error) { return u.res.FiringSet() }
+func (u resourceUnit) FiringSet() ([]string, error)  { return u.res.FiringSet() }
 
 func (u resourceUnit) RenderYAML() ([]byte, error) {
 	obj, err := u.res.Preview()
@@ -75,7 +75,7 @@ func Component(comp ComponentPreviewer, scheme *runtime.Scheme) Unit {
 }
 
 func (u componentUnit) RegisteredMutations() []string { return u.comp.RegisteredMutations() }
-func (u componentUnit) FiringSet() ([]string, error) { return u.comp.FiringSet() }
+func (u componentUnit) FiringSet() ([]string, error)  { return u.comp.FiringSet() }
 
 func (u componentUnit) RenderYAML() ([]byte, error) {
 	objs, err := u.comp.Preview()

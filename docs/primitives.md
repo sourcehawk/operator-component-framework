@@ -158,6 +158,35 @@ Mutation names must be unique within a resource. `Build` returns an error if two
 because the name is the identifier that gating and error reporting refer to, and a collision would silently mask a
 mis-targeted or dead mutation behind its namesake. The check compares names only and evaluates no feature gates.
 
+### Workload-kind-agnostic mutations
+
+`*statefulset.Mutator`, `*deployment.Mutator`, and `*daemonset.Mutator` share the same container, init-container,
+pod-spec, pod-template-metadata, object-metadata, environment-variable, and argument editing methods.
+`primitives.WorkloadMutator` is the framework interface covering exactly that shared surface, so a single mutation can
+target any pod-workload kind.
+
+Write the emitter once against the interface, then lift it into each kind's `Mutation` with that package's
+`LiftMutation` adapter before registering it:
+
+```go
+func emitAuthEnv() feature.Mutation[primitives.WorkloadMutator] {
+	return feature.Mutation[primitives.WorkloadMutator]{
+		Name: "auth-env",
+		Mutate: func(m primitives.WorkloadMutator) error {
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "AUTH_MODE", Value: "oidc"})
+			return nil
+		},
+	}
+}
+
+zeebeSts.WithMutation(statefulset.LiftMutation(emitAuthEnv()))
+gatewayDeploy.WithMutation(deployment.LiftMutation(emitAuthEnv()))
+```
+
+`LiftMutation` carries the mutation's `Name` and `Feature` through unchanged. The interface deliberately omits
+kind-specific operations (the spec editors, `EnsureReplicas`, and the StatefulSet-only VolumeClaimTemplate methods);
+reach for the concrete mutator type when you need those.
+
 ## Mutation Editors
 
 Editors provide scoped, typed APIs for modifying specific parts of a resource. Every editor exposes a `.Raw()` method

@@ -24,8 +24,10 @@ dependencies alone.
 
 ## How Compatibility Is Tested
 
-The [compatibility workflow](../.github/workflows/compatibility.yml) runs weekly on a schedule, on manual dispatch, and
-on pull requests labeled `compatibility`. For each version combination in the matrix, it:
+The
+[compatibility workflow](https://github.com/sourcehawk/operator-component-framework/blob/main/.github/workflows/compatibility.yml)
+runs weekly on a schedule, on manual dispatch, and on pull requests labeled `compatibility`. For each version
+combination in the matrix, it:
 
 1. Swaps the `controller-runtime` and `k8s.io/*` dependencies to the target versions using `go get`, then runs
    `go mod tidy` to resolve transitive dependencies. This step is skipped for the primary (current `go.mod`) entry,

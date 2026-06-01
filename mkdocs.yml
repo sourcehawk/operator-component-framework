@@ -74,6 +74,7 @@ extra_css:
 
 nav:
   - Home: index.md
+  - Getting Started: getting-started.md
   - Concepts:
       - Component: component.md
       - Primitives Overview: primitives.md

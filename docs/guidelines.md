@@ -512,7 +512,9 @@ compat mutation replaces the entire container (sets all fields, not just `Name` 
 mutations are lost. In that case, the mutation is effectively a full override and later mutations should target the
 post-rename name via version gating rather than relying on ordering.
 
-See the [mutations-and-gating example](../examples/mutations-and-gating/) for a working demonstration of these patterns.
+See the
+[mutations-and-gating example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/mutations-and-gating)
+for a working demonstration of these patterns.
 
 ## Use Data Extraction and Guards for Resource Dependencies
 

@@ -79,7 +79,9 @@ where a gate flips. Asserting one golden per version is wasteful and obscures wh
 `goldengen` sweeps the versions you supply, groups them by which mutations fire, and writes one golden per distinct
 group.
 
-The worked example lives at [`examples/version-matrix`](../examples/version-matrix). The walkthrough below follows it.
+The worked example lives at
+[`examples/version-matrix`](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/version-matrix).
+The walkthrough below follows it.
 
 ### Declare the matrix
 

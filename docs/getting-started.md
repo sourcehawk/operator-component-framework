@@ -217,12 +217,24 @@ func NewDeploymentResource(owner *app.ExampleApp) (component.Resource, error) {
 }
 ```
 
-!!! note
+!!! note "Version-gated mutations"
 
-    A non-empty version and a constraint slice turn the same gate into a version-gated mutation, which fires only when
-    the version satisfies the constraint. That is how backward compatibility patches are expressed without touching the
-    baseline. See [Primitives](primitives.md) for the mutation system and [Guidelines](guidelines.md) for the
-    baseline-as-latest pattern.
+    The same gate does version gating. Pass a non-empty version and a constraint slice instead of a boolean, and the
+    mutation fires only when the version satisfies the constraint. This is how backward-compatibility patches are
+    expressed without touching the baseline:
+
+    ```go
+    Feature: feature.NewVersionGate(owner.Spec.Version, []feature.VersionConstraint{
+        mustConstraint("< 2.0.0"), // a VersionConstraint you supply, e.g. backed by a semver library
+    }),
+    ```
+
+    The framework does not ship a `VersionConstraint` implementation, so you provide one (a few lines wrapping a semver
+    library). The
+    [`mutations-and-gating` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/mutations-and-gating)
+    wires a real one in its backward-compatibility mutation. See
+    [Version-Gated Mutations](primitives.md#version-gated-mutations) for the full pattern and
+    [Guidelines](guidelines.md) for the baseline-as-latest approach.
 
 ## Step 4: Compose the component
 

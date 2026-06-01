@@ -8,7 +8,7 @@ feature_worktree: .claude/worktrees/version-matrix-goldens
 sub_pr_approval: autonomous
 sub_pr_review_loop: off
 integration_pr: #<pr>
-status: planning
+status: review
 ---
 
 # Version-matrix golden generation — orchestration state

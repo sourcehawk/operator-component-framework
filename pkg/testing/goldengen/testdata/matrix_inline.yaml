@@ -1,0 +1,19 @@
+dir: testdata/goldens
+versions:
+  - 1.0.0
+  - 2.0.0
+fixtures:
+  - name: default
+    spec:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: from-inline
+        namespace: default
+      data:
+        key: value
+    requires:
+      - name: A
+        for: 1.0.0
+    forbids:
+      - name: B

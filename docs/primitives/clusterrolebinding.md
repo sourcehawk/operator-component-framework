@@ -7,8 +7,7 @@ metadata within the component lifecycle.
 
     When a namespaced owner manages a cluster-scoped resource such as a `ClusterRoleBinding`, the framework cannot set a
     controller owner reference (the scopes are incompatible). The owner reference is skipped and the skip is logged.
-    The `ClusterRoleBinding` is **not** garbage-collected when the owner is deleted. Manage its lifecycle explicitly —
-    for example with a finalizer on the owner — or use a cluster-scoped owner if automatic cleanup is required. See
+    The `ClusterRoleBinding` is **not** garbage-collected when the owner is deleted. Manage its lifecycle explicitly (for example with a finalizer on the owner) or use a cluster-scoped owner if automatic cleanup is required. See
     [Cluster-Scoped Resources](../component.md#cluster-scoped-resources) for the full behavior.
 
 ## Capabilities
@@ -19,8 +18,8 @@ metadata within the component lifecycle.
 | **Mutation**          | `BindingSubjectsEditor` for `.subjects`; `ObjectMetaEditor` for labels and annotations    |
 | **Immutable roleRef** | `roleRef` must be set on the base object and cannot be changed after creation             |
 | **Cluster-scoped**    | `MarkClusterScoped()` called during construction; `Build()` rejects a non-empty namespace |
-| **Guard**             | `concepts.Guardable` — blocks reconciliation when a precondition is not met (`Blocked`)   |
-| **Data extraction**   | `concepts.DataExtractable` — reads values back after each sync cycle                      |
+| **Guard**             | `concepts.Guardable`: blocks reconciliation when a precondition is not met (`Blocked`)    |
+| **Data extraction**   | `concepts.DataExtractable`: reads values back after each sync cycle                       |
 
 See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full interface-to-status mapping. For
 cluster-scoped builder behavior, see [Cluster-Scoped Primitives](../primitives.md#cluster-scoped-primitives).
@@ -82,7 +81,7 @@ func ExtraSubjectMutation(version string, enabled bool) clusterrolebinding.Mutat
 }
 ```
 
-For boolean conditions, chain `.When()` on the gate — see
+For boolean conditions, chain `.When()` on the gate. See
 [Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations). For version constraints, see
 [Version-Gated Mutations](../primitives.md#version-gated-mutations).
 

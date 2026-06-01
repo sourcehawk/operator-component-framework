@@ -9,8 +9,8 @@ flag, and object metadata within the component lifecycle.
 | -------------------- | --------------------------------------------------------------------------------------------------- |
 | **Static lifecycle** | `component.Resource`. No health tracking, grace periods, or suspension                              |
 | **Mutation**         | Direct mutator methods for `.imagePullSecrets` and `.automountServiceAccountToken`; metadata editor |
-| **Guard**            | `concepts.Guardable` — blocks reconciliation when a precondition is not met (`Blocked`)             |
-| **Data extraction**  | `concepts.DataExtractable` — reads values back after each sync cycle                                |
+| **Guard**            | `concepts.Guardable`: blocks reconciliation when a precondition is not met (`Blocked`)              |
+| **Data extraction**  | `concepts.DataExtractable`: reads values back after each sync cycle                                 |
 
 See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full interface-to-status mapping.
 
@@ -53,7 +53,7 @@ func BaseTokenMutation(version string) serviceaccount.Mutation {
 }
 ```
 
-For boolean conditions, chain `.When()` on the gate — see
+For boolean conditions, chain `.When()` on the gate. See
 [Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations). For version constraints, see
 [Version-Gated Mutations](../primitives.md#version-gated-mutations).
 

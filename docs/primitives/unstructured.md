@@ -7,12 +7,12 @@ definition at compile time: external CRDs, Crossplane resources, or any object k
 
 Choose between the three approaches in this order:
 
-1. **Typed primitive** (`pkg/primitives/<kind>`) — use this whenever a built-in primitive covers your kind. It has the
+1. **Typed primitive** (`pkg/primitives/<kind>`): use this whenever a built-in primitive covers your kind. It has the
    most safety, the richest editor API, and the best domain defaults.
-2. **Unstructured primitive** (this page) — use this when the object's kind has no corresponding Go type or when you
-   want to manage an external CRD without generating Go client code. You supply all lifecycle semantics through required
+2. **Unstructured primitive** (this page): use this when the object's kind has no corresponding Go type or when you want
+   to manage an external CRD without generating Go client code. You supply all lifecycle semantics through required
    handlers.
-3. **Custom resource wrapper** (`pkg/generic`) — use this when you own the Go type (your own CRD) or want a fully typed
+3. **Custom resource wrapper** (`pkg/generic`): use this when you own the Go type (your own CRD) or want a fully typed
    mutation surface with a custom builder API. See the [Custom Resource Implementation Guide](../custom-resource.md).
 
 See also [Unstructured Primitives](../primitives.md#unstructured-primitives) in the Primitives Overview for a summary

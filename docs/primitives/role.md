@@ -5,12 +5,12 @@ lifecycle.
 
 ## Capabilities
 
-| Capability           | Interfaces / detail                                                                     |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| **Static lifecycle** | `component.Resource`. No health tracking, grace periods, or suspension                  |
-| **Mutation**         | `PolicyRulesEditor` for `.rules`; `ObjectMetaEditor` for labels and annotations         |
-| **Guard**            | `concepts.Guardable` — blocks reconciliation when a precondition is not met (`Blocked`) |
-| **Data extraction**  | `concepts.DataExtractable` — reads values back after each sync cycle                    |
+| Capability           | Interfaces / detail                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| **Static lifecycle** | `component.Resource`. No health tracking, grace periods, or suspension                 |
+| **Mutation**         | `PolicyRulesEditor` for `.rules`; `ObjectMetaEditor` for labels and annotations        |
+| **Guard**            | `concepts.Guardable`: blocks reconciliation when a precondition is not met (`Blocked`) |
+| **Data extraction**  | `concepts.DataExtractable`: reads values back after each sync cycle                    |
 
 See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full interface-to-status mapping.
 
@@ -67,7 +67,7 @@ func SecretAccessMutation(version string, enabled bool) role.Mutation {
 }
 ```
 
-For boolean conditions, chain `.When()` on the gate — see
+For boolean conditions, chain `.When()` on the gate. See
 [Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations). For version constraints, see
 [Version-Gated Mutations](../primitives.md#version-gated-mutations).
 

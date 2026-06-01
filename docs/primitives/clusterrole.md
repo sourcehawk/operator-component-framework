@@ -7,8 +7,8 @@ object metadata within the component lifecycle.
 
     When a namespaced owner manages a cluster-scoped resource such as a `ClusterRole`, the framework cannot set a
     controller owner reference (the scopes are incompatible). The owner reference is skipped and the skip is logged.
-    The `ClusterRole` is **not** garbage-collected when the owner is deleted. Manage its lifecycle explicitly — for
-    example with a finalizer on the owner — or use a cluster-scoped owner if automatic cleanup is required. See
+    The `ClusterRole` is **not** garbage-collected when the owner is deleted. Manage its lifecycle explicitly (for
+    example with a finalizer on the owner) or use a cluster-scoped owner if automatic cleanup is required. See
     [Cluster-Scoped Resources](../component.md#cluster-scoped-resources) for the full behavior.
 
 ## Capabilities
@@ -18,8 +18,8 @@ object metadata within the component lifecycle.
 | **Static lifecycle** | `component.Resource`. No health tracking, grace periods, or suspension                                                       |
 | **Mutation**         | `PolicyRulesEditor` for `.rules`; `SetAggregationRule` for `.aggregationRule`; `ObjectMetaEditor` for labels and annotations |
 | **Cluster-scoped**   | `MarkClusterScoped()` called during construction; `Build()` rejects a non-empty namespace                                    |
-| **Guard**            | `concepts.Guardable` — blocks reconciliation when a precondition is not met (`Blocked`)                                      |
-| **Data extraction**  | `concepts.DataExtractable` — reads values back after each sync cycle                                                         |
+| **Guard**            | `concepts.Guardable`: blocks reconciliation when a precondition is not met (`Blocked`)                                       |
+| **Data extraction**  | `concepts.DataExtractable`: reads values back after each sync cycle                                                          |
 
 See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full interface-to-status mapping. For
 cluster-scoped builder behavior, see [Cluster-Scoped Primitives](../primitives.md#cluster-scoped-primitives).
@@ -74,7 +74,7 @@ func CRDAccessMutation(version string, manageCRDs bool) clusterrole.Mutation {
 }
 ```
 
-For boolean conditions, chain `.When()` on the gate — see
+For boolean conditions, chain `.When()` on the gate. See
 [Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations). For version constraints, see
 [Version-Gated Mutations](../primitives.md#version-gated-mutations).
 

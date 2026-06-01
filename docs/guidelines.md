@@ -256,10 +256,10 @@ to every name the container has ever had. The primitives overview covers the
 
 Order a resource's mutations into fixed layers so the pipeline reads the same way for every workload:
 
-1. **defaults** — the operator's desired state for the current version (image, default env, sidecars).
-2. **compat** — version-gated rollbacks that restore older shapes (see below).
-3. **overrides** — values from the user's spec, applied last among the value-producing layers so user input wins.
-4. **checksum** — a final annotation mutation that stamps content hashes onto the pod template (see
+1. **defaults**: the operator's desired state for the current version (image, default env, sidecars).
+2. **compat**: version-gated rollbacks that restore older shapes (see below).
+3. **overrides**: values from the user's spec, applied last among the value-producing layers so user input wins.
+4. **checksum**: a final annotation mutation that stamps content hashes onto the pod template (see
    [Provide a User-Override Escape Hatch](#provide-a-user-override-escape-hatch-as-the-last-mutation) and the rotation
    pattern below).
 

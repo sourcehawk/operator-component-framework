@@ -1,12 +1,21 @@
 # Version-matrix golden generation — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an optional, test-only helper that sweeps a consumer-supplied version universe, classifies versions into behaviorally-distinct gating regimes by firing-set, generates the minimal goldens covering them, asserts per-fixture mutation gating, and proves every registered mutation is accounted for.
+**Goal:** Add an optional, test-only helper that sweeps a consumer-supplied version universe, classifies versions into
+behaviorally-distinct gating regimes by firing-set, generates the minimal goldens covering them, asserts per-fixture
+mutation gating, and proves every registered mutation is accounted for.
 
-**Architecture:** A read-only `MutationInspector` interface on the framework (`generic.BaseResource` + `*component.Component`) surfaces registered mutation names and the firing-set at a built version. An exported `golden.Serialize*` reuses the existing serializer. A new test-only package `pkg/testing/goldengen` wraps a built unit through adapters, sweeps `(fixture, version)`, groups versions by firing-set into regimes, writes one golden per regime plus a manifest, asserts gating, and offers a user-invoked accounting assertion. An optional `LoadMatrix` reads the whole declaration from YAML.
+**Architecture:** A read-only `MutationInspector` interface on the framework (`generic.BaseResource` +
+`*component.Component`) surfaces registered mutation names and the firing-set at a built version. An exported
+`golden.Serialize*` reuses the existing serializer. A new test-only package `pkg/testing/goldengen` wraps a built unit
+through adapters, sweeps `(fixture, version)`, groups versions by firing-set into regimes, writes one golden per regime
+plus a manifest, asserts gating, and offers a user-invoked accounting assertion. An optional `LoadMatrix` reads the
+whole declaration from YAML.
 
-**Tech Stack:** Go (generics), testify (`require`/`assert`), `sigs.k8s.io/yaml`, `k8s.io/apimachinery` runtime scheme, controller-runtime `client.Object`.
+**Tech Stack:** Go (generics), testify (`require`/`assert`), `sigs.k8s.io/yaml`, `k8s.io/apimachinery` runtime scheme,
+controller-runtime `client.Object`.
 
 ---
 
@@ -28,21 +37,31 @@ PR3 and PR4 are independent of each other and may run in parallel once PR2 has m
 
 ## Contracts
 
-| Name                      | Producer | Consumer       | Shape                                                                                                  | Realization                                  |
-| ------------------------- | -------- | -------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
-| `MutationInspector`       | #132     | #133           | `interface { RegisteredMutations() []string; FiringSet() ([]string, error) }` in `pkg/component/concepts` | Merges to feature branch before #133 branches |
-| `golden.Serialize*`       | #132     | #133           | `Serialize(client.Object, *runtime.Scheme) ([]byte, error)`, `SerializeComponent([]client.Object, *runtime.Scheme) ([]byte, error)` | Merges to feature branch before #133 branches |
-| `goldengen` public API    | #133     | #134, #135     | `Config[T]`, `Fixture[T]`, `Expect`, `Unit`, `Generator[T]`, `New`, `Run`, `Resource`, `Component`       | Merges to feature branch before #134/#135 branch |
+| Name                   | Producer | Consumer   | Shape                                                                                                                               | Realization                                      |
+| ---------------------- | -------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `MutationInspector`    | #132     | #133       | `interface { RegisteredMutations() []string; FiringSet() ([]string, error) }` in `pkg/component/concepts`                           | Merges to feature branch before #133 branches    |
+| `golden.Serialize*`    | #132     | #133       | `Serialize(client.Object, *runtime.Scheme) ([]byte, error)`, `SerializeComponent([]client.Object, *runtime.Scheme) ([]byte, error)` | Merges to feature branch before #133 branches    |
+| `goldengen` public API | #133     | #134, #135 | `Config[T]`, `Fixture[T]`, `Expect`, `Unit`, `Generator[T]`, `New`, `Run`, `Resource`, `Component`                                  | Merges to feature branch before #134/#135 branch |
 
-All three are sequential merge dependencies (no pre-merge stub PRs needed): each consumer branches from the post-producer state of the feature branch. PR3 and PR4 share only PR2's public API; they expose nothing to each other, so there is no contract between them.
+All three are sequential merge dependencies (no pre-merge stub PRs needed): each consumer branches from the
+post-producer state of the feature branch. PR3 and PR4 share only PR2's public API; they expose nothing to each other,
+so there is no contract between them.
 
 ## Conventions
 
-- **Package & files.** New package `pkg/testing/goldengen`. One responsibility per file: `unit.go` (the `Unit` interface + `Resource`/`Component` adapters), `config.go` (`Config`/`Fixture`/`Expect` types + validation), `classify.go` (firing-set grouping + representative selection), `generator.go` (`New`/`Run`/`AssertComplete`), `manifest.go` (manifest type + emit), `loadmatrix.go` (PR4). Test file per source file (`*_test.go`), black-box `package goldengen_test` where the public surface suffices.
-- **Test framework.** Match `pkg/testing/golden/golden_test.go`: standard `testing` + testify `require`/`assert`, table-driven subtests via `t.Run`. No Ginkgo in this package. Never `t.Fatal`; use `require`.
-- **Errors.** Wrap with `fmt.Errorf("...: %w", err)`; validation errors are plain `fmt.Errorf` with the offending name/value quoted.
-- **GoDoc.** Every exported symbol gets a GoDoc comment. The package gets a doc comment on `package goldengen` in one file.
-- **Determinism.** Firing-set comparison and the regime signature sort names; `RegisteredMutations`/`FiringSet` preserve registration order. Representative version is the first in supplied `Versions` order within a regime.
+- **Package & files.** New package `pkg/testing/goldengen`. One responsibility per file: `unit.go` (the `Unit`
+  interface + `Resource`/`Component` adapters), `config.go` (`Config`/`Fixture`/`Expect` types + validation),
+  `classify.go` (firing-set grouping + representative selection), `generator.go` (`New`/`Run`/`AssertComplete`),
+  `manifest.go` (manifest type + emit), `loadmatrix.go` (PR4). Test file per source file (`*_test.go`), black-box
+  `package goldengen_test` where the public surface suffices.
+- **Test framework.** Match `pkg/testing/golden/golden_test.go`: standard `testing` + testify `require`/`assert`,
+  table-driven subtests via `t.Run`. No Ginkgo in this package. Never `t.Fatal`; use `require`.
+- **Errors.** Wrap with `fmt.Errorf("...: %w", err)`; validation errors are plain `fmt.Errorf` with the offending
+  name/value quoted.
+- **GoDoc.** Every exported symbol gets a GoDoc comment. The package gets a doc comment on `package goldengen` in one
+  file.
+- **Determinism.** Firing-set comparison and the regime signature sort names; `RegisteredMutations`/`FiringSet` preserve
+  registration order. Representative version is the first in supplied `Versions` order within a regime.
 - **Prose.** Docs and GoDoc avoid em dashes and double-dashes; direct, precise phrasing.
 
 ## File structure
@@ -71,6 +90,7 @@ Branch: `git switch feature/version-matrix-goldens && git switch -c pr/132-mutat
 ### Task 1.1: Define the `MutationInspector` interface
 
 **Files:**
+
 - Create: `pkg/component/concepts/mutation_inspector.go`
 
 - [ ] **Step 1: Write the interface**
@@ -100,8 +120,7 @@ type MutationInspector interface {
 
 - [ ] **Step 2: Build to verify it compiles**
 
-Run: `go build ./pkg/component/concepts/...`
-Expected: success.
+Run: `go build ./pkg/component/concepts/...` Expected: success.
 
 - [ ] **Step 3: Commit**
 
@@ -113,6 +132,7 @@ git commit -m "feat(concepts): add MutationInspector interface (#132)"
 ### Task 1.2: Implement introspection on `generic.BaseResource`
 
 **Files:**
+
 - Modify: `pkg/generic/resource_base.go`
 - Test: `pkg/generic/resource_base_inspect_test.go`
 
@@ -186,12 +206,13 @@ func TestBaseResourceFiringSetGateError(t *testing.T) {
 }
 ```
 
-Note: confirm `FeatureMutator`'s real method set (open `pkg/generic/mutate_helper.go` / the `FeatureMutator` definition) and the exact `IdentityFunc` signature before finalizing `noopMutator`/`newBase`. Adjust the stub to satisfy the real interface; do not change production types to fit the test.
+Note: confirm `FeatureMutator`'s real method set (open `pkg/generic/mutate_helper.go` / the `FeatureMutator` definition)
+and the exact `IdentityFunc` signature before finalizing `noopMutator`/`newBase`. Adjust the stub to satisfy the real
+interface; do not change production types to fit the test.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/generic/ -run TestBaseResource -v`
-Expected: FAIL — `RegisteredMutations`/`FiringSet` undefined.
+Run: `go test ./pkg/generic/ -run TestBaseResource -v` Expected: FAIL — `RegisteredMutations`/`FiringSet` undefined.
 
 - [ ] **Step 3: Implement the methods**
 
@@ -241,8 +262,7 @@ func (r *BaseResource[T, M]) FiringSet() ([]string, error) {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/generic/ -run TestBaseResource -v`
-Expected: PASS.
+Run: `go test ./pkg/generic/ -run TestBaseResource -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -254,12 +274,15 @@ git commit -m "feat(generic): implement MutationInspector on BaseResource (#132)
 ### Task 1.3: Aggregate introspection on `*component.Component`
 
 **Files:**
+
 - Modify: `pkg/component/component.go`
 - Test: `pkg/component/component_inspect_test.go`
 
 - [ ] **Step 1: Write the failing test**
 
-Build a component with two managed resources and one read-only resource (use the existing test helpers in `pkg/component/` for constructing a component and fake resources; mirror how `component` tests build `reconcileResources`). Assert:
+Build a component with two managed resources and one read-only resource (use the existing test helpers in
+`pkg/component/` for constructing a component and fake resources; mirror how `component` tests build
+`reconcileResources`). Assert:
 
 ```go
 func TestComponentRegisteredMutationsUnion(t *testing.T) {
@@ -285,16 +308,19 @@ func TestComponentFiringSetPropagatesError(t *testing.T) {
 }
 ```
 
-Use a fake resource type that implements `component.Resource` + `concepts.MutationInspector`. Follow the construction pattern already used by `Component.Preview` tests; if none exists, build the component via its public builder and register fakes with `WithResource`.
+Use a fake resource type that implements `component.Resource` + `concepts.MutationInspector`. Follow the construction
+pattern already used by `Component.Preview` tests; if none exists, build the component via its public builder and
+register fakes with `WithResource`.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/component/ -run TestComponent.*Mutations -v` and `-run TestComponentFiringSet -v`
-Expected: FAIL — methods undefined.
+Run: `go test ./pkg/component/ -run TestComponent.*Mutations -v` and `-run TestComponentFiringSet -v` Expected: FAIL —
+methods undefined.
 
 - [ ] **Step 3: Implement on Component**
 
-Add to `pkg/component/component.go` (mirroring the `Preview` iteration: skip read-only, type-assert each managed resource):
+Add to `pkg/component/component.go` (mirroring the `Preview` iteration: skip read-only, type-assert each managed
+resource):
 
 ```go
 // RegisteredMutations returns the deduplicated union of the registered mutation
@@ -358,8 +384,7 @@ Confirm `concepts` and `fmt` are imported in `component.go` (both already are).
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/component/ -run TestComponent -v`
-Expected: PASS.
+Run: `go test ./pkg/component/ -run TestComponent -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -370,10 +395,13 @@ git commit -m "feat(component): aggregate MutationInspector across managed resou
 
 ### Task 1.4: Delegate introspection on every primitive `Resource`
 
-Each primitive `Resource` wraps an unexported `base` field (a generic resource type that embeds `BaseResource`, so the two methods are promoted). Add the identical delegation block to every primitive so the built primitive satisfies `concepts.MutationInspector`.
+Each primitive `Resource` wraps an unexported `base` field (a generic resource type that embeds `BaseResource`, so the
+two methods are promoted). Add the identical delegation block to every primitive so the built primitive satisfies
+`concepts.MutationInspector`.
 
-**Files (modify each):** `pkg/primitives/<kind>/resource.go` for every kind:
-`clusterrole`, `clusterrolebinding`, `configmap`, `cronjob`, `daemonset`, `deployment`, `hpa`, `ingress`, `job`, `networkpolicy`, `pdb`, `pod`, `pv`, `pvc`, `replicaset`, `role`, `rolebinding`, `secret`, `service`, `serviceaccount`, `statefulset`, `unstructured`.
+**Files (modify each):** `pkg/primitives/<kind>/resource.go` for every kind: `clusterrole`, `clusterrolebinding`,
+`configmap`, `cronjob`, `daemonset`, `deployment`, `hpa`, `ingress`, `job`, `networkpolicy`, `pdb`, `pod`, `pv`, `pvc`,
+`replicaset`, `role`, `rolebinding`, `secret`, `service`, `serviceaccount`, `statefulset`, `unstructured`.
 
 - [ ] **Step 1: Add a compile-time assertion + delegation to `statefulset` first (TDD anchor)**
 
@@ -420,21 +448,24 @@ func TestStatefulSetMutationInspector(t *testing.T) {
 }
 ```
 
-(Use the package's existing builder/test helpers for `baseStatefulSet()`; a mutation with a nil `Mutate` is fine for introspection, but if `Build` applies mutations and rejects a nil handler, give it `Mutate: func(*statefulset.Mutator) error { return nil }`.)
+(Use the package's existing builder/test helpers for `baseStatefulSet()`; a mutation with a nil `Mutate` is fine for
+introspection, but if `Build` applies mutations and rejects a nil handler, give it
+`Mutate: func(*statefulset.Mutator) error { return nil }`.)
 
 - [ ] **Step 3: Run — expect pass for statefulset**
 
-Run: `go test ./pkg/primitives/statefulset/ -run TestStatefulSetMutationInspector -v`
-Expected: PASS.
+Run: `go test ./pkg/primitives/statefulset/ -run TestStatefulSetMutationInspector -v` Expected: PASS.
 
 - [ ] **Step 4: Apply the same delegation block + `var _` assertion to the remaining 21 primitives**
 
-For each remaining kind, add the two methods (identical body `return r.base.RegisteredMutations()` / `return r.base.FiringSet()`, GoDoc adjusted to the kind name) and the `var _ concepts.MutationInspector = (*Resource)(nil)` assertion. Ensure `concepts` is imported (it already is in every primitive `resource.go`). If a primitive's wrapper field is not named `base`, match the local name.
+For each remaining kind, add the two methods (identical body `return r.base.RegisteredMutations()` /
+`return r.base.FiringSet()`, GoDoc adjusted to the kind name) and the
+`var _ concepts.MutationInspector = (*Resource)(nil)` assertion. Ensure `concepts` is imported (it already is in every
+primitive `resource.go`). If a primitive's wrapper field is not named `base`, match the local name.
 
 - [ ] **Step 5: Build all primitives**
 
-Run: `go build ./pkg/primitives/...`
-Expected: success (the `var _` assertions catch any primitive missed).
+Run: `go build ./pkg/primitives/...` Expected: success (the `var _` assertions catch any primitive missed).
 
 - [ ] **Step 6: Commit**
 
@@ -446,6 +477,7 @@ git commit -m "feat(primitives): delegate MutationInspector on every primitive r
 ### Task 1.5: Export the golden serializer
 
 **Files:**
+
 - Modify: `pkg/testing/golden/golden.go`
 - Test: `pkg/testing/golden/serialize_test.go`
 
@@ -474,12 +506,12 @@ func TestSerializeComponentJoinsDocuments(t *testing.T) {
 }
 ```
 
-(If `golden_test.go` is `package golden` white-box, place these in the same package and drop the `golden.` qualifier, or add a `fakePreviewer` if not present.)
+(If `golden_test.go` is `package golden` white-box, place these in the same package and drop the `golden.` qualifier, or
+add a `fakePreviewer` if not present.)
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/testing/golden/ -run TestSerialize -v`
-Expected: FAIL — `Serialize`/`SerializeComponent` undefined.
+Run: `go test ./pkg/testing/golden/ -run TestSerialize -v` Expected: FAIL — `Serialize`/`SerializeComponent` undefined.
 
 - [ ] **Step 3: Add exported wrappers and refactor internal callers to reuse them**
 
@@ -509,7 +541,8 @@ func SerializeComponent(objs []client.Object, scheme *runtime.Scheme) ([]byte, e
 }
 ```
 
-Refactor `CompareComponentYAML` to call `SerializeComponent` instead of inlining the loop (DRY), keeping its behavior identical:
+Refactor `CompareComponentYAML` to call `SerializeComponent` instead of inlining the loop (DRY), keeping its behavior
+identical:
 
 ```go
 actual, err := SerializeComponent(objs, cfg.scheme)
@@ -521,8 +554,7 @@ return compareOrUpdate(path, actual, cfg.update)
 
 - [ ] **Step 4: Run to verify it passes (and existing golden tests still pass)**
 
-Run: `go test ./pkg/testing/golden/ -v`
-Expected: PASS (new + existing).
+Run: `go test ./pkg/testing/golden/ -v` Expected: PASS (new + existing).
 
 - [ ] **Step 5: Commit**
 
@@ -535,8 +567,7 @@ git commit -m "feat(golden): export Serialize and SerializeComponent (#132)"
 
 - [ ] **Step 1: Full gate**
 
-Run: `make all`
-Expected: lint, fmt, and tests pass.
+Run: `make all` Expected: lint, fmt, and tests pass.
 
 - [ ] **Step 2: Open PR1 into the feature branch**
 
@@ -545,17 +576,20 @@ git push -u origin pr/132-mutation-introspection
 gh pr create -R sourcehawk/operator-component-framework --base feature/version-matrix-goldens --head pr/132-mutation-introspection --title "Expose registered mutations and firing-set; export golden serializer" --body "Towards #132"
 ```
 
-(Follow `feature-dev-workflow:opening-a-pull-request` for the body; `Towards #132`, not `Closes`, because it targets the feature branch.)
+(Follow `feature-dev-workflow:opening-a-pull-request` for the body; `Towards #132`, not `Closes`, because it targets the
+feature branch.)
 
 ---
 
 # PR2 (#133): goldengen core
 
-Branch off the feature branch after PR1 has merged into it: `git switch feature/version-matrix-goldens && git pull && git switch -c pr/133-goldengen-core`.
+Branch off the feature branch after PR1 has merged into it:
+`git switch feature/version-matrix-goldens && git pull && git switch -c pr/133-goldengen-core`.
 
 ### Task 2.1: `Unit` interface and adapters
 
 **Files:**
+
 - Create: `pkg/testing/goldengen/unit.go`
 - Test: `pkg/testing/goldengen/unit_test.go`
 
@@ -596,8 +630,7 @@ func TestComponentAdapter(t *testing.T) {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestResourceAdapter -v`
-Expected: FAIL — package/symbols undefined.
+Run: `go test ./pkg/testing/goldengen/ -run TestResourceAdapter -v` Expected: FAIL — package/symbols undefined.
 
 - [ ] **Step 3: Implement `unit.go`**
 
@@ -692,8 +725,7 @@ func (u componentUnit) RenderYAML() ([]byte, error) {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestResourceAdapter -v` and `-run TestComponentAdapter -v`
-Expected: PASS.
+Run: `go test ./pkg/testing/goldengen/ -run TestResourceAdapter -v` and `-run TestComponentAdapter -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -705,6 +737,7 @@ git commit -m "feat(goldengen): Unit interface and resource/component adapters (
 ### Task 2.2: `Config`/`Fixture`/`Expect` types and validation
 
 **Files:**
+
 - Create: `pkg/testing/goldengen/config.go`
 - Test: `pkg/testing/goldengen/config_test.go`
 
@@ -757,8 +790,7 @@ func TestConfigValidate(t *testing.T) {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestConfigValidate -v`
-Expected: FAIL — types/`Validate` undefined.
+Run: `go test ./pkg/testing/goldengen/ -run TestConfigValidate -v` Expected: FAIL — types/`Validate` undefined.
 
 - [ ] **Step 3: Implement `config.go`**
 
@@ -842,8 +874,7 @@ Add `"k8s.io/apimachinery/pkg/runtime"` to the import block.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestConfigValidate -v`
-Expected: PASS.
+Run: `go test ./pkg/testing/goldengen/ -run TestConfigValidate -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -855,10 +886,12 @@ git commit -m "feat(goldengen): config types and validation (#133)"
 ### Task 2.3: Firing-set classification and representative selection
 
 **Files:**
+
 - Create: `pkg/testing/goldengen/classify.go`
 - Test: `pkg/testing/goldengen/classify_test.go`
 
-A regime is a maximal group of swept versions sharing an identical firing-set. The signature is the sorted firing-set joined; the representative is the first version in supplied order within the group.
+A regime is a maximal group of swept versions sharing an identical firing-set. The signature is the sorted firing-set
+joined; the representative is the first version in supplied order within the group.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -891,8 +924,7 @@ func TestClassifyOrderIndependentSignature(t *testing.T) {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestClassify -v`
-Expected: FAIL — `ClassifyRegimes`/`Regime` undefined.
+Run: `go test ./pkg/testing/goldengen/ -run TestClassify -v` Expected: FAIL — `ClassifyRegimes`/`Regime` undefined.
 
 - [ ] **Step 3: Implement `classify.go`**
 
@@ -945,8 +977,7 @@ func ClassifyRegimes(versions []string, firing map[string][]string) []Regime {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestClassify -v`
-Expected: PASS.
+Run: `go test ./pkg/testing/goldengen/ -run TestClassify -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -958,10 +989,12 @@ git commit -m "feat(goldengen): firing-set classification into regimes (#133)"
 ### Task 2.4: Gating assertions (Requires/Forbids lattice)
 
 **Files:**
+
 - Create: `pkg/testing/goldengen/gating.go`
 - Test: `pkg/testing/goldengen/gating_test.go`
 
 Lattice over a fixture's per-version firing-sets:
+
 - `Requires` empty `For`: name fires at some swept version.
 - `Requires` `For=v`: name fires at `v`.
 - `Forbids` empty `For`: name fires at no swept version.
@@ -1017,8 +1050,7 @@ func TestCheckGatingFailures(t *testing.T) {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestCheckGating -v`
-Expected: FAIL — `CheckGating` undefined.
+Run: `go test ./pkg/testing/goldengen/ -run TestCheckGating -v` Expected: FAIL — `CheckGating` undefined.
 
 - [ ] **Step 3: Implement `gating.go`**
 
@@ -1078,8 +1110,7 @@ func CheckGating[T any](f Fixture[T], versions []string, firing map[string][]str
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestCheckGating -v`
-Expected: PASS.
+Run: `go test ./pkg/testing/goldengen/ -run TestCheckGating -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1091,6 +1122,7 @@ git commit -m "feat(goldengen): Requires/Forbids gating assertions (#133)"
 ### Task 2.5: Manifest type and emit
 
 **Files:**
+
 - Create: `pkg/testing/goldengen/manifest.go`
 - Test: `pkg/testing/goldengen/manifest_test.go`
 
@@ -1117,8 +1149,7 @@ func TestManifestYAML(t *testing.T) {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestManifest -v`
-Expected: FAIL.
+Run: `go test ./pkg/testing/goldengen/ -run TestManifest -v` Expected: FAIL.
 
 - [ ] **Step 3: Implement `manifest.go`**
 
@@ -1154,8 +1185,7 @@ func (m Manifest) YAML() ([]byte, error) {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestManifest -v`
-Expected: PASS.
+Run: `go test ./pkg/testing/goldengen/ -run TestManifest -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1167,6 +1197,7 @@ git commit -m "feat(goldengen): coverage manifest type (#133)"
 ### Task 2.6: Generator `New` + `Run` (sweep, gating, goldens, manifest)
 
 **Files:**
+
 - Create: `pkg/testing/goldengen/generator.go`
 - Test: `pkg/testing/goldengen/generator_test.go`
 
@@ -1192,12 +1223,14 @@ func TestGeneratorRunWritesGoldensAndManifest(t *testing.T) {
 }
 ```
 
-Implementation note for `-update`: the generator reads an update flag. Match the golden package convention — expose `func (g *Generator[T]) WithUpdate(bool) *Generator[T]` and let the consumer wire their own `-update` flag (`gen.WithUpdate(*update)` before `Run`), rather than a package-global. Rewrite the test to use `gen.WithUpdate(true)` accordingly (drop `SetUpdate`).
+Implementation note for `-update`: the generator reads an update flag. Match the golden package convention — expose
+`func (g *Generator[T]) WithUpdate(bool) *Generator[T]` and let the consumer wire their own `-update` flag
+(`gen.WithUpdate(*update)` before `Run`), rather than a package-global. Rewrite the test to use `gen.WithUpdate(true)`
+accordingly (drop `SetUpdate`).
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestGeneratorRun -v`
-Expected: FAIL.
+Run: `go test ./pkg/testing/goldengen/ -run TestGeneratorRun -v` Expected: FAIL.
 
 - [ ] **Step 3: Implement `generator.go`**
 
@@ -1333,12 +1366,16 @@ func writeOrCompareGolden(path string, actual []byte, update bool) error {
 }
 ```
 
-Note: `t.Fatalf` inside the generator is acceptable here because it is test infrastructure operating on the consumer's `*testing.T`, not a production code path; the project's "no `t.Fatal` in tests" rule targets test bodies. Prefer `t.Errorf` for per-golden assertions so all mismatches surface in one run; reserve `t.Fatalf` for setup failures (invalid config, build error) that make continuing meaningless. Consider reusing `golden`'s diff in mismatch messages if a richer diff is wanted; a follow-up can swap `writeOrCompareGolden` for a call into a small exported golden compare helper.
+Note: `t.Fatalf` inside the generator is acceptable here because it is test infrastructure operating on the consumer's
+`*testing.T`, not a production code path; the project's "no `t.Fatal` in tests" rule targets test bodies. Prefer
+`t.Errorf` for per-golden assertions so all mismatches surface in one run; reserve `t.Fatalf` for setup failures
+(invalid config, build error) that make continuing meaningless. Consider reusing `golden`'s diff in mismatch messages if
+a richer diff is wanted; a follow-up can swap `writeOrCompareGolden` for a call into a small exported golden compare
+helper.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./pkg/testing/goldengen/ -run TestGeneratorRun -v`
-Expected: PASS.
+Run: `go test ./pkg/testing/goldengen/ -run TestGeneratorRun -v` Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1350,7 +1387,8 @@ git commit -m "feat(goldengen): Generator Run with sweep, gating, goldens, manif
 ### Task 2.7: PR2 verification and open PR
 
 - [ ] **Step 1:** `make all` — expect pass.
-- [ ] **Step 2:** Open PR2 into the feature branch with body `Towards #133` (see `feature-dev-workflow:opening-a-pull-request`).
+- [ ] **Step 2:** Open PR2 into the feature branch with body `Towards #133` (see
+      `feature-dev-workflow:opening-a-pull-request`).
 
 ---
 
@@ -1361,10 +1399,15 @@ Branch off the feature branch after PR2 merges into it.
 ### Task 3.1: `AssertComplete` accounting
 
 **Files:**
+
 - Modify: `pkg/testing/goldengen/generator.go`
 - Test: `pkg/testing/goldengen/accounting_test.go`
 
-Accounting: `union(all Requires names across fixtures) ∪ Exclude == union(RegisteredMutations across all fixtures' built units)`. Compute the registered universe by building each fixture once (any version; registration is version-independent) and unioning `RegisteredMutations`. Failures: a registered name neither required nor excluded ("unaccounted mutation X"); a stale `Exclude`/`Requires` name not in the registered universe; an empty mutation name in the registered universe.
+Accounting:
+`union(all Requires names across fixtures) ∪ Exclude == union(RegisteredMutations across all fixtures' built units)`.
+Compute the registered universe by building each fixture once (any version; registration is version-independent) and
+unioning `RegisteredMutations`. Failures: a registered name neither required nor excluded ("unaccounted mutation X"); a
+stale `Exclude`/`Requires` name not in the registered universe; an empty mutation name in the registered universe.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1389,7 +1432,8 @@ func TestAssertComplete(t *testing.T) {
 }
 ```
 
-`configWithRegistered` builds a `Config` whose `Build` returns a `Unit` (a fake or a real primitive) registering the given mutation names, with the given `Requires` (on one fixture) and `Exclude`.
+`configWithRegistered` builds a `Config` whose `Build` returns a `Unit` (a fake or a real primitive) registering the
+given mutation names, with the given `Requires` (on one fixture) and `Exclude`.
 
 - [ ] **Step 2: Run to verify it fails.** `go test ./pkg/testing/goldengen/ -run TestAssertComplete -v` → FAIL.
 
@@ -1472,9 +1516,13 @@ git commit -m "feat(goldengen): AssertComplete accounting assertion (#134)"
 ### Task 3.2: Worked example under `examples/`
 
 **Files:**
-- Create: `examples/version-matrix/` (a small CRD + a primitive build wired through goldengen, with `testdata/` goldens + manifest and a `*_test.go`)
 
-- [ ] **Step 1:** Pick the simplest realistic surface: a StatefulSet build with two or three version-gated mutations (reuse an existing example's CRD if one fits, e.g. `examples/grace-inconsistency`). Write `version_matrix_test.go`:
+- Create: `examples/version-matrix/` (a small CRD + a primitive build wired through goldengen, with `testdata/`
+  goldens + manifest and a `*_test.go`)
+
+- [ ] **Step 1:** Pick the simplest realistic surface: a StatefulSet build with two or three version-gated mutations
+      (reuse an existing example's CRD if one fits, e.g. `examples/grace-inconsistency`). Write
+      `version_matrix_test.go`:
 
 ```go
 var update = flag.Bool("update", false, "update golden files")
@@ -1511,9 +1559,11 @@ func TestMain(m *testing.M)          { os.Exit(gen.AssertComplete(m.Run())) }
 
 Fix the `TestVersionMatrix` to `gen.WithUpdate(*update); gen.Run(t)`.
 
-- [ ] **Step 2:** Generate goldens: `go test ./examples/version-matrix/ -run TestVersionMatrix -update`. Inspect the written `testdata/version_matrix/default/*.yaml` and `manifest.yaml`; confirm regimes match intent.
+- [ ] **Step 2:** Generate goldens: `go test ./examples/version-matrix/ -run TestVersionMatrix -update`. Inspect the
+      written `testdata/version_matrix/default/*.yaml` and `manifest.yaml`; confirm regimes match intent.
 
-- [ ] **Step 3:** Run clean: `go test ./examples/version-matrix/...` → PASS. Build examples: `make build-examples` → success.
+- [ ] **Step 3:** Run clean: `go test ./examples/version-matrix/...` → PASS. Build examples: `make build-examples` →
+      success.
 
 - [ ] **Step 4: Commit**
 
@@ -1525,12 +1575,18 @@ git commit -m "docs(examples): version-matrix golden generation example (#134)"
 ### Task 3.3: `docs/testing.md` + reference updates
 
 **Files:**
+
 - Create: `docs/testing.md`
 - Modify: `README.md` (link), `CLAUDE.md` (doc table row + `pkg/testing/goldengen` in reference lists)
 
-- [ ] **Step 1:** Write `docs/testing.md` covering: the `golden` helpers (`AssertYAML`/`AssertComponentYAML`/`Serialize*`), then `goldengen` — the matrix declaration, the four assertions, the firing-set classification and the version-ordering convention (ascending puts representatives on inclusive boundaries), the manifest, and the YAML loader (added in PR4; add its section here or in PR4). Verify every symbol name against the source.
+- [ ] **Step 1:** Write `docs/testing.md` covering: the `golden` helpers
+      (`AssertYAML`/`AssertComponentYAML`/`Serialize*`), then `goldengen` — the matrix declaration, the four assertions,
+      the firing-set classification and the version-ordering convention (ascending puts representatives on inclusive
+      boundaries), the manifest, and the YAML loader (added in PR4; add its section here or in PR4). Verify every symbol
+      name against the source.
 
-- [ ] **Step 2:** Add a `docs/testing.md` row to the CLAUDE.md documentation table and add `pkg/testing/goldengen` to the "Source to read" list. Add a link from `README.md` testing section.
+- [ ] **Step 2:** Add a `docs/testing.md` row to the CLAUDE.md documentation table and add `pkg/testing/goldengen` to
+      the "Source to read" list. Add a link from `README.md` testing section.
 
 - [ ] **Step 3:** `make fmt-md` → formats markdown.
 
@@ -1554,6 +1610,7 @@ Branch off the feature branch after PR2 merges (independent of PR3).
 ### Task 4.1: `LoadMatrix`
 
 **Files:**
+
 - Create: `pkg/testing/goldengen/loadmatrix.go`
 - Test: `pkg/testing/goldengen/loadmatrix_test.go`
 - Test data: `pkg/testing/goldengen/testdata/matrix*.yaml`, `testdata/fixtures/*.yaml`
@@ -1591,7 +1648,9 @@ func TestLoadMatrixErrors(t *testing.T) {
 }
 ```
 
-Create the testdata files: `matrix_inline.yaml` (fixture with inline `spec:` whose `metadata.name: from-inline`), `matrix_specfile.yaml` (`specFile: fixtures/cm.yaml`), `fixtures/cm.yaml` (`metadata.name: from-file`), `matrix_both.yaml`, `matrix_neither.yaml`, `matrix_badfor.yaml`.
+Create the testdata files: `matrix_inline.yaml` (fixture with inline `spec:` whose `metadata.name: from-inline`),
+`matrix_specfile.yaml` (`specFile: fixtures/cm.yaml`), `fixtures/cm.yaml` (`metadata.name: from-file`),
+`matrix_both.yaml`, `matrix_neither.yaml`, `matrix_badfor.yaml`.
 
 - [ ] **Step 2: Run to verify it fails.** `go test ./pkg/testing/goldengen/ -run TestLoadMatrix -v` → FAIL.
 
@@ -1698,7 +1757,11 @@ func loadFixtureSpec[T any](ff matrixFixtureFile, baseDir string, newSpec func()
 }
 ```
 
-Add `"encoding/json"` for `json.RawMessage`. Note: `sigs.k8s.io/yaml` converts YAML to JSON under the hood, so `json.RawMessage` for the inline `spec` captures the CR as JSON and `yaml.Unmarshal(data, spec)` decodes it into the typed `T`. Verify this round-trip in the test; if `json.RawMessage` does not capture nested YAML cleanly through `sigs.k8s.io/yaml`, switch `Spec` to `apiextensionsv1.JSON` or re-marshal the decoded `map[string]any` before unmarshalling into `T`.
+Add `"encoding/json"` for `json.RawMessage`. Note: `sigs.k8s.io/yaml` converts YAML to JSON under the hood, so
+`json.RawMessage` for the inline `spec` captures the CR as JSON and `yaml.Unmarshal(data, spec)` decodes it into the
+typed `T`. Verify this round-trip in the test; if `json.RawMessage` does not capture nested YAML cleanly through
+`sigs.k8s.io/yaml`, switch `Spec` to `apiextensionsv1.JSON` or re-marshal the decoded `map[string]any` before
+unmarshalling into `T`.
 
 - [ ] **Step 4: Run to verify it passes.** `go test ./pkg/testing/goldengen/ -run TestLoadMatrix -v` → PASS.
 
@@ -1711,7 +1774,8 @@ git commit -m "feat(goldengen): optional YAML matrix loader (#135)"
 
 ### Task 4.2: Loader docs + example
 
-- [ ] **Step 1:** Add a "YAML matrix loader" section to `docs/testing.md` (if not already added in PR3) showing a `matrix.yaml` with both inline and `specFile` fixtures and the `LoadMatrix` call. `make fmt-md`.
+- [ ] **Step 1:** Add a "YAML matrix loader" section to `docs/testing.md` (if not already added in PR3) showing a
+      `matrix.yaml` with both inline and `specFile` fixtures and the `LoadMatrix` call. `make fmt-md`.
 - [ ] **Step 2:** Optionally add a YAML-driven variant to the `examples/version-matrix` example.
 - [ ] **Step 3: Commit.** `git commit -m "docs: document the goldengen YAML matrix loader (#135)"`
 
@@ -1726,19 +1790,27 @@ git commit -m "feat(goldengen): optional YAML matrix loader (#135)"
 After all four sub-PRs have merged into `feature/version-matrix-goldens`:
 
 - [ ] Run the full gate on the feature branch: `make all`, `make build-examples`.
-- [ ] Consider an E2E primitive smoke if the introspection touched primitive build paths in a way unit tests do not cover (likely unnecessary; this is read-only metadata).
-- [ ] Open the integration PR `feature/version-matrix-goldens` → `main` with body `Closes #131` (see `feature-dev-workflow:opening-a-pull-request`).
+- [ ] Consider an E2E primitive smoke if the introspection touched primitive build paths in a way unit tests do not
+      cover (likely unnecessary; this is read-only metadata).
+- [ ] Open the integration PR `feature/version-matrix-goldens` → `main` with body `Closes #131` (see
+      `feature-dev-workflow:opening-a-pull-request`).
 - [ ] Delete the spec, plan, and state files in the orchestrator's final commit once the epic is closed.
 
 ## Deviations from issue #129 (intentional)
 
-- `FiringSet()` returns `([]string, error)` (issue wrote `[]string`): `feature.Gate.Enabled()` returns an error, and swallowing it would silently misclassify a regime.
-- A built unit becomes a `Unit` through `goldengen.Resource(res, scheme)` / `goldengen.Component(comp, scheme)` adapters rather than every primitive implementing `RenderYAML` directly, keeping serialization centralized in `golden`.
-- `-update` is wired via `gen.WithUpdate(*update)` rather than a package global, matching the consumer-owns-the-flag convention of the `golden` package.
+- `FiringSet()` returns `([]string, error)` (issue wrote `[]string`): `feature.Gate.Enabled()` returns an error, and
+  swallowing it would silently misclassify a regime.
+- A built unit becomes a `Unit` through `goldengen.Resource(res, scheme)` / `goldengen.Component(comp, scheme)` adapters
+  rather than every primitive implementing `RenderYAML` directly, keeping serialization centralized in `golden`.
+- `-update` is wired via `gen.WithUpdate(*update)` rather than a package global, matching the consumer-owns-the-flag
+  convention of the `golden` package.
 
 ## Self-review notes
 
-- Spec coverage: framework introspection (PR1), classification + goldens + gating + manifest (PR2), accounting + example + docs (PR3), YAML loader (PR4) — every spec section maps to a task.
+- Spec coverage: framework introspection (PR1), classification + goldens + gating + manifest (PR2), accounting +
+  example + docs (PR3), YAML loader (PR4) — every spec section maps to a task.
 - The `FiringSet` error signature is consistent across `MutationInspector`, `Unit`, and both adapters.
-- Method/type names used in later tasks (`ClassifyRegimes`, `Regime`, `CheckGating`, `Manifest`, `RegimeManifest`, `Generator.WithUpdate`, `AssertComplete`) match their definitions.
-- Per-primitive delegation is enforced by `var _ concepts.MutationInspector = (*Resource)(nil)` in each primitive, so a missed primitive fails the build rather than silently lacking the capability.
+- Method/type names used in later tasks (`ClassifyRegimes`, `Regime`, `CheckGating`, `Manifest`, `RegimeManifest`,
+  `Generator.WithUpdate`, `AssertComplete`) match their definitions.
+- Per-primitive delegation is enforced by `var _ concepts.MutationInspector = (*Resource)(nil)` in each primitive, so a
+  missed primitive fails the build rather than silently lacking the capability.

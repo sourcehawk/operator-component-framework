@@ -1,8 +1,8 @@
-# Version-matrix golden generation — design
+# Version-matrix golden generation design
 
-Status: draft for review
-Date: 2026-06-01
-Issue: sourcehawk/operator-component-framework#129
+- **Status:** approved
+- **Date:** 2026-06-01
+- **Issue:** sourcehawk/operator-component-framework#129
 
 ## Problem
 
@@ -62,7 +62,7 @@ Four non-overlapping layers, no redundancy:
 1. **Per-mutation unit tests** (consumer already has these): what each mutation puts in the object.
 2. **Per-fixture gating** (new): each mutation fires exactly when the author assumed, catching mis-targeted or
    off-by-a-boundary gates.
-3. **Integration golden** (the version-matrix value golden): the *merged* render per `(fixture, regime)` is correct
+3. **Integration golden** (the version-matrix value golden): the _merged_ render per `(fixture, regime)` is correct
    (ordering, an override shadowing a default, no accidental key collision), which the per-mutation tests cannot see.
 4. **Accounting / totality**: every registered mutation is either required by some fixture or explicitly excluded.
 
@@ -199,9 +199,9 @@ The loader is itself opt-in: a consumer who prefers the typed `Config[T]` never 
 
 ### `Expect.For` semantics (a clean lattice; `For` is optional on both lists)
 
-| entry      | `For` empty                   | `For = v`             |
-| ---------- | ----------------------------- | --------------------- |
-| `Requires` | fires at **some** swept version | fires **at** `v`      |
+| entry      | `For` empty                     | `For = v`                |
+| ---------- | ------------------------------- | ------------------------ |
+| `Requires` | fires at **some** swept version | fires **at** `v`         |
 | `Forbids`  | fires at **no** swept version   | does **not** fire at `v` |
 
 Bare `Requires` is existential, which proves "fires somewhere" but cannot catch a boundary that is off (a gate written
@@ -320,6 +320,6 @@ func TestMain(m *testing.M)           { os.Exit(gen.AssertComplete(m.Run())) }
 ## Implementation breakdown
 
 Ships as a feature branch with four sub-PRs: framework introspection + serializer export; the `goldengen` core (config,
-adapters, firing-set classifier, gating assertions, goldens, manifest); accounting + a worked example + `docs/testing.md`;
-and the optional YAML matrix loader (`LoadMatrix`, inline/`specFile` resolution, load-time validation). Ordering and
-contracts live in the plan, not here.
+adapters, firing-set classifier, gating assertions, goldens, manifest); accounting + a worked example +
+`docs/testing.md`; and the optional YAML matrix loader (`LoadMatrix`, inline/`specFile` resolution, load-time
+validation). Ordering and contracts live in the plan, not here.

@@ -444,20 +444,6 @@ func (m *Mutator) Apply() error {
 	return nil
 }
 
-// LiftMutation adapts a workload-kind-agnostic mutation into a Deployment
-// Mutation so it can be registered with the builder's WithMutation. Name and
-// Feature gating carry over unchanged: when Feature is non-nil and enabled, the
-// lifted Mutation behaves identically to one constructed directly against
-// *Mutator. A nil Mutate is preserved, so ApplyIntent still reports it by name
-// rather than panicking.
-func LiftMutation(m feature.Mutation[primitives.WorkloadMutator]) Mutation {
-	lifted := Mutation{Name: m.Name, Feature: m.Feature}
-	if m.Mutate != nil {
-		lifted.Mutate = func(mut *Mutator) error { return m.Mutate(mut) }
-	}
-	return lifted
-}
-
 func applyPresenceOp(containers *[]corev1.Container, op containerPresenceOp) {
 	found := -1
 	for i, c := range *containers {
@@ -481,4 +467,18 @@ func applyPresenceOp(containers *[]corev1.Container, op containerPresenceOp) {
 	} else {
 		*containers = append(*containers, *op.container)
 	}
+}
+
+// LiftMutation adapts a workload-kind-agnostic mutation into a Deployment
+// Mutation so it can be registered with the builder's WithMutation. Name and
+// Feature gating carry over unchanged: when Feature is non-nil and enabled, the
+// lifted Mutation behaves identically to one constructed directly against
+// *Mutator. A nil Mutate is preserved, so ApplyIntent still reports it by name
+// rather than panicking.
+func LiftMutation(m feature.Mutation[primitives.WorkloadMutator]) Mutation {
+	lifted := Mutation{Name: m.Name, Feature: m.Feature}
+	if m.Mutate != nil {
+		lifted.Mutate = func(mut *Mutator) error { return m.Mutate(mut) }
+	}
+	return lifted
 }

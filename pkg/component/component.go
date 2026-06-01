@@ -180,6 +180,62 @@ func (c *Component) Preview() ([]client.Object, error) {
 	return objs, nil
 }
 
+// RegisteredMutations returns the deduplicated union of the registered mutation
+// Names across the component's managed (non read-only) resources, in resource
+// registration order. Resources that do not implement concepts.MutationInspector
+// contribute nothing. It satisfies concepts.MutationInspector.
+func (c *Component) RegisteredMutations() []string {
+	seen := make(map[string]struct{})
+	names := make([]string, 0)
+	for _, entry := range c.reconcileResources {
+		if entry.Options.ReadOnly {
+			continue
+		}
+		inspector, ok := entry.Resource.(concepts.MutationInspector)
+		if !ok {
+			continue
+		}
+		for _, name := range inspector.RegisteredMutations() {
+			if _, dup := seen[name]; dup {
+				continue
+			}
+			seen[name] = struct{}{}
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// FiringSet returns the deduplicated union of the firing-set Names across the
+// component's managed (non read-only) resources, in resource registration order.
+// It returns an error if any managed resource's FiringSet evaluation fails. It
+// satisfies concepts.MutationInspector.
+func (c *Component) FiringSet() ([]string, error) {
+	seen := make(map[string]struct{})
+	firing := make([]string, 0)
+	for _, entry := range c.reconcileResources {
+		if entry.Options.ReadOnly {
+			continue
+		}
+		inspector, ok := entry.Resource.(concepts.MutationInspector)
+		if !ok {
+			continue
+		}
+		names, err := inspector.FiringSet()
+		if err != nil {
+			return nil, fmt.Errorf("firing set for resource %q: %w", entry.Resource.Identity(), err)
+		}
+		for _, name := range names {
+			if _, dup := seen[name]; dup {
+				continue
+			}
+			seen[name] = struct{}{}
+			firing = append(firing, name)
+		}
+	}
+	return firing, nil
+}
+
 // Resource returns the registered resource with the given Identity() and true,
 // or nil and false if no such resource is registered. The lookup covers every
 // registered resource, including read-only and delete resources.

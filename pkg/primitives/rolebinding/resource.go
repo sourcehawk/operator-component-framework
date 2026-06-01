@@ -76,3 +76,18 @@ func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
 func (r *Resource) Preview() (client.Object, error) {
 	return r.base.Preview()
 }
+
+// RegisteredMutations returns the deduplicated Names of every mutation registered
+// on the RoleBinding, independent of version. It satisfies concepts.MutationInspector
+// so the resource can be introspected for version-matrix golden generation.
+func (r *Resource) RegisteredMutations() []string {
+	return r.base.RegisteredMutations()
+}
+
+// FiringSet returns the Names of registered mutations whose gate is enabled for the
+// version the RoleBinding was built at. It satisfies concepts.MutationInspector.
+func (r *Resource) FiringSet() ([]string, error) {
+	return r.base.FiringSet()
+}
+
+var _ concepts.MutationInspector = (*Resource)(nil)

@@ -27,7 +27,7 @@ branch.
 | Issue | Branch                        | Worktree path                                 | PR (→ base)                            | Status      |
 | ----- | ----------------------------- | --------------------------------------------- | -------------------------------------- | ----------- |
 | #132  | pr/132-mutation-introspection | .claude/worktrees/version-matrix-goldens--132 | #136 → feature/version-matrix-goldens  | self-merged |
-| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #<pr> → feature/version-matrix-goldens | not-started |
+| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #<pr> → feature/version-matrix-goldens | in-progress |
 | #134  | pr/134-accounting-docs        | .claude/worktrees/version-matrix-goldens--134 | #<pr> → feature/version-matrix-goldens | not-started |
 | #135  | pr/135-yaml-loader            | .claude/worktrees/version-matrix-goldens--135 | #<pr> → feature/version-matrix-goldens | not-started |
 

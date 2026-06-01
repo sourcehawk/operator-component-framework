@@ -26,3 +26,16 @@ func TestResource_MutationInspector(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Always"}, firing)
 }
+
+func TestBuild_RejectsDuplicateMutationNames(t *testing.T) {
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sts", Namespace: "test-ns"},
+	}
+	_, err := NewBuilder(sts).
+		WithMutation(Mutation{Name: "ContainerImage"}).
+		WithMutation(Mutation{Name: "ContainerImage"}).
+		Build()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate mutation name")
+	assert.Contains(t, err.Error(), "ContainerImage")
+}

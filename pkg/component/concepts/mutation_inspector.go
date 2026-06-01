@@ -7,8 +7,11 @@ package concepts
 // component aggregates its managed resources. It is an inert capability: nothing
 // in the reconcile path calls it, so importing it costs nothing at runtime.
 type MutationInspector interface {
-	// RegisteredMutations returns the deduplicated Names of every mutation
-	// registered on the unit, independent of the version it was built at.
+	// RegisteredMutations returns the Names of every mutation registered on the
+	// unit, independent of the version it was built at. Names are unique within a
+	// resource (the resource builder rejects a duplicate at build time), and the
+	// returned list is deduplicated across a component's resources, so it is always
+	// a set.
 	RegisteredMutations() []string
 
 	// FiringSet returns the Names of registered mutations whose gate is enabled

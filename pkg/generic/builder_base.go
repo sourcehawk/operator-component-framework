@@ -2,6 +2,7 @@ package generic
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -133,6 +134,18 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 
 	if b.BaseRes.NewMutator == nil {
 		return errors.New("mutator factory cannot be nil")
+	}
+
+	// Mutation names must be unique within a resource. A name is the identifier
+	// that gating and error reporting refer to, so two mutations sharing one is
+	// ambiguous: it silently masks a mis-targeted or dead mutation behind its
+	// namesake. This is a name-only check and evaluates no feature gates.
+	seen := make(map[string]struct{}, len(b.BaseRes.Mutations))
+	for _, m := range b.BaseRes.Mutations {
+		if _, dup := seen[m.Name]; dup {
+			return fmt.Errorf("duplicate mutation name %q: mutation names must be unique within a resource", m.Name)
+		}
+		seen[m.Name] = struct{}{}
 	}
 
 	return nil

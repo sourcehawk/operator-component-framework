@@ -29,7 +29,7 @@ var update = flag.Bool("update", false, "update golden files")
 
 func TestDeploymentGolden(t *testing.T) {
 	res, err := deployment.NewBuilder(baseDeployment()).
-		WithMutation(features.DebugLogging(true)).
+		WithMutation(features.DebugLoggingMutation(true)).
 		Build()
 	require.NoError(t, err)
 

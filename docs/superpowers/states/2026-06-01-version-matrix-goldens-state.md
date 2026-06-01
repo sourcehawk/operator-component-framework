@@ -5,7 +5,8 @@ plan: docs/superpowers/plans/2026-06-01-version-matrix-goldens-plan.md
 tracking_issue: #131
 feature_branch: feature/version-matrix-goldens
 feature_worktree: .claude/worktrees/version-matrix-goldens
-sub_pr_approval: manual
+sub_pr_approval: autonomous
+sub_pr_review_loop: off
 integration_pr: #<pr>
 status: planning
 ---

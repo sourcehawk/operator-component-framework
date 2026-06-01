@@ -47,7 +47,7 @@ func TestConfigMapShape(t *testing.T) {
 			owner := testOwner(tt.version)
 
 			res, err := configmap.NewBuilder(resources.BaseConfigMap(owner)).
-				WithMutation(features.MetricsConfigMutation(tt.version, tt.metrics)).
+				WithMutation(features.MetricsConfigMutation(tt.metrics)).
 				Build()
 			require.NoError(t, err)
 

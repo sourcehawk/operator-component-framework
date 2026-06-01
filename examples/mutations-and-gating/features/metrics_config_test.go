@@ -22,7 +22,7 @@ func TestMetricsConfigMutation(t *testing.T) {
 	}
 
 	res, err := configmap.NewBuilder(base).
-		WithMutation(features.MetricsConfigMutation("1.0.0", true)).
+		WithMutation(features.MetricsConfigMutation(true)).
 		Build()
 	require.NoError(t, err)
 

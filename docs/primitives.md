@@ -204,17 +204,18 @@ earlier ones.
 
 ## Boolean-Gated Mutations
 
-A mutation can be enabled by a runtime condition rather than a version. Build a gate with no version constraints and add
-boolean conditions through `When`:
+A mutation can be enabled by a runtime condition rather than a version. Use `NewBooleanGate` for a gate whose result is
+driven purely by a boolean:
 
 ```go
 import "github.com/sourcehawk/operator-component-framework/pkg/feature"
 
-gate := feature.NewVersionGate("", nil).When(len(spec.ExtraEnv) > 0)
+gate := feature.NewBooleanGate(len(spec.ExtraEnv) > 0)
 ```
 
-`When` is additive: every value passed must be true for the gate to enable. An empty current version and `nil`
-constraints mean only the boolean conditions decide. This is the idiomatic way to make a mutation conditional on the
+`NewBooleanGate(b)` is shorthand for `NewVersionGate("", nil).When(b)`: a gate with no version constraints whose result
+depends only on the boolean. It returns a `*VersionGate`, so further conditions can be added with `When`, and every
+value passed must be true for the gate to enable. This is the idiomatic way to make a mutation conditional on the
 owner's spec, for example applying a user-override mutation only when the user supplied values.
 
 ## Version-Gated Mutations

@@ -10,8 +10,8 @@ manages two resources: a Deployment and a ConfigMap.
 - **Version-gated backward compat mutation**: `BackwardCompatV1Container` activates for versions `< 2.0.0` and rolls the
   baseline back to the v1 layout (container named "server", HTTP port only). Uses a `semver.Constraint` as a
   `feature.VersionConstraint`. The `BackwardCompat` prefix makes the pattern immediately recognizable.
-- **Boolean-gated mutation**: `TracingSidecarMutation` injects a Jaeger sidecar. It is gated via `.When(enabled)`, so
-  the sidecar is added only when tracing is on and removed when it is off.
+- **Boolean-gated mutation**: `TracingSidecarMutation` injects a Jaeger sidecar. It is gated with
+  `feature.NewBooleanGate(enabled)`, so the sidecar is added only when tracing is on and removed when it is off.
 - **Mutation ordering for container name stability**: `DebugLoggingMutation` targets `ContainerNamed("app")` and is
   registered before `BackwardCompatV1Container`. This ensures it always sees the baseline name, even though the backward
   compat mutation renames the container for older versions. The env var edit carries through the rename because the

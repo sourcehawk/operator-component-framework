@@ -176,8 +176,8 @@ func BaseDeployment(owner *app.ExampleApp) *appsv1.Deployment {
 ```
 
 Now the mutation. It targets the container named `app` and sets an environment variable. The gate is built with
-`feature.NewVersionGate("", nil).When(enabled)`: passing an empty version and no constraints, then `.When(enabled)`,
-yields a gate that fires purely on the boolean. When `enabled` is `false`, the framework skips the edit.
+`feature.NewBooleanGate(enabled)`: a gate with no version constraints whose result is driven purely by the boolean. When
+`enabled` is `false`, the framework skips the edit.
 
 ```go
 package features
@@ -194,7 +194,7 @@ import (
 func DebugLoggingMutation(enabled bool) deployment.Mutation {
     return deployment.Mutation{
         Name:    "DebugLogging",
-        Feature: feature.NewVersionGate("", nil).When(enabled),
+        Feature: feature.NewBooleanGate(enabled),
         Mutate: func(m *deployment.Mutator) error {
             m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
                 ce.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})

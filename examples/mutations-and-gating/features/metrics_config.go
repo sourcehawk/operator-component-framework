@@ -7,10 +7,10 @@ import (
 
 // MetricsConfigMutation adds a Prometheus metrics section to app.yaml.
 // It is boolean-gated on the enableMetrics flag.
-func MetricsConfigMutation(version string, enableMetrics bool) configmap.Mutation {
+func MetricsConfigMutation(enableMetrics bool) configmap.Mutation {
 	return configmap.Mutation{
 		Name:    "metrics-config",
-		Feature: feature.NewVersionGate(version, nil).When(enableMetrics),
+		Feature: feature.NewBooleanGate(enableMetrics),
 		Mutate: func(m *configmap.Mutator) error {
 			m.MergeYAML("app.yaml", `
 metrics:

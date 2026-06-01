@@ -32,6 +32,44 @@ func (r *BaseResource[T, M]) Identity() string {
 	return r.IdentityFunc(r.DesiredObject)
 }
 
+// RegisteredMutations returns the deduplicated Names of every mutation registered
+// on the resource, in registration order, independent of the version it was built
+// at. It satisfies concepts.MutationInspector.
+func (r *BaseResource[T, M]) RegisteredMutations() []string {
+	seen := make(map[string]struct{}, len(r.Mutations))
+	names := make([]string, 0, len(r.Mutations))
+	for _, m := range r.Mutations {
+		if _, ok := seen[m.Name]; ok {
+			continue
+		}
+		seen[m.Name] = struct{}{}
+		names = append(names, m.Name)
+	}
+	return names
+}
+
+// FiringSet returns the Names of registered mutations whose gate is enabled for the
+// version the resource was built at, in registration order. A mutation with a nil
+// Feature fires unconditionally. It returns an error if any gate's Enabled
+// evaluation fails. It satisfies concepts.MutationInspector.
+func (r *BaseResource[T, M]) FiringSet() ([]string, error) {
+	firing := make([]string, 0, len(r.Mutations))
+	for _, m := range r.Mutations {
+		if m.Feature == nil {
+			firing = append(firing, m.Name)
+			continue
+		}
+		enabled, err := m.Feature.Enabled()
+		if err != nil {
+			return nil, fmt.Errorf("evaluating gate for mutation %q: %w", m.Name, err)
+		}
+		if enabled {
+			firing = append(firing, m.Name)
+		}
+	}
+	return firing, nil
+}
+
 // Object returns a deep copy of the desired object.
 func (r *BaseResource[T, M]) Object() (client.Object, error) {
 	obj, ok := r.DesiredObject.DeepCopyObject().(client.Object)

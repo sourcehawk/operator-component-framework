@@ -169,6 +169,15 @@ Write the emitter once against the interface, then lift it into each kind's `Mut
 `LiftMutation` adapter before registering it:
 
 ```go
+import (
+	corev1 "k8s.io/api/core/v1"
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives/daemonset"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives/statefulset"
+)
+
 func emitAuthEnv() feature.Mutation[primitives.WorkloadMutator] {
 	return feature.Mutation[primitives.WorkloadMutator]{
 		Name: "auth-env",
@@ -181,11 +190,18 @@ func emitAuthEnv() feature.Mutation[primitives.WorkloadMutator] {
 
 zeebeSts.WithMutation(statefulset.LiftMutation(emitAuthEnv()))
 gatewayDeploy.WithMutation(deployment.LiftMutation(emitAuthEnv()))
+nodeAgentDs.WithMutation(daemonset.LiftMutation(emitAuthEnv()))
 ```
 
-`LiftMutation` carries the mutation's `Name` and `Feature` through unchanged. The interface deliberately omits
-kind-specific operations (the spec editors, `EnsureReplicas`, and the StatefulSet-only VolumeClaimTemplate methods);
-reach for the concrete mutator type when you need those.
+Each package's `LiftMutation` returns that package's own `Mutation` type (`statefulset.LiftMutation` returns a
+`statefulset.Mutation`, and so on), which is the concrete type that builder's `WithMutation` accepts. The lift is what
+bridges an interface-typed emitter to the kind's concrete mutation type. The mutation's `Name` and `Feature` gate carry
+through unchanged, so a lifted mutation gates and composes alongside natively-typed mutations on the same builder.
+
+The interface deliberately omits operations that are not common to all three kinds: the per-kind spec editors
+(`EditStatefulSetSpec`, `EditDeploymentSpec`, `EditDaemonSetSpec`), `EnsureReplicas` (the DaemonSet mutator has no
+replica field), and the StatefulSet-only VolumeClaimTemplate methods. Reach for the concrete mutator type when you need
+those.
 
 ## Mutation Editors
 

@@ -155,18 +155,18 @@ function accepts).
 ```go
 var gen = goldengen.New(goldengen.Config[*app.ExampleApp]{
     Dir:      "testdata/version_matrix",
-    Versions: []string{"8.7.0", "8.8.2", "8.9.0"},
+    Versions: []string{"1.0.0", "1.5.0", "2.0.0"},
     Fixtures: []goldengen.Fixture[*app.ExampleApp]{{
         Name: "default",
         Spec: defaultCluster(),
         Requires: []goldengen.Expect{
             {Name: "ContainerImage"},
-            {Name: "ClusterEnv/Pre89", For: "8.8.2"},
-            {Name: "ClusterEnv/Unified89", For: "8.9.0"},
+            {Name: "PeerDiscovery/PreV2", For: "1.5.0"},
+            {Name: "PeerDiscovery/V2", For: "2.0.0"},
         },
         Forbids: []goldengen.Expect{
-            {Name: "ClusterEnv/Unified89", For: "8.8.2"},
-            {Name: "ClusterEnv/Pre89", For: "8.9.0"},
+            {Name: "PeerDiscovery/V2", For: "1.5.0"},
+            {Name: "PeerDiscovery/PreV2", For: "2.0.0"},
         },
     }},
     Build: func(version string, spec *app.ExampleApp) (goldengen.Unit, error) {
@@ -227,26 +227,26 @@ The firing set at a version is the set of registered mutations whose gate is ena
 fires unconditionally). A **regime** is a maximal group of swept versions sharing an identical firing set. `goldengen`
 writes one golden per regime, named after the regime's representative, instead of one golden per version.
 
-In the example, the universe `8.7.0`, `8.8.2`, `8.9.0` collapses to two regimes:
+In the example, the universe `1.0.0`, `1.5.0`, `2.0.0` collapses to two regimes:
 
 ```mermaid
 flowchart LR
-    v1["8.7.0"] --> r1
-    v2["8.8.2"] --> r1
-    v3["8.9.0"] --> r2
-    r1["regime: ContainerImage + ClusterEnv/Pre89<br/>golden: default/8.7.0.yaml"]
-    r2["regime: ContainerImage + ClusterEnv/Unified89<br/>golden: default/8.9.0.yaml"]
+    v1["1.0.0"] --> r1
+    v2["1.5.0"] --> r1
+    v3["2.0.0"] --> r2
+    r1["regime: ContainerImage + PeerDiscovery/PreV2<br/>golden: default/1.0.0.yaml"]
+    r2["regime: ContainerImage + PeerDiscovery/V2<br/>golden: default/2.0.0.yaml"]
 ```
 
-`8.7.0` and `8.8.2` fire the same set, so they share one golden; `8.9.0` crosses the `ClusterEnv` boundary into its own
-regime. Two goldens cover three versions, and adding more versions inside an existing regime adds no goldens.
+`1.0.0` and `1.5.0` fire the same set, so they share one golden; `2.0.0` crosses the `PeerDiscovery` boundary into its
+own regime. Two goldens cover three versions, and adding more versions inside an existing regime adds no goldens.
 
 ### Version ordering
 
 The representative of a regime is the first version in supplied order that belongs to it. Listing `Versions` ascending
 therefore puts each representative on the **lower inclusive boundary** of its gating range, so the golden's filename
-marks exactly where the regime begins. In the example, `default/8.9.0.yaml` is named for the first version at which the
-unified-discovery regime takes effect. List versions ascending unless you have a specific reason not to.
+marks exactly where the regime begins. In the example, `default/2.0.0.yaml` is named for the first version at which the
+newer peer-discovery regime takes effect. List versions ascending unless you have a specific reason not to.
 
 ### The four assertions
 
@@ -260,8 +260,8 @@ set it must be a version drawn from `Versions`.
 | `Forbids{Name}`       | no        | the mutation fires at **no** swept version     |
 | `Forbids{Name, For}`  | yes       | the mutation **does not** fire at that version |
 
-Pin both sides of a boundary to assert it precisely: in the example `ClusterEnv/Unified89` is required at `8.9.0` and
-forbidden at `8.8.2`, which locks the gate to exactly the `8.9.0` boundary rather than merely "fires somewhere".
+Pin both sides of a boundary to assert it precisely: in the example `PeerDiscovery/V2` is required at `2.0.0` and
+forbidden at `1.5.0`, which locks the gate to exactly the `2.0.0` boundary rather than merely "fires somewhere".
 
 ### Completeness accounting
 
@@ -295,19 +295,19 @@ representative version, the versions it covers, and the shared firing set.
 fixtures:
   - name: default
     regimes:
-      - representative: 8.7.0
+      - representative: 1.0.0
         versions:
-          - 8.7.0
-          - 8.8.2
+          - 1.0.0
+          - 1.5.0
         firing:
-          - ClusterEnv/Pre89
           - ContainerImage
-      - representative: 8.9.0
+          - PeerDiscovery/PreV2
+      - representative: 2.0.0
         versions:
-          - 8.9.0
+          - 2.0.0
         firing:
-          - ClusterEnv/Unified89
           - ContainerImage
+          - PeerDiscovery/V2
 ```
 
 Reviewing the manifest diff in a pull request shows at a glance how the gating coverage changed: a new regime, a moved
@@ -336,9 +336,9 @@ from an external file under `specFile:` (resolved relative to the matrix file), 
 ```yaml
 dir: testdata/version_matrix
 versions:
-  - "8.7.0"
-  - "8.8.2"
-  - "8.9.0"
+  - "1.0.0"
+  - "1.5.0"
+  - "2.0.0"
 exclude: []
 fixtures:
   - name: default
@@ -349,13 +349,13 @@ fixtures:
         name: demo
         namespace: default
       spec:
-        version: 8.7.0
+        version: 1.0.0
     requires:
       - { name: ContainerImage }
-      - { name: ClusterEnv/Pre89, for: "8.8.2" }
-      - { name: ClusterEnv/Unified89, for: "8.9.0" }
+      - { name: PeerDiscovery/PreV2, for: "1.5.0" }
+      - { name: PeerDiscovery/V2, for: "2.0.0" }
     forbids:
-      - { name: ClusterEnv/Unified89, for: "8.8.2" }
+      - { name: PeerDiscovery/V2, for: "1.5.0" }
   - name: tls
     specFile: fixtures/tls.yaml # external custom resource
     requires:

@@ -17,9 +17,9 @@ spec:
     spec:
       containers:
       - env:
-        - name: CLUSTER_DISCOVERY
-          value: unified-raft
-        image: example/db:8.9.0
+        - name: PEER_DISCOVERY
+          value: legacy
+        image: example/db:1.0.0
         name: db
         resources: {}
   updateStrategy: {}

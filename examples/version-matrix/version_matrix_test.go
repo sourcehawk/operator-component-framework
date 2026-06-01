@@ -50,18 +50,18 @@ func defaultCluster() *app.ExampleApp {
 // regime's representative lands on the lower inclusive boundary of its gating range.
 var gen = goldengen.New(goldengen.Config[*app.ExampleApp]{
 	Dir:      "testdata/version_matrix",
-	Versions: []string{"8.7.0", "8.8.2", "8.9.0"},
+	Versions: []string{"1.0.0", "1.5.0", "2.0.0"},
 	Fixtures: []goldengen.Fixture[*app.ExampleApp]{{
 		Name: "default",
 		Spec: defaultCluster(),
 		Requires: []goldengen.Expect{
-			{Name: "ContainerImage"},                     // fires at every version
-			{Name: "ClusterEnv/Pre89", For: "8.8.2"},     // legacy discovery before 8.9
-			{Name: "ClusterEnv/Unified89", For: "8.9.0"}, // unified discovery from 8.9
+			{Name: "ContainerImage"},                    // fires at every version
+			{Name: "PeerDiscovery/PreV2", For: "1.5.0"}, // legacy format before 2.0.0
+			{Name: "PeerDiscovery/V2", For: "2.0.0"},    // new format from 2.0.0
 		},
 		Forbids: []goldengen.Expect{
-			{Name: "ClusterEnv/Unified89", For: "8.8.2"}, // not before the boundary
-			{Name: "ClusterEnv/Pre89", For: "8.9.0"},     // not after the boundary
+			{Name: "PeerDiscovery/V2", For: "1.5.0"},    // not before the boundary
+			{Name: "PeerDiscovery/PreV2", For: "2.0.0"}, // not after the boundary
 		},
 	}},
 	Build: func(version string, spec *app.ExampleApp) (goldengen.Unit, error) {

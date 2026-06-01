@@ -27,24 +27,24 @@ branch.
 | Issue | Branch                        | Worktree path                                 | PR (→ base)                            | Status      |
 | ----- | ----------------------------- | --------------------------------------------- | -------------------------------------- | ----------- |
 | #132  | pr/132-mutation-introspection | .claude/worktrees/version-matrix-goldens--132 | #136 → feature/version-matrix-goldens  | self-merged |
-| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #137 → feature/version-matrix-goldens | self-merged |
-| #134  | pr/134-accounting-docs        | .claude/worktrees/version-matrix-goldens--134 | #<pr> → feature/version-matrix-goldens | not-started |
-| #135  | pr/135-yaml-loader            | .claude/worktrees/version-matrix-goldens--135 | #<pr> → feature/version-matrix-goldens | not-started |
+| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #137 → feature/version-matrix-goldens  | self-merged |
+| #134  | pr/134-accounting-docs        | .claude/worktrees/version-matrix-goldens--134 | #<pr> → feature/version-matrix-goldens | in-progress |
+| #135  | pr/135-yaml-loader            | .claude/worktrees/version-matrix-goldens--135 | #<pr> → feature/version-matrix-goldens | in-progress |
 
 ## Contracts
 
-| Name                   | Realization                                                   | Realized in | Status  |
-| ---------------------- | ------------------------------------------------------------- | ----------- | ------- |
-| `MutationInspector`    | sequential (merges to feature branch before #133 branches)    | #136 (#132) | locked  |
-| `golden.Serialize*`    | sequential (merges to feature branch before #133 branches)    | #136 (#132) | locked  |
-| `goldengen` public API | sequential (merges to feature branch before #134/#135 branch) | #137 (#133) | locked  |
+| Name                   | Realization                                                   | Realized in | Status |
+| ---------------------- | ------------------------------------------------------------- | ----------- | ------ |
+| `MutationInspector`    | sequential (merges to feature branch before #133 branches)    | #136 (#132) | locked |
+| `golden.Serialize*`    | sequential (merges to feature branch before #133 branches)    | #136 (#132) | locked |
+| `goldengen` public API | sequential (merges to feature branch before #134/#135 branch) | #137 (#133) | locked |
 
 All three are sequential merge dependencies; no pre-merge stub PRs are needed. #134 and #135 share only #133's public
 API and expose nothing to each other.
 
 ## Bubble-up log
 
-- _No concerns yet._
+- **2026-06-01 — wave-3 file ownership (pre-emptive).** #134 and #135 both nominally touch `docs/testing.md` and `examples/version-matrix/`. Resolution: #134 owns `generator.go` (AssertComplete), `examples/version-matrix/`, and all of `docs/testing.md` (including the `LoadMatrix` section, written against the locked plan API). #135 touches only `pkg/testing/goldengen/loadmatrix.go` + test + testdata. Zero overlapping files, so the two run parallel without conflict. Propagated into both dispatch prompts. If #135 must change the `LoadMatrix` signature, it reports back and the orchestrator propagates the doc fix to #134.
 
 ## Resume checklist
 

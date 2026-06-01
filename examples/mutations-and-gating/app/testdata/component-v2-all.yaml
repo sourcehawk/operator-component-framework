@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: my-app
+  name: my-app-app
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: my-app
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - env:
+        - name: LOG_LEVEL
+          value: debug
+        - name: JAEGER_AGENT_HOST
+          value: localhost
+        image: my-app:2.0.0
+        name: app
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: health
+        resources: {}
+      - env:
+        - name: JAEGER_AGENT_HOST
+          value: localhost
+        image: jaegertracing/jaeger-agent:1.28
+        name: jaeger-agent
+        resources: {}
+---
+apiVersion: v1
+data:
+  app.yaml: |
+    metrics:
+      enabled: true
+      path: /metrics
+      port: 9090
+    server:
+      port: 8080
+      timeout: 30s
+kind: ConfigMap
+metadata:
+  labels:
+    app: my-app
+  name: my-app-config
+  namespace: default

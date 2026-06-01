@@ -8,27 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // TestTracingSidecarMutation verifies that the mutation injects a Jaeger
 // sidecar and sets JAEGER_AGENT_HOST on all containers.
 func TestTracingSidecarMutation(t *testing.T) {
-	base := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec: appsv1.DeploymentSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{Name: "web"},
-					},
-				},
-			},
-		},
-	}
-
-	res, err := deployment.NewBuilder(base).
+	res, err := deployment.NewBuilder(baseDeployment()).
 		WithMutation(features.TracingSidecarMutation(true)).
 		Build()
 	require.NoError(t, err)

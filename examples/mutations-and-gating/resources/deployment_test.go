@@ -4,11 +4,11 @@ import (
 	"flag"
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/examples/mutations-and-gating/features"
 	"github.com/sourcehawk/operator-component-framework/examples/mutations-and-gating/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
-	"github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -16,110 +16,108 @@ import (
 
 var update = flag.Bool("update", false, "update golden files")
 
-func testOwner(version string) *sharedapp.ExampleApp {
-	owner := &sharedapp.ExampleApp{
-		Spec: sharedapp.ExampleAppSpec{Version: version},
-	}
+func testOwner(spec sharedapp.ExampleAppSpec) *sharedapp.ExampleApp {
+	owner := &sharedapp.ExampleApp{Spec: spec}
 	owner.Name = "my-app"
 	owner.Namespace = "default"
 	return owner
 }
 
-// TestDeploymentShape verifies the Deployment's rendered YAML against golden
-// files for each supported version and feature combination.
+// TestDeploymentResource is the resource-level testing layer for the Deployment.
+// It exercises the real NewDeploymentResource factory (not an inline rebuild) and
+// asserts two things per case:
 //
-// The baseline object (BaseDeployment) always reflects the latest version's
-// desired state (v2: container "app", HTTP + health ports). Legacy mutations
-// roll it back for older versions (v1: container "server", HTTP port only).
+//  1. Introspection: exactly the expected set of mutations fires for the owner
+//     spec, via the concepts.MutationInspector the built resource implements. This
+//     pins the gating decisions independently of the rendered bytes, so a gate
+//     regression is reported as a firing-set mismatch rather than a golden diff.
+//  2. Golden: the rendered YAML matches the snapshot for that version and feature
+//     combination, catching shape regressions (e.g. a baseline change that breaks
+//     the v1 backward-compat rollback).
 //
-// Mutation registration order mirrors NewDeploymentResource: DebugLogging
-// targets ContainerNamed("app") and must come before LegacyContainer which
-// renames the container. TracingSidecar uses AllContainers and is
-// order-insensitive.
-//
-// These snapshots catch unintended regressions: if someone updates the
-// baseline to accommodate a new v3 layout, the v1 and v2 golden files will
-// fail unless the corresponding backward compat mutations still produce the
-// correct shape. This ensures that changes to the latest version do not silently
-// break the resource shape served to older versions.
-func TestDeploymentShape(t *testing.T) {
+// The owner spec drives the build: DebugLogging is boolean-gated on
+// EnableDebugLogging, Tracing on EnableTracing, and BackwardCompatV1Container is
+// version-gated to fire for versions < 2.0.0.
+func TestDeploymentResource(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, appsv1.AddToScheme(scheme))
 
 	tests := []struct {
-		name    string
-		version string
-		debug   bool
-		tracing bool
-		golden  string
+		name       string
+		spec       sharedapp.ExampleAppSpec
+		wantFiring []string
+		goldenFile string
 	}{
-		// v1 cases: BackwardCompatV1Container fires and rolls back the v2
-		// baseline to the v1 container layout. If the baseline changes,
-		// these golden files catch any v1 regression.
+		// v1 cases: BackwardCompatV1Container fires (version < 2.0.0) and rolls the
+		// v2 baseline back to the v1 container layout.
 		{
-			name:    "v1 legacy container",
-			version: "1.9.0",
-			golden:  "testdata/deployment-v1.yaml",
+			name:       "v1 legacy container",
+			spec:       sharedapp.ExampleAppSpec{Version: "1.9.0"},
+			wantFiring: []string{"BackwardCompatV1Container"},
+			goldenFile: "testdata/deployment-v1.yaml",
 		},
 		{
-			name:    "v1 with tracing",
-			version: "1.9.0",
-			tracing: true,
-			golden:  "testdata/deployment-v1-tracing.yaml",
+			name:       "v1 with tracing",
+			spec:       sharedapp.ExampleAppSpec{Version: "1.9.0", EnableTracing: true},
+			wantFiring: []string{"BackwardCompatV1Container", "Tracing"},
+			goldenFile: "testdata/deployment-v1-tracing.yaml",
 		},
 		{
-			name:    "v1 with debug",
-			version: "1.9.0",
-			debug:   true,
-			golden:  "testdata/deployment-v1-debug.yaml",
+			name:       "v1 with debug",
+			spec:       sharedapp.ExampleAppSpec{Version: "1.9.0", EnableDebugLogging: true},
+			wantFiring: []string{"BackwardCompatV1Container", "DebugLogging"},
+			goldenFile: "testdata/deployment-v1-debug.yaml",
 		},
 		{
-			name:    "v1 with tracing and debug",
-			version: "1.9.0",
-			debug:   true,
-			tracing: true,
-			golden:  "testdata/deployment-v1-tracing-debug.yaml",
+			name:       "v1 with tracing and debug",
+			spec:       sharedapp.ExampleAppSpec{Version: "1.9.0", EnableDebugLogging: true, EnableTracing: true},
+			wantFiring: []string{"BackwardCompatV1Container", "DebugLogging", "Tracing"},
+			goldenFile: "testdata/deployment-v1-tracing-debug.yaml",
 		},
-		// v2 cases: no legacy mutation fires, so the baseline is rendered
-		// as-is. These golden files pin the current latest shape.
+		// v2 cases: BackwardCompatV1Container does not fire, so the baseline renders
+		// as the latest shape.
 		{
-			name:    "v2 baseline",
-			version: "2.0.0",
-			golden:  "testdata/deployment-v2.yaml",
-		},
-		{
-			name:    "v2 with tracing",
-			version: "2.0.0",
-			tracing: true,
-			golden:  "testdata/deployment-v2-tracing.yaml",
+			name:       "v2 baseline",
+			spec:       sharedapp.ExampleAppSpec{Version: "2.0.0"},
+			wantFiring: []string{},
+			goldenFile: "testdata/deployment-v2.yaml",
 		},
 		{
-			name:    "v2 with debug",
-			version: "2.0.0",
-			debug:   true,
-			golden:  "testdata/deployment-v2-debug.yaml",
+			name:       "v2 with tracing",
+			spec:       sharedapp.ExampleAppSpec{Version: "2.0.0", EnableTracing: true},
+			wantFiring: []string{"Tracing"},
+			goldenFile: "testdata/deployment-v2-tracing.yaml",
 		},
 		{
-			name:    "v2 with tracing and debug",
-			version: "2.0.0",
-			debug:   true,
-			tracing: true,
-			golden:  "testdata/deployment-v2-tracing-debug.yaml",
+			name:       "v2 with debug",
+			spec:       sharedapp.ExampleAppSpec{Version: "2.0.0", EnableDebugLogging: true},
+			wantFiring: []string{"DebugLogging"},
+			goldenFile: "testdata/deployment-v2-debug.yaml",
+		},
+		{
+			name:       "v2 with tracing and debug",
+			spec:       sharedapp.ExampleAppSpec{Version: "2.0.0", EnableDebugLogging: true, EnableTracing: true},
+			wantFiring: []string{"DebugLogging", "Tracing"},
+			goldenFile: "testdata/deployment-v2-tracing-debug.yaml",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			owner := testOwner(tt.version)
+			owner := testOwner(tt.spec)
 
-			res, err := deployment.NewBuilder(resources.BaseDeployment(owner)).
-				WithMutation(features.DebugLoggingMutation(tt.debug)).
-				WithMutation(features.BackwardCompatV1Container(tt.version)).
-				WithMutation(features.TracingSidecarMutation(tt.tracing)).
-				Build()
+			res, err := resources.NewDeploymentResource(owner)
 			require.NoError(t, err)
 
-			golden.AssertYAML(t, tt.golden, res, golden.WithScheme(scheme), golden.Update(*update))
+			inspector, ok := res.(concepts.MutationInspector)
+			require.True(t, ok, "resource must implement MutationInspector")
+			firing, err := inspector.FiringSet()
+			require.NoError(t, err)
+			assert.ElementsMatch(t, tt.wantFiring, firing)
+
+			previewer, ok := res.(golden.Previewer)
+			require.True(t, ok, "resource must implement golden.Previewer")
+			golden.AssertYAML(t, tt.goldenFile, previewer, golden.WithScheme(scheme), golden.Update(*update))
 		})
 	}
 }

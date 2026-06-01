@@ -34,6 +34,8 @@ Verify the real API before using or documenting it. Key packages:
 - `pkg/component/` — builder, reconciliation, condition types, participation modes
 - `pkg/component/concepts/` — lifecycle interfaces and their exact status type constants
 - `pkg/primitives/` — kubernetes primitive resource wrappers with builders and mutators
+- `pkg/primitives/` (top-level package) — `WorkloadMutator`, the editing surface shared by the pod-workload mutators,
+  plus the per-kind `LiftMutation` adapters
 - `pkg/generic/` — generic building blocks for custom resource wrappers (reconciliation, mutation sequencing,
   suspension, data extraction)
 - `pkg/mutation/editors/` — available methods per editor type

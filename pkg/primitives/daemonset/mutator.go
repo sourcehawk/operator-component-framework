@@ -4,6 +4,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -11,6 +12,11 @@ import (
 // Mutation defines a mutation that is applied to a daemonset Mutator
 // only if its associated feature.VersionGate is enabled.
 type Mutation feature.Mutation[*Mutator]
+
+// Compile-time guarantee that *Mutator satisfies the shared workload editing
+// surface. If a future change renames or removes a shared method, this breaks
+// the build here instead of drifting silently in downstream consumers.
+var _ primitives.WorkloadMutator = (*Mutator)(nil)
 
 type containerEdit struct {
 	selector selectors.ContainerSelector
@@ -453,4 +459,18 @@ func applyPresenceOp(containers *[]corev1.Container, op containerPresenceOp) {
 	} else {
 		*containers = append(*containers, *op.container)
 	}
+}
+
+// LiftMutation adapts a workload-kind-agnostic mutation into a DaemonSet
+// Mutation so it can be registered with the builder's WithMutation. Name and
+// Feature gating carry over unchanged: when Feature is non-nil and enabled, the
+// lifted Mutation behaves identically to one constructed directly against
+// *Mutator. A nil Mutate is preserved, so ApplyIntent still reports it by name
+// rather than panicking.
+func LiftMutation(m feature.Mutation[primitives.WorkloadMutator]) Mutation {
+	lifted := Mutation{Name: m.Name, Feature: m.Feature}
+	if m.Mutate != nil {
+		lifted.Mutate = func(mut *Mutator) error { return m.Mutate(mut) }
+	}
+	return lifted
 }

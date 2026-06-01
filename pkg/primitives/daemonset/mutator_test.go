@@ -4,14 +4,33 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+	"github.com/sourcehawk/operator-component-framework/pkg/primitives"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// stubGate is a test-only feature.Gate that returns a fixed boolean.
+type stubGate bool
+
+func (g stubGate) Enabled() (bool, error) { return bool(g), nil }
+
+func newSingleContainerDaemonSet() *appsv1.DaemonSet {
+	return &appsv1.DaemonSet{
+		Spec: appsv1.DaemonSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "main"}},
+				},
+			},
+		},
+	}
+}
 
 func TestMutator_EnvVars(t *testing.T) {
 	ds := &appsv1.DaemonSet{
@@ -624,4 +643,84 @@ func TestMutator_InitContainer_OrderingAndSnapshots(t *testing.T) {
 	require.Len(t, ds.Spec.Template.Spec.InitContainers, 1)
 	assert.Equal(t, "init-1-renamed", ds.Spec.Template.Spec.InitContainers[0].Name)
 	assert.Equal(t, "v1-final", ds.Spec.Template.Spec.InitContainers[0].Image)
+}
+
+func TestLiftMutation_CarriesAndInvokes(t *testing.T) {
+	called := false
+	agnostic := feature.Mutation[primitives.WorkloadMutator]{
+		Name: "emit-env",
+		Mutate: func(m primitives.WorkloadMutator) error {
+			called = true
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "SHARED", Value: "x"})
+			return nil
+		},
+	}
+
+	lifted := LiftMutation(agnostic)
+	assert.Equal(t, "emit-env", lifted.Name)
+	assert.Nil(t, lifted.Feature)
+	require.NotNil(t, lifted.Mutate)
+
+	ds := newSingleContainerDaemonSet()
+	m := NewMutator(ds)
+	require.NoError(t, lifted.Mutate(m))
+	require.NoError(t, m.Apply())
+
+	assert.True(t, called)
+	require.Len(t, ds.Spec.Template.Spec.Containers[0].Env, 1)
+	assert.Equal(t, "SHARED", ds.Spec.Template.Spec.Containers[0].Env[0].Name)
+}
+
+func TestLiftMutation_GateEnabledApplies(t *testing.T) {
+	agnostic := feature.Mutation[primitives.WorkloadMutator]{
+		Name:    "gated",
+		Feature: stubGate(true),
+		Mutate: func(m primitives.WorkloadMutator) error {
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "SHARED", Value: "x"})
+			return nil
+		},
+	}
+
+	lifted := LiftMutation(agnostic)
+	conv := feature.Mutation[*Mutator](lifted)
+
+	ds := newSingleContainerDaemonSet()
+	m := NewMutator(ds)
+	require.NoError(t, conv.ApplyIntent(m))
+	require.NoError(t, m.Apply())
+
+	require.Len(t, ds.Spec.Template.Spec.Containers[0].Env, 1)
+	assert.Equal(t, "SHARED", ds.Spec.Template.Spec.Containers[0].Env[0].Name)
+}
+
+func TestLiftMutation_GateDisabledIsNoOp(t *testing.T) {
+	agnostic := feature.Mutation[primitives.WorkloadMutator]{
+		Name:    "gated",
+		Feature: stubGate(false),
+		Mutate: func(m primitives.WorkloadMutator) error {
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "SHARED", Value: "x"})
+			return nil
+		},
+	}
+
+	lifted := LiftMutation(agnostic)
+	assert.Equal(t, stubGate(false), lifted.Feature)
+	conv := feature.Mutation[*Mutator](lifted)
+
+	ds := newSingleContainerDaemonSet()
+	m := NewMutator(ds)
+	require.NoError(t, conv.ApplyIntent(m))
+	require.NoError(t, m.Apply())
+
+	assert.Empty(t, ds.Spec.Template.Spec.Containers[0].Env)
+}
+
+func TestLiftMutation_NilMutatePreserved(t *testing.T) {
+	lifted := LiftMutation(feature.Mutation[primitives.WorkloadMutator]{Name: "nilmut"})
+	assert.Nil(t, lifted.Mutate)
+	conv := feature.Mutation[*Mutator](lifted)
+
+	err := conv.ApplyIntent(NewMutator(newSingleContainerDaemonSet()))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mutation handler of nilmut is nil")
 }

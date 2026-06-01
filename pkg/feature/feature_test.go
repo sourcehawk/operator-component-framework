@@ -163,6 +163,36 @@ func TestVersionGate_WhenChaining(t *testing.T) {
 	assert.False(t, enabled)
 }
 
+func TestNewBooleanGate(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled bool
+		want    bool
+	}{
+		{name: "enabled", enabled: true, want: true},
+		{name: "disabled", enabled: false, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gate := NewBooleanGate(tt.enabled)
+			enabled, err := gate.Enabled()
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, enabled)
+		})
+	}
+}
+
+func TestNewBooleanGate_Chainable(t *testing.T) {
+	// NewBooleanGate returns a *VersionGate, so additional When conditions still
+	// compose: every condition must be true for the gate to be enabled.
+	gate := NewBooleanGate(true).When(false)
+
+	enabled, err := gate.Enabled()
+	assert.NoError(t, err)
+	assert.False(t, enabled)
+}
+
 func TestMutation_ApplyIntent(t *testing.T) {
 	const newValue = "new-value"
 	type testObj struct {

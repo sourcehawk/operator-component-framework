@@ -7,7 +7,7 @@ feature_branch: feature/version-matrix-goldens
 feature_worktree: .claude/worktrees/version-matrix-goldens
 sub_pr_approval: autonomous
 sub_pr_review_loop: off
-integration_pr: #<pr>
+integration_pr: #140
 status: review
 ---
 

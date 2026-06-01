@@ -24,10 +24,10 @@ branch.
 
 ## PRs / worktrees
 
-| Issue | Branch                        | Worktree path                                 | PR (→ base)                            | Status      |
-| ----- | ----------------------------- | --------------------------------------------- | -------------------------------------- | ----------- |
-| #132  | pr/132-mutation-introspection | .claude/worktrees/version-matrix-goldens--132 | #136 → feature/version-matrix-goldens  | self-merged |
-| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #137 → feature/version-matrix-goldens  | self-merged |
+| Issue | Branch                        | Worktree path                                 | PR (→ base)                           | Status      |
+| ----- | ----------------------------- | --------------------------------------------- | ------------------------------------- | ----------- |
+| #132  | pr/132-mutation-introspection | .claude/worktrees/version-matrix-goldens--132 | #136 → feature/version-matrix-goldens | self-merged |
+| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #137 → feature/version-matrix-goldens | self-merged |
 | #134  | pr/134-accounting-docs        | .claude/worktrees/version-matrix-goldens--134 | #139 → feature/version-matrix-goldens | self-merged |
 | #135  | pr/135-yaml-loader            | .claude/worktrees/version-matrix-goldens--135 | #138 → feature/version-matrix-goldens | self-merged |
 
@@ -44,7 +44,12 @@ API and expose nothing to each other.
 
 ## Bubble-up log
 
-- **2026-06-01 — wave-3 file ownership (pre-emptive).** #134 and #135 both nominally touch `docs/testing.md` and `examples/version-matrix/`. Resolution: #134 owns `generator.go` (AssertComplete), `examples/version-matrix/`, and all of `docs/testing.md` (including the `LoadMatrix` section, written against the locked plan API). #135 touches only `pkg/testing/goldengen/loadmatrix.go` + test + testdata. Zero overlapping files, so the two run parallel without conflict. Propagated into both dispatch prompts. If #135 must change the `LoadMatrix` signature, it reports back and the orchestrator propagates the doc fix to #134.
+- **2026-06-01 — wave-3 file ownership (pre-emptive).** #134 and #135 both nominally touch `docs/testing.md` and
+  `examples/version-matrix/`. Resolution: #134 owns `generator.go` (AssertComplete), `examples/version-matrix/`, and all
+  of `docs/testing.md` (including the `LoadMatrix` section, written against the locked plan API). #135 touches only
+  `pkg/testing/goldengen/loadmatrix.go` + test + testdata. Zero overlapping files, so the two run parallel without
+  conflict. Propagated into both dispatch prompts. If #135 must change the `LoadMatrix` signature, it reports back and
+  the orchestrator propagates the doc fix to #134.
 
 ## Resume checklist
 

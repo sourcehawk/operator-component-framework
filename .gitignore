@@ -44,3 +44,5 @@ tmp/
 .context
 CLAUDE.md
 posts
+# Internal planning artifacts (specs/plans), keep local-only
+docs/superpowers/

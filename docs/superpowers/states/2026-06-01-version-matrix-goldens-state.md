@@ -27,7 +27,7 @@ branch.
 | Issue | Branch                        | Worktree path                                 | PR (→ base)                            | Status      |
 | ----- | ----------------------------- | --------------------------------------------- | -------------------------------------- | ----------- |
 | #132  | pr/132-mutation-introspection | .claude/worktrees/version-matrix-goldens--132 | #136 → feature/version-matrix-goldens  | self-merged |
-| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #<pr> → feature/version-matrix-goldens | in-progress |
+| #133  | pr/133-goldengen-core         | .claude/worktrees/version-matrix-goldens--133 | #137 → feature/version-matrix-goldens | self-merged |
 | #134  | pr/134-accounting-docs        | .claude/worktrees/version-matrix-goldens--134 | #<pr> → feature/version-matrix-goldens | not-started |
 | #135  | pr/135-yaml-loader            | .claude/worktrees/version-matrix-goldens--135 | #<pr> → feature/version-matrix-goldens | not-started |
 
@@ -37,7 +37,7 @@ branch.
 | ---------------------- | ------------------------------------------------------------- | ----------- | ------- |
 | `MutationInspector`    | sequential (merges to feature branch before #133 branches)    | #136 (#132) | locked  |
 | `golden.Serialize*`    | sequential (merges to feature branch before #133 branches)    | #136 (#132) | locked  |
-| `goldengen` public API | sequential (merges to feature branch before #134/#135 branch) | #133        | pending |
+| `goldengen` public API | sequential (merges to feature branch before #134/#135 branch) | #137 (#133) | locked  |
 
 All three are sequential merge dependencies; no pre-merge stub PRs are needed. #134 and #135 share only #133's public
 API and expose nothing to each other.

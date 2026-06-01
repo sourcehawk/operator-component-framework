@@ -127,18 +127,34 @@ func CompareComponentYAML(path string, c ComponentPreviewer, opts ...Option) err
 		return fmt.Errorf("Preview failed: %w", err)
 	}
 
+	actual, err := SerializeComponent(objs, cfg.scheme)
+	if err != nil {
+		return fmt.Errorf("failed to serialize component objects to YAML: %w", err)
+	}
+
+	return compareOrUpdate(path, actual, cfg.update)
+}
+
+// Serialize marshals a client.Object to the canonical golden YAML form: TypeMeta
+// resolved (from the object or the scheme), and zero-value noise fields stripped.
+// It is the same serialization CompareYAML uses, exported for tools that generate
+// goldens out of band.
+func Serialize(obj client.Object, scheme *runtime.Scheme) ([]byte, error) {
+	return serializeObject(obj, scheme)
+}
+
+// SerializeComponent marshals multiple objects into a single multi-document YAML
+// stream (--- separated, in the given order), matching CompareComponentYAML.
+func SerializeComponent(objs []client.Object, scheme *runtime.Scheme) ([]byte, error) {
 	docs := make([][]byte, 0, len(objs))
 	for i, obj := range objs {
-		doc, err := serializeObject(obj, cfg.scheme)
+		doc, err := serializeObject(obj, scheme)
 		if err != nil {
-			return fmt.Errorf("failed to serialize object %d to YAML: %w", i, err)
+			return nil, fmt.Errorf("failed to serialize object %d to YAML: %w", i, err)
 		}
 		docs = append(docs, doc)
 	}
-
-	actual := bytes.Join(docs, []byte("---\n"))
-
-	return compareOrUpdate(path, actual, cfg.update)
+	return bytes.Join(docs, []byte("---\n")), nil
 }
 
 // AssertComponentYAML is a test helper that calls [CompareComponentYAML] and

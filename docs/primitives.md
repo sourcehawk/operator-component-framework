@@ -154,6 +154,10 @@ return statefulset.NewBuilder(base).
 
 Calling `WithMutation()` with no arguments is a no-op.
 
+Mutation names must be unique within a resource. `Build` returns an error if two registered mutations share a `Name`,
+because the name is the identifier that gating and error reporting refer to, and a collision would silently mask a
+mis-targeted or dead mutation behind its namesake. The check compares names only and evaluates no feature gates.
+
 ## Mutation Editors
 
 Editors provide scoped, typed APIs for modifying specific parts of a resource. Every editor exposes a `.Raw()` method

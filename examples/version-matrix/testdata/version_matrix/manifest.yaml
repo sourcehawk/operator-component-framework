@@ -1,0 +1,16 @@
+fixtures:
+- name: default
+  regimes:
+  - firing:
+    - ClusterEnv/Pre89
+    - ContainerImage
+    representative: 8.7.0
+    versions:
+    - 8.7.0
+    - 8.8.2
+  - firing:
+    - ClusterEnv/Unified89
+    - ContainerImage
+    representative: 8.9.0
+    versions:
+    - 8.9.0

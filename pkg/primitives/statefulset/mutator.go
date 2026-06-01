@@ -522,3 +522,17 @@ func applyVolumeClaimTemplateOp(vcts *[]corev1.PersistentVolumeClaim, op volumeC
 		*vcts = append(*vcts, *op.pvc)
 	}
 }
+
+// LiftMutation adapts a workload-kind-agnostic mutation into a StatefulSet
+// Mutation so it can be registered with the builder's WithMutation. Name and
+// Feature gating carry over unchanged: when Feature is non-nil and enabled, the
+// lifted Mutation behaves identically to one constructed directly against
+// *Mutator. A nil Mutate is preserved, so ApplyIntent still reports it by name
+// rather than panicking.
+func LiftMutation(m feature.Mutation[primitives.WorkloadMutator]) Mutation {
+	lifted := Mutation{Name: m.Name, Feature: m.Feature}
+	if m.Mutate != nil {
+		lifted.Mutate = func(mut *Mutator) error { return m.Mutate(mut) }
+	}
+	return lifted
+}

@@ -50,21 +50,22 @@ Each resource is registered via `WithResource`. The second argument accepts zero
 control how the component interacts with the resource. A `nil` option is ignored, so a conditionally-assigned option can
 be passed without a guard.
 
-| Option                                              | Behavior                                                                                                      |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| (none)                                              | **Managed**: created or updated via Server-Side Apply; health contributes to the condition                    |
-| `component.ReadOnly()`                              | **Read-only**: fetched but never modified; health still contributes                                           |
-| `component.Delete()` / `component.DeleteWhen(cond)` | **Delete**: removed from the cluster (unconditionally, or when `cond` is true); does not contribute to health |
-| `component.GatedBy(gate)`                           | Deletes the resource when the feature gate is disabled; managed when enabled                                  |
-| `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)             |
-| `component.BlockOnAbsence()`                        | Read-only only: a NotFound records a blocked status and short-circuits the remaining resources                |
-| `component.IgnoreIfAbsent()`                        | Read-only only: a NotFound is silently ignored and last-known state is preserved                              |
-| `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                        |
+| Option                                              | Behavior                                                                                                                                                                                                                                |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| (none)                                              | **Managed**: created or updated via Server-Side Apply; health contributes to the condition                                                                                                                                              |
+| `component.ReadOnly()`                              | **Read-only**: fetched but never modified; health still contributes                                                                                                                                                                     |
+| `component.Delete()` / `component.DeleteWhen(cond)` | **Delete**: removed from the cluster (unconditionally, or when `cond` is true); does not contribute to health                                                                                                                           |
+| `component.GatedBy(gate)`                           | Deletes the resource when the feature gate is disabled; managed when enabled                                                                                                                                                            |
+| `component.OrphanWhen(cond)`                        | **Orphan**: when `cond` is true, removes the component's owner reference and stops managing the resource, leaving the object in the cluster; does not contribute to health. Mutually exclusive with the deletion options and `ReadOnly` |
+| `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)                                                                                                                                       |
+| `component.BlockOnAbsence()`                        | Read-only only: a NotFound records a blocked status and short-circuits the remaining resources                                                                                                                                          |
+| `component.IgnoreIfAbsent()`                        | Read-only only: a NotFound is silently ignored and last-known state is preserved                                                                                                                                                        |
+| `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                                                                                                                                                  |
 
 A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
-`Delete()`, `DeleteWhen()`, and `GatedBy()`; combining them is a build error. `BlockOnAbsence()` and `IgnoreIfAbsent()`
-each require `ReadOnly()` and are mutually exclusive with each other. To conditionally include a read-only resource, use
-[`IncludeWhen`](#includewhen-vs-gatedby), which omits the resource without deleting it.
+`Delete()`, `DeleteWhen()`, `GatedBy()`, and `OrphanWhen()`; combining them is a build error. `BlockOnAbsence()` and
+`IgnoreIfAbsent()` each require `ReadOnly()` and are mutually exclusive with each other. To conditionally include a
+read-only resource, use [`IncludeWhen`](#includewhen-vs-gatedby), which omits the resource without deleting it.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 
@@ -113,12 +114,14 @@ A secondary use is migrating a resource from tracked to untracked without deleti
 component no longer creates, updates, or deletes it, so an already-present resource is left in place, rather than
 removed the way `GatedBy` or `DeleteWhen` would.
 
-!!! warning
+!!! note "Untracking vs. releasing"
 
-    Untracking does not remove the owner reference. While the resource was managed, the component set a controller owner
-    reference on it (for scope-compatible resources), and after untracking it never strips that reference. The resource
-    survives reconciliation, but Kubernetes still garbage-collects it when the owner is deleted. To make it outlive the
-    owner, remove the owner reference yourself.
+    `IncludeWhen(false, ...)` only stops the component from touching the resource; it does not remove the owner reference
+    the component set while the resource was managed, so Kubernetes still garbage-collects the resource when the owner is
+    deleted. To release a resource so it outlives its owner (for example, to migrate it to a new owner), use
+    [`OrphanWhen(cond)`](#resource-registration-options) instead: when the condition is true the component removes its
+    owner reference and stops managing the resource, leaving the object in the cluster and no longer tied to the owner's
+    lifecycle.
 
 ## Feature Gates
 

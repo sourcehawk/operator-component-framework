@@ -463,5 +463,10 @@ gen := goldengen.New(cfg).WithUpdate(*update)
 gen.Run(t)
 ```
 
+`LoadMatrix` does not call `buildUnit` itself. It loads the fixtures and versions from the file and stores `buildUnit`
+as the config's `Build` field, then the config runs exactly like a Go one: `goldengen.New(cfg)` wraps it, and `gen.Run`
+calls `buildUnit(version, spec)` for each version and fixture during the sweep, passing the spec it unmarshaled from the
+file. The YAML supplies the data (specs, versions, expectations); `buildUnit` supplies the build logic.
+
 `LoadMatrix` errors if a fixture sets both `spec` and `specFile` or neither, if a `for` value is not in `versions`, or
 if any spec fails to unmarshal into `T`.

@@ -437,9 +437,11 @@ fixtures:
 ```
 
 ```go
-cfg, err := goldengen.LoadMatrix("testdata/matrix.yaml",
+cfg, err := goldengen.LoadMatrix(
+    "testdata/matrix.yaml",
     func() *app.ExampleApp { return &app.ExampleApp{} },
-    buildUnit)
+    buildUnit,
+)
 require.NoError(t, err)
 
 gen := goldengen.New(cfg).WithUpdate(*update)

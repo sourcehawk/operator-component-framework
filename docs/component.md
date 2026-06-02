@@ -7,11 +7,14 @@ A **Component** groups related Kubernetes resources into one behavioral unit. It
 their shared lifecycle (feature gating, prerequisites, suspension, grace periods, guards), and reports their aggregate
 health through a single condition on the owner CRD.
 
-```text
-Controller
-  └─ Component              one condition on the owner
-      └─ Resource Primitive  Deployment, ConfigMap, Service, ...
-           └─ Kubernetes Object
+```mermaid
+flowchart TD
+    Controller["Controller"]
+    Component["Component<br/>one condition on the owner"]
+    Primitive["Resource Primitive<br/>Deployment, ConfigMap, Service, ..."]
+    Object["Kubernetes Object"]
+
+    Controller --> Component --> Primitive --> Object
 ```
 
 For the broader mental model and the primitive layer beneath a component, see the [Primitives Overview](primitives.md).

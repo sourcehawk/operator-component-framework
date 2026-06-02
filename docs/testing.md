@@ -400,9 +400,11 @@ func LoadMatrix[T any](
 ) (Config[T], error)
 ```
 
-`newSpec` returns a fresh, empty spec to unmarshal each fixture into; `build` is the same callback you would set on a Go
-`Config`, and it supplies the scheme by passing it to `goldengen.Resource` or `goldengen.Component`. The returned config
-is validated before it is returned.
+`newSpec` returns a fresh, empty spec to unmarshal a fixture into, called once per fixture at load time, not per build.
+`build` is the same callback you would set on a Go `Config`, including the deep copy: it receives the loaded fixture
+spec, which `goldengen` reuses across every version in the sweep, so it must copy the spec before setting the version,
+exactly as the [Go `Config.Build`](#declare-the-matrix) does. It supplies the scheme by passing the built unit through
+`goldengen.Resource` or `goldengen.Component`. The returned config is validated before it is returned.
 
 A matrix file mirrors `Config` minus the Go-only `build`. Each fixture supplies its spec either inline under `spec:` or
 from an external file under `specFile:` (resolved relative to the matrix file), exactly one of the two:

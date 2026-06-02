@@ -347,8 +347,18 @@ deliberately set it aside with `Exclude`.
 
 `AssertComplete` checks coverage, not firing. It confirms every registered mutation is named in a `Requires` or
 `Exclude`; it never evaluates whether a mutation fired. Firing is verified separately, when `Run` checks each `Requires`
-during the sweep (a bare `Requires` fails if its mutation never fires anywhere). The two compose: `AssertComplete`
-forces every mutation to be asserted, and the `Requires` it forces you to write then proves the mutation actually fires.
+during the sweep. The two compose: `AssertComplete` forces every mutation to be asserted, and the `Requires` it forces
+you to write then proves the mutation actually fires.
+
+| Check            | Runs             | Fails when                                                   |
+| ---------------- | ---------------- | ------------------------------------------------------------ |
+| `Requires{Name}` | during the sweep | the named mutation does **not** fire                         |
+| `Forbids{Name}`  | during the sweep | the named mutation **does** fire                             |
+| `AssertComplete` | from `TestMain`  | a registered mutation is in neither `Requires` nor `Exclude` |
+
+`Requires` and `Forbids` assert behavior (firing); `AssertComplete` asserts coverage, on registration. Nothing fails
+merely because a mutation fired without a matching `Requires`. The coverage net is registration-based: every registered
+mutation must be required or excluded.
 
 ### The manifest
 

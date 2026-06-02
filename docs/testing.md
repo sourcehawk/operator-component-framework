@@ -96,9 +96,22 @@ implement `Preview` on a custom resource.
 
 ### Assert a single resource
 
-`AssertYAML` previews a built primitive, serializes it, and fails the test on any difference from the golden file.
+`AssertYAML` previews a built primitive, serializes it, and fails the test on any difference from the golden file. The
+test helpers live in `github.com/sourcehawk/operator-component-framework/pkg/testing/golden`; `app` and `resources` are
+your own packages, and `scheme` is the package-level scheme from the section above.
 
 ```go
+import (
+    "flag"
+    "testing"
+
+    "github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
+    "github.com/stretchr/testify/require"
+
+    "your.module/app"
+    "your.module/resources"
+)
+
 var update = flag.Bool("update", false, "update golden files")
 
 func TestDeploymentGolden(t *testing.T) {
@@ -109,14 +122,16 @@ func TestDeploymentGolden(t *testing.T) {
     res, err := resources.NewDeploymentResource(owner)
     require.NoError(t, err)
 
-    // The factory returns a component.Resource; the built primitive also
-    // implements golden.Previewer.
     previewer, ok := res.(golden.Previewer)
     require.True(t, ok)
     golden.AssertYAML(t, "testdata/deployment.yaml", previewer,
         golden.WithScheme(scheme), golden.Update(*update))
 }
 ```
+
+`resources.NewDeploymentResource` returns a `component.Resource`, the lean interface the reconciler uses. Rendering is a
+separate capability, so the test asserts to `golden.Previewer` (the contract shown above); for any built-in primitive
+the assertion always succeeds, since `generic.BaseResource` implements `Preview`.
 
 `golden.Update(*update)` overwrites the golden file (creating intermediate directories) instead of comparing. Generate
 the golden once, inspect it, then commit it:
@@ -137,7 +152,10 @@ convention, so the files are invisible to the compiler.
 ### Assert a component
 
 `AssertComponentYAML` previews every resource a component would apply and serializes them into one multi-document YAML
-stream (`---` separated, in apply order).
+stream (`---` separated, in apply order). `buildComponent` here is your own helper that assembles the component with
+`component.NewComponentBuilder` (see [Getting Started](getting-started.md#step-5-wire-the-reconciler) for building one);
+extract it from your reconciler so the test and the controller build the component the same way. A built
+`*component.Component` satisfies `golden.ComponentPreviewer` directly, so no type assertion is needed.
 
 ```go
 func TestComponentGolden(t *testing.T) {
@@ -252,12 +270,31 @@ The fields:
 
 `Build` returns a `Unit`, the introspectable-and-renderable handle the generator works with. Adapt a built primitive
 with `goldengen.Resource(res, scheme)` or a built component with `goldengen.Component(comp, scheme)`. Both delegate
-rendering to `golden.Serialize` / `golden.SerializeComponent`.
+rendering to `golden.Serialize` / `golden.SerializeComponent`. For component-level coverage, build the whole component
+in `Build` and wrap it instead; everything else (fixtures, gating assertions, the manifest, `AssertComplete`) is
+identical:
+
+```go
+Build: func(version string, spec *app.ExampleApp) (goldengen.Unit, error) {
+    c := spec.DeepCopyObject().(*app.ExampleApp)
+    c.Spec.Version = version
+    comp, err := buildComponent(c) // returns *component.Component, as your reconciler builds it
+    if err != nil {
+        return nil, err
+    }
+    return goldengen.Component(comp, scheme), nil
+},
+```
+
+A component's registered and firing sets are the union of its resources' mutations, deduplicated. So at the component
+layer, `Requires`/`Forbids` and `AssertComplete` range over every mutation any resource in the component registers, not
+a separate component-level set.
 
 `goldengen.Resource` requires that the primitive satisfies both `concepts.MutationInspector` (for `RegisteredMutations`
-and `FiringSet`) and `concepts.Previewable` (for `Preview`). All built-in primitives satisfy both through
-`generic.BaseResource`. For custom resources, see [Custom Resources](custom-resource.md) for how to implement
-`MutationInspector`.
+and `FiringSet`) and `concepts.Previewable` (for `Preview`); `goldengen.Component` requires the equivalent on a
+`*component.Component`. All built-in primitives satisfy both through `generic.BaseResource`, and a built component
+satisfies them by aggregating its resources. For custom resources, see [Custom Resources](custom-resource.md) for how to
+implement `MutationInspector`.
 
 ### Run the sweep
 
@@ -330,6 +367,18 @@ forbidden at `1.5.0`, which locks the gate to exactly the `2.0.0` boundary rathe
 ```go
 func TestMain(m *testing.M) {
     os.Exit(gen.AssertComplete(m.Run()))
+}
+```
+
+With more than one generator in a package (say a resource matrix and a component matrix), there is still one `TestMain`;
+chain the accounting so a violation in either fails the package:
+
+```go
+func TestMain(m *testing.M) {
+    code := m.Run()
+    code = resourceGen.AssertComplete(code)
+    code = componentGen.AssertComplete(code)
+    os.Exit(code)
 }
 ```
 
@@ -464,9 +513,10 @@ gen.Run(t)
 ```
 
 `LoadMatrix` does not call `buildUnit` itself. It loads the fixtures and versions from the file and stores `buildUnit`
-as the config's `Build` field, then the config runs exactly like a Go one: `goldengen.New(cfg)` wraps it, and `gen.Run`
-calls `buildUnit(version, spec)` for each version and fixture during the sweep, passing the spec it unmarshaled from the
-file. The YAML supplies the data (specs, versions, expectations); `buildUnit` supplies the build logic.
+as the config's `Build` field, then the config runs exactly like one declared in Go: `goldengen.New(cfg)` wraps it, and
+`gen.Run` calls `buildUnit(version, spec)` for each version and fixture during the sweep, passing the spec it
+unmarshaled from the file. The YAML supplies the data (specs, versions, expectations); `buildUnit` supplies the build
+logic.
 
 `LoadMatrix` errors if a fixture sets both `spec` and `specFile` or neither, if a `for` value is not in `versions`, or
 if any spec fails to unmarshal into `T`.

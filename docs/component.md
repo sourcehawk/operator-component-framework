@@ -108,8 +108,17 @@ builder.IncludeWhen(spec.ConfigRef != nil, func() component.Resource {
 }, component.ReadOnly(), component.BlockOnAbsence())
 ```
 
-A secondary use is migrating a resource from tracked to untracked without deleting it: passing `include = false` leaves
-an already-present resource in place, unmanaged, rather than removing it the way `GatedBy` or `DeleteWhen` would.
+A secondary use is migrating a resource from tracked to untracked without deleting it. Moving a resource from
+`WithResource` (or `IncludeWhen(true, ...)`) to `IncludeWhen(false, ...)` drops it from the component entirely: the
+component no longer creates, updates, or deletes it, so an already-present resource is left in place, rather than
+removed the way `GatedBy` or `DeleteWhen` would.
+
+!!! warning
+
+    Untracking does not remove the owner reference. While the resource was managed, the component set a controller owner
+    reference on it (for scope-compatible resources), and after untracking it never strips that reference. The resource
+    survives reconciliation, but Kubernetes still garbage-collects it when the owner is deleted. To make it outlive the
+    owner, remove the owner reference yourself.
 
 ## Feature Gates
 

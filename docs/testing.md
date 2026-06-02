@@ -181,9 +181,8 @@ stream, err := golden.SerializeComponent(objs, scheme) // multi-document stream
 ## Coverage with goldengen
 
 `goldengen` is the declarative way to do the resource and component layers when you want coverage rather than a single
-snapshot. It sweeps a set of versions and specs, asserts which mutations fire at each (so you do not call `FiringSet` by
-hand), writes one golden per distinct firing group, and proves through `AssertComplete` that no registered mutation went
-untested.
+snapshot. It sweeps a set of versions and specs, asserts which mutations fire at each, writes one golden per distinct
+firing group, and proves through `AssertComplete` that no registered mutation went untested.
 
 It works at either granularity through one `Unit` abstraction: wrap a built resource with
 `goldengen.Resource(res, scheme)` for resource-level coverage, or a built component with

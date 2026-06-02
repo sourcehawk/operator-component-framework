@@ -10,10 +10,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege: the top level (inherited by the PR build job) is read-only;
+# the Pages and OIDC scopes are granted only to the deploy job below.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -51,6 +51,9 @@ jobs:
     needs: build
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

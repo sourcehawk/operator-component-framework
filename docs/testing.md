@@ -9,11 +9,11 @@ testing layers.
 
 Test a component from the inside out. Each layer asserts something the layer below cannot:
 
-| Layer         | What you assert                                                        | Tool                                                               |
-| ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **Mutation**  | one mutation makes the field changes you intend, on a baseline         | testify, against `Preview()`                                       |
-| **Resource**  | the right mutations fire for a spec, and the rendered output is pinned | `concepts.MutationInspector` and `golden`, or `goldengen.Resource` |
-| **Component** | the whole component renders the resources you expect, applied together | `golden.AssertComponentYAML`, or `goldengen.Component`             |
+| Layer         | What you assert                                                        | Tool                                                       |
+| ------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Mutation**  | one mutation makes the field changes you intend, on a baseline         | testify, against `Preview()`                               |
+| **Resource**  | the right mutations fire for a spec, and the rendered output is pinned | `golden` for a snapshot, `goldengen.Resource` for coverage |
+| **Component** | the whole component renders the resources you expect, applied together | `golden.AssertComponentYAML`, or `goldengen.Component`     |
 
 The
 [`mutations-and-gating` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/mutations-and-gating)
@@ -178,34 +178,6 @@ stream, err := golden.SerializeComponent(objs, scheme) // multi-document stream
 
 `goldengen` is built on exactly these two functions.
 
-## Asserting which mutations fire
-
-A golden pins what a resource renders, but not which mutations produced it. To assert that the gates you expect actually
-fired for a given spec, use the introspection a built primitive exposes through `concepts.MutationInspector`. Build the
-resource through the same factory the reconciler uses, then inspect it:
-
-```go
-import "github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-
-// owner is your CRD instance, with the version and flags you want to test.
-res, err := resources.NewDeploymentResource(owner) // the real factory
-require.NoError(t, err)
-
-inspector := res.(concepts.MutationInspector)
-firing, err := inspector.FiringSet()
-require.NoError(t, err)
-assert.ElementsMatch(t, []string{"DebugLogging"}, firing)
-```
-
-`RegisteredMutations()` returns the name of every mutation registered on the resource; `FiringSet()` returns the subset
-whose gate is enabled for the version and flags the resource was built at. A built `*component.Component` implements the
-same interface, deduplicated across its resources, which is how the component layer asserts firing across a whole
-component.
-
-Asserting the firing set by hand is enough for a single build. To prove that _every_ registered mutation is tested,
-across versions and specs, use `goldengen` below: it is built on exactly this introspection and adds a completeness
-check.
-
 ## Coverage with goldengen
 
 `goldengen` is the declarative way to do the resource and component layers when you want coverage rather than a single
@@ -217,6 +189,12 @@ It works at either granularity through one `Unit` abstraction: wrap a built reso
 `goldengen.Resource(res, scheme)` for resource-level coverage, or a built component with
 `goldengen.Component(comp, scheme)` for component-level coverage. Everything below (fixtures, gating assertions, the
 manifest, completeness) applies the same to both.
+
+!!! note
+
+    `goldengen` classifies firing and checks completeness by reading each unit's `RegisteredMutations()` and
+    `FiringSet()`, the `concepts.MutationInspector` interface every built resource and component implements. You rarely
+    call it directly; `goldengen` is the supported way to assert which mutations fire.
 
 A resource with version-gated mutations behaves differently across versions, but not at every version: behavior changes
 only where a gate flips. Asserting one golden per version is wasteful and obscures where behavior actually changes.

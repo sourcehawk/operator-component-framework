@@ -581,28 +581,23 @@ output, after the capability, not the Kubernetes resource type backing it.
 
 A condition named `DeploymentReconciled` tells a user nothing about which capability is affected. `BackendReady` does.
 
-## Write Golden Tests for Every Supported Version
+## Pin Rendered Output Across Supported Versions
 
-Every supported version should have a golden snapshot. When you update the baseline, golden tests prove that older
-versions still render the object they did before, and that the change touched only the version you intended.
+Every supported version's rendered output should be covered by a golden, so that when you change the baseline you can
+prove older versions still render what they did before and that the change touched only the version you intended. This
+is the safety net that lets you keep the baseline at the latest shape (see
+[Represent Desired State in the Baseline Object](#represent-desired-state-in-the-baseline-object)) without silently
+regressing older ones.
 
-```go
-func TestBackendShape(t *testing.T) {
-    for _, version := range []string{"1.9.0", "2.0.0", "2.1.0"} {
-        t.Run(version, func(t *testing.T) {
-            app := &v1alpha1.WebApp{Spec: v1alpha1.WebAppSpec{Version: version}}
-            res, err := buildBackend(app)
-            require.NoError(t, err)
-            golden.AssertYAML(t, "testdata/backend-"+version+".yaml", res, golden.Update(*update))
-        })
-    }
-}
-```
+Use `goldengen.Resource` rather than a hand-written loop with one golden per version. It sweeps the versions, collapses
+them into firing regimes (one golden per distinct set of firing mutations, not one per version), asserts which mutations
+fire at each version, and proves through `AssertComplete` that every registered mutation is covered. A new version that
+fires the same mutations as an existing one adds no golden; a version that crosses a gate boundary gets its own. See
+[Testing](testing.md) for the mechanics.
 
-Run `go test ./path -update` to regenerate after a deliberate baseline change, then review the diff: the current
-version's golden updates; older version goldens should not. If a baseline change accidentally breaks a compat mutation,
-the diff shows exactly what shifted. For sweeping every supported version and asserting mutation coverage across the
-matrix, see [testing.md](testing.md).
+After a deliberate baseline change, regenerate with `go test ./path -update` and review the diff. Only the regimes you
+meant to change should move. If an older regime's golden shifts, a compat mutation broke, and the diff shows exactly
+what.
 
 ## Further Reading
 

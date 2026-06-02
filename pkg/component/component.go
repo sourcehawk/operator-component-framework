@@ -99,6 +99,7 @@ type Component struct {
 	// Each entry pairs the resource with its full options.
 	reconcileResources []reconcileEntry
 	deleteResources    []Resource
+	orphanResources    []Resource
 	resourceLookup     map[string]Resource
 
 	gracePeriod time.Duration

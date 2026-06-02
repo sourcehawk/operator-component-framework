@@ -1,18 +1,48 @@
 # Testing
 
-This page covers the two test-only packages the framework ships for asserting the desired state your resources and
-components produce: `pkg/testing/golden` for single-build snapshot tests and `pkg/testing/goldengen` for version-matrix
-golden generation. It is aimed at anyone writing tests for primitives or components built with this framework.
+The framework ships two test-only packages: `pkg/testing/golden` for single-build snapshot tests and
+`pkg/testing/goldengen` for declarative coverage across versions and specs. Both are opt-in and import nothing into the
+reconcile path, so a consumer that does not test against them pays nothing. This page organizes them around three
+testing layers.
 
-## Which tool to use
+## The three layers
 
-| Situation                                                       | Tool                                             |
-| --------------------------------------------------------------- | ------------------------------------------------ |
-| Pin the output of one resource or component build               | `golden`                                         |
-| Assert gating across many versions for a version-gated resource | `goldengen`                                      |
-| Generate goldens from a tool outside a test body                | `golden.Serialize` / `golden.SerializeComponent` |
+Test a component from the inside out. Each layer asserts something the layer below cannot:
 
-Both packages are opt-in and import nothing into the reconcile path. A consumer that does not import them pays nothing.
+| Layer         | What you assert                                                        | Tool                                                               |
+| ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Mutation**  | one mutation makes the field changes you intend, on a baseline         | testify, against `Preview()`                                       |
+| **Resource**  | the right mutations fire for a spec, and the rendered output is pinned | `concepts.MutationInspector` and `golden`, or `goldengen.Resource` |
+| **Component** | the whole component renders the resources you expect, applied together | `golden.AssertComponentYAML`, or `goldengen.Component`             |
+
+The
+[`mutations-and-gating` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/mutations-and-gating)
+demonstrates all three, and the
+[`version-matrix` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/version-matrix)
+is a focused walkthrough of `goldengen`.
+
+## Mutation tests
+
+Unit-test a mutation in isolation: build a minimal baseline primitive with only that mutation, preview it, and assert
+the fields it changed. There is no golden file at this layer; the assertion states intent directly.
+
+```go
+func TestDebugLoggingMutation(t *testing.T) {
+    res, err := deployment.NewBuilder(baseDeployment()).
+        WithMutation(features.DebugLoggingMutation(true)).
+        Build()
+    require.NoError(t, err)
+
+    dep, err := res.Preview()
+    require.NoError(t, err)
+
+    container := dep.(*appsv1.Deployment).Spec.Template.Spec.Containers[0]
+    assert.Contains(t, container.Env, corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
+}
+```
+
+Share the minimal `baseDeployment()` / `baseConfigMap()` baselines across a package's mutation tests in a
+`helpers_test.go` so each test declares only what it exercises.
 
 ## Golden snapshots
 
@@ -136,16 +166,55 @@ stream, err := golden.SerializeComponent(objs, scheme) // multi-document stream
 
 `goldengen` is built on exactly these two functions.
 
-## Version matrix generation
+## Asserting which mutations fire
+
+A golden pins what a resource renders, but not which mutations produced it. To assert that the gates you expect actually
+fired for a given spec, use the introspection a built primitive exposes through `concepts.MutationInspector`. Build the
+resource through the same factory the reconciler uses, then inspect it:
+
+```go
+import "github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+
+res, err := resources.NewDeploymentResource(owner) // the real factory
+require.NoError(t, err)
+
+inspector := res.(concepts.MutationInspector)
+firing, err := inspector.FiringSet()
+require.NoError(t, err)
+assert.ElementsMatch(t, []string{"DebugLogging"}, firing)
+```
+
+`RegisteredMutations()` returns the name of every mutation registered on the resource; `FiringSet()` returns the subset
+whose gate is enabled for the version and flags the resource was built at. A built `*component.Component` implements the
+same interface, deduplicated across its resources, which is how the component layer asserts firing across a whole
+component.
+
+Asserting the firing set by hand is enough for a single build. To prove that _every_ registered mutation is tested,
+across versions and specs, use `goldengen` below: it is built on exactly this introspection and adds a completeness
+check.
+
+## Coverage with goldengen
+
+`goldengen` is the declarative way to do the resource and component layers when you want coverage rather than a single
+snapshot. It sweeps a set of versions and specs, asserts which mutations fire at each (so you do not call `FiringSet` by
+hand), writes one golden per distinct firing group, and proves through `AssertComplete` that no registered mutation went
+untested.
+
+It works at either granularity through one `Unit` abstraction: wrap a built resource with
+`goldengen.Resource(res, scheme)` for resource-level coverage, or a built component with
+`goldengen.Component(comp, scheme)` for component-level coverage. Everything below (fixtures, gating assertions, the
+manifest, completeness) applies the same to both.
 
 A resource with version-gated mutations behaves differently across versions, but not at every version: behavior changes
 only where a gate flips. Asserting one golden per version is wasteful and obscures where behavior actually changes.
-`goldengen` sweeps the versions you supply, groups them by which mutations fire, and writes one golden per distinct
-group.
+`goldengen` groups the swept versions by which mutations fire and writes one golden per distinct group.
 
 The worked example lives at
-[`examples/version-matrix`](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/version-matrix).
-The walkthrough below follows it directly.
+[`examples/version-matrix`](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/version-matrix)
+(a single resource); the
+[`mutations-and-gating` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/mutations-and-gating)
+applies the same harness at both the resource and component layers. The walkthrough below follows the version-matrix
+example.
 
 ### Declare the matrix
 

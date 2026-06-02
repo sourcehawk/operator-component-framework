@@ -345,6 +345,11 @@ violations are:
 The effect: registering a new version-gated mutation fails the suite until you either assert it with a `Requires` or
 deliberately set it aside with `Exclude`.
 
+`AssertComplete` checks coverage, not firing. It confirms every registered mutation is named in a `Requires` or
+`Exclude`; it never evaluates whether a mutation fired. Firing is verified separately, when `Run` checks each `Requires`
+during the sweep (a bare `Requires` fails if its mutation never fires anywhere). The two compose: `AssertComplete`
+forces every mutation to be asserted, and the `Requires` it forces you to write then proves the mutation actually fires.
+
 ### The manifest
 
 Alongside the goldens, `Run` writes `<Dir>/manifest.yaml`, a reviewable coverage map: per fixture, each regime with its

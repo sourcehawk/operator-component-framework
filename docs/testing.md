@@ -102,12 +102,18 @@ implement `Preview` on a custom resource.
 var update = flag.Bool("update", false, "update golden files")
 
 func TestDeploymentGolden(t *testing.T) {
-    res, err := deployment.NewBuilder(baseDeployment()).
-        WithMutation(features.DebugLoggingMutation(true)).
-        Build()
+    owner := &app.ExampleApp{Spec: app.ExampleAppSpec{Version: "2.0.0", EnableDebugLogging: true}}
+    owner.Name = "my-app"
+    owner.Namespace = "default"
+
+    res, err := resources.NewDeploymentResource(owner)
     require.NoError(t, err)
 
-    golden.AssertYAML(t, "testdata/deployment.yaml", res,
+    // The factory returns a component.Resource; the built primitive also
+    // implements golden.Previewer.
+    previewer, ok := res.(golden.Previewer)
+    require.True(t, ok)
+    golden.AssertYAML(t, "testdata/deployment.yaml", previewer,
         golden.WithScheme(scheme), golden.Update(*update))
 }
 ```
@@ -120,8 +126,10 @@ go test ./path/to/pkg -run TestDeploymentGolden -update
 go test ./path/to/pkg -run TestDeploymentGolden
 ```
 
-!!! note The `-update` flag goes **after** the package path, not before it. `go test -update ./...` passes `-update` to
-`go test` itself, which rejects it. The correct form is `go test ./path/to/pkg -update`.
+!!! note
+
+    The `-update` flag goes **after** the package path, not before it. `go test -update ./...` passes `-update` to
+    `go test` itself, which rejects it. The correct form is `go test ./path/to/pkg -update`.
 
 Golden files live in a `testdata/` directory next to the test file. Go excludes `testdata/` from the build by
 convention, so the files are invisible to the compiler.
@@ -133,10 +141,14 @@ stream (`---` separated, in apply order).
 
 ```go
 func TestComponentGolden(t *testing.T) {
-    c, err := buildComponent(owner)
+    owner := &app.ExampleApp{Spec: app.ExampleAppSpec{Version: "2.0.0", EnableDebugLogging: true}}
+    owner.Name = "my-app"
+    owner.Namespace = "default"
+
+    comp, err := buildComponent(owner) // your component-building helper
     require.NoError(t, err)
 
-    golden.AssertComponentYAML(t, "testdata/component.yaml", c,
+    golden.AssertComponentYAML(t, "testdata/component.yaml", comp,
         golden.WithScheme(scheme), golden.Update(*update))
 }
 ```
@@ -175,6 +187,7 @@ resource through the same factory the reconciler uses, then inspect it:
 ```go
 import "github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 
+// owner is your CRD instance, with the version and flags you want to test.
 res, err := resources.NewDeploymentResource(owner) // the real factory
 require.NoError(t, err)
 

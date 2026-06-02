@@ -9,10 +9,10 @@ health through a single condition on the owner CRD.
 
 ```mermaid
 flowchart TD
-    Controller["Controller"]
-    Component["Component<br/>one condition on the owner"]
-    Primitive["Resource Primitive<br/>Deployment, ConfigMap, Service, ..."]
-    Object["Kubernetes Object"]
+    Controller["<b>Controller</b>"]
+    Component["<b>Component</b><br/>one condition on the owner"]
+    Primitive["<b>Resource Primitive</b><br/>Deployment, ConfigMap, Service, ..."]
+    Object["<b>Kubernetes Object</b>"]
 
     Controller --> Component --> Primitive --> Object
 ```

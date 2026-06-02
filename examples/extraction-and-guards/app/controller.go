@@ -44,28 +44,37 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		}
 	}()
 
-	// Shared state: the ConfigMap extractor writes here, the Secret guard reads it.
-	var dbHost string
-
-	cmResource, err := r.NewConfigMapResource(owner, &dbHost)
-	if err != nil {
-		return err
-	}
-
-	secretResource, err := r.NewSecretResource(owner, &dbHost)
-	if err != nil {
-		return err
-	}
-
-	comp, err := component.NewComponentBuilder().
-		WithName("database").
-		WithConditionType("DatabaseReady").
-		WithResource(cmResource).
-		WithResource(secretResource).
-		Build()
+	comp, err := r.BuildComponent(owner)
 	if err != nil {
 		return err
 	}
 
 	return comp.Reconcile(ctx, recCtx)
+}
+
+// BuildComponent assembles the database component: a ConfigMap registered before
+// a Secret, both wired to a shared dbHost pointer. The ConfigMap extractor writes
+// the pointer and the Secret guard reads it, so registration order matters. The
+// controller and tests share this assembly so the reconciled component and the
+// golden snapshot stay in lockstep.
+func (r *Controller) BuildComponent(owner *ExampleApp) (*component.Component, error) {
+	// Shared state: the ConfigMap extractor writes here, the Secret guard reads it.
+	var dbHost string
+
+	cmResource, err := r.NewConfigMapResource(owner, &dbHost)
+	if err != nil {
+		return nil, err
+	}
+
+	secretResource, err := r.NewSecretResource(owner, &dbHost)
+	if err != nil {
+		return nil, err
+	}
+
+	return component.NewComponentBuilder().
+		WithName("database").
+		WithConditionType("DatabaseReady").
+		WithResource(cmResource).
+		WithResource(secretResource).
+		Build()
 }

@@ -6,10 +6,10 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/examples/custom-resource/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
-	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
-	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured/static"
 	"github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	uns "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -25,41 +25,31 @@ func testOwner() *sharedapp.ExampleApp {
 	return owner
 }
 
-// TestCertificateShape verifies the CertificateRequest's shape after mutations
-// set spec fields (issuerRef, dnsNames) and metadata labels. The golden file
-// catches regressions when the mutation logic or base object changes.
-func TestCertificateShape(t *testing.T) {
-	owner := testOwner()
-
-	res, err := static.NewBuilder(resources.BaseCertificateRequest(owner)).
-		WithMutation(unstruct.Mutation{
-			Name: "certificate-spec",
-			Mutate: func(m *unstruct.Mutator) error {
-				m.EditContent(func(e *editors.UnstructuredContentEditor) error {
-					if err := e.SetNestedString("letsencrypt-prod", "spec", "issuerRef", "name"); err != nil {
-						return err
-					}
-					if err := e.SetNestedString("ClusterIssuer", "spec", "issuerRef", "kind"); err != nil {
-						return err
-					}
-					return e.SetNestedSlice(
-						[]interface{}{owner.Name + ".example.com"},
-						"spec", "dnsNames",
-					)
-				})
-
-				m.EditObjectMetadata(func(meta *editors.ObjectMetaEditor) error {
-					meta.EnsureLabel("app", owner.Name)
-					return nil
-				})
-
-				return nil
-			},
-		}).
-		Build()
+// TestCertificateMutations verifies the factory registers the certificate-spec
+// mutation and that it fires. The mutation has no gate, so it always applies.
+func TestCertificateMutations(t *testing.T) {
+	res, err := resources.NewCertificateResource(testOwner())
 	require.NoError(t, err)
 
-	golden.AssertYAML(t, "testdata/certificate.yaml", res, golden.Update(*update))
+	inspector, ok := res.(concepts.MutationInspector)
+	require.True(t, ok)
+
+	assert.ElementsMatch(t, []string{"certificate-spec"}, inspector.RegisteredMutations())
+
+	firing, err := inspector.FiringSet()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"certificate-spec"}, firing)
+}
+
+// TestCertificateShape verifies the CertificateRequest as built by its factory,
+// after the certificate-spec mutation sets spec fields (issuerRef, dnsNames)
+// and metadata labels. The golden file catches regressions when the mutation
+// logic or base object changes.
+func TestCertificateShape(t *testing.T) {
+	res, err := resources.NewCertificateResource(testOwner())
+	require.NoError(t, err)
+
+	golden.AssertYAML(t, "testdata/certificate.yaml", res.(golden.Previewer), golden.Update(*update))
 }
 
 // TestCertificateBaseShape pins the bare base object before any mutations.

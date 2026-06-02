@@ -6,7 +6,6 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/examples/grace-inconsistency/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
-	"github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
 	"github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -30,13 +29,15 @@ func testScheme() *runtime.Scheme {
 	return s
 }
 
-// TestDeploymentShape pins the monitoring Deployment's baseline. This resource
-// has no mutations; changes to the base object surface as a golden file diff.
+// TestDeploymentShape pins the monitoring Deployment as built by its factory.
+// The factory registers a custom grace handler but no mutations, so the golden
+// file captures the full desired state. Changes to the base object surface as a
+// golden file diff.
 func TestDeploymentShape(t *testing.T) {
 	owner := testOwner()
-	res, err := deployment.NewBuilder(resources.BaseDeployment(owner)).Build()
+	res, err := resources.NewDeploymentResource(owner)
 	require.NoError(t, err)
 
-	golden.AssertYAML(t, "testdata/deployment.yaml", res,
+	golden.AssertYAML(t, "testdata/deployment.yaml", res.(golden.Previewer),
 		golden.WithScheme(testScheme()), golden.Update(*update))
 }

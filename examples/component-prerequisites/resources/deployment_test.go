@@ -1,24 +1,39 @@
 package resources_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/examples/component-prerequisites/resources"
-	"github.com/sourcehawk/operator-component-framework/pkg/feature"
-	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
-	"github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
-	"github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// TestDeploymentShape verifies the app component's Deployment for each version.
-// The baseline carries the latest container layout; the version mutation sets
-// the image tag. Golden files for each version catch regressions when the
-// baseline or mutation logic changes.
+// TestDeploymentMutations verifies the factory registers the Version mutation
+// and that it fires at every version. The version gate has no constraint, so
+// the mutation always applies and rewrites the image tag.
+func TestDeploymentMutations(t *testing.T) {
+	owner := testOwner("1.0.0")
+	res, err := resources.NewDeploymentResource(owner)
+	require.NoError(t, err)
+
+	inspector, ok := res.(concepts.MutationInspector)
+	require.True(t, ok)
+
+	assert.ElementsMatch(t, []string{"Version"}, inspector.RegisteredMutations())
+
+	firing, err := inspector.FiringSet()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"Version"}, firing)
+}
+
+// TestDeploymentShape verifies the app component's Deployment as built by its
+// factory for each version. The baseline carries the latest container layout;
+// the Version mutation sets the image tag. Golden files for each version catch
+// regressions when the baseline or mutation logic changes.
 func TestDeploymentShape(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, appsv1.AddToScheme(scheme))
@@ -44,22 +59,11 @@ func TestDeploymentShape(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			owner := testOwner(tt.version)
 
-			res, err := deployment.NewBuilder(resources.BaseDeployment(owner)).
-				WithMutation(deployment.Mutation{
-					Name:    "Version",
-					Feature: feature.NewVersionGate(tt.version, nil),
-					Mutate: func(m *deployment.Mutator) error {
-						m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
-							ce.Raw().Image = fmt.Sprintf("my-app:%s", tt.version)
-							return nil
-						})
-						return nil
-					},
-				}).
-				Build()
+			res, err := resources.NewDeploymentResource(owner)
 			require.NoError(t, err)
 
-			golden.AssertYAML(t, tt.golden, res, golden.WithScheme(scheme), golden.Update(*update))
+			golden.AssertYAML(t, tt.golden, res.(golden.Previewer),
+				golden.WithScheme(scheme), golden.Update(*update))
 		})
 	}
 }

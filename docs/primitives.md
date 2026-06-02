@@ -172,7 +172,7 @@ sequenceDiagram
     participant Mutator
     participant Object as Kubernetes object
     Author->>Builder: WithMutation(name, feature, mutate)
-    Note over Builder: stores the mutation; nothing is applied yet
+    Note over Builder: stores the mutation, nothing applied yet
     Builder->>Mutator: Apply()
     loop each enabled feature, in registration order
         Mutator->>Mutator: replay recorded edits in fixed category order

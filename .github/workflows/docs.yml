@@ -1,9 +1,12 @@
 name: Docs
 
+# Pull requests build the site in strict mode to catch broken links and nav.
+# The site is published only when a release is published (so it tracks the latest
+# released version), or manually via workflow_dispatch.
 on:
-  push:
-    branches:
-      - main
+  release:
+    types:
+      - published
   pull_request:
   workflow_dispatch:
 
@@ -38,7 +41,7 @@ jobs:
         run: mkdocs build --strict
 
       - name: Upload Pages artifact
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -46,7 +49,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

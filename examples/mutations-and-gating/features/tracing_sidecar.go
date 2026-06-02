@@ -11,7 +11,7 @@ import (
 func TracingSidecarMutation(enabled bool) deployment.Mutation {
 	return deployment.Mutation{
 		Name:    "Tracing",
-		Feature: feature.NewVersionGate("any", nil).When(enabled),
+		Feature: feature.NewBooleanGate(enabled),
 		Mutate: func(m *deployment.Mutator) error {
 			m.EnsureContainer(corev1.Container{
 				Name:  "jaeger-agent",

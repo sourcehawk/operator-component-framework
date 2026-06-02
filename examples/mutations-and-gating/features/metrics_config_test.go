@@ -8,21 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // TestMetricsConfigMutation verifies that the mutation merges a Prometheus
 // metrics section into app.yaml.
 func TestMetricsConfigMutation(t *testing.T) {
-	base := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Data: map[string]string{
-			"app.yaml": "server:\n  port: 8080\n",
-		},
-	}
-
-	res, err := configmap.NewBuilder(base).
-		WithMutation(features.MetricsConfigMutation("1.0.0", true)).
+	res, err := configmap.NewBuilder(baseConfigMap()).
+		WithMutation(features.MetricsConfigMutation(true)).
 		Build()
 	require.NoError(t, err)
 

@@ -16,7 +16,7 @@ import (
 func DebugLoggingMutation(enabled bool) deployment.Mutation {
 	return deployment.Mutation{
 		Name:    "DebugLogging",
-		Feature: feature.NewVersionGate("any", nil).When(enabled),
+		Feature: feature.NewBooleanGate(enabled),
 		Mutate: func(m *deployment.Mutator) error {
 			m.EditContainers(selectors.ContainerNamed("app"), func(ce *editors.ContainerEditor) error {
 				ce.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})

@@ -1,17 +1,17 @@
 # Deployment Primitive
 
-The `deployment` primitive is the framework's built-in workload abstraction for managing Kubernetes `Deployment`
-resources. It integrates fully with the component lifecycle and provides a rich mutation API for managing containers,
-pod specs, and metadata.
+The `deployment` primitive wraps a Kubernetes `Deployment` and provides health tracking, suspension, and a typed
+mutation API for managing replicas, pod spec, and containers as part of the component lifecycle.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Health tracking**   | Verifies `ObservedGeneration` matches `Generation` before evaluating `ReadyReplicas`; reports `Healthy`, `Creating`, `Updating`, `Scaling`, or `Failing` |
-| **Graceful rollouts** | Detects stalled or failing rollouts via configurable grace periods                                                                                       |
-| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                              |
-| **Mutation pipeline** | Typed editors for metadata, deployment spec, pod spec, and containers                                                                                    |
+| [Lifecycle interface](../primitives.md#lifecycle-interfaces) | Reported status values                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------- |
+| `Alive`                                                      | `Healthy`, `Creating`, `Updating`, `Scaling`, `Failing` |
+| `Graceful`                                                   | `Healthy`, `Degraded`, `Down`                           |
+| `Suspendable`                                                | `PendingSuspension`, `Suspending`, `Suspended`          |
+| `Guardable`                                                  | `Blocked`                                               |
+| `DataExtractable`                                            | _(side-effecting, no status)_                           |
 
 ## Building a Deployment Primitive
 
@@ -24,7 +24,13 @@ base := &appsv1.Deployment{
         Namespace: owner.Namespace,
     },
     Spec: appsv1.DeploymentSpec{
-        // baseline spec
+        Template: corev1.PodTemplateSpec{
+            Spec: corev1.PodSpec{
+                Containers: []corev1.Container{
+                    {Name: "web"},
+                },
+            },
+        },
     },
 }
 
@@ -35,96 +41,48 @@ resource, err := deployment.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `Deployment` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
-
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
+Each mutation is a named `deployment.Mutation` that receives a `*deployment.Mutator` and records edits through typed
+editors.
 
 ```go
-func MyFeatureMutation(version string) deployment.Mutation {
+func ConfigMutation(version string) deployment.Mutation {
     return deployment.Mutation{
-        Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
+        Name:    "config",
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *deployment.Mutator) error {
-            // record edits here
+            m.EnsureContainerEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "info"})
             return nil
         },
     }
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-Use `When(bool)` to gate a mutation on a runtime condition:
-
-```go
-func TracingMutation(version string, enabled bool) deployment.Mutation {
-    return deployment.Mutation{
-        Name:    "tracing",
-        Feature: feature.NewVersionGate(version, nil).When(enabled),
-        Mutate: func(m *deployment.Mutator) error {
-            m.EnsureContainer(corev1.Container{
-                Name:  "jaeger-agent",
-                Image: "jaegertracing/jaeger-agent:1.28",
-            })
-            return nil
-        },
-    }
-}
-```
-
-### Version-gated mutations
-
-Pass a `[]feature.VersionConstraint` to gate on a semver range. `VersionConstraint` is an interface. Implement it using
-the `github.com/Masterminds/semver/v3` library or any other mechanism:
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacyAuthMutation(version string, enabled bool) deployment.Mutation {
-    return deployment.Mutation{
-        Name: "legacy-auth-header",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ).When(enabled),
-        Mutate: func(m *deployment.Mutator) error {
-            m.EditContainers(selectors.ContainerNamed("api"), func(e *editors.ContainerEditor) error {
-                e.EnsureEnvVar(corev1.EnvVar{Name: "AUTH_HEADER", Value: "X-Legacy-Token"})
-                return nil
-            })
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
+See [the mutation system](../primitives.md#the-mutation-system),
+[boolean gating](../primitives.md#boolean-gated-mutations), and
+[version gating](../primitives.md#version-gated-mutations).
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
-order they are recorded. This ensures structural consistency across mutations.
+Within each feature, edits run in this fixed category order:
 
 | Step | Category                    | What it affects                                                         |
 | ---- | --------------------------- | ----------------------------------------------------------------------- |
-| 1    | Deployment metadata edits   | Labels and annotations on the `Deployment` object                       |
+| 1    | Object metadata edits       | Labels and annotations on the `Deployment` object                       |
 | 2    | DeploymentSpec edits        | Replicas, progress deadline, revision history, etc.                     |
 | 3    | Pod template metadata edits | Labels and annotations on the pod template                              |
 | 4    | Pod spec edits              | Volumes, tolerations, node selectors, service account, security context |
-| 5    | Regular container presence  | Adding or removing containers from `spec.containers`                    |
+| 5    | Regular container presence  | Adding or removing containers from `spec.template.spec.containers`      |
 | 6    | Regular container edits     | Env vars, args, resources (snapshot taken after step 5)                 |
-| 7    | Init container presence     | Adding or removing containers from `spec.initContainers`                |
+| 7    | Init container presence     | Adding or removing containers from `spec.template.spec.initContainers`  |
 | 8    | Init container edits        | Env vars, args, resources (snapshot taken after step 7)                 |
 
-Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
-This means a single mutation can add a container and then configure it without selector resolution issues.
+Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same feature.
+A single mutation can add a container and then configure it without selector resolution issues.
 
 ## Relevant Editors
+
+For the generic editor and selector concepts, see [mutation editors](../primitives.md#mutation-editors) and
+[container selectors](../primitives.md#container-selectors).
 
 ### DeploymentSpecEditor
 
@@ -141,7 +99,7 @@ m.EditDeploymentSpec(func(e *editors.DeploymentSpecEditor) error {
 })
 ```
 
-For fields not covered by the typed API (such as update strategy), use `Raw()`:
+Use `Raw()` for fields the typed API does not cover, such as update strategy:
 
 ```go
 m.EditDeploymentSpec(func(e *editors.DeploymentSpecEditor) error {
@@ -162,7 +120,7 @@ Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `Ens
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
-    e.SetServiceAccountName("my-service-account")
+    e.SetServiceAccountName("web-sa")
     e.EnsureVolume(corev1.Volume{
         Name: "config",
         VolumeSource: corev1.VolumeSource{
@@ -177,25 +135,24 @@ m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
-[selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`, combined with a
+[container selector](../primitives.md#container-selectors).
 
 Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
 `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
-m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+m.EditContainers(selectors.ContainerNamed("web"), func(e *editors.ContainerEditor) error {
     e.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "info"})
-    e.EnsureArg("--metrics-port=9090")
     e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("500m"))
     return nil
 })
 ```
 
-For fields not covered by the typed API (such as volume mounts), use `Raw()`:
+For fields the typed API does not cover, such as volume mounts, use `Raw()`:
 
 ```go
-m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+m.EditContainers(selectors.ContainerNamed("web"), func(e *editors.ContainerEditor) error {
     e.Raw().VolumeMounts = append(e.Raw().VolumeMounts, corev1.VolumeMount{
         Name:      "config",
         MountPath: "/etc/config",
@@ -206,43 +163,23 @@ m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEdito
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `Deployment` object itself, or
-`m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` for the `Deployment` itself or `m.EditPodTemplateMetadata`
+for the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
 ```go
-// On the Deployment itself
 m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
     e.EnsureLabel("app.kubernetes.io/version", version)
     return nil
 })
-
-// On the pod template
 m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
     e.EnsureAnnotation("prometheus.io/scrape", "true")
     return nil
 })
 ```
 
-### Raw Escape Hatch
-
-All editors provide a `.Raw()` method for direct access to the underlying Kubernetes struct when the typed API is
-insufficient. The mutation remains scoped to the editor's target, so you cannot accidentally modify unrelated parts of
-the spec.
-
-```go
-m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
-    e.Raw().SecurityContext = &corev1.SecurityContext{
-        ReadOnlyRootFilesystem: ptr.To(true),
-    }
-    return nil
-})
-```
-
 ## Convenience Methods
-
-The `Mutator` also exposes convenience wrappers that target all containers at once:
 
 | Method                        | Equivalent to                                                 |
 | ----------------------------- | ------------------------------------------------------------- |
@@ -252,7 +189,30 @@ The `Mutator` also exposes convenience wrappers that target all containers at on
 | `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
 | `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
-## Full Example: Adding a Sidecar
+## Workload-Kind-Agnostic Mutations
+
+A mutation written against `primitives.WorkloadMutator` can be applied to a Deployment builder using
+`deployment.LiftMutation`. This lets one emitter function target Deployments, StatefulSets, and DaemonSets without
+duplicating code.
+
+```go
+frontend.WithMutation(deployment.LiftMutation(sharedAuthMutation()))
+```
+
+See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the full pattern.
+
+## Suspension
+
+When the component is suspended, the Deployment is scaled to zero replicas. The resource is not deleted.
+
+- `DefaultSuspendMutationHandler` calls `EnsureReplicas(0)`.
+- `DefaultSuspensionStatusHandler` reports `Suspending` while `Status.Replicas > 0`, then `Suspended`.
+- `DefaultDeleteOnSuspendHandler` returns `false`.
+
+Override any handler via `WithCustomSuspendMutation`, `WithCustomSuspendStatus`, or `WithCustomSuspendDeletionDecision`
+on the builder.
+
+## Full Example
 
 ```go
 func LoggingSidecarMutation(version string) deployment.Mutation {
@@ -260,16 +220,15 @@ func LoggingSidecarMutation(version string) deployment.Mutation {
         Name:    "logging-sidecar",
         Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *deployment.Mutator) error {
-            // Step 1: ensure the sidecar exists (presence operation, step 5)
+            // Presence operation runs at step 5
             m.EnsureContainer(corev1.Container{
                 Name:  "logger",
                 Image: "fluent/fluent-bit:3.0",
             })
 
-            // Step 2: configure it (evaluated after step 1, step 6)
+            // Container edit runs at step 6 (after presence)
             m.EditContainers(selectors.ContainerNamed("logger"), func(e *editors.ContainerEditor) error {
                 e.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "info"})
-                // Volume mounts are not in the typed API, so use Raw()
                 e.Raw().VolumeMounts = append(e.Raw().VolumeMounts, corev1.VolumeMount{
                     Name:      "varlog",
                     MountPath: "/var/log",
@@ -277,7 +236,7 @@ func LoggingSidecarMutation(version string) deployment.Mutation {
                 return nil
             })
 
-            // Step 3: add the shared volume to the pod spec (step 4, runs before containers)
+            // Pod spec edit runs at step 4 (before container presence)
             m.EditPodSpec(func(e *editors.PodSpecEditor) error {
                 e.EnsureVolume(corev1.Volume{
                     Name:         "varlog",
@@ -292,21 +251,25 @@ func LoggingSidecarMutation(version string) deployment.Mutation {
 }
 ```
 
-Note: although `EditPodSpec` is called after `EnsureContainer` in the source, it is applied in step 4 (before container
+Although `EditPodSpec` is called after `EnsureContainer` in the source, it is applied in step 4 (before container
 presence in step 5) per the internal ordering. Order your source calls for readability; the framework handles execution
 order.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+**Use a Deployment for stateless long-running workloads.** Deployments manage rolling updates and replica counts but do
+not guarantee pod identity or stable network addresses. For stateful workloads requiring stable hostnames or persistent
+volumes bound to a specific pod, use a StatefulSet.
+
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for runtime boolean
 conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
-The internal ordering within each mutation handles intra-mutation dependencies automatically.
+Internal ordering within each mutation handles intra-mutation dependencies automatically.
 
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
-the same mutation resolve correctly and reconciliation remains idempotent.
+**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so selectors in the
+same mutation resolve correctly and reconciliation remains idempotent.
 
 **Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
 cause unexpected behavior if sidecar containers are present.

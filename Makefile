@@ -101,6 +101,14 @@ $(PRETTIER): $(LOCALBIN)
 		chmod +x $(PRETTIER) ; \
 	}
 
+.PHONY: docs-serve
+docs-serve: ## Serve the documentation site locally with live reload.
+	mkdocs serve
+
+.PHONY: docs-build
+docs-build: ## Build the documentation site in strict mode.
+	mkdocs build --strict
+
 .PHONY: lint ## Run all linters
 lint: lint-go lint-md
 

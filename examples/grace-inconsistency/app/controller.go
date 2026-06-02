@@ -40,12 +40,27 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		}
 	}()
 
-	deployResource, err := r.NewDeploymentResource(owner)
+	comp, err := r.BuildComponent(owner)
 	if err != nil {
 		return err
 	}
 
-	comp, err := component.NewComponentBuilder().
+	return comp.Reconcile(ctx, recCtx)
+}
+
+// BuildComponent assembles the monitoring component: a Deployment whose custom
+// grace handler reports Healthy while the convergence handler may report
+// non-healthy. The grace period and the SuppressGraceInconsistencyWarning option
+// are the point of this example, so the controller and tests build the component
+// the same way to keep the reconciled component and the golden snapshot in
+// lockstep.
+func (r *Controller) BuildComponent(owner *ExampleApp) (*component.Component, error) {
+	deployResource, err := r.NewDeploymentResource(owner)
+	if err != nil {
+		return nil, err
+	}
+
+	return component.NewComponentBuilder().
 		WithName("monitoring").
 		WithConditionType("MonitoringReady").
 		// SuppressGraceInconsistencyWarning tells the framework not to log a
@@ -55,9 +70,4 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		WithResource(deployResource, component.SuppressGraceInconsistencyWarning()).
 		WithGracePeriod(5 * time.Second).
 		Build()
-	if err != nil {
-		return err
-	}
-
-	return comp.Reconcile(ctx, recCtx)
 }

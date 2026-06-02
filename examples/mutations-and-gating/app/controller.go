@@ -38,28 +38,47 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		}
 	}()
 
-	deployResource, err := r.NewDeploymentResource(owner)
-	if err != nil {
-		return err
-	}
-
-	cmResource, err := r.NewConfigMapResource(owner)
-	if err != nil {
-		return err
-	}
-
-	comp, err := component.NewComponentBuilder().
-		WithName("example-app").
-		WithConditionType("AppReady").
-		WithResource(deployResource).
-		// Gate the ConfigMap at the resource level: when metrics are disabled the
-		// framework deletes the ConfigMap.
-		WithResource(cmResource, component.DeleteWhen(!owner.Spec.EnableMetrics)).
-		Suspend(owner.Spec.Suspended).
-		Build()
+	comp, err := BuildComponent(owner, r.NewDeploymentResource, r.NewConfigMapResource)
 	if err != nil {
 		return err
 	}
 
 	return comp.Reconcile(ctx, recCtx)
+}
+
+// BuildComponent assembles the reconciled component for the given owner from the
+// supplied resource factories. It is the single source of truth for how the
+// Deployment and ConfigMap are composed into one component, shared by the
+// controller's reconcile path and by component-level golden tests so both
+// exercise the exact same assembly.
+//
+// The factories are passed in rather than imported so this package stays free of
+// a dependency on the resources package (which already imports this one). The
+// controller injects its production factories; tests pass the same ones via
+// resources.NewDeploymentResource / resources.NewConfigMapResource.
+//
+// The ConfigMap is gated at the resource level: when metrics are disabled the
+// framework deletes it.
+func BuildComponent(
+	owner *ExampleApp,
+	newDeployment func(*ExampleApp) (component.Resource, error),
+	newConfigMap func(*ExampleApp) (component.Resource, error),
+) (*component.Component, error) {
+	deployResource, err := newDeployment(owner)
+	if err != nil {
+		return nil, err
+	}
+
+	cmResource, err := newConfigMap(owner)
+	if err != nil {
+		return nil, err
+	}
+
+	return component.NewComponentBuilder().
+		WithName("example-app").
+		WithConditionType("AppReady").
+		WithResource(deployResource).
+		WithResource(cmResource, component.DeleteWhen(!owner.Spec.EnableMetrics)).
+		Suspend(owner.Spec.Suspended).
+		Build()
 }

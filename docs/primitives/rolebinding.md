@@ -1,17 +1,19 @@
 # RoleBinding Primitive
 
-The `rolebinding` primitive is the framework's built-in static abstraction for managing Kubernetes `RoleBinding`
-resources. It integrates with the component lifecycle and provides a structured mutation API for managing subjects and
-object metadata.
+The `rolebinding` primitive wraps a Kubernetes `RoleBinding` and manages the subjects list and object metadata within
+the component lifecycle.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state            |
-| **Mutation pipeline** | Typed editors for subjects and object metadata, with a raw escape hatch for free-form access             |
-| **Immutable roleRef** | `roleRef` must be set on the base object and cannot be changed after creation (requires delete/recreate) |
-| **Data extraction**   | Reads generated or updated values back from the reconciled RoleBinding after each sync cycle             |
+| Capability            | Interfaces / detail                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| **Static lifecycle**  | `component.Resource`. No health tracking, grace periods, or suspension                 |
+| **Mutation**          | `BindingSubjectsEditor` for `.subjects`; `ObjectMetaEditor` for labels and annotations |
+| **Immutable roleRef** | `roleRef` must be set on the base object and cannot be changed after creation          |
+| **Guard**             | `concepts.Guardable`: blocks reconciliation when a precondition is not met (`Blocked`) |
+| **Data extraction**   | `concepts.DataExtractable`: reads values back after each sync cycle                    |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full interface-to-status mapping.
 
 ## Building a RoleBinding Primitive
 
@@ -34,42 +36,22 @@ base := &rbacv1.RoleBinding{
 }
 
 resource, err := rolebinding.NewBuilder(base).
-    WithMutation(MySubjectMutation(owner.Spec.Version)).
+    WithMutation(MonitoringSubjectMutation(owner.Spec.Version, owner.Spec.EnableMonitoring)).
     Build()
 ```
 
+`Build()` returns an error if `Name` or `Namespace` is empty, or if `roleRef.APIGroup`, `roleRef.Kind`, or
+`roleRef.Name` is empty.
+
 `roleRef` must be set on the base object passed to `NewBuilder`. It is immutable after creation in Kubernetes and is not
-modifiable via the mutation API.
+modifiable via the mutation API. To change a `roleRef`, delete and recreate the RoleBinding.
+
+Identity format: `rbac.authorization.k8s.io/v1/RoleBinding/<namespace>/<name>`.
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `RoleBinding` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
-
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
-
-```go
-func AddServiceAccountMutation(version, saName, saNamespace string) rolebinding.Mutation {
-    return rolebinding.Mutation{
-        Name:    "add-service-account",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
-        Mutate: func(m *rolebinding.Mutator) error {
-            m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-                e.EnsureSubject(rbacv1.Subject{
-                    Kind:      "ServiceAccount",
-                    Name:      saName,
-                    Namespace: saNamespace,
-                })
-                return nil
-            })
-            return nil
-        },
-    }
-}
-```
-
-### Boolean-gated mutations
+Each mutation is a named `rolebinding.Mutation` that receives a `*Mutator` and records edit intent through typed
+editors. See [The Mutation System](../primitives.md#the-mutation-system) for the full model.
 
 ```go
 func MonitoringSubjectMutation(version string, enabled bool) rolebinding.Mutation {
@@ -78,11 +60,7 @@ func MonitoringSubjectMutation(version string, enabled bool) rolebinding.Mutatio
         Feature: feature.NewVersionGate(version, nil).When(enabled),
         Mutate: func(m *rolebinding.Mutator) error {
             m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-                e.EnsureSubject(rbacv1.Subject{
-                    Kind:      "ServiceAccount",
-                    Name:      "monitoring-agent",
-                    Namespace: "monitoring",
-                })
+                e.EnsureServiceAccount("monitoring-agent", "monitoring")
                 return nil
             })
             return nil
@@ -91,52 +69,28 @@ func MonitoringSubjectMutation(version string, enabled bool) rolebinding.Mutatio
 }
 ```
 
-### Version-gated mutations
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacySubjectMutation(version string) rolebinding.Mutation {
-    return rolebinding.Mutation{
-        Name: "legacy-subject",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ),
-        Mutate: func(m *rolebinding.Mutator) error {
-            m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
-                e.EnsureSubject(rbacv1.Subject{
-                    Kind: "User",
-                    Name: "legacy-admin",
-                })
-                return nil
-            })
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
+For boolean conditions, chain `.When()` on the gate. See
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations). For version constraints, see
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
-recorded:
+Within a single mutation, edits are applied in this fixed category order regardless of the call order:
 
-| Step | Category       | What it affects                               |
-| ---- | -------------- | --------------------------------------------- |
-| 1    | Metadata edits | Labels and annotations on the RoleBinding     |
-| 2    | Subject edits  | `.subjects` entries via BindingSubjectsEditor |
+| Step | Category       | What it affects                                 |
+| ---- | -------------- | ----------------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the RoleBinding       |
+| 2    | Subject edits  | `.subjects` entries via `BindingSubjectsEditor` |
 
-Within each category, edits are applied in their registration order. Later features observe the RoleBinding as modified
-by all previous features.
+Within each category, edits apply in registration order. Later features observe the object as modified by all earlier
+ones.
 
 ## Relevant Editors
 
 ### BindingSubjectsEditor
 
-The primary API for modifying the subjects list. Use `m.EditSubjects` for full control:
+The primary API for modifying the subjects list. Use `m.EditSubjects` for full control. See
+[Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
@@ -153,16 +107,29 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 #### EnsureSubject
 
 `EnsureSubject` upserts a subject by the combination of `Kind`, `Name`, and `Namespace`. If a matching subject already
-exists, it is replaced; otherwise the new subject is appended.
+exists it is replaced; otherwise the new subject is appended.
 
-#### RemoveSubject
+#### EnsureServiceAccount
 
-`RemoveSubject` removes a subject identified by kind, name, and namespace. It is a no-op if no matching subject exists.
+Convenience wrapper that ensures a `ServiceAccount` subject with the given name and namespace exists.
 
-#### Raw
+```go
+e.EnsureServiceAccount("app-sa", "production")
+```
 
-`Raw()` returns a pointer to the underlying `[]rbacv1.Subject` slice for free-form access when the structured methods
-are insufficient:
+#### RemoveSubject and RemoveServiceAccount
+
+`RemoveSubject` removes a subject identified by kind, name, and namespace. `RemoveServiceAccount` is a convenience
+wrapper for removing `ServiceAccount` subjects:
+
+```go
+e.RemoveSubject("User", "old-user", "")
+e.RemoveServiceAccount("deprecated-sa", "default")
+```
+
+#### Raw Escape Hatch
+
+`Raw()` returns a pointer to the underlying `[]rbacv1.Subject` for free-form editing:
 
 ```go
 m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
@@ -177,9 +144,8 @@ m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations via `m.EditObjectMetadata`.
-
-Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
+Modifies labels and annotations via `m.EditObjectMetadata`. Available methods: `EnsureLabel`, `RemoveLabel`,
+`EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
 ```go
 m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
@@ -189,16 +155,69 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
+## Data Extraction
+
+`WithDataExtractor` runs a callback after successful reconciliation with a value copy of the reconciled RoleBinding. Use
+it to surface binding metadata to other resources:
+
+```go
+resource, err := rolebinding.NewBuilder(base).
+    WithDataExtractor(func(rb rbacv1.RoleBinding) error {
+        sharedState.RoleBindingName = rb.Name
+        return nil
+    }).
+    Build()
+```
+
+## Full Example
+
+```go
+func BaseSubjectMutation(version string, saName, saNamespace string) rolebinding.Mutation {
+    return rolebinding.Mutation{
+        Name:    "base-subject",
+        Feature: feature.NewVersionGate(version, nil),
+        Mutate: func(m *rolebinding.Mutator) error {
+            m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
+                e.EnsureServiceAccount(saName, saNamespace)
+                return nil
+            })
+            return nil
+        },
+    }
+}
+
+func MonitoringSubjectMutation(version string, enabled bool) rolebinding.Mutation {
+    return rolebinding.Mutation{
+        Name:    "monitoring-subject",
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
+        Mutate: func(m *rolebinding.Mutator) error {
+            m.EditSubjects(func(e *editors.BindingSubjectsEditor) error {
+                e.EnsureServiceAccount("monitoring-agent", "monitoring")
+                return nil
+            })
+            return nil
+        },
+    }
+}
+
+resource, err := rolebinding.NewBuilder(base).
+    WithMutation(BaseSubjectMutation(owner.Spec.Version, "app-sa", owner.Namespace)).
+    WithMutation(MonitoringSubjectMutation(owner.Spec.Version, owner.Spec.EnableMonitoring)).
+    Build()
+```
+
+When `EnableMonitoring` is true, the binding's subjects list contains both the base service account and the monitoring
+agent. When false, only the base subject is present. Neither mutation needs to know about the other.
+
 ## Guidance
 
 **Set `roleRef` on the base object, not via mutations.** Kubernetes makes `roleRef` immutable after creation. To change
 a `roleRef`, delete and recreate the RoleBinding.
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
-conditions.
-
 **Use `EnsureSubject` for idempotent subject management.** `EnsureSubject` upserts by Kind+Name+Namespace, making it
 safe to call on every reconciliation without creating duplicates.
+
+**Use `EnsureServiceAccount` as a shortcut for the most common subject type.** It sets `Kind`, `Name`, and `Namespace`
+in one call and is equivalent to `EnsureSubject` with a `ServiceAccount` kind.
 
 **Register mutations in dependency order.** If mutation B relies on a subject added by mutation A, register A first.

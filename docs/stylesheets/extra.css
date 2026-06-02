@@ -1,0 +1,16 @@
+/* Brand and spacing overrides for Material for MkDocs. */
+:root {
+  --md-primary-fg-color: #3f51b5;
+  --md-accent-fg-color: #3f51b5;
+}
+
+/* Center Mermaid diagrams. A diagram narrower than the page is centered;
+   a full-width one is unaffected. */
+.mermaid {
+  text-align: center;
+}
+
+.mermaid svg {
+  margin: 0 auto;
+}
+

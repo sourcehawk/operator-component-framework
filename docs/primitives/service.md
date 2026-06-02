@@ -1,18 +1,20 @@
 # Service Primitive
 
-The `service` primitive is the framework's built-in integration abstraction for managing Kubernetes `Service` resources.
-It integrates with the component lifecycle as an Operational, Graceful, Suspendable resource and provides a structured
-mutation API for managing ports, selectors, and service configuration.
+The `service` primitive wraps a Kubernetes `Service` and integrates with the component lifecycle as an Integration,
+Graceful, and Suspendable resource.
 
 ## Capabilities
 
-| Capability               | Detail                                                                                        |
-| ------------------------ | --------------------------------------------------------------------------------------------- |
-| **Operational tracking** | Monitors LoadBalancer ingress assignment; reports `Operational` or `Pending`                  |
-| **Suspension**           | Unaffected by suspension by default; customizable via handlers to delete or mutate on suspend |
-| **Grace status**         | LoadBalancer with no ingress reports `Degraded`; non-LoadBalancer or has ingress is `Healthy` |
-| **Mutation pipeline**    | Typed editors for metadata and service spec, with a raw escape hatch for free-form access     |
-| **Data extraction**      | Reads generated or updated values (ClusterIP, LoadBalancer ingress) after each sync cycle     |
+| Capability            | Detail                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| **Operational**       | Monitors LoadBalancer ingress assignment; reports `Operational` or `OperationPending`              |
+| **Graceful**          | LoadBalancer with no ingress reports `Degraded`; non-LoadBalancer or assigned ingress is `Healthy` |
+| **Suspendable**       | No-op by default; Service is left in place. Customizable via handlers                              |
+| **DataExtractable**   | Reads assigned ClusterIP or LoadBalancer ingress after each sync cycle                             |
+| **Mutation pipeline** | Typed editors for metadata and Service spec, with a `Raw()` escape hatch for free-form access      |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface
+reports.
 
 ## Building a Service Primitive
 
@@ -21,7 +23,7 @@ import "github.com/sourcehawk/operator-component-framework/pkg/primitives/servic
 
 base := &corev1.Service{
     ObjectMeta: metav1.ObjectMeta{
-        Name:      "app-service",
+        Name:      "app-svc",
         Namespace: owner.Namespace,
     },
     Spec: corev1.ServiceSpec{
@@ -33,37 +35,18 @@ base := &corev1.Service{
 }
 
 resource, err := service.NewBuilder(base).
-    WithMutation(MyFeatureMutation(owner.Spec.Version)).
+    WithMutation(BaseServiceMutation(owner.Spec.Version)).
     Build()
 ```
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `Service` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
+Register mutations with `WithMutation`. The mutation system, boolean-gated mutations, and version-gated mutations are
+explained in [The Mutation System](../primitives.md#the-mutation-system),
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations), and
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
-
-```go
-func MyFeatureMutation(version string) service.Mutation {
-    return service.Mutation{
-        Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
-        Mutate: func(m *service.Mutator) error {
-            // record edits here
-            return nil
-        },
-    }
-}
-```
-
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-Use `When(bool)` to gate a mutation on a runtime condition:
+A kind-specific example, gating a NodePort mutation on a boolean condition:
 
 ```go
 func NodePortMutation(version string, enabled bool) service.Mutation {
@@ -81,51 +64,25 @@ func NodePortMutation(version string, enabled bool) service.Mutation {
 }
 ```
 
-### Version-gated mutations
-
-Pass a `[]feature.VersionConstraint` to gate on a semver range:
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacyPortMutation(version string) service.Mutation {
-    return service.Mutation{
-        Name: "legacy-port",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ),
-        Mutate: func(m *service.Mutator) error {
-            m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
-                e.EnsurePort(corev1.ServicePort{Name: "legacy", Port: 9090})
-                return nil
-            })
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
-
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
-order they are recorded:
+Within a single mutation, edits are applied in a fixed category order regardless of recording order:
 
-| Step | Category          | What it affects                          |
-| ---- | ----------------- | ---------------------------------------- |
-| 1    | Metadata edits    | Labels and annotations on the `Service`  |
-| 2    | ServiceSpec edits | Ports, selectors, type, traffic policies |
+| Step | Category       | What it affects                          |
+| ---- | -------------- | ---------------------------------------- |
+| 1    | Metadata edits | Labels and annotations on the `Service`  |
+| 2    | ServiceSpec    | Ports, selectors, type, traffic policies |
 
-Within each category, edits are applied in their registration order. Later features observe the Service as modified by
-all previous features.
+Within each category, edits run in registration order. Later features observe the Service as modified by all earlier
+ones.
 
 ## Relevant Editors
 
+See [Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
+
 ### ServiceSpecEditor
 
-Controls service-level settings via `m.EditServiceSpec`.
+Controls Service-level settings via `m.EditServiceSpec`.
 
 Available methods: `SetType`, `EnsurePort`, `RemovePort`, `SetSelector`, `EnsureSelector`, `RemoveSelector`,
 `SetSessionAffinity`, `SetSessionAffinityConfig`, `SetPublishNotReadyAddresses`, `SetExternalTrafficPolicy`,
@@ -146,10 +103,10 @@ m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 
 #### Port Management
 
-`EnsurePort` upserts a port: if a port with the same `Name` exists, it is replaced; otherwise, when `Name` is empty, the
-match is performed on the combination of `Port` and the effective `Protocol` (treating an empty protocol value as TCP).
-This means TCP and UDP ports with the same port number are considered distinct unless you explicitly set matching
-protocols. If no existing port matches, the new port is appended. `RemovePort` removes a port by name.
+`EnsurePort` upserts a port: if a port with the same `Name` exists it is replaced; when `Name` is empty the match uses
+the combination of `Port` and the effective `Protocol` (treating an empty protocol as TCP). TCP and UDP ports with the
+same port number are distinct unless protocols match explicitly. If no existing port matches, the new port is appended.
+`RemovePort` removes a port by name.
 
 ```go
 m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
@@ -166,13 +123,13 @@ m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
 
 ```go
 m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
-    e.EnsureSelector("app", "myapp")
-    e.EnsureSelector("env", "production")
+    e.EnsureSelector("app", "web")
+    e.EnsureSelector("tier", "frontend")
     return nil
 })
 ```
 
-For fields not covered by the typed API, use `Raw()`:
+Use `Raw()` for fields not covered by the typed API:
 
 ```go
 m.EditServiceSpec(func(e *editors.ServiceSpecEditor) error {
@@ -195,26 +152,40 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
+## Data Extraction
+
+Use `WithDataExtractor` to read values from the reconciled Service after each sync cycle, such as the assigned ClusterIP
+or LoadBalancer ingress:
+
+```go
+var assignedIP string
+
+resource, err := service.NewBuilder(base).
+    WithDataExtractor(func(svc corev1.Service) error {
+        assignedIP = svc.Spec.ClusterIP
+        return nil
+    }).
+    Build()
+```
+
 ## Operational Status
 
-The Service primitive implements the `Operational` concept to track whether the Service is ready to accept traffic.
+The Service primitive implements `concepts.Operational`. The default handler reports:
 
-### DefaultOperationalStatusHandler
+| Service Type   | Condition                                                                   | Status             |
+| -------------- | --------------------------------------------------------------------------- | ------------------ |
+| `LoadBalancer` | `Status.LoadBalancer.Ingress` has no entry with an IP or hostname           | `OperationPending` |
+| `LoadBalancer` | `Status.LoadBalancer.Ingress` has at least one entry with an IP or hostname | `Operational`      |
+| `ClusterIP`    | Always                                                                      | `Operational`      |
+| `NodePort`     | Always                                                                      | `Operational`      |
+| `ExternalName` | Always                                                                      | `Operational`      |
+| Headless       | Always                                                                      | `Operational`      |
 
-| Service Type   | Behaviour                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------ |
-| `LoadBalancer` | Reports `Pending` until `Status.LoadBalancer.Ingress` has entries with an IP or hostname; then `Operational` |
-| `ClusterIP`    | Immediately `Operational`                                                                                    |
-| `NodePort`     | Immediately `Operational`                                                                                    |
-| `ExternalName` | Immediately `Operational`                                                                                    |
-| Headless       | Immediately `Operational`                                                                                    |
-
-Override with `WithCustomOperationalStatus` to add custom checks:
+Override with `WithCustomOperationalStatus`:
 
 ```go
 resource, err := service.NewBuilder(base).
     WithCustomOperationalStatus(func(op concepts.ConvergingOperation, svc *corev1.Service) (concepts.OperationalStatusWithReason, error) {
-        // Custom logic, e.g. check for specific annotations
         return service.DefaultOperationalStatusHandler(op, svc)
     }).
     Build()
@@ -222,8 +193,7 @@ resource, err := service.NewBuilder(base).
 
 ## Grace Status
 
-The default grace status handler inspects the Service type and load balancer status to assess health after the grace
-period expires:
+The default grace status handler assesses health after the grace period expires:
 
 | Service Type   | Condition                                 | Status     |
 | -------------- | ----------------------------------------- | ---------- |
@@ -250,42 +220,26 @@ service.NewBuilder(base).
 
 ## Suspension
 
-By default, Services are **unaffected** by suspension. They remain in the cluster when the parent component is
-suspended. The default suspend mutation handler is a no-op, `DefaultDeleteOnSuspendHandler` returns `false`, and the
-default suspension status handler reports `Suspended` immediately (no work required).
+By default, Services are unaffected by suspension. They remain in the cluster when the parent component is suspended.
+`DefaultDeleteOnSuspendHandler` returns `false`, `DefaultSuspendMutationHandler` is a no-op, and
+`DefaultSuspensionStatusHandler` reports `Suspended` immediately.
 
 This is appropriate for most use cases because Services are stateless routing objects that are safe to leave in place.
 
-Override with `WithCustomSuspendDeletionDecision` if you want to delete the Service on suspend:
+Override with `WithCustomSuspendDeletionDecision` to delete the Service on suspend:
 
 ```go
 resource, err := service.NewBuilder(base).
     WithCustomSuspendDeletionDecision(func(_ *corev1.Service) bool {
-        return true // delete the Service during suspension
+        return true
     }).
     Build()
 ```
 
-You can also combine `WithCustomSuspendMutation` and `WithCustomSuspendStatus` for more advanced suspension behaviour,
-such as modifying the Service before it is deleted or tracking external readiness before reporting suspended.
+Combine `WithCustomSuspendMutation` and `WithCustomSuspendStatus` for more advanced suspension behavior, such as
+modifying the Service before deletion or tracking external readiness before reporting suspended.
 
-## Data Extraction
-
-Use `WithDataExtractor` to read values from the reconciled Service, such as the assigned ClusterIP or LoadBalancer
-ingress:
-
-```go
-var assignedIP string
-
-resource, err := service.NewBuilder(base).
-    WithDataExtractor(func(svc corev1.Service) error {
-        assignedIP = svc.Spec.ClusterIP
-        return nil
-    }).
-    Build()
-```
-
-## Full Example: Feature-Composed Service
+## Full Example
 
 ```go
 func BaseServiceMutation(version string) service.Mutation {
@@ -324,22 +278,32 @@ func MetricsPortMutation(version string, enabled bool) service.Mutation {
     }
 }
 
+var assignedIP string
+
 resource, err := service.NewBuilder(base).
     WithMutation(BaseServiceMutation(owner.Spec.Version)).
     WithMutation(MetricsPortMutation(owner.Spec.Version, owner.Spec.EnableMetrics)).
+    WithDataExtractor(func(svc corev1.Service) error {
+        assignedIP = svc.Spec.ClusterIP
+        return nil
+    }).
     Build()
 ```
 
-When `EnableMetrics` is true, the Service will expose both the HTTP port and the metrics port. When false, only the HTTP
-port is configured. Neither mutation needs to know about the other.
+When `EnableMetrics` is true, the Service exposes both the HTTP and metrics ports. When false, only HTTP is configured.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
-conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Chain `.When(bool)` for
+boolean conditions and pass version constraints to `NewVersionGate` for version-gated behavior.
 
-**Register mutations in dependency order.** If mutation B relies on a port added by mutation A, register A first.
+**Register mutations in dependency order.** If mutation B depends on a port added by mutation A, register A first.
 
-**Use `EnsurePort` for idempotent port management.** The mutator tracks ports by name (or port number when unnamed), so
+**Use `EnsurePort` for idempotent port management.** Ports are tracked by name (or port number when unnamed), so
 repeated calls with the same name produce the same result.
+
+**Leave Services in place during suspension.** The no-op default is correct for most Services. Only override
+`WithCustomSuspendDeletionDecision` when your use case requires explicitly removing the Service during suspension.
+
+**Use `WithDataExtractor` for assigned addresses.** ClusterIP and LoadBalancer ingress are server-assigned. Read them
+with a data extractor after reconciliation rather than caching them in mutation logic.

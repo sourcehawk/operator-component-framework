@@ -1,20 +1,21 @@
 # Pod Primitive
 
-The `pod` primitive is the framework's built-in workload abstraction for managing Kubernetes `Pod` resources directly.
-It integrates fully with the component lifecycle and provides a mutation API for managing containers, pod specs, and
-metadata.
+The `pod` primitive wraps a Kubernetes `Pod` and provides health tracking, suspension, and a typed mutation API for
+managing pod spec and containers as part of the component lifecycle.
 
-Pods are rarely managed directly by operators; this primitive is provided for completeness and for operators that manage
-pod objects (e.g. debugging utilities, node-local agents).
+Most operators do not manage Pod objects directly; higher-level primitives (Deployment, StatefulSet, DaemonSet) own pod
+lifecycle. This primitive is provided for operators that explicitly manage individual pods, such as debugging utilities
+or node-local agents where a controller-per-pod model applies.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                             |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| **Health tracking**   | Monitors pod phase and container statuses; reports `Healthy`, `Creating`, `Updating`, or `Failing` |
-| **Graceful rollouts** | Detects degraded or down states via grace status handler                                           |
-| **Suspension**        | Deletes the pod (pods cannot be paused); reports `Suspended`                                       |
-| **Mutation pipeline** | Typed editors for metadata, pod spec, and containers                                               |
+| [Lifecycle interface](../primitives.md#lifecycle-interfaces) | Reported status values                         |
+| ------------------------------------------------------------ | ---------------------------------------------- |
+| `Alive`                                                      | `Healthy`, `Creating`, `Updating`, `Failing`   |
+| `Graceful`                                                   | `Healthy`, `Degraded`, `Down`                  |
+| `Suspendable`                                                | `PendingSuspension`, `Suspending`, `Suspended` |
+| `Guardable`                                                  | `Blocked`                                      |
+| `DataExtractable`                                            | _(side-effecting, no status)_                  |
 
 ## Building a Pod Primitive
 
@@ -23,15 +24,12 @@ import "github.com/sourcehawk/operator-component-framework/pkg/primitives/pod"
 
 base := &corev1.Pod{
     ObjectMeta: metav1.ObjectMeta{
-        Name:      "debug-pod",
+        Name:      "agent",
         Namespace: owner.Namespace,
     },
     Spec: corev1.PodSpec{
         Containers: []corev1.Container{
-            {
-                Name:  "debug",
-                Image: "busybox:latest",
-            },
+            {Name: "agent", Image: "agent:latest"},
         },
     },
 }
@@ -43,49 +41,28 @@ resource, err := pod.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `Pod` beyond its baseline. Each mutation is a named function that
-receives a `*Mutator` and records edit intent through typed editors.
-
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
+Each mutation is a named `pod.Mutation` that receives a `*pod.Mutator` and records edits through typed editors.
 
 ```go
-func MyFeatureMutation(version string) pod.Mutation {
+func AgentConfigMutation(version string, debug bool) pod.Mutation {
     return pod.Mutation{
-        Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
+        Name:    "agent-config",
+        Feature: feature.NewVersionGate(version, nil).When(debug),
         Mutate: func(m *pod.Mutator) error {
-            // record edits here
+            m.EnsureContainerEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
             return nil
         },
     }
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-Use `When(bool)` to gate a mutation on a runtime condition:
-
-```go
-func DebugMutation(version string, enabled bool) pod.Mutation {
-    return pod.Mutation{
-        Name:    "debug-mode",
-        Feature: feature.NewVersionGate(version, nil).When(enabled),
-        Mutate: func(m *pod.Mutator) error {
-            m.EnsureContainerEnvVar(corev1.EnvVar{Name: "DEBUG", Value: "true"})
-            return nil
-        },
-    }
-}
-```
+See [the mutation system](../primitives.md#the-mutation-system),
+[boolean gating](../primitives.md#boolean-gated-mutations), and
+[version gating](../primitives.md#version-gated-mutations).
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
-order they are recorded. This ensures structural consistency across mutations.
+Within each feature, edits run in this fixed category order:
 
 | Step | Category                   | What it affects                                                         |
 | ---- | -------------------------- | ----------------------------------------------------------------------- |
@@ -96,19 +73,20 @@ order they are recorded. This ensures structural consistency across mutations.
 | 5    | Init container presence    | Adding or removing containers from `spec.initContainers`                |
 | 6    | Init container edits       | Env vars, args, resources (snapshot taken after step 5)                 |
 
-Container edits (steps 4 and 6) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
-This means a single mutation can add a container and then configure it without selector resolution issues.
+Container edits (steps 4 and 6) are evaluated against a snapshot taken _after_ presence operations in the same feature.
 
-**Kubernetes immutability note:** most fields in `Pod.spec` are immutable after creation, including the overall
-structure of `spec.containers` and `spec.initContainers` and the majority of per-container fields (such as `env`,
-`args`, resources, ports, and probes). Presence operations such as `EnsureContainer` / `RemoveContainer` (and the
-corresponding init container operations) are intended for use when constructing a new Pod or when recreating the Pod,
-not for in-place updates to an existing Pod. If a mutation attempts to add or remove containers on an existing Pod, the
-Kubernetes API server will reject the update. In practice, the set of fields that can be updated in-place on an existing
-Pod is very small (primarily container images, plus a few feature-gated fields such as resources with in-place resize);
-treat Pods as effectively immutable and use delete-and-recreate when you need to change other container attributes.
+!!! warning "Pod spec is largely immutable after creation"
+
+    Most fields in `Pod.spec` are immutable once the pod exists, including the container list, env vars, args,
+    resources, ports, and probes. Presence operations (`EnsureContainer`, `RemoveContainer`) and most field mutations
+    are only effective when constructing a new pod or when the pod will be deleted and recreated. The very small set of
+    fields that can be updated in-place includes container images and, in some configurations, resource requests. Treat
+    pods as effectively immutable and plan on delete-and-recreate when structural changes are needed.
 
 ## Relevant Editors
+
+For the generic editor and selector concepts, see [mutation editors](../primitives.md#mutation-editors) and
+[container selectors](../primitives.md#container-selectors).
 
 ### PodSpecEditor
 
@@ -116,17 +94,16 @@ Manages pod-level configuration via `m.EditPodSpec`.
 
 Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `EnsureToleration`, `RemoveTolerations`,
 `EnsureNodeSelector`, `RemoveNodeSelector`, `EnsureImagePullSecret`, `RemoveImagePullSecret`, `SetPriorityClassName`,
-`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`. `RemoveTolerations` accepts a predicate
-function (`match func(corev1.Toleration) bool`) and removes all tolerations for which `match` returns `true`.
+`SetHostNetwork`, `SetHostPID`, `SetHostIPC`, `SetSecurityContext`, `Raw`.
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
-    e.SetServiceAccountName("my-service-account")
+    e.SetServiceAccountName("agent-sa")
     e.EnsureVolume(corev1.Volume{
         Name: "config",
         VolumeSource: corev1.VolumeSource{
             ConfigMap: &corev1.ConfigMapVolumeSource{
-                LocalObjectReference: corev1.LocalObjectReference{Name: "app-config"},
+                LocalObjectReference: corev1.LocalObjectReference{Name: "agent-config"},
             },
         },
     })
@@ -136,28 +113,27 @@ m.EditPodSpec(func(e *editors.PodSpecEditor) error {
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
-[selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`, combined with a
+[container selector](../primitives.md#container-selectors).
 
 Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
 `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
-m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+m.EditContainers(selectors.ContainerNamed("agent"), func(e *editors.ContainerEditor) error {
     e.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "info"})
-    e.EnsureArg("--metrics-port=9090")
     e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("500m"))
     return nil
 })
 ```
 
-For fields not covered by the typed API (such as volume mounts), use `Raw()`:
+For fields the typed API does not cover, such as volume mounts, use `Raw()`:
 
 ```go
-m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+m.EditContainers(selectors.ContainerNamed("agent"), func(e *editors.ContainerEditor) error {
     e.Raw().VolumeMounts = append(e.Raw().VolumeMounts, corev1.VolumeMount{
         Name:      "config",
-        MountPath: "/etc/config",
+        MountPath: "/etc/agent",
     })
     return nil
 })
@@ -176,24 +152,7 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
-### Raw Escape Hatch
-
-All editors provide a `.Raw()` method for direct access to the underlying Kubernetes struct when the typed API is
-insufficient. The mutation remains scoped to the editor's target, so you cannot accidentally modify unrelated parts of
-the spec.
-
-```go
-m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
-    e.Raw().SecurityContext = &corev1.SecurityContext{
-        ReadOnlyRootFilesystem: ptr.To(true),
-    }
-    return nil
-})
-```
-
 ## Convenience Methods
-
-The `Mutator` also exposes convenience wrappers that target all containers at once:
 
 | Method                        | Equivalent to                                                 |
 | ----------------------------- | ------------------------------------------------------------- |
@@ -206,21 +165,61 @@ The `Mutator` also exposes convenience wrappers that target all containers at on
 
 Pods cannot be paused. The default behavior deletes the pod when the component is suspended.
 
-- `DefaultDeleteOnSuspendHandler`: returns `true`. The pod is deleted on suspend.
-- `DefaultSuspendMutationHandler`: no-op (deletion is handled by the framework).
-- `DefaultSuspensionStatusHandler`: always returns `{Suspended, "Pod deleted on suspend"}`.
+- `DefaultDeleteOnSuspendHandler` returns `true`. The pod is deleted on suspend.
+- `DefaultSuspendMutationHandler` is a no-op; deletion is handled by the framework.
+- `DefaultSuspensionStatusHandler` always reports `Suspended` with reason `"Pod deleted on suspend"`.
+
+## Full Example
+
+```go
+func AgentMutation(version string, cfgName string) pod.Mutation {
+    return pod.Mutation{
+        Name:    "agent-setup",
+        Feature: feature.NewVersionGate(version, nil),
+        Mutate: func(m *pod.Mutator) error {
+            m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+                e.SetServiceAccountName("agent-sa")
+                e.EnsureVolume(corev1.Volume{
+                    Name: "config",
+                    VolumeSource: corev1.VolumeSource{
+                        ConfigMap: &corev1.ConfigMapVolumeSource{
+                            LocalObjectReference: corev1.LocalObjectReference{Name: cfgName},
+                        },
+                    },
+                })
+                return nil
+            })
+
+            m.EditContainers(selectors.ContainerNamed("agent"), func(e *editors.ContainerEditor) error {
+                e.EnsureEnvVar(corev1.EnvVar{Name: "CONFIG_PATH", Value: "/etc/agent/config.yaml"})
+                e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("200m"))
+                e.SetResourceLimit(corev1.ResourceMemory, resource.MustParse("128Mi"))
+                e.Raw().VolumeMounts = append(e.Raw().VolumeMounts, corev1.VolumeMount{
+                    Name:      "config",
+                    MountPath: "/etc/agent",
+                    ReadOnly:  true,
+                })
+                return nil
+            })
+
+            return nil
+        },
+    }
+}
+```
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
+**Pods are effectively immutable after creation.** Plan the full desired state before the pod is created. Changes to
+most spec fields require deleting and recreating the pod. Use the Deployment, StatefulSet, or DaemonSet primitives for
+workloads that need rolling updates or scaling without manual recreation.
+
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for runtime boolean
 conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
-The internal ordering within each mutation handles intra-mutation dependencies automatically.
-
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
-the same mutation resolve correctly and reconciliation remains idempotent.
+Internal ordering within each mutation handles intra-mutation dependencies automatically.
 
 **Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
 cause unexpected behavior if sidecar containers are present.

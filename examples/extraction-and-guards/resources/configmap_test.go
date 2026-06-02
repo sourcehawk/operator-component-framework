@@ -6,7 +6,6 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/examples/extraction-and-guards/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
-	"github.com/sourcehawk/operator-component-framework/pkg/primitives/configmap"
 	"github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -24,17 +23,19 @@ func testOwner() *sharedapp.ExampleApp {
 	return owner
 }
 
-// TestConfigMapShape pins the database config ConfigMap's baseline shape.
-// If the base object changes (e.g. new keys added or defaults changed), the
-// golden file catches it so the change is reviewed explicitly.
+// TestConfigMapShape pins the database config ConfigMap as built by its factory.
+// The factory registers a data extractor but no mutations, so the golden file
+// captures the full desired state. If the base object changes (e.g. new keys
+// added or defaults changed), the golden file catches it.
 func TestConfigMapShape(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	owner := testOwner()
-	res, err := configmap.NewBuilder(resources.BaseConfigMap(owner)).Build()
+	var dbHost string
+	res, err := resources.NewConfigMapResource(owner, &dbHost)
 	require.NoError(t, err)
 
-	golden.AssertYAML(t, "testdata/configmap.yaml", res,
+	golden.AssertYAML(t, "testdata/configmap.yaml", res.(golden.Previewer),
 		golden.WithScheme(scheme), golden.Update(*update))
 }

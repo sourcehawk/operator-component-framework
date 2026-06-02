@@ -2,124 +2,112 @@ package resources_test
 
 import (
 	"flag"
+	"os"
 	"testing"
 
-	"github.com/sourcehawk/operator-component-framework/examples/mutations-and-gating/features"
 	"github.com/sourcehawk/operator-component-framework/examples/mutations-and-gating/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
-	"github.com/sourcehawk/operator-component-framework/pkg/primitives/deployment"
-	"github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
-	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
+	"github.com/sourcehawk/operator-component-framework/pkg/testing/goldengen"
 	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 )
 
+// update is wired to the -update flag so both resource generators overwrite their
+// goldens and manifests when set:
+//
+//	go test ./examples/mutations-and-gating/resources/ -update
+//
+// It is declared once for the whole resources test package; the Deployment and
+// ConfigMap generators share it.
 var update = flag.Bool("update", false, "update golden files")
 
-func testOwner(version string) *sharedapp.ExampleApp {
-	owner := &sharedapp.ExampleApp{
-		Spec: sharedapp.ExampleAppSpec{Version: version},
+// scheme resolves TypeMeta for the rendered resources.
+var scheme = newScheme()
+
+// newScheme returns a scheme with the core and apps Kubernetes types registered.
+func newScheme() *runtime.Scheme {
+	s := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(s); err != nil {
+		panic(err)
 	}
-	owner.Name = "my-app"
-	owner.Namespace = "default"
-	return owner
+	return s
 }
 
-// TestDeploymentShape verifies the Deployment's rendered YAML against golden
-// files for each supported version and feature combination.
+// owner returns a fixture owner. The Build functions overwrite Spec.Version per
+// version, so the Version set on a fixture spec is just a placeholder.
+func owner(spec sharedapp.ExampleAppSpec) *sharedapp.ExampleApp {
+	o := &sharedapp.ExampleApp{Spec: spec}
+	o.Name = "my-app"
+	o.Namespace = "default"
+	return o
+}
+
+// deploymentGen declares the Deployment resource matrix. The Deployment registers
+// three mutations:
 //
-// The baseline object (BaseDeployment) always reflects the latest version's
-// desired state (v2: container "app", HTTP + health ports). Legacy mutations
-// roll it back for older versions (v1: container "server", HTTP port only).
+//   - BackwardCompatV1Container is version-gated to fire for versions < 2.0.0, so the
+//     version sweep splits the default fixture into a pre-2.0.0 regime (the mutation
+//     fires) and a 2.0.0 regime (it does not).
+//   - DebugLogging is boolean-gated on EnableDebugLogging.
+//   - Tracing is boolean-gated on EnableTracing.
 //
-// Mutation registration order mirrors NewDeploymentResource: DebugLogging
-// targets ContainerNamed("app") and must come before LegacyContainer which
-// renames the container. TracingSidecar uses AllContainers and is
-// order-insensitive.
-//
-// These snapshots catch unintended regressions: if someone updates the
-// baseline to accommodate a new v3 layout, the v1 and v2 golden files will
-// fail unless the corresponding backward compat mutations still produce the
-// correct shape. This ensures that changes to the latest version do not silently
-// break the resource shape served to older versions.
-func TestDeploymentShape(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, appsv1.AddToScheme(scheme))
+// One fixture per boolean flag exercises the gate, and the version sweep covers the
+// version gate. Together the fixtures' Requires account for all three mutations.
+var deploymentGen = goldengen.New(goldengen.Config[*sharedapp.ExampleApp]{
+	Dir:      "testdata/deployment",
+	Versions: []string{"1.9.0", "2.0.0"},
+	Fixtures: []goldengen.Fixture[*sharedapp.ExampleApp]{
+		{
+			Name: "default",
+			Spec: owner(sharedapp.ExampleAppSpec{}),
+			Requires: []goldengen.Expect{
+				{Name: "BackwardCompatV1Container", For: "1.9.0"}, // legacy container before 2.0.0
+			},
+			Forbids: []goldengen.Expect{
+				{Name: "BackwardCompatV1Container", For: "2.0.0"}, // not from 2.0.0 onward
+			},
+		},
+		{
+			Name: "debug",
+			Spec: owner(sharedapp.ExampleAppSpec{EnableDebugLogging: true}),
+			Requires: []goldengen.Expect{
+				{Name: "DebugLogging"}, // boolean-gated on EnableDebugLogging
+			},
+		},
+		{
+			Name: "tracing",
+			Spec: owner(sharedapp.ExampleAppSpec{EnableTracing: true}),
+			Requires: []goldengen.Expect{
+				{Name: "Tracing"}, // boolean-gated on EnableTracing
+			},
+		},
+	},
+	Build: func(version string, spec *sharedapp.ExampleApp) (goldengen.Unit, error) {
+		o := spec.DeepCopyObject().(*sharedapp.ExampleApp)
+		o.Spec.Version = version
+		res, err := resources.NewDeploymentResource(o)
+		if err != nil {
+			return nil, err
+		}
+		return goldengen.Resource(res.(goldengen.ResourcePreviewer), scheme), nil
+	},
+})
 
-	tests := []struct {
-		name    string
-		version string
-		debug   bool
-		tracing bool
-		golden  string
-	}{
-		// v1 cases: BackwardCompatV1Container fires and rolls back the v2
-		// baseline to the v1 container layout. If the baseline changes,
-		// these golden files catch any v1 regression.
-		{
-			name:    "v1 legacy container",
-			version: "1.9.0",
-			golden:  "testdata/deployment-v1.yaml",
-		},
-		{
-			name:    "v1 with tracing",
-			version: "1.9.0",
-			tracing: true,
-			golden:  "testdata/deployment-v1-tracing.yaml",
-		},
-		{
-			name:    "v1 with debug",
-			version: "1.9.0",
-			debug:   true,
-			golden:  "testdata/deployment-v1-debug.yaml",
-		},
-		{
-			name:    "v1 with tracing and debug",
-			version: "1.9.0",
-			debug:   true,
-			tracing: true,
-			golden:  "testdata/deployment-v1-tracing-debug.yaml",
-		},
-		// v2 cases: no legacy mutation fires, so the baseline is rendered
-		// as-is. These golden files pin the current latest shape.
-		{
-			name:    "v2 baseline",
-			version: "2.0.0",
-			golden:  "testdata/deployment-v2.yaml",
-		},
-		{
-			name:    "v2 with tracing",
-			version: "2.0.0",
-			tracing: true,
-			golden:  "testdata/deployment-v2-tracing.yaml",
-		},
-		{
-			name:    "v2 with debug",
-			version: "2.0.0",
-			debug:   true,
-			golden:  "testdata/deployment-v2-debug.yaml",
-		},
-		{
-			name:    "v2 with tracing and debug",
-			version: "2.0.0",
-			debug:   true,
-			tracing: true,
-			golden:  "testdata/deployment-v2-tracing-debug.yaml",
-		},
-	}
+// TestDeploymentVersionMatrix runs the Deployment sweep: it asserts the gating
+// expectations and writes or compares one golden per regime plus the coverage
+// manifest.
+func TestDeploymentVersionMatrix(t *testing.T) {
+	deploymentGen.WithUpdate(*update)
+	deploymentGen.Run(t)
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			owner := testOwner(tt.version)
-
-			res, err := deployment.NewBuilder(resources.BaseDeployment(owner)).
-				WithMutation(features.DebugLoggingMutation(tt.debug)).
-				WithMutation(features.BackwardCompatV1Container(tt.version)).
-				WithMutation(features.TracingSidecarMutation(tt.tracing)).
-				Build()
-			require.NoError(t, err)
-
-			golden.AssertYAML(t, tt.golden, res, golden.WithScheme(scheme), golden.Update(*update))
-		})
-	}
+// TestMain runs the package tests, then proves every registered mutation across
+// both resource generators is required or excluded before reporting the exit code.
+// Chaining the AssertComplete calls means the package fails if either resource
+// leaves a mutation unaccounted.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	code = deploymentGen.AssertComplete(code)
+	code = configMapGen.AssertComplete(code)
+	os.Exit(code)
 }

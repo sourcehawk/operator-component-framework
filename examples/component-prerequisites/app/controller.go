@@ -48,16 +48,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	}()
 
 	// --- Infra component: no prerequisites ---
-	cmResource, err := r.NewConfigMapResource(owner)
-	if err != nil {
-		return err
-	}
-
-	infra, err := component.NewComponentBuilder().
-		WithName("infra").
-		WithConditionType("InfraReady").
-		WithResource(cmResource).
-		Build()
+	infra, err := r.BuildInfraComponent(owner)
 	if err != nil {
 		return err
 	}
@@ -67,21 +58,45 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	}
 
 	// --- App component: depends on InfraReady ---
-	deployResource, err := r.NewDeploymentResource(owner)
+	app, err := r.BuildAppComponent(owner)
 	if err != nil {
 		return err
 	}
 
-	app, err := component.NewComponentBuilder().
+	return app.Reconcile(ctx, recCtx)
+}
+
+// BuildInfraComponent assembles the infra component: a single ConfigMap reporting
+// the InfraReady condition, with no prerequisites. The controller and tests share
+// this so the reconciled component and the golden snapshot stay in lockstep.
+func (r *Controller) BuildInfraComponent(owner *ExampleApp) (*component.Component, error) {
+	cmResource, err := r.NewConfigMapResource(owner)
+	if err != nil {
+		return nil, err
+	}
+
+	return component.NewComponentBuilder().
+		WithName("infra").
+		WithConditionType("InfraReady").
+		WithResource(cmResource).
+		Build()
+}
+
+// BuildAppComponent assembles the app component: a Deployment reporting the
+// AppReady condition, gated behind the InfraReady prerequisite. The DependsOn
+// prerequisite is the point of this example, so the controller and tests build
+// the component the same way.
+func (r *Controller) BuildAppComponent(owner *ExampleApp) (*component.Component, error) {
+	deployResource, err := r.NewDeploymentResource(owner)
+	if err != nil {
+		return nil, err
+	}
+
+	return component.NewComponentBuilder().
 		WithName("app").
 		WithConditionType("AppReady").
 		WithResource(deployResource).
 		WithPrerequisite(component.DependsOn("InfraReady")).
 		Suspend(owner.Spec.Suspended).
 		Build()
-	if err != nil {
-		return err
-	}
-
-	return app.Reconcile(ctx, recCtx)
 }

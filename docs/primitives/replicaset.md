@@ -1,19 +1,21 @@
 # ReplicaSet Primitive
 
-The `replicaset` primitive is the framework's workload abstraction for managing Kubernetes `ReplicaSet` resources. It
-integrates fully with the component lifecycle and provides a rich mutation API for managing containers, pod specs, and
-metadata.
+The `replicaset` primitive wraps a Kubernetes `ReplicaSet` and provides health tracking, suspension, and a typed
+mutation API for managing replicas, pod spec, and containers as part of the component lifecycle.
 
-ReplicaSets are rarely managed directly; operators typically use Deployments. This primitive is provided for operators
-that own ReplicaSets explicitly (e.g. custom rollout controllers).
+ReplicaSets are rarely managed directly by operators. Deployments own and manage ReplicaSets automatically. This
+primitive is intended for operators that explicitly own ReplicaSet objects, such as custom rollout controllers that
+manage sets of pods without Deployment's rollout semantics.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                                                                        |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Health tracking**   | Verifies `ObservedGeneration` matches `Generation` before evaluating `ReadyReplicas`; reports `Healthy`, `Creating`, `Updating`, or `Scaling` |
-| **Suspension**        | Scales to zero replicas; reports `Suspending` / `Suspended`                                                                                   |
-| **Mutation pipeline** | Typed editors for metadata, replicaset spec, pod spec, and containers                                                                         |
+| [Lifecycle interface](../primitives.md#lifecycle-interfaces) | Reported status values                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------- |
+| `Alive`                                                      | `Healthy`, `Creating`, `Updating`, `Scaling`, `Failing` |
+| `Graceful`                                                   | `Healthy`, `Degraded`, `Down`                           |
+| `Suspendable`                                                | `PendingSuspension`, `Suspending`, `Suspended`          |
+| `Guardable`                                                  | `Blocked`                                               |
+| `DataExtractable`                                            | _(side-effecting, no status)_                           |
 
 ## Building a ReplicaSet Primitive
 
@@ -29,7 +31,16 @@ base := &appsv1.ReplicaSet{
         Selector: &metav1.LabelSelector{
             MatchLabels: map[string]string{"app": "worker"},
         },
-        // baseline spec
+        Template: corev1.PodTemplateSpec{
+            ObjectMeta: metav1.ObjectMeta{
+                Labels: map[string]string{"app": "worker"},
+            },
+            Spec: corev1.PodSpec{
+                Containers: []corev1.Container{
+                    {Name: "worker"},
+                },
+            },
+        },
     },
 }
 
@@ -40,51 +51,29 @@ resource, err := replicaset.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `ReplicaSet` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
-
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
+Each mutation is a named `replicaset.Mutation` that receives a `*replicaset.Mutator` and records edits through typed
+editors.
 
 ```go
-func MyFeatureMutation(version string) replicaset.Mutation {
+func WorkerConfigMutation(version string) replicaset.Mutation {
     return replicaset.Mutation{
-        Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
+        Name:    "worker-config",
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *replicaset.Mutator) error {
-            // record edits here
+            m.EnsureContainerEnvVar(corev1.EnvVar{Name: "WORKER_THREADS", Value: "4"})
             return nil
         },
     }
 }
 ```
 
-Mutations are applied in the order they are registered with the builder.
-
-### Boolean-gated mutations
-
-Use `When(bool)` to gate a mutation on a runtime condition:
-
-```go
-func TracingMutation(version string, enabled bool) replicaset.Mutation {
-    return replicaset.Mutation{
-        Name:    "tracing",
-        Feature: feature.NewVersionGate(version, nil).When(enabled),
-        Mutate: func(m *replicaset.Mutator) error {
-            m.EnsureContainer(corev1.Container{
-                Name:  "jaeger-agent",
-                Image: "jaegertracing/jaeger-agent:1.28",
-            })
-            return nil
-        },
-    }
-}
-```
+See [the mutation system](../primitives.md#the-mutation-system),
+[boolean gating](../primitives.md#boolean-gated-mutations), and
+[version gating](../primitives.md#version-gated-mutations).
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
-order they are recorded:
+Within each feature, edits run in this fixed category order:
 
 | Step | Category                    | What it affects                                                         |
 | ---- | --------------------------- | ----------------------------------------------------------------------- |
@@ -97,9 +86,12 @@ order they are recorded:
 | 7    | Init container presence     | Adding or removing containers from `spec.template.spec.initContainers`  |
 | 8    | Init container edits        | Env vars, args, resources (snapshot taken after step 7)                 |
 
-Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
+Container edits (steps 6 and 8) are evaluated against a snapshot taken _after_ presence operations in the same feature.
 
 ## Relevant Editors
+
+For the generic editor and selector concepts, see [mutation editors](../primitives.md#mutation-editors) and
+[container selectors](../primitives.md#container-selectors).
 
 ### ReplicaSetSpecEditor
 
@@ -115,8 +107,10 @@ m.EditReplicaSetSpec(func(e *editors.ReplicaSetSpecEditor) error {
 })
 ```
 
-Note: `spec.selector` is immutable after creation and is not exposed by this editor. Set it via the desired object
-passed to `NewBuilder`.
+!!! note "`spec.selector` is immutable"
+
+    `spec.selector` cannot be changed after the ReplicaSet is created. Set it in the desired object passed to
+    `NewBuilder`; it is not exposed by `ReplicaSetSpecEditor`.
 
 ### PodSpecEditor
 
@@ -128,30 +122,31 @@ Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `Ens
 
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
-    e.SetServiceAccountName("my-service-account")
+    e.SetServiceAccountName("worker-sa")
     return nil
 })
 ```
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
-[selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`, combined with a
+[container selector](../primitives.md#container-selectors).
 
 Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
 `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
 
 ```go
-m.EditContainers(selectors.ContainerNamed("app"), func(e *editors.ContainerEditor) error {
+m.EditContainers(selectors.ContainerNamed("worker"), func(e *editors.ContainerEditor) error {
     e.EnsureEnvVar(corev1.EnvVar{Name: "LOG_LEVEL", Value: "info"})
+    e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("500m"))
     return nil
 })
 ```
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `ReplicaSet` object itself, or
-`m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` for the `ReplicaSet` itself or `m.EditPodTemplateMetadata`
+for the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
@@ -165,14 +160,69 @@ Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnno
 | `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
 | `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
+## Workload-Kind-Agnostic Mutations
+
+The `replicaset.Mutator` does not implement `primitives.WorkloadMutator` and therefore does not have a `LiftMutation`
+adapter. Workload-kind-agnostic mutations target the Deployment, StatefulSet, and DaemonSet mutators. If you need to
+share container or env-var mutations across those kinds and a ReplicaSet, write the shared logic as a plain function
+that accepts `*replicaset.Mutator` and call it directly from a `replicaset.Mutation`.
+
+See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the cross-kind pattern.
+
+## Suspension
+
+When the component is suspended, the ReplicaSet is scaled to zero replicas. The resource is not deleted.
+
+- `DefaultSuspendMutationHandler` calls `EnsureReplicas(0)`.
+- `DefaultSuspensionStatusHandler` reports `Suspending` while `Status.Replicas > 0`, then `Suspended`.
+- `DefaultDeleteOnSuspendHandler` returns `false`.
+
+Override any handler via `WithCustomSuspendMutation`, `WithCustomSuspendStatus`, or `WithCustomSuspendDeletionDecision`
+on the builder.
+
+## Full Example
+
+```go
+func WorkerMutation(version string, replicas int32) replicaset.Mutation {
+    return replicaset.Mutation{
+        Name:    "worker-sizing",
+        Feature: feature.NewVersionGate(version, nil),
+        Mutate: func(m *replicaset.Mutator) error {
+            m.EnsureReplicas(replicas)
+
+            m.EditContainers(selectors.ContainerNamed("worker"), func(e *editors.ContainerEditor) error {
+                e.EnsureEnvVar(corev1.EnvVar{Name: "WORKER_THREADS", Value: "4"})
+                e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("500m"))
+                e.SetResourceLimit(corev1.ResourceMemory, resource.MustParse("256Mi"))
+                return nil
+            })
+
+            m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+                e.SetServiceAccountName("worker-sa")
+                return nil
+            })
+
+            return nil
+        },
+    }
+}
+```
+
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run.
+**Prefer Deployments over direct ReplicaSet management.** Deployments add rolling-update semantics and revision history.
+Use this primitive only when you are building a custom rollout controller or you have a specific reason to own
+ReplicaSet objects directly.
+
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for runtime boolean
+conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
+Internal ordering within each mutation handles intra-mutation dependencies automatically.
 
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
-the same mutation resolve correctly and reconciliation remains idempotent.
+**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so selectors in the
+same mutation resolve correctly and reconciliation remains idempotent.
 
 **Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
 cause unexpected behavior if sidecar containers are present.

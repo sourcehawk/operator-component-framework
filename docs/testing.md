@@ -1,17 +1,48 @@
 # Testing
 
-The framework ships two test-only packages for asserting the desired state your resources and components produce:
+The framework ships two test-only packages: `pkg/testing/golden` for single-build snapshot tests and
+`pkg/testing/goldengen` for declarative coverage across versions and specs. Both are opt-in and import nothing into the
+reconcile path, so a consumer that does not test against them pays nothing. This page organizes them around three
+testing layers.
 
-- `pkg/testing/golden` snapshots a single build to a YAML golden file and compares against it on every run.
-- `pkg/testing/goldengen` sweeps a version universe over one or more fixtures, classifies the swept versions into gating
-  regimes, generates the minimal set of goldens covering them, asserts which mutations fire at which version, and proves
-  every registered mutation is accounted for.
+## The three layers
 
-Reach for `golden` when you want to pin the output of one build. Reach for `goldengen` when a resource carries
-version-gated mutations and you want one golden per behavior rather than one per version, with the gating asserted
-explicitly.
+Test a component from the inside out. Each layer asserts something the layer below cannot:
 
-Both packages are opt-in and import nothing into the reconcile path. A consumer that does not import them pays nothing.
+| Layer         | What you assert                                                        | Tool                                                       |
+| ------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Mutation**  | one mutation makes the field changes you intend, on a baseline         | testify, against `Preview()`                               |
+| **Resource**  | the right mutations fire for a spec, and the rendered output is pinned | `golden` for a snapshot, `goldengen.Resource` for coverage |
+| **Component** | the whole component renders the resources you expect, applied together | `golden.AssertComponentYAML`, or `goldengen.Component`     |
+
+The
+[`mutations-and-gating` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/mutations-and-gating)
+demonstrates all three, and the
+[`version-matrix` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/version-matrix)
+is a focused walkthrough of `goldengen`.
+
+## Mutation tests
+
+Unit-test a mutation in isolation: build a minimal baseline primitive with only that mutation, preview it, and assert
+the fields it changed. There is no golden file at this layer; the assertion states intent directly.
+
+```go
+func TestDebugLoggingMutation(t *testing.T) {
+    res, err := deployment.NewBuilder(baseDeployment()).
+        WithMutation(features.DebugLoggingMutation(true)).
+        Build()
+    require.NoError(t, err)
+
+    dep, err := res.Preview()
+    require.NoError(t, err)
+
+    container := dep.(*appsv1.Deployment).Spec.Template.Spec.Containers[0]
+    assert.Contains(t, container.Env, corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"})
+}
+```
+
+Share the minimal `baseDeployment()` / `baseConfigMap()` baselines across a package's mutation tests in a
+`helpers_test.go` so each test declares only what it exercises.
 
 ## Golden snapshots
 
@@ -19,67 +50,179 @@ Both packages are opt-in and import nothing into the reconcile path. A consumer 
 serialization resolves `TypeMeta` (from the object or a supplied scheme) and strips zero-value noise fields, so the
 golden reflects only the meaningful desired state.
 
-### Assert a single resource
+### golden.WithScheme is effectively mandatory
 
-`AssertYAML` previews a built primitive, serializes it, and fails the test on any difference from the golden file. Wire
-a `-update` flag to regenerate the golden when the desired state legitimately changes.
+Typed Kubernetes objects (all built-in primitives and standard `k8s.io/api` types) do not populate `TypeMeta` by
+default. Attempting to serialize such an object without a scheme produces an error:
+
+```
+object *v1.Deployment has incomplete TypeMeta (kind="", apiVersion="") and no scheme was provided
+```
+
+Pass `golden.WithScheme(scheme)` to every `AssertYAML` and `AssertComponentYAML` call. The scheme only needs to register
+the types you are serializing; the same scheme you use in your controller's manager is normally sufficient.
 
 ```go
-var update = flag.Bool("update", false, "update golden files")
+var scheme = runtime.NewScheme()
 
-func TestDeploymentGolden(t *testing.T) {
-	res, err := deployment.NewBuilder(baseDeployment()).
-		WithMutation(features.DebugLoggingMutation(true)).
-		Build()
-	require.NoError(t, err)
-
-	golden.AssertYAML(t, "testdata/deployment.yaml", res,
-		golden.WithScheme(scheme), golden.Update(*update))
+func init() {
+    _ = appsv1.AddToScheme(scheme)
+    _ = corev1.AddToScheme(scheme)
 }
 ```
 
-`golden.WithScheme(scheme)` resolves `apiVersion` and `kind` for objects that do not populate `TypeMeta`. Without it,
-serialization of such an object fails. `golden.Update(*update)` overwrites the golden file (creating intermediate
-directories) instead of comparing, so `go test ./... -update` refreshes every golden in one pass.
+### The Previewer and ComponentPreviewer contracts
+
+`AssertYAML` accepts a `golden.Previewer`:
+
+```go
+type Previewer interface {
+    Preview() (client.Object, error)
+}
+```
+
+`AssertComponentYAML` accepts a `golden.ComponentPreviewer`:
+
+```go
+type ComponentPreviewer interface {
+    Preview() ([]client.Object, error)
+}
+```
+
+All built-in primitives satisfy `Previewer` through `generic.BaseResource`. A built `*component.Component` satisfies
+`ComponentPreviewer` through its `Preview` method. If you are implementing a custom resource wrapper, your built
+resource must also satisfy `Previewer` for golden tests to work. See [Custom Resources](custom-resource.md) for how to
+implement `Preview` on a custom resource.
+
+### Assert a single resource
+
+`AssertYAML` previews a built primitive, serializes it, and fails the test on any difference from the golden file. The
+test helpers live in `github.com/sourcehawk/operator-component-framework/pkg/testing/golden`; `app` and `resources` are
+your own packages, and `scheme` is the package-level scheme from the section above.
+
+```go
+import (
+    "flag"
+    "testing"
+
+    "github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
+    "github.com/stretchr/testify/require"
+
+    "your.module/app"
+    "your.module/resources"
+)
+
+var update = flag.Bool("update", false, "update golden files")
+
+func TestDeploymentGolden(t *testing.T) {
+    owner := &app.ExampleApp{Spec: app.ExampleAppSpec{Version: "2.0.0", EnableDebugLogging: true}}
+    owner.Name = "my-app"
+    owner.Namespace = "default"
+
+    res, err := resources.NewDeploymentResource(owner)
+    require.NoError(t, err)
+
+    previewer, ok := res.(golden.Previewer)
+    require.True(t, ok)
+    golden.AssertYAML(t, "testdata/deployment.yaml", previewer,
+        golden.WithScheme(scheme), golden.Update(*update))
+}
+```
+
+`resources.NewDeploymentResource` returns a `component.Resource`, the lean interface the reconciler uses. Rendering is a
+separate capability, so the test asserts to `golden.Previewer` (the contract shown above); for any built-in primitive
+the assertion always succeeds, since `generic.BaseResource` implements `Preview`.
+
+`golden.Update(*update)` overwrites the golden file (creating intermediate directories) instead of comparing. Generate
+the golden once, inspect it, then commit it:
+
+```bash
+go test ./path/to/pkg -run TestDeploymentGolden -update
+go test ./path/to/pkg -run TestDeploymentGolden
+```
+
+!!! note
+
+    The `-update` flag goes **after** the package path, not before it. `go test -update ./...` passes `-update` to
+    `go test` itself, which rejects it. The correct form is `go test ./path/to/pkg -update`.
+
+Golden files live in a `testdata/` directory next to the test file. Go excludes `testdata/` from the build by
+convention, so the files are invisible to the compiler.
 
 ### Assert a component
 
 `AssertComponentYAML` previews every resource a component would apply and serializes them into one multi-document YAML
-stream (`---` separated, in apply order).
+stream (`---` separated, in apply order). `buildComponent` here is your own helper that assembles the component with
+`component.NewComponentBuilder` (see [Getting Started](getting-started.md#step-5-wire-the-reconciler) for building one);
+extract it from your reconciler so the test and the controller build the component the same way. A built
+`*component.Component` satisfies `golden.ComponentPreviewer` directly, so no type assertion is needed.
 
 ```go
 func TestComponentGolden(t *testing.T) {
-	c, err := buildComponent(owner)
-	require.NoError(t, err)
+    owner := &app.ExampleApp{Spec: app.ExampleAppSpec{Version: "2.0.0", EnableDebugLogging: true}}
+    owner.Name = "my-app"
+    owner.Namespace = "default"
 
-	golden.AssertComponentYAML(t, "testdata/component.yaml", c,
-		golden.WithScheme(scheme), golden.Update(*update))
+    comp, err := buildComponent(owner) // your component-building helper
+    require.NoError(t, err)
+
+    golden.AssertComponentYAML(t, "testdata/component.yaml", comp,
+        golden.WithScheme(scheme), golden.Update(*update))
 }
 ```
 
-Both helpers have non-`testing.T` variants, `CompareYAML` and `CompareComponentYAML`, that return a `*MismatchError`
-(carrying a unified diff) instead of failing a test, for use outside a test body.
+Generate and verify with the same `-update` pattern:
 
-### Serialize out of band
+```bash
+go test ./path/to/pkg -run TestComponentGolden -update
+go test ./path/to/pkg -run TestComponentGolden
+```
 
-When you need the canonical YAML bytes directly, for example to feed a custom comparison or to generate goldens from a
-tool, call the serializers the assertions use:
+### Non-testing variants and out-of-band serialization
+
+Both helpers have non-`testing.T` variants that return a `*MismatchError` (carrying a unified diff) instead of failing a
+test, for use outside a test body:
+
+- `CompareYAML(path string, p Previewer, opts ...Option) error`
+- `CompareComponentYAML(path string, c ComponentPreviewer, opts ...Option) error`
+
+When you need the canonical YAML bytes directly (to feed a custom comparison or generate goldens from a tool), call the
+serializers directly:
 
 ```go
-data, err := golden.Serialize(obj, scheme)                 // one object
-stream, err := golden.SerializeComponent(objs, scheme)     // multi-document stream
+data, err := golden.Serialize(obj, scheme)             // one object
+stream, err := golden.SerializeComponent(objs, scheme) // multi-document stream
 ```
 
 `goldengen` is built on exactly these two functions.
 
-## Version matrix generation
+## Coverage with goldengen
 
-A resource with version-gated mutations behaves differently across versions, but not at every version: it changes only
-where a gate flips. Asserting one golden per version is wasteful and obscures where behavior actually changes.
-`goldengen` sweeps the versions you supply, groups them by which mutations fire, and writes one golden per distinct
-group.
+`goldengen` is the declarative way to do the resource and component layers when you want coverage rather than a single
+snapshot. It sweeps a set of versions and specs, asserts which mutations fire at each, writes one golden per distinct
+firing group, and proves through `AssertComplete` that no registered mutation went untested.
 
-The worked example lives at [`examples/version-matrix`](../examples/version-matrix). The walkthrough below follows it.
+It works at either granularity through one `Unit` abstraction: wrap a built resource with
+`goldengen.Resource(res, scheme)` for resource-level coverage, or a built component with
+`goldengen.Component(comp, scheme)` for component-level coverage. Everything below (fixtures, gating assertions, the
+manifest, completeness) applies the same to both.
+
+!!! note
+
+    `goldengen` classifies firing and checks completeness by reading each unit's `RegisteredMutations()` and
+    `FiringSet()`, the `concepts.MutationInspector` interface every built resource and component implements. You rarely
+    call it directly; `goldengen` is the supported way to assert which mutations fire.
+
+A resource with version-gated mutations behaves differently across versions, but not at every version: behavior changes
+only where a gate flips. Asserting one golden per version is wasteful and obscures where behavior actually changes.
+`goldengen` groups the swept versions by which mutations fire and writes one golden per distinct group.
+
+The worked example lives at
+[`examples/version-matrix`](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/version-matrix)
+(a single resource); the
+[`mutations-and-gating` example](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/mutations-and-gating)
+applies the same harness at both the resource and component layers. The walkthrough below follows the version-matrix
+example.
 
 ### Declare the matrix
 
@@ -88,30 +231,30 @@ function accepts).
 
 ```go
 var gen = goldengen.New(goldengen.Config[*app.ExampleApp]{
-	Dir:      "testdata/version_matrix",
-	Versions: []string{"8.7.0", "8.8.2", "8.9.0"},
-	Fixtures: []goldengen.Fixture[*app.ExampleApp]{{
-		Name: "default",
-		Spec: defaultCluster(),
-		Requires: []goldengen.Expect{
-			{Name: "ContainerImage"},
-			{Name: "ClusterEnv/Pre89", For: "8.8.2"},
-			{Name: "ClusterEnv/Unified89", For: "8.9.0"},
-		},
-		Forbids: []goldengen.Expect{
-			{Name: "ClusterEnv/Unified89", For: "8.8.2"},
-			{Name: "ClusterEnv/Pre89", For: "8.9.0"},
-		},
-	}},
-	Build: func(version string, spec *app.ExampleApp) (goldengen.Unit, error) {
-		c := spec.DeepCopyObject().(*app.ExampleApp)
-		c.Spec.Version = version
-		res, err := resources.NewStatefulSetResource(c)
-		if err != nil {
-			return nil, err
-		}
-		return goldengen.Resource(res, scheme), nil
-	},
+    Dir:      "testdata/version_matrix",
+    Versions: []string{"1.0.0", "1.5.0", "2.0.0"},
+    Fixtures: []goldengen.Fixture[*app.ExampleApp]{{
+        Name: "default",
+        Spec: defaultCluster(),
+        Requires: []goldengen.Expect{
+            {Name: "ContainerImage"},
+            {Name: "PeerDiscovery/PreV2", For: "1.5.0"},
+            {Name: "PeerDiscovery/V2", For: "2.0.0"},
+        },
+        Forbids: []goldengen.Expect{
+            {Name: "PeerDiscovery/V2", For: "1.5.0"},
+            {Name: "PeerDiscovery/PreV2", For: "2.0.0"},
+        },
+    }},
+    Build: func(version string, spec *app.ExampleApp) (goldengen.Unit, error) {
+        c := spec.DeepCopyObject().(*app.ExampleApp)
+        c.Spec.Version = version
+        res, err := resources.NewStatefulSetResource(c)
+        if err != nil {
+            return nil, err
+        }
+        return goldengen.Resource(res, scheme), nil
+    },
 })
 ```
 
@@ -127,7 +270,31 @@ The fields:
 
 `Build` returns a `Unit`, the introspectable-and-renderable handle the generator works with. Adapt a built primitive
 with `goldengen.Resource(res, scheme)` or a built component with `goldengen.Component(comp, scheme)`. Both delegate
-rendering to `golden.Serialize` / `golden.SerializeComponent`.
+rendering to `golden.Serialize` / `golden.SerializeComponent`. For component-level coverage, build the whole component
+in `Build` and wrap it instead; everything else (fixtures, gating assertions, the manifest, `AssertComplete`) is
+identical:
+
+```go
+Build: func(version string, spec *app.ExampleApp) (goldengen.Unit, error) {
+    c := spec.DeepCopyObject().(*app.ExampleApp)
+    c.Spec.Version = version
+    comp, err := buildComponent(c) // returns *component.Component, as your reconciler builds it
+    if err != nil {
+        return nil, err
+    }
+    return goldengen.Component(comp, scheme), nil
+},
+```
+
+A component's registered and firing sets are the union of its resources' mutations, deduplicated. So at the component
+layer, `Requires`/`Forbids` and `AssertComplete` range over every mutation any resource in the component registers, not
+a separate component-level set.
+
+`goldengen.Resource` requires that the primitive satisfies both `concepts.MutationInspector` (for `RegisteredMutations`
+and `FiringSet`) and `concepts.Previewable` (for `Preview`); `goldengen.Component` requires the equivalent on a
+`*component.Component`. All built-in primitives satisfy both through `generic.BaseResource`, and a built component
+satisfies them by aggregating its resources. For custom resources, see [Custom Resources](custom-resource.md) for how to
+implement `MutationInspector`.
 
 ### Run the sweep
 
@@ -137,8 +304,8 @@ Wire a `-update` flag through `WithUpdate` and call `Run` from a normal test:
 var update = flag.Bool("update", false, "update golden files")
 
 func TestVersionMatrix(t *testing.T) {
-	gen.WithUpdate(*update)
-	gen.Run(t)
+    gen.WithUpdate(*update)
+    gen.Run(t)
 }
 ```
 
@@ -146,8 +313,8 @@ func TestVersionMatrix(t *testing.T) {
 compares one golden per regime plus the manifest. Generate the goldens once, inspect them, then commit:
 
 ```bash
-go test ./examples/version-matrix/ -run TestVersionMatrix -update   # generate
-go test ./examples/version-matrix/                                  # verify
+go test ./examples/version-matrix/ -run TestVersionMatrix -update
+go test ./examples/version-matrix/
 ```
 
 ### Firing-set classification
@@ -156,26 +323,26 @@ The firing set at a version is the set of registered mutations whose gate is ena
 fires unconditionally). A **regime** is a maximal group of swept versions sharing an identical firing set. `goldengen`
 writes one golden per regime, named after the regime's representative, instead of one golden per version.
 
-In the example, the universe `8.7.0`, `8.8.2`, `8.9.0` collapses to two regimes:
+In the example, the universe `1.0.0`, `1.5.0`, `2.0.0` collapses to two regimes:
 
 ```mermaid
 flowchart LR
-    v1["8.7.0"] --> r1
-    v2["8.8.2"] --> r1
-    v3["8.9.0"] --> r2
-    r1["regime: ContainerImage + ClusterEnv/Pre89<br/>golden: default/8.7.0.yaml"]
-    r2["regime: ContainerImage + ClusterEnv/Unified89<br/>golden: default/8.9.0.yaml"]
+    v1["1.0.0"] --> r1
+    v2["1.5.0"] --> r1
+    v3["2.0.0"] --> r2
+    r1["regime: ContainerImage + PeerDiscovery/PreV2<br/>golden: default/1.0.0.yaml"]
+    r2["regime: ContainerImage + PeerDiscovery/V2<br/>golden: default/2.0.0.yaml"]
 ```
 
-`8.7.0` and `8.8.2` fire the same set, so they share one golden; `8.9.0` crosses the `ClusterEnv` boundary into its own
-regime. Two goldens cover three versions, and adding more versions inside an existing regime adds no goldens.
+`1.0.0` and `1.5.0` fire the same set, so they share one golden; `2.0.0` crosses the `PeerDiscovery` boundary into its
+own regime. Two goldens cover three versions, and adding more versions inside an existing regime adds no goldens.
 
 ### Version ordering
 
 The representative of a regime is the first version in supplied order that belongs to it. Listing `Versions` ascending
 therefore puts each representative on the **lower inclusive boundary** of its gating range, so the golden's filename
-marks exactly where the regime begins. In the example, `default/8.9.0.yaml` is named for the first version at which the
-unified-discovery regime takes effect. List versions ascending unless you have a specific reason not to.
+marks exactly where the regime begins. In the example, `default/2.0.0.yaml` is named for the first version at which the
+newer peer-discovery regime takes effect. List versions ascending unless you have a specific reason not to.
 
 ### The four assertions
 
@@ -189,8 +356,8 @@ set it must be a version drawn from `Versions`.
 | `Forbids{Name}`       | no        | the mutation fires at **no** swept version     |
 | `Forbids{Name, For}`  | yes       | the mutation **does not** fire at that version |
 
-Pin both sides of a boundary to assert it precisely: in the example `ClusterEnv/Unified89` is required at `8.9.0` and
-forbidden at `8.8.2`, which locks the gate to exactly the `8.9.0` boundary rather than merely "fires somewhere".
+Pin both sides of a boundary to assert it precisely: in the example `PeerDiscovery/V2` is required at `2.0.0` and
+forbidden at `1.5.0`, which locks the gate to exactly the `2.0.0` boundary rather than merely "fires somewhere".
 
 ### Completeness accounting
 
@@ -199,7 +366,19 @@ forbidden at `8.8.2`, which locks the gate to exactly the `8.9.0` boundary rathe
 
 ```go
 func TestMain(m *testing.M) {
-	os.Exit(gen.AssertComplete(m.Run()))
+    os.Exit(gen.AssertComplete(m.Run()))
+}
+```
+
+With more than one generator in a package (say a resource matrix and a component matrix), there is still one `TestMain`;
+chain the accounting so a violation in either fails the package:
+
+```go
+func TestMain(m *testing.M) {
+    code := m.Run()
+    code = resourceGen.AssertComplete(code)
+    code = componentGen.AssertComplete(code)
+    os.Exit(code)
 }
 ```
 
@@ -215,6 +394,21 @@ violations are:
 The effect: registering a new version-gated mutation fails the suite until you either assert it with a `Requires` or
 deliberately set it aside with `Exclude`.
 
+`AssertComplete` checks coverage, not firing. It confirms every registered mutation is named in a `Requires` or
+`Exclude`; it never evaluates whether a mutation fired. Firing is verified separately, when `Run` checks each `Requires`
+during the sweep. The two compose: `AssertComplete` forces every mutation to be asserted, and the `Requires` it forces
+you to write then proves the mutation actually fires.
+
+| Check            | Runs             | Fails when                                                   |
+| ---------------- | ---------------- | ------------------------------------------------------------ |
+| `Requires{Name}` | during the sweep | the named mutation does **not** fire                         |
+| `Forbids{Name}`  | during the sweep | the named mutation **does** fire                             |
+| `AssertComplete` | from `TestMain`  | a registered mutation is in neither `Requires` nor `Exclude` |
+
+`Requires` and `Forbids` assert behavior (firing); `AssertComplete` asserts coverage, on registration. Nothing fails
+merely because a mutation fired without a matching `Requires`. The coverage net is registration-based: every registered
+mutation must be required or excluded.
+
 ### The manifest
 
 Alongside the goldens, `Run` writes `<Dir>/manifest.yaml`, a reviewable coverage map: per fixture, each regime with its
@@ -224,19 +418,19 @@ representative version, the versions it covers, and the shared firing set.
 fixtures:
   - name: default
     regimes:
-      - representative: 8.7.0
+      - representative: 1.0.0
         versions:
-          - 8.7.0
-          - 8.8.2
+          - 1.0.0
+          - 1.5.0
         firing:
-          - ClusterEnv/Pre89
           - ContainerImage
-      - representative: 8.9.0
+          - PeerDiscovery/PreV2
+      - representative: 2.0.0
         versions:
-          - 8.9.0
+          - 2.0.0
         firing:
-          - ClusterEnv/Unified89
           - ContainerImage
+          - PeerDiscovery/V2
 ```
 
 Reviewing the manifest diff in a pull request shows at a glance how the gating coverage changed: a new regime, a moved
@@ -249,15 +443,17 @@ function stays in code. `LoadMatrix` reads the file and returns a ready-to-run `
 
 ```go
 func LoadMatrix[T any](
-	path string,
-	newSpec func() T,
-	build func(version string, spec T) (Unit, error),
+    path string,
+    newSpec func() T,
+    build func(version string, spec T) (Unit, error),
 ) (Config[T], error)
 ```
 
-`newSpec` returns a fresh, empty spec to unmarshal each fixture into; `build` is the same callback you would set on a Go
-`Config`, and it supplies the scheme by passing it to `goldengen.Resource` or `goldengen.Component`. The returned config
-is validated before it is returned.
+`newSpec` returns a fresh, empty spec to unmarshal a fixture into, called once per fixture at load time, not per build.
+`build` is the same callback you would set on a Go `Config`, including the deep copy: it receives the loaded fixture
+spec, which `goldengen` reuses across every version in the sweep, so it must copy the spec before setting the version,
+exactly as the [Go `Config.Build`](#declare-the-matrix) does. It supplies the scheme by passing the built unit through
+`goldengen.Resource` or `goldengen.Component`. The returned config is validated before it is returned.
 
 A matrix file mirrors `Config` minus the Go-only `build`. Each fixture supplies its spec either inline under `spec:` or
 from an external file under `specFile:` (resolved relative to the matrix file), exactly one of the two:
@@ -265,9 +461,9 @@ from an external file under `specFile:` (resolved relative to the matrix file), 
 ```yaml
 dir: testdata/version_matrix
 versions:
-  - "8.7.0"
-  - "8.8.2"
-  - "8.9.0"
+  - "1.0.0"
+  - "1.5.0"
+  - "2.0.0"
 exclude: []
 fixtures:
   - name: default
@@ -278,13 +474,13 @@ fixtures:
         name: demo
         namespace: default
       spec:
-        version: 8.7.0
+        version: 1.0.0
     requires:
       - { name: ContainerImage }
-      - { name: ClusterEnv/Pre89, for: "8.8.2" }
-      - { name: ClusterEnv/Unified89, for: "8.9.0" }
+      - { name: PeerDiscovery/PreV2, for: "1.5.0" }
+      - { name: PeerDiscovery/V2, for: "2.0.0" }
     forbids:
-      - { name: ClusterEnv/Unified89, for: "8.8.2" }
+      - { name: PeerDiscovery/V2, for: "1.5.0" }
   - name: tls
     specFile: fixtures/tls.yaml # external custom resource
     requires:
@@ -292,14 +488,35 @@ fixtures:
 ```
 
 ```go
-cfg, err := goldengen.LoadMatrix("testdata/matrix.yaml",
-	func() *app.ExampleApp { return &app.ExampleApp{} },
-	buildUnit)
+// buildUnit is the same function you would set as Config.Build: it copies the
+// loaded spec (shared across the sweep), applies the version, builds the
+// resource, and wraps it as a Unit.
+func buildUnit(version string, spec *app.ExampleApp) (goldengen.Unit, error) {
+    c := spec.DeepCopyObject().(*app.ExampleApp)
+    c.Spec.Version = version
+    res, err := resources.NewStatefulSetResource(c)
+    if err != nil {
+        return nil, err
+    }
+    return goldengen.Resource(res, scheme), nil
+}
+
+cfg, err := goldengen.LoadMatrix(
+    "testdata/matrix.yaml",
+    func() *app.ExampleApp { return &app.ExampleApp{} },
+    buildUnit,
+)
 require.NoError(t, err)
 
 gen := goldengen.New(cfg).WithUpdate(*update)
 gen.Run(t)
 ```
+
+`LoadMatrix` does not call `buildUnit` itself. It loads the fixtures and versions from the file and stores `buildUnit`
+as the config's `Build` field, then the config runs exactly like one declared in Go: `goldengen.New(cfg)` wraps it, and
+`gen.Run` calls `buildUnit(version, spec)` for each version and fixture during the sweep, passing the spec it
+unmarshaled from the file. The YAML supplies the data (specs, versions, expectations); `buildUnit` supplies the build
+logic.
 
 `LoadMatrix` errors if a fixture sets both `spec` and `specFile` or neither, if a `for` value is not in `versions`, or
 if any spec fails to unmarshal into `T`.

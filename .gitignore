@@ -46,3 +46,6 @@ CLAUDE.md
 posts
 # Internal planning artifacts (specs/plans), keep local-only
 docs/superpowers/
+
+# MkDocs build output
+site/

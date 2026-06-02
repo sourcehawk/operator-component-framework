@@ -439,6 +439,19 @@ fixtures:
 ```
 
 ```go
+// buildUnit is the same function you would set as Config.Build: it copies the
+// loaded spec (shared across the sweep), applies the version, builds the
+// resource, and wraps it as a Unit.
+func buildUnit(version string, spec *app.ExampleApp) (goldengen.Unit, error) {
+    c := spec.DeepCopyObject().(*app.ExampleApp)
+    c.Spec.Version = version
+    res, err := resources.NewStatefulSetResource(c)
+    if err != nil {
+        return nil, err
+    }
+    return goldengen.Resource(res, scheme), nil
+}
+
 cfg, err := goldengen.LoadMatrix(
     "testdata/matrix.yaml",
     func() *app.ExampleApp { return &app.ExampleApp{} },

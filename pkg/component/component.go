@@ -99,6 +99,7 @@ type Component struct {
 	// Each entry pairs the resource with its full options.
 	reconcileResources []reconcileEntry
 	deleteResources    []Resource
+	orphanResources    []Resource
 	resourceLookup     map[string]Resource
 
 	gracePeriod time.Duration
@@ -322,6 +323,10 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 				return fail(rec, c.conditionType, err)
 			}
 
+			if err := orphanResources(ctx, rec, c.orphanResources); err != nil {
+				return fail(rec, c.conditionType, err)
+			}
+
 			cond := conditionDisabled(c.conditionType, rec.Owner.GetGeneration())
 			applyStatusCondition(rec, cond)
 			return nil
@@ -370,6 +375,10 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 			return fail(rec, c.conditionType, err)
 		}
 
+		if err := orphanResources(ctx, rec, c.orphanResources); err != nil {
+			return fail(rec, c.conditionType, err)
+		}
+
 		return nil
 	}
 
@@ -393,6 +402,10 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	applyStatusCondition(rec, cond)
 
 	if err := deleteResources(ctx, rec, c.deleteResources); err != nil {
+		return fail(rec, c.conditionType, err)
+	}
+
+	if err := orphanResources(ctx, rec, c.orphanResources); err != nil {
 		return fail(rec, c.conditionType, err)
 	}
 

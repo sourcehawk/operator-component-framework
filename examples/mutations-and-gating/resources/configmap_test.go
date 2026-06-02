@@ -5,61 +5,51 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/examples/mutations-and-gating/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
-	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
-	"github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"github.com/sourcehawk/operator-component-framework/pkg/testing/goldengen"
 )
 
-// TestConfigMapResource is the resource-level testing layer for the ConfigMap.
-// Like the Deployment resource test, it drives the real NewConfigMapResource
-// factory from the owner spec and asserts both the firing set (via
-// concepts.MutationInspector) and the rendered golden YAML.
+// configMapGen declares the ConfigMap resource matrix. The ConfigMap registers one
+// mutation, "metrics-config", boolean-gated on EnableMetrics. The default fixture
+// pins that it does not fire with metrics off; the metrics fixture pins that it
+// fires with metrics on, which is what accounts for the mutation in AssertComplete.
 //
-// The single registered mutation, "metrics-config", is boolean-gated on
-// EnableMetrics, so it fires exactly when metrics are enabled.
-func TestConfigMapResource(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, corev1.AddToScheme(scheme))
-
-	tests := []struct {
-		name       string
-		spec       sharedapp.ExampleAppSpec
-		wantFiring []string
-		goldenFile string
-	}{
+// The version sweep is the same universe as the Deployment, but no ConfigMap
+// mutation is version-gated, so both versions collapse to a single regime per
+// fixture and only one golden is written per fixture.
+var configMapGen = goldengen.New(goldengen.Config[*sharedapp.ExampleApp]{
+	Dir:      "testdata/configmap",
+	Versions: []string{"1.9.0", "2.0.0"},
+	Fixtures: []goldengen.Fixture[*sharedapp.ExampleApp]{
 		{
-			name:       "baseline",
-			spec:       sharedapp.ExampleAppSpec{Version: "1.0.0"},
-			wantFiring: []string{},
-			goldenFile: "testdata/configmap-baseline.yaml",
+			Name: "default",
+			Spec: owner(sharedapp.ExampleAppSpec{}),
+			Forbids: []goldengen.Expect{
+				{Name: "metrics-config"}, // metrics off, so it never fires
+			},
 		},
 		{
-			name:       "with metrics",
-			spec:       sharedapp.ExampleAppSpec{Version: "1.0.0", EnableMetrics: true},
-			wantFiring: []string{"metrics-config"},
-			goldenFile: "testdata/configmap-metrics.yaml",
+			Name: "metrics",
+			Spec: owner(sharedapp.ExampleAppSpec{EnableMetrics: true}),
+			Requires: []goldengen.Expect{
+				{Name: "metrics-config"}, // boolean-gated on EnableMetrics
+			},
 		},
-	}
+	},
+	Build: func(version string, spec *sharedapp.ExampleApp) (goldengen.Unit, error) {
+		o := spec.DeepCopyObject().(*sharedapp.ExampleApp)
+		o.Spec.Version = version
+		res, err := resources.NewConfigMapResource(o)
+		if err != nil {
+			return nil, err
+		}
+		return goldengen.Resource(res.(goldengen.ResourcePreviewer), scheme), nil
+	},
+})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			owner := testOwner(tt.spec)
-
-			res, err := resources.NewConfigMapResource(owner)
-			require.NoError(t, err)
-
-			inspector, ok := res.(concepts.MutationInspector)
-			require.True(t, ok, "resource must implement MutationInspector")
-			firing, err := inspector.FiringSet()
-			require.NoError(t, err)
-			assert.ElementsMatch(t, tt.wantFiring, firing)
-
-			previewer, ok := res.(golden.Previewer)
-			require.True(t, ok, "resource must implement golden.Previewer")
-			golden.AssertYAML(t, tt.goldenFile, previewer, golden.WithScheme(scheme), golden.Update(*update))
-		})
-	}
+// TestConfigMapVersionMatrix runs the ConfigMap sweep: it asserts the gating
+// expectations and writes or compares one golden per regime plus the coverage
+// manifest.
+func TestConfigMapVersionMatrix(t *testing.T) {
+	configMapGen.WithUpdate(*update)
+	configMapGen.Run(t)
 }

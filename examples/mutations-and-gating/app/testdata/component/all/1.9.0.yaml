@@ -21,13 +21,11 @@ spec:
           value: debug
         - name: JAEGER_AGENT_HOST
           value: localhost
-        image: my-app:2.0.0
-        name: app
+        image: my-app:1.9.0
+        name: server
         ports:
         - containerPort: 8080
           name: http
-        - containerPort: 8081
-          name: health
         resources: {}
       - env:
         - name: JAEGER_AGENT_HOST
@@ -35,3 +33,20 @@ spec:
         image: jaegertracing/jaeger-agent:1.28
         name: jaeger-agent
         resources: {}
+---
+apiVersion: v1
+data:
+  app.yaml: |
+    metrics:
+      enabled: true
+      path: /metrics
+      port: 9090
+    server:
+      port: 8080
+      timeout: 30s
+kind: ConfigMap
+metadata:
+  labels:
+    app: my-app
+  name: my-app-config
+  namespace: default

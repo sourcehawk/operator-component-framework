@@ -364,13 +364,9 @@ ConfigMap.
 
 ## Step 6: Test the resource
 
-A resource test answers two questions: do the right mutations fire for a given spec, and does the rendered output match
-what you expect? Build the resource through the same factory the reconciler uses, then assert both.
-
-`res.FiringSet()`, from `concepts.MutationInspector` (which every built-in primitive implements), returns the names of
-the mutations that fire for the resource's version and flags. A golden test then pins the rendered YAML against a
-checked-in snapshot: `golden.AssertYAML` does the comparison, `golden.WithScheme` makes the output carry `apiVersion`
-and `kind` for typed objects, and the `-update` flag regenerates the snapshot.
+Pin the resource's rendered output against a checked-in snapshot. Build it through the same factory the reconciler uses,
+then golden it: `golden.AssertYAML` does the comparison, `golden.WithScheme` makes the output carry `apiVersion` and
+`kind` for typed objects, and the `-update` flag regenerates the snapshot.
 
 ```go
 package resources_test
@@ -379,9 +375,7 @@ import (
     "flag"
     "testing"
 
-    "github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
     "github.com/sourcehawk/operator-component-framework/pkg/testing/golden"
-    "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
     appsv1 "k8s.io/api/apps/v1"
     "k8s.io/apimachinery/pkg/runtime"
@@ -404,15 +398,7 @@ func TestDeploymentResource(t *testing.T) {
     res, err := resources.NewDeploymentResource(owner)
     require.NoError(t, err)
 
-    // Assert which mutations fire for this spec. Built-in primitives implement
-    // concepts.MutationInspector.
-    inspector, ok := res.(concepts.MutationInspector)
-    require.True(t, ok)
-    firing, err := inspector.FiringSet()
-    require.NoError(t, err)
-    assert.ElementsMatch(t, []string{"DebugLogging"}, firing)
-
-    // Pin the rendered output. The built resource implements golden.Previewer.
+    // The built resource implements golden.Previewer.
     previewer, ok := res.(golden.Previewer)
     require.True(t, ok)
     golden.AssertYAML(t, "testdata/deployment.yaml", previewer, golden.WithScheme(scheme), golden.Update(*update))

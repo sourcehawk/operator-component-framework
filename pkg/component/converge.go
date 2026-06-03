@@ -130,7 +130,7 @@ func (c reconcileResults) graceSummary() concepts.GraceStatusWithReason {
 	if !anyGraceful {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDown,
-			Reason: "Component failed to converge within grace period",
+			Reason: "Component failed to converge within grace period.",
 		}
 	}
 

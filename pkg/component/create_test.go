@@ -407,23 +407,61 @@ func TestMutateResource(t *testing.T) {
 		// after the first reconcile (Patch writes into the same pointer). If Unowned()
 		// is added later, that cached ref must be cleared so the SSA patch does not
 		// re-apply it.
+		localOwner := &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-owner-cached",
+				Namespace: namespace,
+				UID:       "owner-uid-cached",
+			},
+		}
 		resource := &MockResource{}
 		resourceObject := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-unowned-cached",
 				Namespace: namespace,
 				OwnerReferences: []metav1.OwnerReference{
-					{APIVersion: "test/v1", Kind: "MockOperatorCRD", Name: owner.Name, Controller: ptr.To(true)},
+					{APIVersion: "test/v1", Kind: "MockOperatorCRD", Name: localOwner.Name, UID: localOwner.UID, Controller: ptr.To(true)},
 				},
 			},
 		}
 		resource.On("Mutate", mock.Anything).Return(nil)
 		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-unowned-cached")
 
-		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper, true)
+		_, err := mutateResource(resource, resourceObject, localOwner, scheme, mapper, true)
 
 		require.NoError(t, err)
 		assert.Empty(t, resourceObject.OwnerReferences, "cached owner reference must be cleared for an Unowned resource")
+		resource.AssertExpectations(t)
+	})
+
+	t.Run("should preserve ownerReferences to other objects when skipOwnerRef is true", func(t *testing.T) {
+		// Mutate() may add owner references to objects other than the component's owner
+		// CR (e.g., ownership by a different controller). Those must be preserved; only
+		// the reference pointing to the component owner should be suppressed.
+		resource := &MockResource{}
+		otherRef := metav1.OwnerReference{
+			APIVersion: "v1",
+			Kind:       "Pod",
+			Name:       "other-owner",
+			UID:        "other-owner-uid",
+		}
+		resourceObject := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-unowned-other-refs",
+				Namespace: namespace,
+			},
+		}
+		resource.On("Mutate", mock.Anything).Run(func(args mock.Arguments) {
+			obj := args.Get(0).(client.Object)
+			obj.SetOwnerReferences([]metav1.OwnerReference{otherRef})
+		}).Return(nil)
+		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-unowned-other-refs")
+
+		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper, true)
+
+		require.NoError(t, err)
+		assert.Equal(t, []metav1.OwnerReference{otherRef}, resourceObject.OwnerReferences,
+			"ownerReferences to other objects set in Mutate must be preserved")
 		resource.AssertExpectations(t)
 	})
 

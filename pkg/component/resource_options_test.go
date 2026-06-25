@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,6 +150,46 @@ func TestResolveResourceOptions(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestResolve_OrphanWhen(t *testing.T) {
+	t.Run("orphan when false is managed normally", func(t *testing.T) {
+		opts, err := resolveResourceOptions([]ResourceOption{OrphanWhen(false)})
+		require.NoError(t, err)
+		assert.False(t, opts.Orphan)
+		assert.False(t, opts.Delete)
+	})
+	t.Run("orphan when true sets Orphan", func(t *testing.T) {
+		opts, err := resolveResourceOptions([]ResourceOption{OrphanWhen(true)})
+		require.NoError(t, err)
+		assert.True(t, opts.Orphan)
+		assert.False(t, opts.Delete)
+	})
+	t.Run("orphan conditions are additive (any true)", func(t *testing.T) {
+		opts, err := resolveResourceOptions([]ResourceOption{OrphanWhen(false), OrphanWhen(true)})
+		require.NoError(t, err)
+		assert.True(t, opts.Orphan)
+	})
+}
+
+func TestResolve_OrphanWhen_Exclusivity(t *testing.T) {
+	cases := []struct {
+		name string
+		opts []ResourceOption
+		want string
+	}{
+		{"orphan + delete", []ResourceOption{OrphanWhen(true), Delete()}, "OrphanWhen is mutually exclusive with Delete"},
+		{"orphan + deleteWhen", []ResourceOption{OrphanWhen(true), DeleteWhen(true)}, "OrphanWhen is mutually exclusive with Delete"},
+		{"orphan + gatedBy", []ResourceOption{OrphanWhen(true), GatedBy(feature.NewBooleanGate(true))}, "OrphanWhen is mutually exclusive with GatedBy"},
+		{"orphan + readonly", []ResourceOption{OrphanWhen(true), ReadOnly()}, "OrphanWhen is mutually exclusive with ReadOnly"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := resolveResourceOptions(tc.opts)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
 		})
 	}
 }

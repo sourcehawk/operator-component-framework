@@ -2,15 +2,15 @@ fixtures:
 - name: default
   regimes:
   - firing:
-    - ClusterEnv/Pre89
     - ContainerImage
-    representative: 8.7.0
+    - PeerDiscovery/PreV2
+    representative: 1.0.0
     versions:
-    - 8.7.0
-    - 8.8.2
+    - 1.0.0
+    - 1.5.0
   - firing:
-    - ClusterEnv/Unified89
     - ContainerImage
-    representative: 8.9.0
+    - PeerDiscovery/V2
+    representative: 2.0.0
     versions:
-    - 8.9.0
+    - 2.0.0

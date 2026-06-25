@@ -1,0 +1,116 @@
+site_name: Operator Component Framework
+site_description: A Go framework for building maintainable Kubernetes operators
+site_url: https://sourcehawk.github.io/operator-component-framework/
+repo_url: https://github.com/sourcehawk/operator-component-framework
+repo_name: sourcehawk/operator-component-framework
+edit_uri: edit/main/docs/
+
+# docs/superpowers/ is gitignored and never published.
+exclude_docs: |
+  superpowers/
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Concepts:
+      - Component: component.md
+      - Primitives Overview: primitives.md
+      - Custom Resources: custom-resource.md
+  - Primitives:
+      - Workloads:
+          - Pod: primitives/pod.md
+          - Deployment: primitives/deployment.md
+          - StatefulSet: primitives/statefulset.md
+          - DaemonSet: primitives/daemonset.md
+          - ReplicaSet: primitives/replicaset.md
+          - Job: primitives/job.md
+          - CronJob: primitives/cronjob.md
+      - Networking:
+          - Service: primitives/service.md
+          - Ingress: primitives/ingress.md
+          - NetworkPolicy: primitives/networkpolicy.md
+      - Config & Secrets:
+          - ConfigMap: primitives/configmap.md
+          - Secret: primitives/secret.md
+      - Storage:
+          - PersistentVolume: primitives/pv.md
+          - PersistentVolumeClaim: primitives/pvc.md
+      - RBAC:
+          - ServiceAccount: primitives/serviceaccount.md
+          - Role: primitives/role.md
+          - RoleBinding: primitives/rolebinding.md
+          - ClusterRole: primitives/clusterrole.md
+          - ClusterRoleBinding: primitives/clusterrolebinding.md
+      - Scaling & Availability:
+          - HorizontalPodAutoscaler: primitives/hpa.md
+          - PodDisruptionBudget: primitives/pdb.md
+      - Escape Hatch:
+          - Unstructured: primitives/unstructured.md
+  - Guides:
+      - Guidelines: guidelines.md
+      - Testing: testing.md
+  - Reference:
+      - Compatibility: compatibility.md
+      - Go API ↗: https://pkg.go.dev/github.com/sourcehawk/operator-component-framework

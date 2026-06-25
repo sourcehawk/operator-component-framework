@@ -78,28 +78,28 @@ func ContainerImageMutation(owner *app.ExampleApp) statefulset.Mutation {
 	}
 }
 
-// ClusterEnvPre89Mutation sets the pre-8.9 cluster-coordination environment
-// variable. It fires only for versions below 8.9.0, where the unified protocol is
-// not yet available.
-func ClusterEnvPre89Mutation(version string) statefulset.Mutation {
+// PeerDiscoveryPreV2Mutation sets the legacy peer-discovery environment variable.
+// It fires only for versions below 2.0.0, where the newer discovery format is not
+// yet available.
+func PeerDiscoveryPreV2Mutation(version string) statefulset.Mutation {
 	return statefulset.Mutation{
-		Name:    "ClusterEnv/Pre89",
-		Feature: feature.NewVersionGate(version, []feature.VersionConstraint{mustConstraint("< 8.9.0")}),
+		Name:    "PeerDiscovery/PreV2",
+		Feature: feature.NewVersionGate(version, []feature.VersionConstraint{mustConstraint("< 2.0.0")}),
 		Mutate: func(m *statefulset.Mutator) error {
-			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CLUSTER_DISCOVERY", Value: "legacy-gossip"})
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "PEER_DISCOVERY", Value: "legacy"})
 			return nil
 		},
 	}
 }
 
-// ClusterEnvUnified89Mutation sets the unified cluster-coordination environment
-// variable introduced in 8.9.0. It fires only for versions at or above 8.9.0.
-func ClusterEnvUnified89Mutation(version string) statefulset.Mutation {
+// PeerDiscoveryV2Mutation sets the peer-discovery environment variable introduced
+// in 2.0.0. It fires only for versions at or above 2.0.0.
+func PeerDiscoveryV2Mutation(version string) statefulset.Mutation {
 	return statefulset.Mutation{
-		Name:    "ClusterEnv/Unified89",
-		Feature: feature.NewVersionGate(version, []feature.VersionConstraint{mustConstraint(">= 8.9.0")}),
+		Name:    "PeerDiscovery/V2",
+		Feature: feature.NewVersionGate(version, []feature.VersionConstraint{mustConstraint(">= 2.0.0")}),
 		Mutate: func(m *statefulset.Mutator) error {
-			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "CLUSTER_DISCOVERY", Value: "unified-raft"})
+			m.EnsureContainerEnvVar(corev1.EnvVar{Name: "PEER_DISCOVERY", Value: "v2"})
 			return nil
 		},
 	}
@@ -111,7 +111,7 @@ func ClusterEnvUnified89Mutation(version string) statefulset.Mutation {
 func NewStatefulSetResource(owner *app.ExampleApp) (*statefulset.Resource, error) {
 	return statefulset.NewBuilder(BaseStatefulSet(owner)).
 		WithMutation(ContainerImageMutation(owner)).
-		WithMutation(ClusterEnvPre89Mutation(owner.Spec.Version)).
-		WithMutation(ClusterEnvUnified89Mutation(owner.Spec.Version)).
+		WithMutation(PeerDiscoveryPreV2Mutation(owner.Spec.Version)).
+		WithMutation(PeerDiscoveryV2Mutation(owner.Spec.Version)).
 		Build()
 }

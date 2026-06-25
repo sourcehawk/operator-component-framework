@@ -1,17 +1,19 @@
 # ConfigMap Primitive
 
-The `configmap` primitive is the framework's built-in static abstraction for managing Kubernetes `ConfigMap` resources.
-It integrates with the component lifecycle and provides a structured mutation API for managing `.data` entries and
-object metadata.
+The `configmap` primitive wraps a Kubernetes `ConfigMap` and integrates with the component lifecycle as a Static
+resource, providing a structured mutation API for managing `.data` entries and object metadata.
 
 ## Capabilities
 
-| Capability            | Detail                                                                                              |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state       |
-| **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a raw escape hatch for free-form access |
-| **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features    |
-| **Data extraction**   | Reads generated or updated values back from the reconciled ConfigMap after each sync cycle          |
+| Capability            | Detail                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state    |
+| **Mutation pipeline** | Typed editors for `.data` entries and object metadata, with a `Raw()` escape hatch               |
+| **MergeYAML**         | Deep-merges YAML patches into individual `.data` entries; composable across independent features |
+| **DataExtractable**   | Reads values back from the reconciled ConfigMap after each sync cycle                            |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface
+reports.
 
 ## Building a ConfigMap Primitive
 
@@ -35,17 +37,18 @@ resource, err := configmap.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `ConfigMap` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
+Register mutations with `WithMutation`. The mutation system, boolean-gated mutations, and version-gated mutations are
+explained in [The Mutation System](../primitives.md#the-mutation-system),
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations), and
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
+A kind-specific example using the `SetEntry` convenience method:
 
 ```go
 func MyFeatureMutation(version string) configmap.Mutation {
     return configmap.Mutation{
         Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *configmap.Mutator) error {
             m.SetEntry("feature-flag", "enabled")
             return nil
@@ -54,60 +57,21 @@ func MyFeatureMutation(version string) configmap.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-```go
-func TLSConfigMutation(version string, tlsEnabled bool) configmap.Mutation {
-    return configmap.Mutation{
-        Name:    "tls-config",
-        Feature: feature.NewVersionGate(version, nil).When(tlsEnabled),
-        Mutate: func(m *configmap.Mutator) error {
-            m.SetEntry("tls_mode", "strict")
-            return nil
-        },
-    }
-}
-```
-
-### Version-gated mutations
-
-```go
-var legacyConstraint = mustSemverConstraint("< 2.0.0")
-
-func LegacyAuthMutation(version string) configmap.Mutation {
-    return configmap.Mutation{
-        Name: "legacy-auth",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{legacyConstraint},
-        ),
-        Mutate: func(m *configmap.Mutator) error {
-            m.SetEntry("auth_mode", "legacy-token")
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
-
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
-recorded:
+Within a single mutation, edits are applied in a fixed category order regardless of recording order:
 
 | Step | Category       | What it affects                              |
 | ---- | -------------- | -------------------------------------------- |
 | 1    | Metadata edits | Labels and annotations on the `ConfigMap`    |
 | 2    | Data edits     | `.data` entries: Set, Remove, MergeYAML, Raw |
 
-Within each category, edits are applied in their registration order. Later features observe the ConfigMap as modified by
-all previous features.
+Within each category, edits run in registration order. Later features observe the ConfigMap as modified by all earlier
+ones.
 
 ## Relevant Editors
+
+See [Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
 
 ### ConfigMapDataEditor
 
@@ -136,7 +100,7 @@ m.EditData(func(e *editors.ConfigMapDataEditor) error {
 #### SetBinary and RemoveBinary
 
 `SetBinary` sets a raw byte slice in `.binaryData`. `RemoveBinary` deletes a `.binaryData` key; it is a no-op if the key
-is absent. No helpers are provided beyond set and remove. Format and encode the value before passing it in.
+is absent. Format and encode the value before passing it in.
 
 ```go
 m.EditData(func(e *editors.ConfigMapDataEditor) error {
@@ -156,8 +120,8 @@ m.EditData(func(e *editors.ConfigMapDataEditor) error {
 - For all other types (scalars, sequences, mixed), the patch value wins.
 - If the key does not yet exist, the patch is written as-is.
 
-This makes it suitable for composing contributions from independent features without each feature needing to know about
-the others:
+This makes it suitable for composing contributions from independent features without each needing to know about the
+others:
 
 ```go
 // Feature A contributes logging config.
@@ -175,7 +139,7 @@ m.EditData(func(e *editors.ConfigMapDataEditor) error {
 #### Raw Escape Hatches
 
 `Raw()` returns the underlying `map[string]string` for `.data`. `RawBinary()` returns the underlying `map[string][]byte`
-for `.binaryData`. Both give direct access for free-form editing when none of the structured methods are sufficient:
+for `.binaryData`. Both give direct access for free-form editing:
 
 ```go
 m.EditData(func(e *editors.ConfigMapDataEditor) error {
@@ -218,9 +182,8 @@ single edit block.
 
 ## Data Hash
 
-Two utilities are provided for computing a stable SHA-256 hash of a ConfigMap's `.data` and `.binaryData` fields. A
-common use is to annotate a Deployment's pod template with this hash so that a configuration change triggers a rolling
-restart.
+Two utilities compute a stable SHA-256 hash of a ConfigMap's `.data` and `.binaryData` fields. A common use is to
+annotate a Deployment's pod template with this hash so that a configuration change triggers a rolling restart.
 
 ### DataHash
 
@@ -231,7 +194,7 @@ hash, err := configmap.DataHash(cm)
 ```
 
 The hash is derived from the canonical JSON encoding of `.data` and `.binaryData` with map keys sorted alphabetically,
-so it is deterministic regardless of insertion order. Metadata fields (labels, annotations, etc.) are excluded.
+so it is deterministic regardless of insertion order. Metadata fields are excluded.
 
 ### Resource.DesiredHash
 
@@ -247,12 +210,12 @@ cmResource, err := configmap.NewBuilder(base).
 hash, err := cmResource.DesiredHash()
 ```
 
-The hash covers only operator-controlled fields. Only changes to operator-owned content will change the hash.
+The hash covers only operator-controlled fields.
 
 ### Annotating a Deployment pod template (single-pass pattern)
 
-Build the configmap resource first, compute the hash, then pass it into the deployment resource factory. Both resources
-are registered with the same component, so the configmap is reconciled first and the deployment sees the correct hash on
+Build the ConfigMap resource first, compute the hash, then pass it into the Deployment resource factory. Both resources
+are registered with the same component, so the ConfigMap is reconciled first and the Deployment sees the correct hash on
 every cycle.
 
 `DesiredHash` is defined on `*configmap.Resource`, not on the `component.Resource` interface, so keep the concrete type
@@ -278,7 +241,7 @@ if err != nil {
 }
 
 comp, err := component.NewComponentBuilder().
-    WithResource(cmResource).  // reconciled first
+    WithResource(cmResource). // reconciled first
     WithResource(deployResource).
     Build()
 ```
@@ -300,10 +263,10 @@ func ChecksumAnnotationMutation(version, configHash string) deployment.Mutation 
 }
 ```
 
-When the configmap mutations change (version upgrade, feature toggle), `DesiredHash` returns a different value on the
+When the ConfigMap mutations change (version upgrade, feature toggle), `DesiredHash` returns a different value on the
 same reconcile cycle, the pod template annotation changes, and Kubernetes triggers a rolling restart.
 
-## Full Example: Feature-Composed Configuration
+## Full Example
 
 ```go
 func BaseConfigMutation(version string) configmap.Mutation {
@@ -346,17 +309,19 @@ resource, err := configmap.NewBuilder(base).
     Build()
 ```
 
-When `MetricsEnabled` is true, the final `app.yaml` entry will contain the merged result of both patches. When false,
-only the base config is written. Neither mutation needs to know about the other.
+When `MetricsEnabled` is true, the final `app.yaml` entry contains the merged result of both patches. When false, only
+the base config is written. Neither mutation needs to know about the other.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
-conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for boolean conditions.
 
-**Use `MergeYAML` for composable config files.** When multiple features need to contribute to the same YAML entry,
-`MergeYAML` lets each feature contribute its section independently. Using `SetEntry` in multiple features for the same
-key means the last registration wins. Only use that when replacement is the intended semantics.
+**Use `MergeYAML` for composable config files.** When multiple features contribute to the same YAML entry, `MergeYAML`
+lets each contribute its section independently. Using `SetEntry` in multiple features for the same key means the last
+registration wins; only use that when replacement is the intended semantics.
 
 **Register mutations in dependency order.** If mutation B relies on an entry set by mutation A, register A first.
+
+**Use `DesiredHash` for rolling restarts.** Build the ConfigMap resource, call `DesiredHash()`, and stamp the result as
+a pod-template annotation on the Deployment in the same reconcile pass. No extra cluster reads are required.

@@ -1,18 +1,21 @@
 # PersistentVolumeClaim Primitive
 
-The `pvc` primitive is the framework's built-in integration abstraction for managing Kubernetes `PersistentVolumeClaim`
-resources. It integrates with the component lifecycle as an Operational, Graceful, Suspendable resource and provides a
-structured mutation API for managing storage requests and object metadata.
+The `pvc` primitive wraps a Kubernetes `PersistentVolumeClaim` and integrates with the component lifecycle as an
+Integration, Graceful, and Suspendable resource, providing a structured mutation API for managing storage requests and
+object metadata.
 
 ## Capabilities
 
-| Capability               | Detail                                                                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Operational tracking** | Monitors PVC phase. Reports `OperationalStatusOperational` (Bound), `OperationalStatusPending`, or `OperationalStatusFailing` (Lost) |
-| **Grace status**         | Bound is `Healthy`, Lost is `Down`, any other phase is `Degraded`                                                                    |
-| **Suspension**           | PVCs are immediately suspended (no runtime state to wind down); data is preserved by default                                         |
-| **Mutation pipeline**    | Typed editors for PVC spec and object metadata, with a raw escape hatch for free-form access                                         |
-| **Data extraction**      | Reads bound volume name, capacity, or other status fields after each sync cycle                                                      |
+| Capability            | Detail                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| **Operational**       | Maps PVC phase to `Operational` (Bound), `OperationPending`, or `OperationFailing` (Lost) |
+| **Graceful**          | Bound is `Healthy`; Lost is `Down`; any other phase is `Degraded`                         |
+| **Suspendable**       | Immediately suspended (no runtime state to wind down); data is preserved by default       |
+| **DataExtractable**   | Reads bound volume name, capacity, or other status fields after each sync cycle           |
+| **Mutation pipeline** | Typed editors for PVC spec and object metadata, with a `Raw()` escape hatch               |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface
+reports.
 
 ## Building a PVC Primitive
 
@@ -41,17 +44,18 @@ resource, err := pvc.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `PersistentVolumeClaim` beyond its baseline. Each mutation is a
-named function that receives a `*Mutator` and records edit intent through typed editors.
+Register mutations with `WithMutation`. The mutation system, boolean-gated mutations, and version-gated mutations are
+explained in [The Mutation System](../primitives.md#the-mutation-system),
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations), and
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
+A kind-specific example using the `SetStorageRequest` convenience method:
 
 ```go
 func MyStorageMutation(version string) pvc.Mutation {
     return pvc.Mutation{
         Name:    "storage-expansion",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
+        Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *pvc.Mutator) error {
             m.SetStorageRequest(resource.MustParse("20Gi"))
             return nil
@@ -60,61 +64,20 @@ func MyStorageMutation(version string) pvc.Mutation {
 }
 ```
 
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-```go
-func LargeStorageMutation(version string, needsLargeStorage bool) pvc.Mutation {
-    return pvc.Mutation{
-        Name:    "large-storage",
-        Feature: feature.NewVersionGate(version, nil).When(needsLargeStorage),
-        Mutate: func(m *pvc.Mutator) error {
-            m.SetStorageRequest(resource.MustParse("100Gi"))
-            return nil
-        },
-    }
-}
-```
-
-### Version-gated mutations
-
-```go
-var v2Constraint = mustSemverConstraint(">= 2.0.0")
-
-func V2StorageMutation(version string) pvc.Mutation {
-    return pvc.Mutation{
-        Name: "v2-storage",
-        Feature: feature.NewVersionGate(
-            version,
-            []feature.VersionConstraint{v2Constraint},
-        ),
-        Mutate: func(m *pvc.Mutator) error {
-            m.SetStorageRequest(resource.MustParse("50Gi"))
-            return nil
-        },
-    }
-}
-```
-
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
-
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
-recorded:
+Within a single mutation, edits are applied in a fixed category order regardless of recording order:
 
 | Step | Category       | What it affects                                       |
 | ---- | -------------- | ----------------------------------------------------- |
 | 1    | Metadata edits | Labels and annotations on the `PersistentVolumeClaim` |
 | 2    | Spec edits     | PVC spec: storage requests, access modes, etc.        |
 
-Within each category, edits are applied in their registration order. The PVC primitive groups mutations by feature
-boundary: for each applicable feature (after evaluating version constraints and any `When()` conditions), all of its
-planned edits are applied in order, and later features and mutations observe the fully-applied state from earlier ones.
+Within each category, edits run in registration order. Later features observe the PVC as modified by all earlier ones.
 
 ## Relevant Editors
+
+See [Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
 
 ### PVCSpecEditor
 
@@ -140,8 +103,7 @@ Available methods:
 
 #### Raw Escape Hatch
 
-`Raw()` returns the underlying `*corev1.PersistentVolumeClaimSpec` for free-form editing when none of the structured
-methods are sufficient:
+`Raw()` returns the underlying `*corev1.PersistentVolumeClaimSpec` for free-form editing:
 
 ```go
 m.EditPVCSpec(func(e *editors.PVCSpecEditor) error {
@@ -178,31 +140,17 @@ The `Mutator` exposes a convenience wrapper for the most common PVC operation:
 Use this for simple, single-operation mutations. Use `EditPVCSpec` when you need multiple operations or raw access in a
 single edit block.
 
-## Status Handlers
+## Operational Status
 
-### Operational Status
+The PVC primitive implements `concepts.Operational`. The default handler maps PVC phase to operational status:
 
-The default handler (`DefaultOperationalStatusHandler`) maps PVC phase to operational status:
+| PVC Phase | Status             | Reason                          |
+| --------- | ------------------ | ------------------------------- |
+| `Bound`   | `Operational`      | PVC is bound to volume `<name>` |
+| `Pending` | `OperationPending` | Waiting for PVC to be bound     |
+| `Lost`    | `OperationFailing` | PVC has lost its bound volume   |
 
-| PVC Phase | Status                         | Reason                          |
-| --------- | ------------------------------ | ------------------------------- |
-| `Bound`   | `OperationalStatusOperational` | PVC is bound to volume \<name\> |
-| `Pending` | `OperationalStatusPending`     | Waiting for PVC to be bound     |
-| `Lost`    | `OperationalStatusFailing`     | PVC has lost its bound volume   |
-
-Override with `WithCustomOperationalStatus` for additional checks (e.g. verifying specific annotations or volume
-attributes).
-
-### Suspension
-
-PVCs have no runtime state to wind down, so:
-
-- `DefaultSuspendMutationHandler` is a no-op.
-- `DefaultSuspensionStatusHandler` always reports `Suspended`.
-- `DefaultDeleteOnSuspendHandler` returns `false` to preserve data.
-
-Override these handlers if you need custom suspension behavior, such as adding annotations when suspended or deleting
-PVCs that use ephemeral storage.
+Override with `WithCustomOperationalStatus` for additional checks.
 
 ## Grace Status
 
@@ -228,11 +176,81 @@ pvc.NewBuilder(base).
     })
 ```
 
+## Suspension
+
+PVCs have no runtime state to wind down:
+
+- `DefaultSuspendMutationHandler` is a no-op.
+- `DefaultSuspensionStatusHandler` always reports `Suspended`.
+- `DefaultDeleteOnSuspendHandler` returns `false` to preserve data.
+
+Override these handlers if you need custom suspension behavior, such as adding annotations when suspended or deleting
+PVCs that use ephemeral storage:
+
+```go
+resource, err := pvc.NewBuilder(base).
+    WithCustomSuspendDeletionDecision(func(_ *corev1.PersistentVolumeClaim) bool {
+        return true // delete on suspend
+    }).
+    Build()
+```
+
+## Full Example
+
+```go
+func StorageRequestMutation(version string) pvc.Mutation {
+    return pvc.Mutation{
+        Name:    "storage-request",
+        Feature: feature.NewVersionGate(version, nil),
+        Mutate: func(m *pvc.Mutator) error {
+            m.SetStorageRequest(resource.MustParse("10Gi"))
+            return nil
+        },
+    }
+}
+
+var v2Constraint = mustSemverConstraint(">= 2.0.0")
+
+func ExpandedStorageMutation(version string) pvc.Mutation {
+    return pvc.Mutation{
+        Name: "expanded-storage",
+        Feature: feature.NewVersionGate(
+            version,
+            []feature.VersionConstraint{v2Constraint},
+        ),
+        Mutate: func(m *pvc.Mutator) error {
+            m.SetStorageRequest(resource.MustParse("50Gi"))
+            return nil
+        },
+    }
+}
+
+var boundVolumeName string
+
+resource, err := pvc.NewBuilder(base).
+    WithMutation(StorageRequestMutation(owner.Spec.Version)).
+    WithMutation(ExpandedStorageMutation(owner.Spec.Version)).
+    WithDataExtractor(func(p corev1.PersistentVolumeClaim) error {
+        boundVolumeName = p.Spec.VolumeName
+        return nil
+    }).
+    Build()
+```
+
+On versions 2.0.0 and above, `ExpandedStorageMutation` fires and sets the storage request to 50Gi. On earlier versions,
+only the base 10Gi request is applied. After each reconcile cycle, the data extractor captures the bound volume name.
+
 ## Guidance
 
-**Register mutations for storage expansion carefully.** Kubernetes only allows expanding PVC storage (not shrinking).
-Ensure your mutations respect this constraint. The `SetStorageRequest` method does not enforce this; the API server will
-reject invalid requests.
+**Register storage expansion mutations carefully.** Kubernetes allows expanding PVC storage but not shrinking it. Ensure
+your mutations respect this constraint. The `SetStorageRequest` method does not enforce this; the API server rejects
+invalid requests.
 
 **Prefer `WithCustomSuspendDeletionDecision` over deleting PVCs manually.** If you need PVCs to be cleaned up during
 suspension, register a deletion decision handler rather than deleting them in a mutation.
+
+**Use `WithDataExtractor` to read bound volume information.** The bound volume name and actual allocated capacity are
+server-assigned. Read them with a data extractor after reconciliation rather than caching them in mutation logic.
+
+**Use string status values in conditions.** The operational status values that appear in conditions are the runtime
+strings `"Operational"`, `"OperationPending"`, and `"OperationFailing"`, not the Go constant identifiers.

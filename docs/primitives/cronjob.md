@@ -1,23 +1,18 @@
 # CronJob Primitive
 
-The `cronjob` primitive is the framework's built-in integration abstraction for managing Kubernetes `CronJob` resources.
-It integrates with the component lifecycle through the Operational, Graceful, and Suspendable concepts, and provides a
-rich mutation API for managing the CronJob schedule, job template, pod spec, and containers.
+The `cronjob` primitive wraps a Kubernetes `CronJob` and provides operational status tracking, grace handling,
+suspension, and a typed mutation API for managing the schedule, job template, pod spec, and containers as part of the
+component lifecycle.
 
 ## Capabilities
 
-| Capability               | Detail                                                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------- |
-| **Operational tracking** | Reports `OperationPending` (never scheduled) or `Operational` (has scheduled at least once) |
-| **Grace status**         | Always reports `Healthy`. A CronJob is a passive scheduler and is healthy once it exists    |
-| **Suspension**           | Sets `spec.suspend = true`; reports `Suspending` (active jobs running) / `Suspended`        |
-| **Mutation pipeline**    | Typed editors for metadata, CronJob spec, Job spec, pod spec, and containers                |
-
-## Server-Side Apply
-
-The CronJob primitive reconciles resources using **Server-Side Apply** (SSA). Only fields declared by the operator are
-sent; server-managed defaults, fields set by other controllers, and values written by webhooks are left untouched. Field
-ownership is tracked automatically by the Kubernetes API server.
+| [Lifecycle interface](../primitives.md#lifecycle-interfaces) | Reported status values                                |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| `Operational`                                                | `Operational`, `OperationPending`, `OperationFailing` |
+| `Graceful`                                                   | `Healthy`, `Degraded`, `Down`                         |
+| `Suspendable`                                                | `PendingSuspension`, `Suspending`, `Suspended`        |
+| `Guardable`                                                  | `Blocked`                                             |
+| `DataExtractable`                                            | _(side-effecting, no status)_                         |
 
 ## Building a CronJob Primitive
 
@@ -35,10 +30,10 @@ base := &batchv1.CronJob{
             Spec: batchv1.JobSpec{
                 Template: corev1.PodTemplateSpec{
                     Spec: corev1.PodSpec{
-                        Containers: []corev1.Container{
-                            {Name: "cleanup", Image: "cleanup:latest"},
-                        },
                         RestartPolicy: corev1.RestartPolicyOnFailure,
+                        Containers: []corev1.Container{
+                            {Name: "cleanup", Image: "cleanup-tool:latest"},
+                        },
                     },
                 },
             },
@@ -53,13 +48,12 @@ resource, err := cronjob.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying a `CronJob` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
+Each mutation is a named `cronjob.Mutation` that receives a `*cronjob.Mutator` and records edits through typed editors.
 
 ```go
-func MyScheduleMutation(version string) cronjob.Mutation {
+func ScheduleMutation(version string) cronjob.Mutation {
     return cronjob.Mutation{
-        Name:    "my-schedule",
+        Name:    "schedule",
         Feature: feature.NewVersionGate(version, nil),
         Mutate: func(m *cronjob.Mutator) error {
             m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
@@ -73,34 +67,19 @@ func MyScheduleMutation(version string) cronjob.Mutation {
 }
 ```
 
-### Boolean-gated mutations
+See [the mutation system](../primitives.md#the-mutation-system),
+[boolean gating](../primitives.md#boolean-gated-mutations), and
+[version gating](../primitives.md#version-gated-mutations).
 
-Use `When(bool)` to gate a mutation on a runtime condition:
-
-```go
-func TimeZoneMutation(version string, enabled bool) cronjob.Mutation {
-    return cronjob.Mutation{
-        Name:    "timezone",
-        Feature: feature.NewVersionGate(version, nil).When(enabled),
-        Mutate: func(m *cronjob.Mutator) error {
-            m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
-                e.SetTimeZone("America/New_York")
-                return nil
-            })
-            return nil
-        },
-    }
-}
-```
+For all primitives, desired state is reconciled via [Server-Side Apply](../primitives.md#server-side-apply).
 
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are grouped into categories and applied in a fixed sequence regardless of the
-order they are recorded.
+Within each feature, edits run in this fixed category order:
 
 | Step | Category                    | What it affects                                                                         |
 | ---- | --------------------------- | --------------------------------------------------------------------------------------- |
-| 1    | CronJob metadata edits      | Labels and annotations on the `CronJob` object                                          |
+| 1    | Object metadata edits       | Labels and annotations on the `CronJob` object                                          |
 | 2    | CronJobSpec edits           | Schedule, concurrency policy, time zone, history limits                                 |
 | 3    | JobSpec edits               | Completions, parallelism, backoff limit, TTL                                            |
 | 4    | Pod template metadata edits | Labels and annotations on the pod template                                              |
@@ -110,10 +89,12 @@ order they are recorded.
 | 8    | Init container presence     | Adding or removing containers from `spec.jobTemplate.spec.template.spec.initContainers` |
 | 9    | Init container edits        | Env vars, args, resources (snapshot taken after step 8)                                 |
 
-Container edits (steps 7 and 9) are evaluated against a snapshot taken _after_ presence operations in the same mutation.
-This means a single mutation can add a container and then configure it without selector resolution issues.
+Container edits (steps 7 and 9) are evaluated against a snapshot taken _after_ presence operations in the same feature.
 
 ## Relevant Editors
+
+For the generic editor and selector concepts, see [mutation editors](../primitives.md#mutation-editors) and
+[container selectors](../primitives.md#container-selectors).
 
 ### CronJobSpecEditor
 
@@ -131,8 +112,10 @@ m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
 })
 ```
 
-Note: no typed helper is provided for `spec.suspend`; it can be set via `Raw()` if needed, but suspension should
-typically be handled via the framework's suspend mechanism.
+!!! note "No typed helper for `spec.suspend`"
+
+    `spec.suspend` is not exposed by the typed API. Use `Raw()` if you need to set it directly, but prefer the
+    framework's suspend mechanism instead.
 
 ### JobSpecEditor
 
@@ -160,15 +143,14 @@ Available methods: `SetServiceAccountName`, `EnsureVolume`, `RemoveVolume`, `Ens
 ```go
 m.EditPodSpec(func(e *editors.PodSpecEditor) error {
     e.SetServiceAccountName("cleanup-sa")
-    e.Raw().RestartPolicy = corev1.RestartPolicyOnFailure
     return nil
 })
 ```
 
 ### ContainerEditor
 
-Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`. Always used in combination with a
-[selector](../primitives.md#container-selectors).
+Modifies individual containers via `m.EditContainers` or `m.EditInitContainers`, combined with a
+[container selector](../primitives.md#container-selectors).
 
 Available methods: `EnsureEnvVar`, `EnsureEnvVars`, `RemoveEnvVar`, `RemoveEnvVars`, `EnsureArg`, `EnsureArgs`,
 `RemoveArg`, `RemoveArgs`, `SetResourceLimit`, `SetResourceRequest`, `SetResources`, `Raw`.
@@ -183,8 +165,8 @@ m.EditContainers(selectors.ContainerNamed("cleanup"), func(e *editors.ContainerE
 
 ### ObjectMetaEditor
 
-Modifies labels and annotations. Use `m.EditObjectMetadata` to target the `CronJob` object itself, or
-`m.EditPodTemplateMetadata` to target the pod template.
+Modifies labels and annotations. Use `m.EditObjectMetadata` for the `CronJob` itself or `m.EditPodTemplateMetadata` for
+the pod template.
 
 Available methods: `EnsureLabel`, `RemoveLabel`, `EnsureAnnotation`, `RemoveAnnotation`, `Raw`.
 
@@ -197,8 +179,6 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Convenience Methods
 
-The `Mutator` also exposes convenience wrappers that target all containers at once:
-
 | Method                        | Equivalent to                                                 |
 | ----------------------------- | ------------------------------------------------------------- |
 | `EnsureContainerEnvVar(ev)`   | `EditContainers(AllContainers(), ...)` → `EnsureEnvVar(ev)`   |
@@ -206,57 +186,119 @@ The `Mutator` also exposes convenience wrappers that target all containers at on
 | `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
 | `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
+## Workload-Kind-Agnostic Mutations
+
+The `cronjob.Mutator` does not implement `primitives.WorkloadMutator` and therefore does not have a `LiftMutation`
+adapter. The `WorkloadMutator` interface targets Deployment, StatefulSet, and DaemonSet. Write shared mutation logic as
+a plain function accepting `*cronjob.Mutator` and call it directly.
+
+See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the cross-kind pattern.
+
 ## Operational Status
 
-The CronJob primitive reports operational status based on the CronJob's scheduling history:
-
-| Status             | Condition                        |
-| ------------------ | -------------------------------- |
-| `OperationPending` | `Status.LastScheduleTime == nil` |
-| `Operational`      | `Status.LastScheduleTime != nil` |
-
+`DefaultOperationalStatusHandler` always reports `Operational`. A CronJob is a passive scheduler: once it exists in the
+cluster it is functioning correctly regardless of whether it has fired yet. Schedule intervals may be longer than the
+component's grace period, so treating a never-scheduled CronJob as pending would produce false degradation signals.
 Failures are reported on the spawned Job resources, not on the CronJob itself.
 
-## Grace Status
-
-The default grace status handler always reports `Healthy`. A CronJob is a passive scheduler: once it exists and is not
-suspended, it is functioning correctly regardless of whether it has fired yet. The schedule interval may be longer than
-the grace period (e.g. monthly), so waiting for the first execution would produce false degradation signals.
-
-Override with `WithCustomGraceStatus` if your CronJob has specific health requirements:
+Override with `WithCustomOperationalStatus` if you need visibility into whether the CronJob has executed:
 
 ```go
 cronjob.NewBuilder(base).
-    WithCustomGraceStatus(func(cj *batchv1.CronJob) (concepts.GraceStatusWithReason, error) {
-        // Custom logic based on your CronJob's semantics
-        return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
+    WithCustomOperationalStatus(func(_ concepts.ConvergingOperation, cj *batchv1.CronJob) (concepts.OperationalStatusWithReason, error) {
+        if cj.Status.LastScheduleTime == nil {
+            return concepts.OperationalStatusWithReason{
+                Status: concepts.OperationalStatusPending,
+                Reason: "CronJob has not fired yet",
+            }, nil
+        }
+        return concepts.OperationalStatusWithReason{
+            Status: concepts.OperationalStatusOperational,
+            Reason: "CronJob has fired at least once",
+        }, nil
     })
 ```
 
+## Grace Status
+
+`DefaultGraceStatusHandler` always reports `Healthy`. A CronJob is considered healthy once it exists and is not
+suspended. Override with `WithCustomGraceStatus` if your CronJob has specific health requirements.
+
 ## Suspension
 
-When the component is suspended, the CronJob primitive sets `spec.suspend = true`. This prevents the CronJob controller
-from creating new Job objects. Existing active jobs continue to run.
+When the component is suspended, the CronJob sets `spec.suspend = true`, preventing new Jobs from being created.
+Existing active jobs continue running.
 
 | Status       | Condition                                            |
 | ------------ | ---------------------------------------------------- |
-| `Suspended`  | `spec.suspend == true` and no active jobs            |
 | `Suspending` | `spec.suspend == true` but active jobs still running |
-| `Suspending` | Waiting for suspend flag to be applied               |
+| `Suspended`  | `spec.suspend == true` and no active jobs            |
+| `Suspending` | Waiting for the suspend flag to be applied           |
 
-On unsuspend, the desired state (without `spec.suspend = true`) is applied via SSA, allowing the CronJob to resume
-scheduling.
+The CronJob is never deleted on suspend (`DefaultDeleteOnSuspendHandler` returns `false`). On unsuspend, the desired
+state without `spec.suspend = true` is reapplied via Server-Side Apply, and the CronJob resumes scheduling.
 
-The CronJob is never deleted on suspend (`DeleteOnSuspend = false`).
+## Full Example
+
+```go
+func CleanupMutation(version string, schedule string) cronjob.Mutation {
+    return cronjob.Mutation{
+        Name:    "cleanup-schedule",
+        Feature: feature.NewVersionGate(version, nil),
+        Mutate: func(m *cronjob.Mutator) error {
+            // CronJob spec: schedule and concurrency
+            m.EditCronJobSpec(func(e *editors.CronJobSpecEditor) error {
+                e.SetSchedule(schedule)
+                e.SetConcurrencyPolicy(batchv1.ForbidConcurrent)
+                e.SetFailedJobsHistoryLimit(3)
+                e.SetSuccessfulJobsHistoryLimit(1)
+                return nil
+            })
+
+            // Job spec: backoff and TTL
+            m.EditJobSpec(func(e *editors.JobSpecEditor) error {
+                e.SetBackoffLimit(2)
+                e.SetTTLSecondsAfterFinished(3600)
+                return nil
+            })
+
+            // Pod spec: service account
+            m.EditPodSpec(func(e *editors.PodSpecEditor) error {
+                e.SetServiceAccountName("cleanup-sa")
+                return nil
+            })
+
+            // Container: configuration
+            m.EditContainers(selectors.ContainerNamed("cleanup"), func(e *editors.ContainerEditor) error {
+                e.EnsureEnvVar(corev1.EnvVar{Name: "DRY_RUN", Value: "false"})
+                e.SetResourceLimit(corev1.ResourceCPU, resource.MustParse("200m"))
+                e.SetResourceLimit(corev1.ResourceMemory, resource.MustParse("256Mi"))
+                return nil
+            })
+
+            return nil
+        },
+    }
+}
+```
+
+The four nesting levels mirror the object structure: `CronJobSpec` -> `JobSpec` -> `PodSpec` -> `ContainerEditor`. Each
+editor targets one level of that nesting.
 
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run.
+**CronJobs are passive schedulers.** They do not run actively; the CronJob controller creates Job objects on schedule.
+Model health around the spawned Jobs, not the CronJob resource itself.
+
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for runtime boolean
+conditions.
+
+**Set `RestartPolicy` in the baseline.** Kubernetes requires `spec.jobTemplate.spec.template.spec.restartPolicy` to be
+`OnFailure` or `Never`. Set it in the desired object passed to `NewBuilder`.
 
 **Register mutations in dependency order.** If mutation B relies on a container added by mutation A, register A first.
-
-**Prefer `EnsureContainer` over direct slice manipulation.** The mutator tracks presence operations so that selectors in
-the same mutation resolve correctly.
+Internal ordering within each mutation handles intra-mutation dependencies automatically.
 
 **Use selectors for precision.** Targeting `AllContainers()` when you only mean to modify the primary container can
 cause unexpected behavior if sidecar containers are present.

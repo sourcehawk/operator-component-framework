@@ -88,6 +88,17 @@ func NewVersionGate(currentVersion string, versionConstraints []VersionConstrain
 	}
 }
 
+// NewBooleanGate creates a VersionGate that is enabled only when enabled is true.
+//
+// It is shorthand for NewVersionGate("", nil).When(enabled): a gate with no
+// version constraints whose result is driven solely by the boolean. Use it for a
+// mutation or resource toggled by a spec flag rather than an application version.
+// Because it returns a *VersionGate, further conditions can still be composed with
+// When.
+func NewBooleanGate(enabled bool) *VersionGate {
+	return NewVersionGate("", nil).When(enabled)
+}
+
 // When adds a boolean condition that must be true for the gate to be enabled.
 //
 // Calls are additive: all values passed through When must be true for Enabled()

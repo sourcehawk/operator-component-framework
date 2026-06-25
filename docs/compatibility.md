@@ -1,5 +1,13 @@
 # Compatibility
 
+This page documents the version combinations the framework is tested against, the Go minimum requirement, the support
+policy for tested combinations, and how compatibility is verified.
+
+## Go Requirement
+
+The framework requires **Go 1.25 or later** (declared in `go.mod`). Consumer projects must use Go 1.25 or later to build
+against this framework. Go's toolchain version selection ensures the consumer project picks up the same minimum.
+
 ## Supported Versions
 
 The framework is tested against the following version combinations:
@@ -9,8 +17,13 @@ The framework is tested against the following version combinations:
 | main      | v0.23.x            | v0.35.x   | 1.35       | 1.25 | Primary |
 | main      | v0.22.x            | v0.34.x   | 1.34       | 1.25 | Tested  |
 
-**Primary** is the version combination used in `go.mod` and in the main CI pipeline. **Tested** versions are verified
-weekly by the compatibility CI workflow.
+**Primary** is the version combination used in `go.mod` and in the main CI pipeline.
+
+**Tested** combinations are verified weekly by the compatibility CI workflow. They are fully supported: bugs reported
+against a Tested combination are treated as bugs in the framework, not as unsupported configurations. The distinction
+from Primary is operational only (Primary is tested on every commit; Tested combinations run on a weekly schedule).
+
+[![Compatibility](https://github.com/sourcehawk/operator-component-framework/actions/workflows/compatibility.yml/badge.svg)](https://github.com/sourcehawk/operator-component-framework/actions/workflows/compatibility.yml)
 
 ## Version Policy
 
@@ -18,14 +31,19 @@ The framework targets the latest stable controller-runtime release as its primar
 against prior controller-runtime minor versions where transitive dependencies remain compatible. When a new Kubernetes
 minor version is released and controller-runtime publishes a matching release, the matrix is updated accordingly.
 
-Versions v0.21 and below are incompatible due to multiple transitive dependency module path migrations in the Kubernetes
-ecosystem (`structured-merge-diff` v4 to v6, `yaml` package path changes) that cannot be resolved by swapping direct
-dependencies alone.
+As new Kubernetes minor versions are added to the matrix, the oldest Tested entry may be dropped. Dropping a combination
+is announced in the release notes for the framework version that removes it. No combination is dropped without being
+replaced by a newer one in the same release.
+
+Versions v0.21.x and below are not supported. Multiple transitive dependency module path migrations in the Kubernetes
+ecosystem make those combinations irresolvable.
 
 ## How Compatibility Is Tested
 
-The [compatibility workflow](../.github/workflows/compatibility.yml) runs weekly on a schedule, on manual dispatch, and
-on pull requests labeled `compatibility`. For each version combination in the matrix, it:
+The
+[compatibility workflow](https://github.com/sourcehawk/operator-component-framework/blob/main/.github/workflows/compatibility.yml)
+runs weekly on a schedule, on manual dispatch, and on pull requests labeled `compatibility`. For each version
+combination in the matrix, it:
 
 1. Swaps the `controller-runtime` and `k8s.io/*` dependencies to the target versions using `go get`, then runs
    `go mod tidy` to resolve transitive dependencies. This step is skipped for the primary (current `go.mod`) entry,

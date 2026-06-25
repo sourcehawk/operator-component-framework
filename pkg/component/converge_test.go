@@ -146,6 +146,7 @@ func TestConvergeResultsGraceSummary(t *testing.T) {
 		require.NoError(t, results.evaluateGrace())
 		summary := results.graceSummary()
 		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
+		assert.Equal(t, "Component failed to converge within grace period.", summary.Reason)
 	})
 
 	t.Run("should aggregate grace status of alive resources", func(t *testing.T) {

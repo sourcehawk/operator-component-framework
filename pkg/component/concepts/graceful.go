@@ -15,7 +15,7 @@ const (
 
 // Priority returns the priority of the grace status.
 // Higher values indicate more severe health issues.
-// This is used for status aggregation: "Down" takes precedence over "Degraded", which takes precedence over "Ready".
+// This is used for status aggregation: "Down" takes precedence over "Degraded", which takes precedence over "Healthy".
 func (s GraceStatus) Priority() int {
 	switch s {
 	case GraceStatusHealthy:

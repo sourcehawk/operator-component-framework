@@ -1,18 +1,21 @@
 # Ingress Primitive
 
-The `ingress` primitive is the framework's built-in integration abstraction for managing Kubernetes `Ingress` resources.
-It integrates with the component lifecycle as an Operational, Graceful, Suspendable resource and provides a structured
-mutation API for managing rules, TLS configuration, and metadata. For an overview of all built-in primitives, see
-[Primitives](../primitives.md).
+The `ingress` primitive wraps a Kubernetes `Ingress` and integrates with the component lifecycle as an Integration,
+Graceful, and Suspendable resource, providing a structured mutation API for managing rules, TLS configuration, and
+metadata.
 
 ## Capabilities
 
-| Capability             | Detail                                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------- |
-| **Operational status** | Reports `OperationPending` until the ingress controller assigns an address, then `Operational` |
-| **Grace status**       | Reports `Degraded` until a load balancer IP or hostname is assigned, then `Healthy`            |
-| **Suspension**         | No-op by default. Ingress is left in place; backend returns 502/503                            |
-| **Mutation pipeline**  | Typed editors for metadata and ingress spec (rules, TLS, class name, default backend)          |
+| Capability            | Detail                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Operational**       | Reports `OperationPending` until the ingress controller assigns an address, then `Operational`       |
+| **Graceful**          | Reports `Degraded` until a load balancer IP or hostname is assigned, then `Healthy`                  |
+| **Suspendable**       | No-op by default. Ingress is left in place; backend returns 502/503 when the backing service is down |
+| **DataExtractable**   | Reads assigned load balancer addresses after each sync cycle via `WithDataExtractor`                 |
+| **Mutation pipeline** | Typed editors for metadata and Ingress spec (rules, TLS, class name, default backend)                |
+
+See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface
+reports.
 
 ## Building an Ingress Primitive
 
@@ -28,7 +31,7 @@ base := &networkingv1.Ingress{
         IngressClassName: ptr.To("nginx"),
         Rules: []networkingv1.IngressRule{
             {
-                Host: "example.com",
+                Host: "app.example.com",
                 IngressRuleValue: networkingv1.IngressRuleValue{
                     HTTP: &networkingv1.HTTPIngressRuleValue{
                         Paths: []networkingv1.HTTPIngressPath{
@@ -57,31 +60,12 @@ resource, err := ingress.NewBuilder(base).
 
 ## Mutations
 
-Mutations are the primary mechanism for modifying an `Ingress` beyond its baseline. Each mutation is a named function
-that receives a `*Mutator` and records edit intent through typed editors.
+Register mutations with `WithMutation`. The mutation system, boolean-gated mutations, and version-gated mutations are
+explained in [The Mutation System](../primitives.md#the-mutation-system),
+[Boolean-Gated Mutations](../primitives.md#boolean-gated-mutations), and
+[Version-Gated Mutations](../primitives.md#version-gated-mutations).
 
-The `Feature` field controls when a mutation applies. Leaving it nil applies the mutation unconditionally. A feature
-with no version constraints and no `When()` conditions is also always enabled:
-
-```go
-func MyFeatureMutation(version string) ingress.Mutation {
-    return ingress.Mutation{
-        Name:    "my-feature",
-        Feature: feature.NewVersionGate(version, nil), // always enabled
-        Mutate: func(m *ingress.Mutator) error {
-            // record edits here
-            return nil
-        },
-    }
-}
-```
-
-Mutations are applied in the order they are registered with the builder. If one mutation depends on a change made by
-another, register the dependency first.
-
-### Boolean-gated mutations
-
-Use `When(bool)` to gate a mutation on a runtime condition:
+A kind-specific example gating a TLS mutation on a boolean condition:
 
 ```go
 func TLSMutation(version string, enabled bool) ingress.Mutation {
@@ -91,7 +75,7 @@ func TLSMutation(version string, enabled bool) ingress.Mutation {
         Mutate: func(m *ingress.Mutator) error {
             m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
                 e.EnsureTLS(networkingv1.IngressTLS{
-                    Hosts:      []string{"example.com"},
+                    Hosts:      []string{"app.example.com"},
                     SecretName: "tls-cert",
                 })
                 return nil
@@ -102,22 +86,21 @@ func TLSMutation(version string, enabled bool) ingress.Mutation {
 }
 ```
 
-All version constraints and `When()` conditions must be satisfied for a mutation to apply.
-
 ## Internal Mutation Ordering
 
-Within a single mutation, edit operations are applied in a fixed category order regardless of the order they are
-recorded:
+Within a single mutation, edits are applied in a fixed category order regardless of recording order:
 
 | Step | Category           | What it affects                                       |
 | ---- | ------------------ | ----------------------------------------------------- |
 | 1    | Metadata edits     | Labels and annotations on the `Ingress` object        |
 | 2    | Ingress spec edits | Ingress class, default backend, rules, TLS via editor |
 
-Within each category, edits are applied in their registration order. Later features observe the Ingress as modified by
-all previous features.
+Within each category, edits run in registration order. Later features observe the Ingress as modified by all earlier
+ones.
 
 ## Relevant Editors
+
+See [Mutation Editors](../primitives.md#mutation-editors) for the general editor model.
 
 ### IngressSpecEditor
 
@@ -126,9 +109,9 @@ The primary API for modifying the Ingress spec. Use `m.EditIngressSpec` for full
 ```go
 m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
     e.SetIngressClassName("nginx")
-    e.EnsureRule(networkingv1.IngressRule{Host: "example.com"})
+    e.EnsureRule(networkingv1.IngressRule{Host: "app.example.com"})
     e.EnsureTLS(networkingv1.IngressTLS{
-        Hosts:      []string{"example.com"},
+        Hosts:      []string{"app.example.com"},
         SecretName: "tls-cert",
     })
     return nil
@@ -182,7 +165,7 @@ matches any of the provided hosts.
 ```go
 m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
     e.EnsureTLS(networkingv1.IngressTLS{
-        Hosts:      []string{"example.com", "www.example.com"},
+        Hosts:      []string{"app.example.com", "www.example.com"},
         SecretName: "wildcard-tls",
     })
     e.RemoveTLS("old.example.com")
@@ -192,7 +175,7 @@ m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
 
 #### Raw Escape Hatch
 
-`Raw()` returns the underlying `*networkingv1.IngressSpec` for direct access when the typed API is insufficient:
+`Raw()` returns the underlying `*networkingv1.IngressSpec` for direct access:
 
 ```go
 m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
@@ -217,30 +200,25 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Operational Status
 
-The Ingress primitive uses the **Integration** lifecycle, which implements `concepts.Operational` instead of
-`concepts.Alive`.
+The Ingress primitive implements `concepts.Operational`. The default handler iterates over `Status.LoadBalancer.Ingress`
+entries and requires at least one with a non-empty `IP` or `Hostname`:
 
-### DefaultOperationalStatusHandler
+| Condition                                 | Status             |
+| ----------------------------------------- | ------------------ |
+| Entry with `IP != ""` or `Hostname != ""` | `Operational`      |
+| Otherwise                                 | `OperationPending` |
 
-| Condition                                 | Status             | Reason                                    |
-| ----------------------------------------- | ------------------ | ----------------------------------------- |
-| Entry with `IP != ""` or `Hostname != ""` | `Operational`      | Ingress has been assigned an address      |
-| Otherwise                                 | `OperationPending` | Awaiting load balancer address assignment |
-
-The handler iterates over `Status.LoadBalancer.Ingress` entries and requires at least one with a non-empty `IP` or
-`Hostname` to report operational.
-
-Override with `WithCustomOperationalStatus` for more complex health checks (e.g. verifying specific annotations set by
-cloud providers).
+Override with `WithCustomOperationalStatus` for more complex health checks, such as verifying specific annotations set
+by cloud providers.
 
 ## Grace Status
 
-The default grace status handler inspects `Status.LoadBalancer.Ingress` to assess health after the grace period expires:
+The default grace status handler inspects `Status.LoadBalancer.Ingress` after the grace period expires:
 
-| Status     | Condition                                                |
-| ---------- | -------------------------------------------------------- |
-| `Healthy`  | At least one entry with a non-empty `IP` or `Hostname`   |
-| `Degraded` | No entries, or all entries lack both `IP` and `Hostname` |
+| Condition                                                | Status     |
+| -------------------------------------------------------- | ---------- |
+| At least one entry with a non-empty `IP` or `Hostname`   | `Healthy`  |
+| No entries, or all entries lack both `IP` and `Hostname` | `Degraded` |
 
 Override with `WithCustomGraceStatus`:
 
@@ -258,18 +236,18 @@ ingress.NewBuilder(base).
 
 ## Suspension
 
-### Default Behaviour
+### Default Behavior
 
-The default suspension strategy is a **no-op**:
+The default suspension strategy is a no-op:
 
 - `DefaultDeleteOnSuspendHandler` returns `false`. The Ingress is not deleted.
 - `DefaultSuspendMutationHandler` does nothing. The Ingress spec is not modified.
 - `DefaultSuspensionStatusHandler` immediately reports `Suspended` with reason
   `"Ingress suspended (backend unavailable)"`.
 
-**Rationale**: deleting an Ingress causes the ingress controller (e.g. nginx) to reload its configuration, which affects
-the entire cluster's routing, not just the suspended service. When the backend service is suspended, the Ingress
-returning 502/503 is the correct observable behaviour.
+**Rationale**: deleting an Ingress causes the ingress controller to reload its configuration, which affects the entire
+cluster's routing, not just the suspended service. When the backend service is suspended, the Ingress returning 502/503
+is the correct observable behavior.
 
 ### Custom Suspension
 
@@ -283,13 +261,76 @@ resource, err := ingress.NewBuilder(base).
     Build()
 ```
 
+## Full Example
+
+```go
+func BaseIngressMutation(version string) ingress.Mutation {
+    return ingress.Mutation{
+        Name:    "base-ingress",
+        Feature: feature.NewVersionGate(version, nil),
+        Mutate: func(m *ingress.Mutator) error {
+            m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
+                e.SetIngressClassName("nginx")
+                e.EnsureRule(networkingv1.IngressRule{
+                    Host: "app.example.com",
+                    IngressRuleValue: networkingv1.IngressRuleValue{
+                        HTTP: &networkingv1.HTTPIngressRuleValue{
+                            Paths: []networkingv1.HTTPIngressPath{
+                                {
+                                    Path:     "/",
+                                    PathType: ptr.To(networkingv1.PathTypePrefix),
+                                    Backend: networkingv1.IngressBackend{
+                                        Service: &networkingv1.IngressServiceBackend{
+                                            Name: "web-svc",
+                                            Port: networkingv1.ServiceBackendPort{Number: 80},
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                })
+                return nil
+            })
+            return nil
+        },
+    }
+}
+
+func TLSMutation(version string, enabled bool) ingress.Mutation {
+    return ingress.Mutation{
+        Name:    "tls",
+        Feature: feature.NewVersionGate(version, nil).When(enabled),
+        Mutate: func(m *ingress.Mutator) error {
+            m.EditIngressSpec(func(e *editors.IngressSpecEditor) error {
+                e.EnsureTLS(networkingv1.IngressTLS{
+                    Hosts:      []string{"app.example.com"},
+                    SecretName: "tls-cert",
+                })
+                return nil
+            })
+            return nil
+        },
+    }
+}
+
+resource, err := ingress.NewBuilder(base).
+    WithMutation(BaseIngressMutation(owner.Spec.Version)).
+    WithMutation(TLSMutation(owner.Spec.Version, owner.Spec.TLSEnabled)).
+    Build()
+```
+
+When `TLSEnabled` is true, the Ingress includes a TLS block for the host. When false, only the rule is present.
+
 ## Guidance
 
-**`Feature: nil` applies unconditionally.** Omit `Feature` (leave it nil) for mutations that should always run. Use
-`feature.NewVersionGate(version, constraints)` when version-based gating is needed, and chain `.When(bool)` for boolean
-conditions.
+**`Feature: nil` applies unconditionally.** Omit `Feature` for mutations that should always run. Use
+`feature.NewVersionGate(version, constraints)` for version-based gating and chain `.When(bool)` for boolean conditions.
 
 **Register mutations in dependency order.** If mutation B relies on a rule added by mutation A, register A first.
 
 **Prefer no-op suspension.** The default no-op suspension is almost always correct for Ingress resources. Only override
 to delete-on-suspend if your use case specifically requires removing the Ingress from the cluster during suspension.
+
+**Use `EnsureRule` for idempotent rule management.** Rules are matched by `Host`; repeated calls with the same host
+replace the existing rule rather than duplicating it.

@@ -8,27 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // TestDebugLoggingMutation verifies that the mutation sets LOG_LEVEL=debug
 // on the application container.
 func TestDebugLoggingMutation(t *testing.T) {
-	base := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec: appsv1.DeploymentSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{Name: "app"},
-					},
-				},
-			},
-		},
-	}
-
-	res, err := deployment.NewBuilder(base).
+	res, err := deployment.NewBuilder(baseDeployment()).
 		WithMutation(features.DebugLoggingMutation(true)).
 		Build()
 	require.NoError(t, err)

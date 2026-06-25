@@ -17,9 +17,9 @@ spec:
     spec:
       containers:
       - env:
-        - name: CLUSTER_DISCOVERY
-          value: legacy-gossip
-        image: example/db:8.7.0
+        - name: PEER_DISCOVERY
+          value: v2
+        image: example/db:2.0.0
         name: db
         resources: {}
   updateStrategy: {}

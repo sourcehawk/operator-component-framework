@@ -1,0 +1,38 @@
+fixtures:
+- name: default
+  regimes:
+  - firing:
+    - BackwardCompatV1Container
+    representative: 1.9.0
+    versions:
+    - 1.9.0
+  - firing: null
+    representative: 2.0.0
+    versions:
+    - 2.0.0
+- name: debug
+  regimes:
+  - firing:
+    - BackwardCompatV1Container
+    - DebugLogging
+    representative: 1.9.0
+    versions:
+    - 1.9.0
+  - firing:
+    - DebugLogging
+    representative: 2.0.0
+    versions:
+    - 2.0.0
+- name: tracing
+  regimes:
+  - firing:
+    - BackwardCompatV1Container
+    - Tracing
+    representative: 1.9.0
+    versions:
+    - 1.9.0
+  - firing:
+    - Tracing
+    representative: 2.0.0
+    versions:
+    - 2.0.0

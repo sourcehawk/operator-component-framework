@@ -31,7 +31,7 @@ func BaseConfigMap(owner *app.ExampleApp) *corev1.ConfigMap {
 // ConfigMap can be gated at the resource level by the controller.
 func NewConfigMapResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder := configmap.NewBuilder(BaseConfigMap(owner))
-	builder.WithMutation(features.MetricsConfigMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
+	builder.WithMutation(features.MetricsConfigMutation(owner.Spec.EnableMetrics))
 
 	return builder.Build()
 }

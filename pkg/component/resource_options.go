@@ -28,6 +28,7 @@ type resourceConfig struct {
 	readOnly                          bool
 	unowned                           bool
 	deleteConditions                  []bool
+	orphanConditions                  []bool
 	gate                              feature.Gate
 	participationMode                 ParticipationMode
 	blockOnAbsence                    bool
@@ -42,6 +43,10 @@ type resourceConfig struct {
 type resourceOptions struct {
 	// Delete reports that the resource is marked for deletion during reconciliation.
 	Delete bool
+	// Orphan reports that the resource is released during reconciliation: the
+	// component removes its controller owner reference and stops managing it,
+	// leaving the object in the cluster.
+	Orphan bool
 	// ReadOnly reports that the resource is read-only.
 	ReadOnly bool
 	// Unowned reports that the component must not set a controller owner reference
@@ -91,6 +96,19 @@ func Delete() ResourceOption {
 // a configuration error returned by Build.
 func DeleteWhen(condition bool) ResourceOption {
 	return func(c *resourceConfig) { c.deleteConditions = append(c.deleteConditions, condition) }
+}
+
+// OrphanWhen releases the resource from the component when condition is true: the
+// component stops managing it and removes the controller owner reference it set,
+// leaving the object in the cluster rather than deleting it. Use it to migrate a
+// resource to a new owner without deleting it.
+//
+// Calls are additive with OR semantics: the resource is orphaned if any supplied
+// condition is true. OrphanWhen is mutually exclusive with Delete, DeleteWhen,
+// GatedBy, and ReadOnly; combining any of them is a configuration error returned
+// by Build.
+func OrphanWhen(condition bool) ResourceOption {
+	return func(c *resourceConfig) { c.orphanConditions = append(c.orphanConditions, condition) }
 }
 
 // GatedBy conditionally renders an owned resource based on a feature.Gate: it is
@@ -191,6 +209,18 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 		)
 	}
 
+	if len(c.orphanConditions) > 0 {
+		if len(c.deleteConditions) > 0 {
+			return resourceOptions{}, errors.New("resource option OrphanWhen is mutually exclusive with Delete and DeleteWhen")
+		}
+		if c.gate != nil {
+			return resourceOptions{}, errors.New("resource option OrphanWhen is mutually exclusive with GatedBy")
+		}
+		if c.readOnly {
+			return resourceOptions{}, errors.New("resource option OrphanWhen is mutually exclusive with ReadOnly")
+		}
+	}
+
 	shouldDelete := false
 	if c.gate != nil {
 		enabled, err := c.gate.Enabled()
@@ -210,6 +240,14 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 		}
 	}
 
+	shouldOrphan := false
+	for _, cond := range c.orphanConditions {
+		if cond {
+			shouldOrphan = true
+			break
+		}
+	}
+
 	mode := c.participationMode
 	if mode == "" {
 		mode = ParticipationModeRequired
@@ -219,6 +257,7 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 	// any read-only resource that carries a deletion trigger.
 	return resourceOptions{
 		Delete:                            shouldDelete,
+		Orphan:                            shouldOrphan,
 		ReadOnly:                          c.readOnly,
 		Unowned:                           c.unowned,
 		ParticipationMode:                 mode,

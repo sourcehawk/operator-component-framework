@@ -1,0 +1,63 @@
+name: Docs
+
+# Pull requests build the site in strict mode to catch broken links and nav.
+# The site is published only when a release is published (so it tracks the latest
+# released version), or manually via workflow_dispatch.
+on:
+  release:
+    types:
+      - published
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: the top level (inherited by the PR build job) is read-only;
+# the Pages and OIDC scopes are granted only to the deploy job below.
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install docs dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Build site (strict)
+        run: mkdocs build --strict
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

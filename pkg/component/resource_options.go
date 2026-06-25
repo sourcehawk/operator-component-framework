@@ -26,6 +26,7 @@ type ResourceOption func(*resourceConfig)
 // before resolution.
 type resourceConfig struct {
 	readOnly                          bool
+	unowned                           bool
 	deleteConditions                  []bool
 	orphanConditions                  []bool
 	gate                              feature.Gate
@@ -48,6 +49,11 @@ type resourceOptions struct {
 	Orphan bool
 	// ReadOnly reports that the resource is read-only.
 	ReadOnly bool
+	// Unowned reports that the component must not set a controller owner reference
+	// on this resource. The resource is still created and updated normally, but
+	// Kubernetes will not garbage-collect it when the owner CR is deleted. Use this
+	// for resources that must outlive the owner, such as backup records.
+	Unowned bool
 	// ParticipationMode describes how the resource participates in the component
 	// health aggregation. Defaults to ParticipationModeRequired.
 	ParticipationMode ParticipationMode
@@ -141,6 +147,15 @@ func BlockOnAbsence() ResourceOption {
 // otherwise.
 func IgnoreIfAbsent() ResourceOption {
 	return func(c *resourceConfig) { c.ignoreIfAbsent = true }
+}
+
+// Unowned marks the resource as unowned: the component creates and updates it
+// normally, but does not set a controller owner reference. Without an owner
+// reference, Kubernetes will not garbage-collect the resource when the owner CR
+// is deleted. Use this for resources that must outlive the owner, such as backup
+// records.
+func Unowned() ResourceOption {
+	return func(c *resourceConfig) { c.unowned = true }
 }
 
 // SuppressGraceInconsistencyWarning suppresses the warning log emitted when the
@@ -244,6 +259,7 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 		Delete:                            shouldDelete,
 		Orphan:                            shouldOrphan,
 		ReadOnly:                          c.readOnly,
+		Unowned:                           c.unowned,
 		ParticipationMode:                 mode,
 		SuppressGraceInconsistencyWarning: c.suppressGraceInconsistencyWarning,
 		BlockOnAbsence:                    c.blockOnAbsence,

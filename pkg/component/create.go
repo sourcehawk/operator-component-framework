@@ -25,7 +25,7 @@ import (
 // status-collection sequence.
 func applyResource(
 	ctx context.Context, rec ReconcileContext, resource Resource,
-	fieldOwner client.FieldOwner, mapper meta.RESTMapper,
+	fieldOwner client.FieldOwner, mapper meta.RESTMapper, skipOwnerRef bool,
 ) (*reconcileResult, error) {
 	obj, err := resource.Object()
 	if err != nil {
@@ -52,7 +52,7 @@ func applyResource(
 	preMutate := obj.DeepCopyObject()
 
 	// Apply mutations to desired state
-	ownerRefSkipped, err := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper)
+	ownerRefSkipped, err := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper, skipOwnerRef)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to mutate resource %s: %w", resource.Identity(), err,
@@ -135,7 +135,7 @@ func applyResource(
 //     (e.g., "ExampleApp/web-interface"). Forced ownership means the framework takes control
 //     of any conflicting fields from other managers for fields it explicitly declares.
 func applyResources(
-	ctx context.Context, rec ReconcileContext, resources []Resource,
+	ctx context.Context, rec ReconcileContext, entries []reconcileEntry,
 	componentName string, mapper meta.RESTMapper,
 ) ([]reconcileResult, error) {
 	fieldOwner := client.FieldOwner(
@@ -144,8 +144,8 @@ func applyResources(
 
 	var results []reconcileResult
 
-	for _, resource := range resources {
-		result, err := applyResource(ctx, rec, resource, fieldOwner, mapper)
+	for _, entry := range entries {
+		result, err := applyResource(ctx, rec, entry.Resource, fieldOwner, mapper, entry.Options.Unowned)
 		if err != nil {
 			return nil, err
 		}
@@ -205,7 +205,7 @@ func reconcileResources(
 		if entry.Options.ReadOnly {
 			result, err = readResource(ctx, rec, resource)
 		} else {
-			result, err = applyResource(ctx, rec, resource, fieldOwner, mapper)
+			result, err = applyResource(ctx, rec, resource, fieldOwner, mapper, entry.Options.Unowned)
 		}
 		if err != nil {
 			if entry.Options.ReadOnly && apierrors.IsNotFound(err) {
@@ -242,13 +242,34 @@ func reconcileResources(
 	return results, nil
 }
 
-// mutateResource applies all desired-state mutations and sets the controller owner reference.
+// mutateResource applies all desired-state mutations and sets the controller owner
+// reference. When skipOwnerRef is true the owner reference is intentionally omitted;
+// the resource is not garbage-collected when the owner CR is deleted.
 func mutateResource(
 	resource Resource, obj client.Object, owner client.Object,
-	scheme *runtime.Scheme, mapper meta.RESTMapper,
+	scheme *runtime.Scheme, mapper meta.RESTMapper, skipOwnerRef bool,
 ) (ownerRefSkipped bool, err error) {
 	if err := resource.Mutate(obj); err != nil {
 		return false, err
+	}
+
+	if skipOwnerRef {
+		// Remove only the owner reference that points to the component owner, preserving
+		// any other owner references that Mutate() may have set for different objects.
+		// This also clears a cached ref from a previous reconcile where Unowned() was not set
+		// (the DesiredObject pointer retains the server response). Omitting or emptying the
+		// field in the SSA patch removes entries this field manager previously owned.
+		ownerUID := owner.GetUID()
+		existing := obj.GetOwnerReferences()
+		n := 0
+		for _, ref := range existing {
+			if ref.UID != ownerUID {
+				existing[n] = ref
+				n++
+			}
+		}
+		obj.SetOwnerReferences(existing[:n])
+		return false, nil
 	}
 
 	canSet, err := scope.CanSetOwnerReference(owner, obj, scheme, mapper)

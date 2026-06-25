@@ -129,6 +129,16 @@ func TestResolveResourceOptions(t *testing.T) {
 			opts: []ResourceOption{GatedBy(&disabledFeature{}), GatedBy(&enabledFeature{})},
 			want: resourceOptions{ParticipationMode: ParticipationModeRequired},
 		},
+		{
+			name: "Unowned sets unowned flag",
+			opts: []ResourceOption{Unowned()},
+			want: resourceOptions{Unowned: true, ParticipationMode: ParticipationModeRequired},
+		},
+		{
+			name: "Unowned combined with Auxiliary",
+			opts: []ResourceOption{Unowned(), Auxiliary()},
+			want: resourceOptions{Unowned: true, ParticipationMode: ParticipationModeAuxiliary},
+		},
 	}
 
 	for _, tt := range tests {

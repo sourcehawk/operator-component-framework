@@ -57,6 +57,7 @@ be passed without a guard.
 | `component.Delete()` / `component.DeleteWhen(cond)` | **Delete**: removed from the cluster (unconditionally, or when `cond` is true); does not contribute to health                                                                                                                           |
 | `component.GatedBy(gate)`                           | Deletes the resource when the feature gate is disabled; managed when enabled                                                                                                                                                            |
 | `component.OrphanWhen(cond)`                        | **Orphan**: when `cond` is true, removes the component's owner reference and stops managing the resource, leaving the object in the cluster; does not contribute to health. Mutually exclusive with the deletion options and `ReadOnly` |
+| `component.Unowned()`                               | **Unowned**: created and updated normally, but no controller owner reference is set; not garbage-collected on owner CR deletion                                                                                                         |
 | `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)                                                                                                                                       |
 | `component.BlockOnAbsence()`                        | Read-only only: a NotFound records a blocked status and short-circuits the remaining resources                                                                                                                                          |
 | `component.IgnoreIfAbsent()`                        | Read-only only: a NotFound is silently ignored and last-known state is preserved                                                                                                                                                        |
@@ -66,6 +67,13 @@ A read-only resource is not owned by the component, so it is never deleted. `Rea
 `Delete()`, `DeleteWhen()`, `GatedBy()`, and `OrphanWhen()`; combining them is a build error. `BlockOnAbsence()` and
 `IgnoreIfAbsent()` each require `ReadOnly()` and are mutually exclusive with each other. To conditionally include a
 read-only resource, use [`IncludeWhen`](#includewhen-vs-gatedby), which omits the resource without deleting it.
+
+`Unowned()` resources are created and updated by the component but are not garbage-collected when the owner CR is
+deleted, because no controller owner reference is set. This is intended for resources that must outlive the management
+lifecycle — for example, backup records that should persist after the application CR is removed. An `Unowned` resource
+is still subject to explicit deletion: `Delete()`, `DeleteWhen()`, `GatedBy()` (when the gate is disabled), and
+suspension with `DeleteOnSuspend()` all delete it directly, regardless of the `Unowned` flag. Only Kubernetes GC
+(triggered by owner CR deletion) is suppressed.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 

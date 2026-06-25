@@ -49,7 +49,9 @@ func TestCertificateShape(t *testing.T) {
 	res, err := resources.NewCertificateResource(testOwner())
 	require.NoError(t, err)
 
-	golden.AssertYAML(t, "testdata/certificate.yaml", res.(golden.Previewer), golden.Update(*update))
+	previewer, ok := res.(golden.Previewer)
+	require.True(t, ok, "resource does not implement golden.Previewer")
+	golden.AssertYAML(t, "testdata/certificate.yaml", previewer, golden.Update(*update))
 }
 
 // TestCertificateBaseShape pins the bare base object before any mutations.

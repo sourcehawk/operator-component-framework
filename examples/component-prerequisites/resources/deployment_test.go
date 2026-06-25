@@ -62,7 +62,9 @@ func TestDeploymentShape(t *testing.T) {
 			res, err := resources.NewDeploymentResource(owner)
 			require.NoError(t, err)
 
-			golden.AssertYAML(t, tt.golden, res.(golden.Previewer),
+			previewer, ok := res.(golden.Previewer)
+			require.True(t, ok, "resource does not implement golden.Previewer")
+			golden.AssertYAML(t, tt.golden, previewer,
 				golden.WithScheme(scheme), golden.Update(*update))
 		})
 	}

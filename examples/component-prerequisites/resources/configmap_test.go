@@ -34,6 +34,8 @@ func TestConfigMapShape(t *testing.T) {
 	res, err := resources.NewConfigMapResource(owner)
 	require.NoError(t, err)
 
-	golden.AssertYAML(t, "testdata/configmap.yaml", res.(golden.Previewer),
+	previewer, ok := res.(golden.Previewer)
+	require.True(t, ok, "resource does not implement golden.Previewer")
+	golden.AssertYAML(t, "testdata/configmap.yaml", previewer,
 		golden.WithScheme(scheme), golden.Update(*update))
 }

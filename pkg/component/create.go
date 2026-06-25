@@ -254,6 +254,11 @@ func mutateResource(
 	}
 
 	if skipOwnerRef {
+		// Clear any owner references cached from a previous reconcile (the
+		// DesiredObject pointer retains the server response, which may include an
+		// owner ref set before Unowned() was added). Sending nil via SSA removes
+		// any entry this field manager previously owned.
+		obj.SetOwnerReferences(nil)
 		return false, nil
 	}
 

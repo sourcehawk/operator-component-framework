@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -398,6 +399,31 @@ func TestMutateResource(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, skipped, "intentional Unowned skip must not be reported as a scope-incompatibility skip")
 		assert.Empty(t, resourceObject.OwnerReferences, "no owner reference should be set for an Unowned resource")
+		resource.AssertExpectations(t)
+	})
+
+	t.Run("should clear a previously-cached owner reference when skipOwnerRef is true", func(t *testing.T) {
+		// The DesiredObject pointer retains the owner ref written back by the server
+		// after the first reconcile (Patch writes into the same pointer). If Unowned()
+		// is added later, that cached ref must be cleared so the SSA patch does not
+		// re-apply it.
+		resource := &MockResource{}
+		resourceObject := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-unowned-cached",
+				Namespace: namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					{APIVersion: "test/v1", Kind: "MockOperatorCRD", Name: owner.Name, Controller: ptr.To(true)},
+				},
+			},
+		}
+		resource.On("Mutate", mock.Anything).Return(nil)
+		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-unowned-cached")
+
+		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper, true)
+
+		require.NoError(t, err)
+		assert.Empty(t, resourceObject.OwnerReferences, "cached owner reference must be cleared for an Unowned resource")
 		resource.AssertExpectations(t)
 	})
 

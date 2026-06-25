@@ -452,13 +452,13 @@ func (c *Component) evaluatePrerequisites(rec ReconcileContext) (PrerequisiteRes
 	return PrerequisiteResult{Status: PrerequisiteStatusMet}, nil
 }
 
-// managedResources returns only the non-read-only resources from the reconcile list.
+// managedResources returns only the non-read-only entries from the reconcile list.
 // This is used during suspension, where only managed resources are suspended.
-func (c *Component) managedResources() []Resource {
-	var managed []Resource
+func (c *Component) managedResources() []reconcileEntry {
+	var managed []reconcileEntry
 	for _, entry := range c.reconcileResources {
 		if !entry.Options.ReadOnly {
-			managed = append(managed, entry.Resource)
+			managed = append(managed, entry)
 		}
 	}
 	return managed

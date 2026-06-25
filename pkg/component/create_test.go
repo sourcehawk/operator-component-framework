@@ -59,7 +59,7 @@ func TestApplyResources(t *testing.T) {
 		resource.On("Mutate", mock.Anything).Return(nil)
 
 		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestApplyResources(t *testing.T) {
 		resource2.On("Mutate", mock.Anything).Return(nil)
 
 		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource1, resource2}, "test-component", createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource1}, {Resource: resource2}}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestApplyResources(t *testing.T) {
 		}, nil)
 
 		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{regularResource, aliveResource}, "test-component", createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: regularResource}, {Resource: aliveResource}}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -170,7 +170,7 @@ func TestApplyResources(t *testing.T) {
 		resource3 := &MockResource{} // Should not be processed
 
 		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource1, resource2, resource3}, "test-component", createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource1}, {Resource: resource2}, {Resource: resource3}}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.Error(t, err)
@@ -211,7 +211,7 @@ func TestApplyResources(t *testing.T) {
 		}).Return(nil)
 
 		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
+		results, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.NoError(t, err)
@@ -276,7 +276,7 @@ func TestApplyResources(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := applyResources(ctx, reconcileContext, []Resource{tc.resource}, "test-component", createTestRESTMapper())
+			results, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: tc.resource}}, "test-component", createTestRESTMapper())
 
 			require.NoError(t, err)
 			require.Len(t, results, 1)
@@ -291,7 +291,7 @@ func TestApplyResources(t *testing.T) {
 		resource.On("Object").Return(nil, fmt.Errorf("object error"))
 
 		// When
-		_, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
+		_, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.Error(t, err)
@@ -312,7 +312,7 @@ func TestApplyResources(t *testing.T) {
 		resource.On("Mutate", mock.Anything).Return(fmt.Errorf("mutation failed"))
 
 		// When
-		_, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", createTestRESTMapper())
+		_, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}}, "test-component", createTestRESTMapper())
 
 		// Then
 		require.Error(t, err)
@@ -348,7 +348,7 @@ func TestMutateResource(t *testing.T) {
 		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-mutate")
 
 		// When
-		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper)
+		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper, false)
 
 		// Then
 		require.NoError(t, err)
@@ -372,10 +372,32 @@ func TestMutateResource(t *testing.T) {
 		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-mutate-existing")
 
 		// When
-		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper)
+		_, err := mutateResource(resource, resourceObject, owner, scheme, mapper, false)
 
 		// Then
 		require.NoError(t, err)
+		resource.AssertExpectations(t)
+	})
+
+	t.Run("should not set owner reference when skipOwnerRef is true", func(t *testing.T) {
+		// Given
+		resource := &MockResource{}
+		resourceObject := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-unowned",
+				Namespace: namespace,
+			},
+		}
+		resource.On("Mutate", mock.Anything).Return(nil)
+		resource.On("Identity").Maybe().Return("v1/ConfigMap/test-namespace/test-unowned")
+
+		// When
+		skipped, err := mutateResource(resource, resourceObject, owner, scheme, mapper, true)
+
+		// Then
+		require.NoError(t, err)
+		assert.False(t, skipped, "intentional Unowned skip must not be reported as a scope-incompatibility skip")
+		assert.Empty(t, resourceObject.OwnerReferences, "no owner reference should be set for an Unowned resource")
 		resource.AssertExpectations(t)
 	})
 
@@ -402,7 +424,7 @@ func TestMutateResource(t *testing.T) {
 		resource.On("Identity").Maybe().Return("rbac.authorization.k8s.io/v1/ClusterRole/test-cluster-role")
 
 		// When
-		skipped, err := mutateResource(resource, resourceObject, owner, scheme, clusterScopedMapper)
+		skipped, err := mutateResource(resource, resourceObject, owner, scheme, clusterScopedMapper, false)
 
 		// Then
 		require.NoError(t, err)
@@ -453,7 +475,7 @@ func TestApplyResources_ClusterScopedResource(t *testing.T) {
 		resource.On("Identity").Maybe().Return("rbac.authorization.k8s.io/v1/ClusterRole/test-cluster-role-create")
 
 		// When
-		results, err := applyResources(ctx, reconcileContext, []Resource{resource}, "test-component", clusterScopedMapper)
+		results, err := applyResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}}, "test-component", clusterScopedMapper)
 
 		// Then
 		require.NoError(t, err)
@@ -463,6 +485,50 @@ func TestApplyResources_ClusterScopedResource(t *testing.T) {
 		err = fakeClient.Get(ctx, client.ObjectKey{Name: "test-cluster-role-create"}, createdRole)
 		require.NoError(t, err)
 		assert.Empty(t, createdRole.OwnerReferences, "cluster-scoped resource should have no owner references")
+		resource.AssertExpectations(t)
+	})
+}
+
+func TestReconcileResources_Unowned(t *testing.T) {
+	var (
+		scheme    = setupScheme()
+		namespace = "test-namespace"
+		owner     = &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-owner",
+				Namespace:  namespace,
+				Generation: 1,
+			},
+		}
+		fakeClient       = fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).WithStatusSubresource(owner).Build()
+		reconcileContext = setupReconcileContext(scheme, owner, fakeClient)
+		mapper           = createTestRESTMapper()
+		ctx              = t.Context()
+	)
+
+	t.Run("does not set owner reference on an Unowned resource", func(t *testing.T) {
+		resourceObject := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-unowned-cm",
+				Namespace: namespace,
+			},
+		}
+		resource := &MockResource{}
+		resource.On("Object").Return(resourceObject, nil)
+		resource.On("Mutate", mock.Anything).Return(nil)
+
+		entry := reconcileEntry{
+			Resource: resource,
+			Options:  resourceOptions{Unowned: true, ParticipationMode: ParticipationModeRequired},
+		}
+
+		_, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
+		require.NoError(t, err)
+
+		created := &corev1.ConfigMap{}
+		err = fakeClient.Get(ctx, client.ObjectKey{Name: "test-unowned-cm", Namespace: namespace}, created)
+		require.NoError(t, err)
+		assert.Empty(t, created.OwnerReferences, "Unowned resource must not have an owner reference")
 		resource.AssertExpectations(t)
 	})
 }

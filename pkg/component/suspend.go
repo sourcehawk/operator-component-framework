@@ -48,15 +48,15 @@ func (s suspensionResults) summary() concepts.SuspensionStatusWithReason {
 // It ensures that suspension mutations are applied and tracks the progress of each resource.
 // If any resource fails to suspend, all encountered errors are joined and returned.
 func suspendResources(
-	ctx context.Context, rec ReconcileContext, resources []Resource,
+	ctx context.Context, rec ReconcileContext, entries []reconcileEntry,
 	componentName string, mapper meta.RESTMapper,
 ) ([]concepts.SuspensionStatusWithReason, error) {
 	var results []concepts.SuspensionStatusWithReason
 	var errs []error
 
-	for _, resource := range resources {
-		if suspendable, ok := resource.(concepts.Suspendable); ok {
-			status, err := suspendResource(ctx, rec, resource, suspendable, componentName, mapper)
+	for _, entry := range entries {
+		if suspendable, ok := entry.Resource.(concepts.Suspendable); ok {
+			status, err := suspendResource(ctx, rec, entry, suspendable, componentName, mapper)
 			if err != nil {
 				// gather the errors to suspend as many resources as possible
 				errs = append(errs, err)
@@ -98,9 +98,11 @@ func suspendResources(
 //   - Deletion is deferred until the Suspended state is reached to allow for graceful
 //     shutdown or final state persistence (e.g., via finalizers or pre-stop hooks).
 func suspendResource(
-	ctx context.Context, rec ReconcileContext, resource Resource, suspendable concepts.Suspendable,
+	ctx context.Context, rec ReconcileContext, entry reconcileEntry, suspendable concepts.Suspendable,
 	componentName string, mapper meta.RESTMapper,
 ) (concepts.SuspensionStatusWithReason, error) {
+	resource := entry.Resource
+
 	// Get the object if possible
 	object, err := resource.Object()
 	if err != nil {
@@ -137,7 +139,7 @@ func suspendResource(
 	}
 
 	// Apply suspension mutation (if any)
-	_, err = applyResources(ctx, rec, []Resource{resource}, componentName, mapper)
+	_, err = applyResources(ctx, rec, []reconcileEntry{entry}, componentName, mapper)
 	if err != nil {
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 			"failed to create or update resource %s on suspension: %w", resource.Identity(), err,

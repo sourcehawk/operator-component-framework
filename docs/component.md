@@ -67,20 +67,28 @@ if err != nil {
 Each resource is registered via `WithResource`. The second argument accepts zero or more `ResourceOption` values that
 control how the component interacts with the resource:
 
-| Option                                              | Behavior                                                                                                            |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| (none)                                              | **Managed**: created or updated; health contributes to the condition                                                |
-| `component.ReadOnly()`                              | **Read-only**: fetched but never modified; health still contributes                                                 |
-| `component.Delete()` / `component.DeleteWhen(cond)` | **Delete**: removed from the cluster (unconditionally, or when `cond` is true); does not contribute to health       |
-| `component.GatedBy(gate)`                           | Deletes the resource when the feature gate is disabled; managed when enabled                                        |
-| `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)                   |
-| `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                              |
-| `component.ReadOnly(), component.BlockOnAbsence()`  | **Read-only with watch-driven retry**: NotFound records a blocked status and short-circuits the remaining resources |
-| `component.ReadOnly(), component.IgnoreIfAbsent()`  | **Optional read-only**: NotFound is silently ignored; last-known state preserved                                    |
+| Option                                              | Behavior                                                                                                             |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| (none)                                              | **Managed**: created or updated; health contributes to the condition                                                 |
+| `component.ReadOnly()`                              | **Read-only**: fetched but never modified; health still contributes                                                  |
+| `component.Delete()` / `component.DeleteWhen(cond)` | **Delete**: removed from the cluster (unconditionally, or when `cond` is true); does not contribute to health        |
+| `component.GatedBy(gate)`                           | Deletes the resource when the feature gate is disabled; managed when enabled                                         |
+| `component.Unowned()`                               | **Unowned**: created and updated normally, but no owner reference is set; not garbage-collected on owner CR deletion |
+| `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)                    |
+| `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                               |
+| `component.ReadOnly(), component.BlockOnAbsence()`  | **Read-only with watch-driven retry**: NotFound records a blocked status and short-circuits the remaining resources  |
+| `component.ReadOnly(), component.IgnoreIfAbsent()`  | **Optional read-only**: NotFound is silently ignored; last-known state preserved                                     |
 
 A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
 `Delete()`, `DeleteWhen()`, and `GatedBy()`; combining them is a build error. To conditionally include a read-only
 resource, use [`IncludeWhen`](#includewhen), which omits the resource without deleting it.
+
+`Unowned()` resources are created and updated by the component but are not garbage-collected when the owner CR is
+deleted, because no controller owner reference is set. This is intended for resources that must outlive the management
+lifecycle — for example, backup records that should persist after the application CR is removed. An `Unowned` resource
+is still subject to explicit deletion: `Delete()`, `DeleteWhen()`, `GatedBy()` (when the gate is disabled), and
+suspension with `DeleteOnSuspend()` all delete it directly, regardless of the `Unowned` flag. Only Kubernetes GC
+(triggered by owner CR deletion) is suppressed.
 
 ### Conditional and Optional Resources
 

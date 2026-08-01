@@ -5,26 +5,28 @@ import (
 	"context"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Controller reconciles an ExampleApp by managing a ConfigMap and a Secret
-// within a single component. The ConfigMap exposes data via extraction, and
-// the Secret is guarded until that data is available.
+// within a single component. The ConfigMap exposes data via a declared
+// extraction, and the Secret is guarded until that data is available.
 type Controller struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 	Metrics  component.Recorder
 
-	// NewConfigMapResource builds the ConfigMap and wires the data extractor.
-	// The extractor writes to dbHost so the Secret guard can read it.
-	NewConfigMapResource func(owner *ExampleApp, dbHost *string) (component.Resource, error)
+	// NewConfigMapResource builds the ConfigMap and declares the extraction
+	// that writes the dbHost cell.
+	NewConfigMapResource func(owner *ExampleApp, dbHost *concepts.Data[string]) (component.Resource, error)
 
-	// NewSecretResource builds the Secret with a guard that reads dbHost.
-	NewSecretResource func(owner *ExampleApp, dbHost *string) (component.Resource, error)
+	// NewSecretResource builds the Secret with a data guard and a mutation
+	// that read the dbHost cell.
+	NewSecretResource func(owner *ExampleApp, dbHost *concepts.Data[string]) (component.Resource, error)
 }
 
 // Reconcile builds and reconciles a component where the ConfigMap is registered
@@ -44,7 +46,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		}
 	}()
 
-	comp, err := r.BuildComponent(owner)
+	comp, _, err := r.BuildComponent(owner)
 	if err != nil {
 		return err
 	}
@@ -52,29 +54,32 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	return comp.Reconcile(ctx, recCtx)
 }
 
-// BuildComponent assembles the database component: a ConfigMap registered before
-// a Secret, both wired to a shared dbHost pointer. The ConfigMap extractor writes
-// the pointer and the Secret guard reads it, so registration order matters. The
-// controller and tests share this assembly so the reconciled component and the
-// golden snapshot stay in lockstep.
-func (r *Controller) BuildComponent(owner *ExampleApp) (*component.Component, error) {
-	// Shared state: the ConfigMap extractor writes here, the Secret guard reads it.
-	var dbHost string
+// BuildComponent assembles the database component: a ConfigMap registered
+// before a Secret, both wired to a shared data cell. The ConfigMap's declared
+// extraction writes the cell; the Secret's data guard and mutation read it.
+// Build() verifies the ordering. The cell is returned so tests can seed it
+// when rendering cluster-free previews and assert the declared topology.
+func (r *Controller) BuildComponent(owner *ExampleApp) (*component.Component, *concepts.Data[string], error) {
+	dbHost := concepts.NewData[string]("db-host")
 
-	cmResource, err := r.NewConfigMapResource(owner, &dbHost)
+	cmResource, err := r.NewConfigMapResource(owner, dbHost)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	secretResource, err := r.NewSecretResource(owner, &dbHost)
+	secretResource, err := r.NewSecretResource(owner, dbHost)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return component.NewComponentBuilder().
+	comp, err := component.NewComponentBuilder().
 		WithName("database").
 		WithConditionType("DatabaseReady").
 		WithResource(cmResource).
 		WithResource(secretResource).
 		Build()
+	if err != nil {
+		return nil, nil, err
+	}
+	return comp, dbHost, nil
 }

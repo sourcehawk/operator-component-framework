@@ -1,8 +1,9 @@
-// Package main demonstrates data extraction and guard-based resource ordering.
+// Package main demonstrates declared data extraction and guard-based resource
+// ordering.
 //
-// A single component manages a ConfigMap and a Secret. The ConfigMap's data
-// extractor captures a value that the Secret's guard checks before allowing
-// reconciliation to proceed.
+// A single component manages a ConfigMap and a Secret. The ConfigMap declares
+// an extraction into a shared data cell, and the Secret declares a data guard
+// on that cell, blocking reconciliation until the ConfigMap has produced it.
 package main
 
 import (
@@ -56,9 +57,19 @@ func main() {
 		NewSecretResource:    resources.NewSecretResource,
 	}
 
-	// Step 1: Normal reconciliation. The ConfigMap is created first, its data
-	// extractor captures db-host, and the Secret guard unblocks.
-	fmt.Println("--- Step 1: Normal reconciliation ---")
+	comp, _, err := controller.BuildComponent(owner)
+	if err != nil {
+		exit("failed to build component: %v", err)
+	}
+	fmt.Println("--- Declared data topology ---")
+	for _, edge := range comp.DataTopology() {
+		fmt.Printf("  data %q: producers=%v guarded=%v optional=%v\n", edge.Data, edge.Producers, edge.Guarded, edge.Optional)
+	}
+
+	// Step 1: Normal reconciliation. The ConfigMap is created first, its
+	// declared extraction captures db-host, and the Secret's data guard
+	// unblocks.
+	fmt.Println("\n--- Step 1: Normal reconciliation ---")
 	if err := controller.Reconcile(ctx, owner); err != nil {
 		exit("reconciliation failed: %v", err)
 	}

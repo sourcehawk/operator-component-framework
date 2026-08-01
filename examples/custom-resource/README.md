@@ -10,7 +10,7 @@ the **unstructured static builder**.
 - **Content mutations**: `EditContent` with `UnstructuredContentEditor` sets nested spec fields (`issuerRef`,
   `dnsNames`) using structured helpers rather than raw map manipulation.
 - **Metadata mutations**: `EditObjectMetadata` works the same way as on typed primitives.
-- **Data extraction**: `WithDataExtractor` reads fields from the reconciled unstructured object.
+- **Declared extraction**: `static.ExtractInto` reads fields from the reconciled unstructured object into a data cell.
 
 ## Use case
 

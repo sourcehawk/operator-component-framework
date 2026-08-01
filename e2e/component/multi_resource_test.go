@@ -282,54 +282,42 @@ var _ = Describe("Multi-Resource Component", func() {
 		})
 
 		It("should extract data from resource A, unblock resource B guard, and inject into B via mutation", func() {
-			// This validates the full extractor -> guard -> mutation flow end-to-end:
-			// Resource A's extractor populates a shared variable. Resource B's guard
-			// checks that variable to unblock. Resource B's mutation reads the variable
-			// and injects it into the ConfigMap's data at Mutate() time.
-			var extractedARN atomic.Value
-
+			// This validates the full declared extraction -> guard -> mutation flow
+			// end-to-end: resource A's extraction writes a declared data cell,
+			// resource B's data guard blocks until the cell is set, and resource
+			// B's mutation reads the cell and injects it into the ConfigMap's data
+			// at Mutate() time.
 			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
-				// First resource: extracts the ARN after apply
-				cmRes, err := configmap.NewBuilder(newConfigMap(ns, "provider-role", map[string]string{
+				arn := concepts.NewData[string]("provider-role-arn")
+
+				// First resource: declares the extraction that writes the arn cell
+				cmBuilder := configmap.NewBuilder(newConfigMap(ns, "provider-role", map[string]string{
 					"arn": "arn:aws:iam::123456789:role/test",
-				})).
-					WithDataExtractor(func(cm corev1.ConfigMap) error {
-						if v, ok := cm.Data["arn"]; ok {
-							extractedARN.Store(v)
-						}
-						return nil
-					}).
-					Build()
+				}))
+				configmap.ExtractInto(cmBuilder, arn, func(cm corev1.ConfigMap) (string, error) {
+					return cm.Data["arn"], nil
+				})
+				cmRes, err := cmBuilder.Build()
 				if err != nil {
 					return nil, err
 				}
 
-				// Second resource: guard checks the extracted value, mutation injects it
+				// Second resource: data guard blocks on the cell, mutation injects it
 				bucketRes, err := configmap.NewBuilder(newConfigMap(ns, "provider-bucket", map[string]string{
 					"name": "my-bucket",
 				})).
-					WithGuard(func(_ corev1.ConfigMap) (concepts.GuardStatusWithReason, error) {
-						v := extractedARN.Load()
-						if v == nil || v.(string) == "" {
-							return concepts.GuardStatusWithReason{
-								Status: concepts.GuardStatusBlocked,
-								Reason: "waiting for provider role ARN",
-							}, nil
-						}
-						return concepts.GuardStatusWithReason{
-							Status: concepts.GuardStatusUnblocked,
-						}, nil
-					}).
+					WithDataGuard(arn).
 					WithMutation(configmap.Mutation{
 						Name: "inject-role-arn",
 						Mutate: func(m *configmap.Mutator) error {
-							v := extractedARN.Load()
-							if v != nil {
-								m.EditData(func(e *editors.ConfigMapDataEditor) error {
-									e.Set("role-arn", v.(string))
-									return nil
-								})
+							v, err := arn.Require()
+							if err != nil {
+								return err
 							}
+							m.EditData(func(e *editors.ConfigMapDataEditor) error {
+								e.Set("role-arn", v)
+								return nil
+							})
 							return nil
 						},
 					}).

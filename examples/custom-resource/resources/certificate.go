@@ -6,6 +6,7 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/examples/custom-resource/app"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured/static"
@@ -61,10 +62,15 @@ func NewCertificateResource(owner *app.ExampleApp) (component.Resource, error) {
 		},
 	})
 
-	builder.WithDataExtractor(func(obj uns.Unstructured) error {
-		dnsNames, _, _ := uns.NestedStringSlice(obj.Object, "spec", "dnsNames")
-		fmt.Printf("  Certificate DNS names: %v\n", dnsNames)
-		return nil
+	// A real consumer would receive this cell from the assembly function, the
+	// way the extraction-and-guards example wires a shared cell across
+	// resource factories. Here nothing downstream reads it, so it is declared
+	// locally and only its extracted value is printed.
+	dnsNames := concepts.NewData[[]string]("certificate-dns-names")
+	static.ExtractInto(builder, dnsNames, func(obj uns.Unstructured) ([]string, error) {
+		names, _, _ := uns.NestedStringSlice(obj.Object, "spec", "dnsNames")
+		fmt.Printf("  Certificate DNS names: %v\n", names)
+		return names, nil
 	})
 
 	return builder.Build()

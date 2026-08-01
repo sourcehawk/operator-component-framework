@@ -112,6 +112,11 @@ type Component struct {
 	// component reconciles for the first time. Once the component passes through
 	// to normal reconciliation, prerequisites are never re-evaluated.
 	prerequisites []Prerequisite
+
+	// dataCells holds every declared data cell, in first-producer registration
+	// order, collected at Build time. Reconcile clears them all at the start of
+	// each pass so no extracted value leaks between reconciles.
+	dataCells []concepts.DataCell
 }
 
 // reconcileEntry pairs a resource with its configuration options.
@@ -299,6 +304,12 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		"condition", c.conditionType,
 	)
 	ctx = log.IntoContext(ctx, logger)
+
+	// Reset declared data cells before anything else runs so no extracted
+	// value leaks from a previous reconcile into this one.
+	for _, cell := range c.dataCells {
+		cell.Clear()
+	}
 
 	mapper := rec.Client.RESTMapper()
 	if mapper == nil {

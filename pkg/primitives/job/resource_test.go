@@ -1,7 +1,6 @@
 package job
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -335,36 +334,6 @@ func TestResource_ConvergingStatus(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, concepts.CompletionStatusRunning, status.Status)
 	})
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	job := newValidJob()
-
-	extractedImage := ""
-	res, err := NewBuilder(job).
-		WithDataExtractor(func(j batchv1.Job) error {
-			extractedImage = j.Spec.Template.Spec.Containers[0].Image
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.NoError(t, err)
-	assert.Equal(t, "busybox", extractedImage)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidJob()).
-		WithDataExtractor(func(_ batchv1.Job) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }
 
 func int32Ptr(i int32) *int32 {

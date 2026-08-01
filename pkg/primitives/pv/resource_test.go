@@ -1,7 +1,6 @@
 package pv
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -131,32 +130,4 @@ func TestResource_ConvergingStatus(t *testing.T) {
 	require.NoError(t, err)
 	// Default handler on a PV with no phase set returns OperationPending.
 	assert.Equal(t, concepts.OperationalStatusPending, status.Status)
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	pv := newValidPV()
-	var extracted string
-	res, err := NewBuilder(pv).
-		WithDataExtractor(func(p corev1.PersistentVolume) error {
-			extracted = p.Spec.HostPath.Path
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "/data", extracted)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidPV()).
-		WithDataExtractor(func(_ corev1.PersistentVolume) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

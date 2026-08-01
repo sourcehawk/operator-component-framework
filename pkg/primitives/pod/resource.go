@@ -16,7 +16,7 @@ import (
 //   - concepts.Suspendable: for deletion-based deactivation.
 //   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting information after successful reconciliation.
-//   - concepts.ObservationRecorder: for surfacing live cluster state to data extractors on read-only reconciliation.
+//   - concepts.ObservationRecorder: for surfacing live cluster state to declared data extractions on read-only reconciliation.
 //
 // This resource handles the lifecycle of a Pod, including initial creation,
 // updates via feature mutations, and status monitoring.
@@ -118,7 +118,7 @@ func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, erro
 // or status fields) that might be needed by other resources or higher-level
 // controllers.
 //
-// Data extractors are provided with a deep copy of the current Pod to
+// Declared data extractions are provided with a deep copy of the current Pod to
 // prevent accidental mutations during the extraction process.
 func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
@@ -139,7 +139,7 @@ func (r *Resource) ConsumedData() []concepts.DataConsumption {
 
 // RecordObservation stores the supplied object as the resource's most recently
 // observed cluster state. The framework invokes this on read-only resources
-// after fetching them so that registered data extractors observe the live
+// after fetching them so that declared data extractions observe the live
 // object rather than the inert base used to construct the resource.
 func (r *Resource) RecordObservation(observed client.Object) error {
 	return r.base.RecordObservation(observed)

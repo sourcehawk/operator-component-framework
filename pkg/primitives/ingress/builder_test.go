@@ -172,44 +172,6 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.DeleteOnSuspendHandler)
 		assert.True(t, res.base.DeleteOnSuspendHandler(nil))
 	})
-
-	t.Run("WithDataExtractor", func(t *testing.T) {
-		t.Parallel()
-		ing := &networkingv1.Ingress{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-ing",
-				Namespace: "test-ns",
-			},
-		}
-		called := false
-		extractor := func(_ networkingv1.Ingress) error {
-			called = true
-			return nil
-		}
-		res, err := NewBuilder(ing).
-			WithDataExtractor(extractor).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 1)
-		err = res.base.DataExtractors[0](&networkingv1.Ingress{})
-		require.NoError(t, err)
-		assert.True(t, called)
-	})
-
-	t.Run("WithDataExtractor nil", func(t *testing.T) {
-		t.Parallel()
-		ing := &networkingv1.Ingress{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-ing",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(ing).
-			WithDataExtractor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 0)
-	})
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

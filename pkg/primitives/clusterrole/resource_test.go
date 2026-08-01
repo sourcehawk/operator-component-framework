@@ -1,7 +1,6 @@
 package clusterrole
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -121,33 +120,4 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	assert.Equal(t, []string{"pods"}, got.Rules[0].Resources)
 	assert.Equal(t, []string{"secrets"}, got.Rules[1].Resources)
 	assert.Equal(t, []string{"configmaps"}, got.Rules[2].Resources)
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	cr := newValidCR()
-
-	var extracted string
-	res, err := NewBuilder(cr).
-		WithDataExtractor(func(c rbacv1.ClusterRole) error {
-			extracted = c.Name
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "test-cr", extracted)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidCR()).
-		WithDataExtractor(func(_ rbacv1.ClusterRole) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

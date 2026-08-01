@@ -1,7 +1,6 @@
 package rolebinding
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -101,56 +100,6 @@ func TestBuilder_WithMutation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, res.base.Mutations, 1)
 	assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
-}
-
-func TestBuilder_WithDataExtractor(t *testing.T) {
-	t.Parallel()
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
-		RoleRef:    testRoleRef(),
-	}
-	called := false
-	extractor := func(_ rbacv1.RoleBinding) error {
-		called = true
-		return nil
-	}
-	res, err := NewBuilder(rb).
-		WithDataExtractor(extractor).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 1)
-	require.NoError(t, res.base.DataExtractors[0](&rbacv1.RoleBinding{}))
-	assert.True(t, called)
-}
-
-func TestBuilder_WithDataExtractor_Nil(t *testing.T) {
-	t.Parallel()
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
-		RoleRef:    testRoleRef(),
-	}
-	res, err := NewBuilder(rb).
-		WithDataExtractor(nil).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 0)
-}
-
-func TestBuilder_WithDataExtractor_ErrorPropagated(t *testing.T) {
-	t.Parallel()
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
-		RoleRef:    testRoleRef(),
-	}
-	res, err := NewBuilder(rb).
-		WithDataExtractor(func(_ rbacv1.RoleBinding) error {
-			return errors.New("extractor error")
-		}).
-		Build()
-	require.NoError(t, err)
-	err = res.base.DataExtractors[0](&rbacv1.RoleBinding{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extractor error")
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 
 // Builder is a configuration helper for creating and customizing a ClusterRoleBinding Resource.
 //
-// It provides a fluent API for registering mutations and data extractors.
+// It provides a fluent API for registering mutations and declared data extractions.
 // Build() validates the configuration and returns an initialized Resource
 // ready for use in a reconciliation loop.
 type Builder struct {
@@ -81,19 +81,6 @@ func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
 // Consumers in this mode use Get and skip quietly when a cell is absent.
 func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
 	b.base.WithOptionalData(cells...)
-	return b
-}
-
-// WithDataExtractor registers a function to read values from the ClusterRoleBinding
-// after it has been successfully reconciled.
-//
-// The extractor receives a value copy of the reconciled ClusterRoleBinding. This
-// is useful for surfacing generated or updated entries to other components or
-// resources.
-//
-// A nil extractor is ignored.
-func (b *Builder) WithDataExtractor(extractor func(rbacv1.ClusterRoleBinding) error) *Builder {
-	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

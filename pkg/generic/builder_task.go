@@ -66,14 +66,6 @@ func (b *TaskBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) *TaskBu
 	return b
 }
 
-// WithDataExtractor registers a typed data extractor to run after successful reconciliation.
-func (b *TaskBuilder[T, M]) WithDataExtractor(
-	extractor func(T) error,
-) *TaskBuilder[T, M] {
-	b.BaseBuilder.WithDataExtractor(extractor)
-	return b
-}
-
 // WithCustomConvergeStatus overrides the task convergence status handler.
 func (b *TaskBuilder[T, M]) WithCustomConvergeStatus(
 	handler func(concepts.ConvergingOperation, T) (concepts.CompletionStatusWithReason, error),

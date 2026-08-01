@@ -160,19 +160,3 @@ func TestResource_Suspend_And_SuspensionStatus(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 }
-
-func TestResource_ExtractData(t *testing.T) {
-	pvc := newValidPVC()
-
-	var extracted resource.Quantity
-	res, err := NewBuilder(pvc).
-		WithDataExtractor(func(p corev1.PersistentVolumeClaim) error {
-			extracted = p.Spec.Resources.Requests[corev1.ResourceStorage]
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, resource.MustParse("10Gi"), extracted)
-}

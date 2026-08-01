@@ -284,7 +284,7 @@ func (c *Component) Resource(identity string) (Resource, bool) {
 //     - Its guard (if any) is evaluated. A blocked guard stops processing of that
 //     resource and all subsequent resources.
 //     - The resource is either applied (managed) or fetched (read-only).
-//     - Its data extractors run immediately, making extracted data available to
+//     - Its declared data extractions run immediately, making extracted data available to
 //     subsequent resources' guards and mutations.
 //
 //  5. Status Aggregation: Collects converging status from all processed resources

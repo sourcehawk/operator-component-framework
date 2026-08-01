@@ -73,14 +73,6 @@ func (b *IntegrationBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) 
 	return b
 }
 
-// WithDataExtractor registers a typed data extractor to run after successful reconciliation.
-func (b *IntegrationBuilder[T, M]) WithDataExtractor(
-	extractor func(T) error,
-) *IntegrationBuilder[T, M] {
-	b.BaseBuilder.WithDataExtractor(extractor)
-	return b
-}
-
 // WithCustomOperationalStatus overrides the integration operational status handler.
 func (b *IntegrationBuilder[T, M]) WithCustomOperationalStatus(
 	handler func(concepts.ConvergingOperation, T) (concepts.OperationalStatusWithReason, error),

@@ -193,44 +193,6 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.DeleteOnSuspendHandler)
 		assert.False(t, res.base.DeleteOnSuspendHandler(nil))
 	})
-
-	t.Run("WithDataExtractor", func(t *testing.T) {
-		t.Parallel()
-		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-pod",
-				Namespace: "test-ns",
-			},
-		}
-		called := false
-		extractor := func(_ corev1.Pod) error {
-			called = true
-			return nil
-		}
-		res, err := NewBuilder(pod).
-			WithDataExtractor(extractor).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 1)
-		err = res.base.DataExtractors[0](&corev1.Pod{})
-		require.NoError(t, err)
-		assert.True(t, called)
-	})
-
-	t.Run("WithDataExtractor nil", func(t *testing.T) {
-		t.Parallel()
-		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-pod",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(pod).
-			WithDataExtractor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 0)
-	})
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

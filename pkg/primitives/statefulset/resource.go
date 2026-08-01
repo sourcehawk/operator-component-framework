@@ -16,7 +16,7 @@ import (
 //   - concepts.Suspendable: for graceful scale-down or temporary deactivation.
 //   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
 //   - concepts.DataExtractable: for exporting information after successful reconciliation.
-//   - concepts.ObservationRecorder: for surfacing live cluster state to data extractors on read-only reconciliation.
+//   - concepts.ObservationRecorder: for surfacing live cluster state to declared data extractions on read-only reconciliation.
 //
 // This resource handles the lifecycle of a StatefulSet, including initial creation,
 // updates via feature mutations, and status monitoring.
@@ -136,7 +136,7 @@ func (r *Resource) ConsumedData() []concepts.DataConsumption {
 
 // RecordObservation stores the supplied object as the resource's most recently
 // observed cluster state. The framework invokes this on read-only resources
-// after fetching them so that registered data extractors observe the live
+// after fetching them so that declared data extractions observe the live
 // object rather than the inert base used to construct the resource.
 func (r *Resource) RecordObservation(observed client.Object) error {
 	return r.base.RecordObservation(observed)

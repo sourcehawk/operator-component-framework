@@ -172,44 +172,6 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.DeleteOnSuspendHandler)
 		assert.False(t, res.base.DeleteOnSuspendHandler(nil))
 	})
-
-	t.Run("WithDataExtractor", func(t *testing.T) {
-		t.Parallel()
-		hpa := &autoscalingv2.HorizontalPodAutoscaler{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-hpa",
-				Namespace: "test-ns",
-			},
-		}
-		called := false
-		extractor := func(_ autoscalingv2.HorizontalPodAutoscaler) error {
-			called = true
-			return nil
-		}
-		res, err := NewBuilder(hpa).
-			WithDataExtractor(extractor).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 1)
-		err = res.base.DataExtractors[0](&autoscalingv2.HorizontalPodAutoscaler{})
-		require.NoError(t, err)
-		assert.True(t, called)
-	})
-
-	t.Run("WithDataExtractor nil", func(t *testing.T) {
-		t.Parallel()
-		hpa := &autoscalingv2.HorizontalPodAutoscaler{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-hpa",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(hpa).
-			WithDataExtractor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 0)
-	})
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

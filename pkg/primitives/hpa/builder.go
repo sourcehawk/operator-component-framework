@@ -12,7 +12,7 @@ import (
 // Builder is a configuration helper for creating and customizing an HPA Resource.
 //
 // It provides a fluent API for registering mutations, status handlers, and
-// data extractors. This builder ensures that the resulting Resource is
+// declared data extractions. This builder ensures that the resulting Resource is
 // properly initialized and validated before use in a reconciliation loop.
 type Builder struct {
 	base *generic.IntegrationBuilder[*autoscalingv2.HorizontalPodAutoscaler, *Mutator]
@@ -148,20 +148,6 @@ func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
 // Consumers in this mode use Get and skip quietly when a cell is absent.
 func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
 	b.base.WithOptionalData(cells...)
-	return b
-}
-
-// WithDataExtractor registers a function to read values from the HPA after
-// it has been successfully reconciled.
-//
-// The extractor receives a value copy of the reconciled HPA. This is useful
-// for surfacing generated or updated fields to other components or resources.
-//
-// A nil extractor is ignored.
-func (b *Builder) WithDataExtractor(
-	extractor func(autoscalingv2.HorizontalPodAutoscaler) error,
-) *Builder {
-	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

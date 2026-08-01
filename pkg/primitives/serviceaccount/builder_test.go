@@ -1,7 +1,6 @@
 package serviceaccount
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -73,53 +72,6 @@ func TestBuilder_WithMutation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, res.base.Mutations, 1)
 	assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
-}
-
-func TestBuilder_WithDataExtractor(t *testing.T) {
-	t.Parallel()
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-sa", Namespace: "test-ns"},
-	}
-	called := false
-	extractor := func(_ corev1.ServiceAccount) error {
-		called = true
-		return nil
-	}
-	res, err := NewBuilder(sa).
-		WithDataExtractor(extractor).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 1)
-	require.NoError(t, res.base.DataExtractors[0](&corev1.ServiceAccount{}))
-	assert.True(t, called)
-}
-
-func TestBuilder_WithDataExtractor_Nil(t *testing.T) {
-	t.Parallel()
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-sa", Namespace: "test-ns"},
-	}
-	res, err := NewBuilder(sa).
-		WithDataExtractor(nil).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 0)
-}
-
-func TestBuilder_WithDataExtractor_ErrorPropagated(t *testing.T) {
-	t.Parallel()
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-sa", Namespace: "test-ns"},
-	}
-	res, err := NewBuilder(sa).
-		WithDataExtractor(func(_ corev1.ServiceAccount) error {
-			return errors.New("extractor error")
-		}).
-		Build()
-	require.NoError(t, err)
-	err = res.base.DataExtractors[0](&corev1.ServiceAccount{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extractor error")
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

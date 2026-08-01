@@ -1,7 +1,6 @@
 package cronjob
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -312,33 +311,4 @@ func TestResource_SuspensionStatus(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	cj := newValidCronJob()
-
-	var extractedImage string
-	res, err := NewBuilder(cj).
-		WithDataExtractor(func(c batchv1.CronJob) error {
-			extractedImage = c.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Image
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "worker:latest", extractedImage)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidCronJob()).
-		WithDataExtractor(func(_ batchv1.CronJob) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

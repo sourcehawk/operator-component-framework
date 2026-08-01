@@ -13,7 +13,7 @@ import (
 // Builder is a configuration helper for creating and customizing a StatefulSet Resource.
 //
 // It provides a fluent API for registering mutations, status handlers, and
-// data extractors. This builder ensures that the resulting Resource is
+// declared data extractions. This builder ensures that the resulting Resource is
 // properly initialized and validated before use in a reconciliation loop.
 type Builder struct {
 	base *generic.WorkloadBuilder[*appsv1.StatefulSet, *Mutator]
@@ -147,18 +147,6 @@ func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
 // Consumers in this mode use Get and skip quietly when a cell is absent.
 func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
 	b.base.WithOptionalData(cells...)
-	return b
-}
-
-// WithDataExtractor registers a function to harvest information from the
-// StatefulSet after it has been successfully reconciled.
-//
-// This is useful for capturing auto-generated fields and making them available
-// to other components or resources via the framework's data extraction mechanism.
-func (b *Builder) WithDataExtractor(
-	extractor func(appsv1.StatefulSet) error,
-) *Builder {
-	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

@@ -172,63 +172,6 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.DeleteOnSuspendHandler)
 		assert.False(t, res.base.DeleteOnSuspendHandler(nil))
 	})
-
-	t.Run("WithDataExtractor", func(t *testing.T) {
-		t.Parallel()
-		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-svc",
-				Namespace: "test-ns",
-			},
-		}
-		called := false
-		extractor := func(_ corev1.Service) error {
-			called = true
-			return nil
-		}
-		res, err := NewBuilder(svc).
-			WithDataExtractor(extractor).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 1)
-		err = res.base.DataExtractors[0](&corev1.Service{})
-		require.NoError(t, err)
-		assert.True(t, called)
-	})
-
-	t.Run("WithDataExtractor nil", func(t *testing.T) {
-		t.Parallel()
-		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-svc",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(svc).
-			WithDataExtractor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 0)
-	})
-
-	t.Run("WithDataExtractor error propagated", func(t *testing.T) {
-		t.Parallel()
-		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-svc",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(svc).
-			WithDataExtractor(func(_ corev1.Service) error {
-				return errors.New("extractor error")
-			}).
-			Build()
-		require.NoError(t, err)
-		err = res.base.DataExtractors[0](&corev1.Service{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "extractor error")
-	})
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

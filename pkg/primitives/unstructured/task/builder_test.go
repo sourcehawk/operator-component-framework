@@ -62,19 +62,6 @@ func TestBuilder_Identity_Namespaced(t *testing.T) {
 	assert.Equal(t, "example.com/v1/BatchJob/default/test", res.Identity())
 }
 
-func TestBuilder_WithDataExtractor(t *testing.T) {
-	called := false
-	b := withRequiredHandlers(NewBuilder(validObject()))
-	b.WithDataExtractor(func(_ uns.Unstructured) error {
-		called = true
-		return nil
-	})
-	res, err := b.Build()
-	require.NoError(t, err)
-	require.NoError(t, res.ExtractData())
-	assert.True(t, called)
-}
-
 func TestExtractIntoDeclaredExtraction(t *testing.T) {
 	t.Parallel()
 	cell := concepts.NewData[string]("team-label")

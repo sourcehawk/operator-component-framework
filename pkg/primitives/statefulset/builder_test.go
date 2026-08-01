@@ -239,44 +239,6 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.DeleteOnSuspendHandler)
 		assert.True(t, res.base.DeleteOnSuspendHandler(nil))
 	})
-
-	t.Run("WithDataExtractor", func(t *testing.T) {
-		t.Parallel()
-		sts := &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-sts",
-				Namespace: "test-ns",
-			},
-		}
-		called := false
-		extractor := func(_ appsv1.StatefulSet) error {
-			called = true
-			return nil
-		}
-		res, err := NewBuilder(sts).
-			WithDataExtractor(extractor).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 1)
-		err = res.base.DataExtractors[0](&appsv1.StatefulSet{})
-		require.NoError(t, err)
-		assert.True(t, called)
-	})
-
-	t.Run("WithDataExtractor nil", func(t *testing.T) {
-		t.Parallel()
-		sts := &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-sts",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(sts).
-			WithDataExtractor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 0)
-	})
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

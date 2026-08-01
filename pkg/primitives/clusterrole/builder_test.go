@@ -1,7 +1,6 @@
 package clusterrole
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -102,53 +101,6 @@ func TestBuilder_WithMutation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, res.base.Mutations, 1)
 	assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
-}
-
-func TestBuilder_WithDataExtractor(t *testing.T) {
-	t.Parallel()
-	cr := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-cr"},
-	}
-	called := false
-	extractor := func(_ rbacv1.ClusterRole) error {
-		called = true
-		return nil
-	}
-	res, err := NewBuilder(cr).
-		WithDataExtractor(extractor).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 1)
-	require.NoError(t, res.base.DataExtractors[0](&rbacv1.ClusterRole{}))
-	assert.True(t, called)
-}
-
-func TestBuilder_WithDataExtractor_Nil(t *testing.T) {
-	t.Parallel()
-	cr := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-cr"},
-	}
-	res, err := NewBuilder(cr).
-		WithDataExtractor(nil).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 0)
-}
-
-func TestBuilder_WithDataExtractor_ErrorPropagated(t *testing.T) {
-	t.Parallel()
-	cr := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-cr"},
-	}
-	res, err := NewBuilder(cr).
-		WithDataExtractor(func(_ rbacv1.ClusterRole) error {
-			return errors.New("extractor error")
-		}).
-		Build()
-	require.NoError(t, err)
-	err = res.base.DataExtractors[0](&rbacv1.ClusterRole{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extractor error")
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

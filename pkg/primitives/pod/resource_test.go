@@ -1,7 +1,6 @@
 package pod
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -343,34 +342,4 @@ func TestResource_SuspensionStatus(t *testing.T) {
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 		assert.Equal(t, "Pod deleted on suspend", status.Reason)
 	})
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	pod := newValidPod()
-
-	extractedImage := ""
-	res, err := NewBuilder(pod).
-		WithDataExtractor(func(p corev1.Pod) error {
-			extractedImage = p.Spec.Containers[0].Image
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.NoError(t, err)
-	assert.Equal(t, "nginx:latest", extractedImage)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidPod()).
-		WithDataExtractor(func(_ corev1.Pod) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

@@ -64,15 +64,6 @@ func (b *StaticBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) *Stat
 	return b
 }
 
-// WithDataExtractor registers a typed data extractor to run after successful
-// reconciliation.
-func (b *StaticBuilder[T, M]) WithDataExtractor(
-	extractor func(T) error,
-) *StaticBuilder[T, M] {
-	b.BaseBuilder.WithDataExtractor(extractor)
-	return b
-}
-
 // Build validates the static builder configuration and returns the initialized resource.
 func (b *StaticBuilder[T, M]) Build() (*StaticResource[T, M], error) {
 	b.res.BaseResource = *b.BaseRes

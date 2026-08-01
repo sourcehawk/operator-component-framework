@@ -15,8 +15,6 @@ type BaseResource[T client.Object, M FeatureMutator] struct {
 
 	IdentityFunc func(T) string
 
-	DataExtractors []func(T) error
-
 	// DataExtractions holds the declared data extractions recorded by
 	// ExtractInto, run by ExtractData after the resource is applied or fetched.
 	DataExtractions []DataExtraction[T]
@@ -143,24 +141,17 @@ func (r *BaseResource[T, M]) Preview() (client.Object, error) {
 	return r.PreviewObject()
 }
 
-// ExtractData runs all registered data extractors against a deep copy of the reconciled object.
+// ExtractData runs all declared data extractions against a deep copy of the
+// reconciled object, storing each computed value in its cell.
 //
-// For managed resources the reconciled object is the desired state produced by Mutate.
-// For read-only resources it is the object most recently supplied via RecordObservation,
-// which the read flow invokes after fetching from the cluster.
+// For managed resources the reconciled object is the desired state produced by
+// Mutate. For read-only resources it is the object most recently supplied via
+// RecordObservation, which the read flow invokes after fetching from the
+// cluster. Extractions run on every reconcile pass.
 func (r *BaseResource[T, M]) ExtractData() error {
 	copyObj, ok := r.DesiredObject.DeepCopyObject().(T)
 	if !ok {
 		return fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
-	}
-
-	for _, extractor := range r.DataExtractors {
-		if extractor == nil {
-			continue
-		}
-		if err := extractor(copyObj); err != nil {
-			return err
-		}
 	}
 
 	for _, extraction := range r.DataExtractions {

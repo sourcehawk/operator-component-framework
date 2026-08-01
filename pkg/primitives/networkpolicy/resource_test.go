@@ -221,30 +221,3 @@ func TestResource_Mutate_MutationOrdering(t *testing.T) {
 	assert.Equal(t, int32(80), got.Spec.Ingress[0].Ports[0].Port.IntVal)
 	assert.Equal(t, int32(443), got.Spec.Ingress[1].Ports[0].Port.IntVal)
 }
-
-func TestResource_ExtractData(t *testing.T) {
-	np := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "test"},
-			},
-			PolicyTypes: []networkingv1.PolicyType{
-				networkingv1.PolicyTypeIngress,
-			},
-		},
-	}
-
-	extractedSelector := ""
-	res, err := NewBuilder(np).
-		WithDataExtractor(func(np networkingv1.NetworkPolicy) error {
-			extractedSelector = np.Spec.PodSelector.MatchLabels["app"]
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.NoError(t, err)
-	assert.Equal(t, "test", extractedSelector)
-}

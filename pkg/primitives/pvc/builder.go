@@ -152,19 +152,6 @@ func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
 	return b
 }
 
-// WithDataExtractor registers a function to read values from the PVC after
-// it has been successfully reconciled.
-//
-// The extractor receives a value copy of the reconciled PVC. This is useful
-// for surfacing the bound volume name, capacity, or other status fields to
-// other components or resources.
-//
-// A nil extractor is ignored.
-func (b *Builder) WithDataExtractor(extractor func(corev1.PersistentVolumeClaim) error) *Builder {
-	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
-	return b
-}
-
 // Build validates the configuration and returns the initialized Resource.
 //
 // It returns an error if:

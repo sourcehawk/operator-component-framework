@@ -1,7 +1,6 @@
 package networkpolicy
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -73,53 +72,6 @@ func TestBuilder_WithMutation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, res.base.Mutations, 1)
 	assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
-}
-
-func TestBuilder_WithDataExtractor(t *testing.T) {
-	t.Parallel()
-	np := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-np", Namespace: "test-ns"},
-	}
-	called := false
-	extractor := func(_ networkingv1.NetworkPolicy) error {
-		called = true
-		return nil
-	}
-	res, err := NewBuilder(np).
-		WithDataExtractor(extractor).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 1)
-	require.NoError(t, res.base.DataExtractors[0](&networkingv1.NetworkPolicy{}))
-	assert.True(t, called)
-}
-
-func TestBuilder_WithDataExtractor_Nil(t *testing.T) {
-	t.Parallel()
-	np := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-np", Namespace: "test-ns"},
-	}
-	res, err := NewBuilder(np).
-		WithDataExtractor(nil).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 0)
-}
-
-func TestBuilder_WithDataExtractor_ErrorPropagated(t *testing.T) {
-	t.Parallel()
-	np := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-np", Namespace: "test-ns"},
-	}
-	res, err := NewBuilder(np).
-		WithDataExtractor(func(_ networkingv1.NetworkPolicy) error {
-			return errors.New("extractor error")
-		}).
-		Build()
-	require.NoError(t, err)
-	err = res.base.DataExtractors[0](&networkingv1.NetworkPolicy{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extractor error")
 }
 
 func TestExtractIntoDeclaredExtraction(t *testing.T) {

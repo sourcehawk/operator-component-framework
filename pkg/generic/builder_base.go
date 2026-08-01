@@ -105,19 +105,6 @@ func (b *BaseBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) {
 	}
 }
 
-// WithDataExtractor registers a typed data extractor to run immediately after the
-// resource has been processed during reconciliation.
-//
-// For managed resources, the extractor receives the object as it stands after feature
-// mutations have been applied. For read-only resources, it receives the object as it
-// was just fetched from the cluster. Extractors must be idempotent because they run on
-// every reconcile pass.
-func (b *BaseBuilder[T, M]) WithDataExtractor(extractor func(T) error) {
-	if extractor != nil {
-		b.BaseRes.DataExtractors = append(b.BaseRes.DataExtractors, extractor)
-	}
-}
-
 // WithCustomSuspendStatus overrides the resource suspension status handler.
 func (b *BaseBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),

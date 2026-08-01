@@ -66,30 +66,6 @@ func TestStaticResource(t *testing.T) {
 		res.Mutations = nil
 	})
 
-	t.Run("ExtractData", func(t *testing.T) {
-		extracted := false
-		res.DataExtractors = []func(*corev1.ConfigMap) error{
-			func(cm *corev1.ConfigMap) error {
-				extracted = true
-				assert.Equal(t, testVal, cm.Data["foo"])
-				return nil
-			},
-		}
-		err := res.ExtractData()
-		require.NoError(t, err)
-		assert.True(t, extracted, "extractor was not called")
-	})
-
-	t.Run("ExtractData error", func(t *testing.T) {
-		res.DataExtractors = []func(*corev1.ConfigMap) error{
-			func(_ *corev1.ConfigMap) error {
-				return errors.New("extract error")
-			},
-		}
-		err := res.ExtractData()
-		assert.EqualError(t, err, "extract error")
-	})
-
 	t.Run("RecordObservation makes the observed object visible to ExtractData", func(t *testing.T) {
 		base := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -114,16 +90,21 @@ func TestStaticResource(t *testing.T) {
 		}
 		require.NoError(t, readOnly.RecordObservation(observed))
 
-		var seen string
-		readOnly.DataExtractors = []func(*corev1.ConfigMap) error{
-			func(cm *corev1.ConfigMap) error {
-				seen = cm.Data["foo"]
-				return nil
+		cell := concepts.NewData[string]("foo")
+		readOnly.DataExtractions = []DataExtraction[*corev1.ConfigMap]{
+			{
+				Cell: cell,
+				Extract: func(cm *corev1.ConfigMap) error {
+					cell.Set(cm.Data["foo"])
+					return nil
+				},
 			},
 		}
 		require.NoError(t, readOnly.ExtractData())
+		seen, ok := cell.Get()
+		require.True(t, ok)
 		assert.Equal(t, "from-cluster", seen,
-			"extractor must see the observed cluster object, not the empty desired base")
+			"the declared extraction must see the observed cluster object, not the empty desired base")
 	})
 
 	t.Run("RecordObservation rejects an object of the wrong type", func(t *testing.T) {

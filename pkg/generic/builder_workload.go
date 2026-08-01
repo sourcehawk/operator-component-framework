@@ -76,14 +76,6 @@ func (b *WorkloadBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) *Wo
 	return b
 }
 
-// WithDataExtractor registers a typed data extractor to run after successful reconciliation.
-func (b *WorkloadBuilder[T, M]) WithDataExtractor(
-	extractor func(T) error,
-) *WorkloadBuilder[T, M] {
-	b.BaseBuilder.WithDataExtractor(extractor)
-	return b
-}
-
 // WithCustomConvergeStatus overrides the workload convergence status handler.
 func (b *WorkloadBuilder[T, M]) WithCustomConvergeStatus(
 	handler func(concepts.ConvergingOperation, T) (concepts.AliveStatusWithReason, error),

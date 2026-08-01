@@ -12,7 +12,7 @@ import (
 // integration Resource.
 //
 // It provides a fluent API for registering mutations, status handlers, and
-// data extractors. The operational status handler is required; all other
+// declared data extractions. The operational status handler is required; all other
 // handlers default to safe no-ops when omitted.
 type Builder struct {
 	base         *generic.IntegrationBuilder[*uns.Unstructured, *unstruct.Mutator]
@@ -123,13 +123,6 @@ func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
 // is absent.
 func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
 	b.base.WithOptionalData(cells...)
-	return b
-}
-
-// WithDataExtractor registers a function to read values from the object after
-// it has been successfully reconciled.
-func (b *Builder) WithDataExtractor(extractor func(uns.Unstructured) error) *Builder {
-	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
 	return b
 }
 

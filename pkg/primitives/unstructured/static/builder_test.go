@@ -96,28 +96,6 @@ func TestBuilder_WithMutation(t *testing.T) {
 	require.NotNil(t, res)
 }
 
-func TestBuilder_WithDataExtractor(t *testing.T) {
-	obj := validObject()
-	called := false
-	b := NewBuilder(obj)
-	b.WithDataExtractor(func(_ uns.Unstructured) error {
-		called = true
-		return nil
-	})
-	res, err := b.Build()
-	require.NoError(t, err)
-	require.NoError(t, res.ExtractData())
-	assert.True(t, called)
-}
-
-func TestBuilder_WithDataExtractor_NilIgnored(t *testing.T) {
-	b := NewBuilder(validObject())
-	b.WithDataExtractor(nil)
-	res, err := b.Build()
-	require.NoError(t, err)
-	require.NoError(t, res.ExtractData())
-}
-
 func TestExtractIntoDeclaredExtraction(t *testing.T) {
 	t.Parallel()
 	cell := concepts.NewData[string]("team-label")

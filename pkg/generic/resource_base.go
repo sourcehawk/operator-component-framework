@@ -15,6 +15,8 @@ type BaseResource[T client.Object, M FeatureMutator] struct {
 
 	DataExtractors []func(T) error
 
+	DataExtractions []DataExtraction[T]
+
 	NewMutator func(T) M
 	Mutations  []Mutation[M]
 
@@ -153,7 +155,29 @@ func (r *BaseResource[T, M]) ExtractData() error {
 		}
 	}
 
+	for _, extraction := range r.DataExtractions {
+		if err := extraction.Extract(copyObj); err != nil {
+			return fmt.Errorf("extract data %q: %w", extraction.Cell.Name(), err)
+		}
+	}
+
 	return nil
+}
+
+// ProducedData returns the cells this resource declares extractions into,
+// deduplicated by cell identity, in declaration order. It satisfies
+// concepts.DataProducer.
+func (r *BaseResource[T, M]) ProducedData() []concepts.DataCell {
+	seen := make(map[concepts.DataCell]struct{}, len(r.DataExtractions))
+	cells := make([]concepts.DataCell, 0, len(r.DataExtractions))
+	for _, extraction := range r.DataExtractions {
+		if _, ok := seen[extraction.Cell]; ok {
+			continue
+		}
+		seen[extraction.Cell] = struct{}{}
+		cells = append(cells, extraction.Cell)
+	}
+	return cells
 }
 
 // RecordObservation stores the supplied object as the resource's most recently observed

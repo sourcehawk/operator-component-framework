@@ -136,6 +136,22 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 		return errors.New("mutator factory cannot be nil")
 	}
 
+	// Declared data extractions must reference a real cell and a real
+	// extraction function. A typed-nil cell or nil fn passed to ExtractInto is
+	// recorded and rejected here so the failure surfaces at build time with a
+	// clear message instead of panicking mid-reconcile.
+	for _, extraction := range b.BaseRes.DataExtractions {
+		if isNil(extraction.Cell) {
+			return errors.New("declared data extraction requires a non-nil cell")
+		}
+		if extraction.Extract == nil {
+			return fmt.Errorf(
+				"declared data extraction into %q requires a non-nil extraction function",
+				extraction.Cell.Name(),
+			)
+		}
+	}
+
 	// Mutation names must be unique within a resource. A name is the identifier
 	// that gating and error reporting refer to, so two mutations sharing one is
 	// ambiguous: it silently masks a mis-targeted or dead mutation behind its

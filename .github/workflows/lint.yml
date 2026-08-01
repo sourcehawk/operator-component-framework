@@ -29,3 +29,21 @@ jobs:
 
       - name: Run linter
         run: make lint
+
+  plugin:
+    name: Validate Claude plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v6
+
+      - name: Check plugin references are in sync with docs
+        run: |
+          make sync-plugin
+          git diff --exit-code -- plugin
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate plugin and marketplace
+        run: claude plugin validate .

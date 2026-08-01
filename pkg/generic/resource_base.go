@@ -15,6 +15,8 @@ type BaseResource[T client.Object, M FeatureMutator] struct {
 
 	DataExtractors []func(T) error
 
+	// DataExtractions holds the declared data extractions recorded by
+	// ExtractInto, run by ExtractData after the resource is applied or fetched.
 	DataExtractions []DataExtraction[T]
 
 	NewMutator func(T) M

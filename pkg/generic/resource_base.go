@@ -2,6 +2,8 @@ package generic
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,6 +20,10 @@ type BaseResource[T client.Object, M FeatureMutator] struct {
 	// DataExtractions holds the declared data extractions recorded by
 	// ExtractInto, run by ExtractData after the resource is applied or fetched.
 	DataExtractions []DataExtraction[T]
+
+	// DataConsumptions holds the declared data reads recorded by WithDataGuard
+	// and WithOptionalData, in declaration order.
+	DataConsumptions []concepts.DataConsumption
 
 	NewMutator func(T) M
 	Mutations  []Mutation[M]
@@ -182,6 +188,14 @@ func (r *BaseResource[T, M]) ProducedData() []concepts.DataCell {
 	return cells
 }
 
+// ConsumedData returns the resource's declared data reads in declaration
+// order. It satisfies concepts.DataConsumer.
+func (r *BaseResource[T, M]) ConsumedData() []concepts.DataConsumption {
+	out := make([]concepts.DataConsumption, len(r.DataConsumptions))
+	copy(out, r.DataConsumptions)
+	return out
+}
+
 // RecordObservation stores the supplied object as the resource's most recently observed
 // cluster state. The framework invokes this on read-only resources immediately after
 // fetching them, so that subsequent capabilities such as ExtractData observe the live
@@ -201,10 +215,31 @@ func (r *BaseResource[T, M]) RecordObservation(observed client.Object) error {
 	return nil
 }
 
-// GuardStatus evaluates the resource's guard precondition.
-// If no guard handler is configured, the resource is unconditionally unblocked.
-// The handler receives a deep copy of the desired object to prevent accidental mutations.
+// GuardStatus evaluates the resource's guard preconditions.
+//
+// Declared data guards (WithDataGuard) are evaluated first: if any guarded
+// cell is unset, the resource is Blocked with a framework-generated reason
+// naming the missing cells. Only when every guarded cell is set is the custom
+// guard handler (WithGuard) consulted. If neither is configured, the resource
+// is unconditionally unblocked.
+//
+// The custom handler receives a deep copy of the desired object to prevent
+// accidental mutations.
 func (r *BaseResource[T, M]) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	var missing []string
+	for _, consumption := range r.DataConsumptions {
+		if consumption.Optional || consumption.Cell.IsSet() {
+			continue
+		}
+		missing = append(missing, strconv.Quote(consumption.Cell.Name()))
+	}
+	if len(missing) > 0 {
+		return concepts.GuardStatusWithReason{
+			Status: concepts.GuardStatusBlocked,
+			Reason: "waiting for data " + strings.Join(missing, ", "),
+		}, nil
+	}
+
 	if r.GuardHandler == nil {
 		return concepts.GuardStatusWithReason{
 			Status: concepts.GuardStatusUnblocked,

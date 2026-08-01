@@ -104,3 +104,102 @@ func TestWrapExtraction(t *testing.T) {
 
 	assert.Nil(t, WrapExtraction[corev1.ConfigMap, string](nil))
 }
+
+func TestWithDataGuardBlocksUntilSet(t *testing.T) {
+	cell := concepts.NewData[string]("db-host")
+	b := newDataTestBuilder()
+	b.WithDataGuard(cell)
+
+	res, err := b.Build()
+	require.NoError(t, err)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.Equal(t, `waiting for data "db-host"`, status.Reason)
+
+	cell.Set("postgres.default.svc")
+	status, err = res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
+}
+
+func TestWithDataGuardListsAllMissingCells(t *testing.T) {
+	host := concepts.NewData[string]("db-host")
+	port := concepts.NewData[string]("db-port")
+	b := newDataTestBuilder()
+	b.WithDataGuard(host, port)
+
+	res, err := b.Build()
+	require.NoError(t, err)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.Equal(t, `waiting for data "db-host", "db-port"`, status.Reason)
+}
+
+func TestWithDataGuardRunsBeforeCustomGuard(t *testing.T) {
+	cell := concepts.NewData[string]("db-host")
+	b := newDataTestBuilder()
+	b.WithDataGuard(cell)
+	customCalled := false
+	b.WithGuard(func(*corev1.ConfigMap) (concepts.GuardStatusWithReason, error) {
+		customCalled = true
+		return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
+	})
+
+	res, err := b.Build()
+	require.NoError(t, err)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.False(t, customCalled)
+
+	cell.Set("x")
+	status, err = res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
+	assert.True(t, customCalled)
+}
+
+func TestWithOptionalDataNeverBlocks(t *testing.T) {
+	cell := concepts.NewData[string]("db-host")
+	b := newDataTestBuilder()
+	b.WithOptionalData(cell)
+
+	res, err := b.Build()
+	require.NoError(t, err)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
+}
+
+func TestConsumedDataDeclarationOrderAndModes(t *testing.T) {
+	host := concepts.NewData[string]("db-host")
+	port := concepts.NewData[string]("db-port")
+	b := newDataTestBuilder()
+	b.WithDataGuard(host)
+	b.WithOptionalData(port)
+
+	res, err := b.Build()
+	require.NoError(t, err)
+
+	consumed := res.ConsumedData()
+	require.Len(t, consumed, 2)
+	assert.Same(t, host, consumed[0].Cell.(*concepts.Data[string]))
+	assert.False(t, consumed[0].Optional)
+	assert.Same(t, port, consumed[1].Cell.(*concepts.Data[string]))
+	assert.True(t, consumed[1].Optional)
+}
+
+func TestDataReadNilCellRejectedAtBuild(t *testing.T) {
+	b := newDataTestBuilder()
+	b.WithDataGuard(nil)
+
+	_, err := b.Build()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-nil cell")
+}

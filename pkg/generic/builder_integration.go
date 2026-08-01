@@ -59,6 +59,20 @@ func (b *IntegrationBuilder[T, M]) WithGuard(
 	return b
 }
 
+// WithDataGuard declares blocking data reads for the integration resource.
+// See BaseBuilder.WithDataGuard.
+func (b *IntegrationBuilder[T, M]) WithDataGuard(cells ...concepts.DataCell) *IntegrationBuilder[T, M] {
+	b.BaseBuilder.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares non-blocking data reads for the integration
+// resource. See BaseBuilder.WithOptionalData.
+func (b *IntegrationBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) *IntegrationBuilder[T, M] {
+	b.BaseBuilder.WithOptionalData(cells...)
+	return b
+}
+
 // WithDataExtractor registers a typed data extractor to run after successful reconciliation.
 func (b *IntegrationBuilder[T, M]) WithDataExtractor(
 	extractor func(T) error,

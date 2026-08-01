@@ -52,6 +52,20 @@ func (b *TaskBuilder[T, M]) WithGuard(
 	return b
 }
 
+// WithDataGuard declares blocking data reads for the task resource. See
+// BaseBuilder.WithDataGuard.
+func (b *TaskBuilder[T, M]) WithDataGuard(cells ...concepts.DataCell) *TaskBuilder[T, M] {
+	b.BaseBuilder.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares non-blocking data reads for the task resource.
+// See BaseBuilder.WithOptionalData.
+func (b *TaskBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) *TaskBuilder[T, M] {
+	b.BaseBuilder.WithOptionalData(cells...)
+	return b
+}
+
 // WithDataExtractor registers a typed data extractor to run after successful reconciliation.
 func (b *TaskBuilder[T, M]) WithDataExtractor(
 	extractor func(T) error,

@@ -72,6 +72,39 @@ func (b *BaseBuilder[T, M]) WithGuard(handler func(T) (concepts.GuardStatusWithR
 	b.BaseRes.GuardHandler = handler
 }
 
+// WithDataGuard declares that the resource reads the given cells and must not
+// be applied until every one of them is set. The framework generates the guard
+// and its reason (for example: waiting for data "db-host"), so the reason can
+// never drift from the actual dependency. A blocked data guard surfaces as the
+// same Blocked condition reason custom guards produce.
+//
+// Data guards are evaluated before any custom guard registered with WithGuard;
+// both may be combined. Component Build validates that a producer for each
+// cell is registered strictly earlier in the component.
+func (b *BaseBuilder[T, M]) WithDataGuard(cells ...concepts.DataCell) {
+	for _, cell := range cells {
+		b.BaseRes.DataConsumptions = append(
+			b.BaseRes.DataConsumptions,
+			concepts.DataConsumption{Cell: cell, Optional: false},
+		)
+	}
+}
+
+// WithOptionalData declares that the resource reads the given cells without
+// gating on them. The declaration exists so component Build still verifies a
+// producer is registered earlier (an optional read with no producer is
+// permanently absent, which is dead code and almost certainly a bug) and so
+// the dependency stays visible to introspection. Consumers in this mode use
+// Get and skip quietly when the cell is absent.
+func (b *BaseBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) {
+	for _, cell := range cells {
+		b.BaseRes.DataConsumptions = append(
+			b.BaseRes.DataConsumptions,
+			concepts.DataConsumption{Cell: cell, Optional: true},
+		)
+	}
+}
+
 // WithDataExtractor registers a typed data extractor to run immediately after the
 // resource has been processed during reconciliation.
 //
@@ -149,6 +182,13 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 				"declared data extraction into %q requires a non-nil extraction function",
 				extraction.Cell.Name(),
 			)
+		}
+	}
+
+	// Declared data reads must reference a real cell for the same reason.
+	for _, consumption := range b.BaseRes.DataConsumptions {
+		if isNil(consumption.Cell) {
+			return errors.New("declared data read (WithDataGuard or WithOptionalData) requires a non-nil cell")
 		}
 	}
 

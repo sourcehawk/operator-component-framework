@@ -26,6 +26,10 @@ For operator-structuring advice (one component per condition, thin controllers, 
 Components are constructed through a builder. The builder collects resource registrations, configuration, and lifecycle
 flags, then produces an immutable `Component` ready for reconciliation.
 
+`Build()` requires `WithName` and `WithConditionType`; every other builder method is optional. If either is missing, or
+any registered resource fails validation, `Build()` returns a single aggregated error containing every failure, using
+`errors.Join`.
+
 ```go
 comp, err := component.NewComponentBuilder().
     WithName("frontend").
@@ -253,7 +257,8 @@ message:
 6. **Condition update.** A new component condition is derived from the aggregate resource status, the previous
    condition, and the configured grace period, then written to the owner **in memory only**. `Reconcile` never calls the
    Kubernetes status API; the controller persists with [`FlushStatus`](#persisting-status-with-flushstatus).
-7. **Resource deletion.** Resources registered for deletion are removed from the cluster.
+7. **Resource deletion.** Resources registered for deletion are removed from the cluster, in the same registration order
+   used for reconciliation; the framework does not reverse it.
 
 ```mermaid
 flowchart TD

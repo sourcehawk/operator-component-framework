@@ -82,3 +82,51 @@ func validateDataTopology(componentName string, entries []reconcileEntry) ([]con
 
 	return cells, errs
 }
+
+// DataTopology returns one edge per declared data cell, in first-producer
+// registration order. Within an edge, producers and readers are listed in
+// registration order. It satisfies concepts.DataInspector, giving tests and
+// tooling the same read-only view of data flow that MutationInspector gives
+// for mutations. Nothing in the reconcile path calls it.
+func (c *Component) DataTopology() []concepts.DataEdge {
+	edges := make(map[concepts.DataCell]*concepts.DataEdge)
+	var order []concepts.DataCell
+
+	for _, entry := range c.reconcileResources {
+		identity := entry.Resource.Identity()
+
+		if producer, ok := entry.Resource.(concepts.DataProducer); ok {
+			for _, cell := range producer.ProducedData() {
+				edge, ok := edges[cell]
+				if !ok {
+					edge = &concepts.DataEdge{Data: cell.Name()}
+					edges[cell] = edge
+					order = append(order, cell)
+				}
+				edge.Producers = append(edge.Producers, identity)
+			}
+		}
+
+		if consumer, ok := entry.Resource.(concepts.DataConsumer); ok {
+			for _, consumption := range consumer.ConsumedData() {
+				edge, ok := edges[consumption.Cell]
+				if !ok {
+					// Build validation guarantees every read has an earlier
+					// producer, so this only guards a hand-built Component.
+					continue
+				}
+				if consumption.Optional {
+					edge.Optional = append(edge.Optional, identity)
+				} else {
+					edge.Guarded = append(edge.Guarded, identity)
+				}
+			}
+		}
+	}
+
+	out := make([]concepts.DataEdge, 0, len(order))
+	for _, cell := range order {
+		out = append(out, *edges[cell])
+	}
+	return out
+}

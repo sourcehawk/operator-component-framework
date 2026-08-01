@@ -117,3 +117,60 @@ func TestBuildIgnoresResourcesWithoutDataDeclarations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, comp.dataCells)
 }
+
+func TestDataTopologyEdgesAndOrdering(t *testing.T) {
+	host := concepts.NewData[string]("db-host")
+	port := concepts.NewData[string]("db-port")
+
+	configProducer := &fakeDataResource{
+		identity: "v1/ConfigMap/default/config",
+		produced: []concepts.DataCell{host, port},
+	}
+	secondHostProducer := &fakeDataResource{
+		identity: "v1/ConfigMap/default/override",
+		produced: []concepts.DataCell{host},
+	}
+	guardedConsumer := &fakeDataResource{
+		identity: "v1/Secret/default/creds",
+		consumed: []concepts.DataConsumption{{Cell: host}},
+	}
+	optionalConsumer := &fakeDataResource{
+		identity: "v1/ConfigMap/default/enricher",
+		consumed: []concepts.DataConsumption{{Cell: host, Optional: true}, {Cell: port, Optional: true}},
+	}
+
+	comp, err := newDataComponentBuilder().
+		WithResource(configProducer).
+		WithResource(secondHostProducer).
+		WithResource(guardedConsumer).
+		WithResource(optionalConsumer).
+		Build()
+	require.NoError(t, err)
+
+	topology := comp.DataTopology()
+	require.Equal(t, []concepts.DataEdge{
+		{
+			Data:      "db-host",
+			Producers: []string{"v1/ConfigMap/default/config", "v1/ConfigMap/default/override"},
+			Guarded:   []string{"v1/Secret/default/creds"},
+			Optional:  []string{"v1/ConfigMap/default/enricher"},
+		},
+		{
+			Data:      "db-port",
+			Producers: []string{"v1/ConfigMap/default/config"},
+			Optional:  []string{"v1/ConfigMap/default/enricher"},
+		},
+	}, topology)
+}
+
+func TestDataTopologyEmptyComponent(t *testing.T) {
+	comp, err := newDataComponentBuilder().
+		WithResource(&fakeDataResource{identity: "v1/ConfigMap/default/plain"}).
+		Build()
+	require.NoError(t, err)
+	assert.Empty(t, comp.DataTopology())
+}
+
+func TestComponentSatisfiesDataInspector(t *testing.T) {
+	var _ concepts.DataInspector = (*Component)(nil)
+}

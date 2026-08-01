@@ -138,6 +138,19 @@ func (r *Resource) ExtractData() error {
 	return r.base.ExtractData()
 }
 
+// ProducedData returns the cells this Service declares extractions into.
+// It satisfies concepts.DataProducer for component topology validation and
+// introspection.
+func (r *Resource) ProducedData() []concepts.DataCell {
+	return r.base.ProducedData()
+}
+
+// ConsumedData returns the Service's declared data reads. It satisfies
+// concepts.DataConsumer for component topology validation and introspection.
+func (r *Resource) ConsumedData() []concepts.DataConsumption {
+	return r.base.ConsumedData()
+}
+
 // RecordObservation stores the supplied object as the resource's most recently
 // observed cluster state. The framework invokes this on read-only resources
 // after fetching them so that registered data extractors observe the live
@@ -176,3 +189,5 @@ func (r *Resource) FiringSet() ([]string, error) {
 }
 
 var _ concepts.MutationInspector = (*Resource)(nil)
+var _ concepts.DataProducer = (*Resource)(nil)
+var _ concepts.DataConsumer = (*Resource)(nil)

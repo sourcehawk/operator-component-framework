@@ -113,8 +113,8 @@ In addition to the guideline checklist, flag:
 - Mutations with no unit test exercising them.
 - Components with no golden snapshot (`golden.AssertComponentYAML` or `goldengen.Component`) covering their rendered
   output.
-- Version-gated mutations with no `goldengen` matrix asserting which versions fire them, per
-  [Pin Rendered Output Across Supported Versions](#checklist).
+- Version-gated mutations with no `goldengen` matrix asserting which versions fire them, per Pin Rendered Output Across
+  Supported Versions.
 
 ## Reporting format
 

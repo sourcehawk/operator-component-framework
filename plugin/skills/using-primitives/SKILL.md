@@ -19,12 +19,12 @@ component's status aggregation.
 The framework groups primitives into four categories by runtime behavior, and the category determines which lifecycle
 interfaces a primitive implements:
 
-- **Static** — `ConfigMap`, `Secret`, `ServiceAccount`, RBAC objects, `PodDisruptionBudget`. Desired state is mostly
+- **Static**: `ConfigMap`, `Secret`, `ServiceAccount`, RBAC objects, `PodDisruptionBudget`. Desired state is mostly
   fixed; ready as soon as it exists.
-- **Workload** — `Deployment`, `StatefulSet`, `DaemonSet`. Long-running processes requiring runtime convergence;
+- **Workload**: `Deployment`, `StatefulSet`, `DaemonSet`. Long-running processes requiring runtime convergence;
   implement `Alive`, `Graceful`, and `Suspendable`.
-- **Task** — `Job`. Short-lived operations that run to completion; implement `Completable` and `Suspendable`.
-- **Integration** — `Service`, `Ingress`, `CronJob`, `HPA`. Readiness depends on a controller the operator does not own;
+- **Task**: `Job`. Short-lived operations that run to completion; implement `Completable` and `Suspendable`.
+- **Integration**: `Service`, `Ingress`, `CronJob`, `HPA`. Readiness depends on a controller the operator does not own;
   implement `Operational`, and may also implement `Graceful` or `Suspendable`.
 
 ## Baseline plus mutations
@@ -70,7 +70,7 @@ type Mutation[T any] struct {
 Each primitive package defines its own concrete alias (`deployment.Mutation`, `configmap.Mutation`, and so on) over this
 generic type. Register mutations with `WithMutation`, which preserves registration order and is a no-op when called with
 no arguments. Mutation names must be unique within a resource: `Build()` fails if two mutations share a `Name`, because
-the name is what gating and error reporting — and the framework's golden test tooling — refer to.
+the name is what gating and error reporting refer to.
 
 Mutations do not touch the Kubernetes object directly. Each `Mutate` records intent through typed editors, and the
 framework replays every recorded edit in a single controlled pass during `Apply()`. Features apply in registration
@@ -110,7 +110,8 @@ any given version.
 Editors are scoped, typed APIs for modifying one part of a resource; a mutator hands one to your callback, you record
 changes, the framework applies them during the plan-and-apply pass. Groups of editors:
 
-- **Container editors** (`ContainerEditor`) — env vars, args, resources, probes — selected by a container selector.
+- **Container editors** (`ContainerEditor`), for env vars, args, resources, and probes, selected by a container
+  selector.
 - **Pod-shaping editors** (`PodSpecEditor`, `ObjectMetaEditor`) shared by all pod-workload kinds.
 - **Kind-specific spec editors** (`DeploymentSpecEditor`, `ServiceSpecEditor`, `IngressSpecEditor`, ...), one per kind.
 - **Data editors** (`ConfigMapDataEditor`, `SecretDataEditor`) and **RBAC editors** (`PolicyRulesEditor`,
@@ -215,7 +216,7 @@ editors, and suspension/lifecycle behavior.
 - **Unnamed mutations.** An empty or reused `Name` collides at `Build()` and defeats the tooling that asserts which
   mutations fire at which versions; always give a mutation a unique, descriptive name.
 - **Putting gated values in the baseline.** A version-dependent or feature-dependent field written directly into the
-  baseline object cannot be toggled off, gated by version, or asserted on independently — it silently applies to every
+  baseline object cannot be toggled off, gated by version, or asserted on independently: it silently applies to every
   owner version. Move it into a named, gated mutation instead.
 
 ## Ground truth
@@ -232,7 +233,7 @@ with `go doc`, `go doc` wins.
 
 ## References
 
-- `references/primitives.md`: concepts shared across every primitive — categories, lifecycle interfaces, the mutation
-  system, gating, editors, selectors, Server-Side Apply, cluster-scoped and unstructured primitives.
+- `references/primitives.md`: concepts shared across every primitive, including categories, lifecycle interfaces, the
+  mutation system, gating, editors, selectors, Server-Side Apply, and cluster-scoped and unstructured primitives.
 - `references/primitives/<kind>.md`: per-kind builders, mutations, editors, and suspension behavior. Read the specific
   kind's file before writing a mutation against it.

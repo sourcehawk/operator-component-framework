@@ -3,7 +3,7 @@ name: testing-operators
 description:
   Use when writing or updating tests for an operator built on the operator-component-framework - the three test layers,
   mutation unit tests, golden snapshot tests (pkg/testing/golden), version-matrix golden generation
-  (pkg/testing/goldengen), the YAML matrix loader, and integration helpers (pkg/testing/integration).
+  (pkg/testing/goldengen), and the YAML matrix loader.
 ---
 
 # Testing Operators

@@ -19,11 +19,11 @@ defined by the project or a third-party operator, or a standard Kubernetes kind 
 guards, data extraction). A wrapper package combines these with kind-specific identity, status, and mutator logic, the
 same way the built-in primitives do.
 
-If the CRD has no typed Go struct, an unstructured primitive
-(`pkg/primitives/unstructured/{static,workload,integration,task}`) manages it without writing a wrapper at all. That is
-the lightweight alternative: it is sufficient when a typed, self-documenting API is not needed for a kind the operator
-touches only occasionally. Write a full wrapper when a typed struct exists and the kind is managed often enough to
-justify a dedicated package.
+If the CRD has no typed Go struct, the unstructured static primitive (`pkg/primitives/unstructured/static`) manages it
+without writing a wrapper at all. That is the lightweight alternative: it is sufficient when a typed, self-documenting
+API is not needed for a kind the operator touches only occasionally. Write a full wrapper when a typed struct exists and
+the kind is managed often enough to justify a dedicated package. Other unstructured variants exist per resource
+category; see the using-primitives skill for the full set.
 
 A custom resource is three wrapped pieces: the builder configures and validates, producing a resource; the resource
 delegates lifecycle methods to a generic base; the mutator records and applies changes to the Kubernetes object.

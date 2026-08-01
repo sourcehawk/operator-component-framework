@@ -105,6 +105,27 @@ func (b *Builder) WithGuard(guard func(uns.Unstructured) (concepts.GuardStatusWi
 	return b
 }
 
+// WithDataGuard declares that the unstructured object reads the given data
+// cells and must not be applied until every one of them is set. The framework
+// generates the guard and its reason (waiting for data "<name>"), and
+// component Build validates that a producer for each cell is registered
+// earlier. Data guards are evaluated before any custom guard registered with
+// WithGuard.
+func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
+	b.base.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares that the unstructured object reads the given data
+// cells without gating on them. Component Build still validates that a
+// producer is registered earlier, and the dependency stays visible to
+// introspection. Consumers in this mode use Get and skip quietly when a cell
+// is absent.
+func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
+	b.base.WithOptionalData(cells...)
+	return b
+}
+
 // WithDataExtractor registers a function to read values from the object after
 // it has been successfully reconciled.
 func (b *Builder) WithDataExtractor(extractor func(uns.Unstructured) error) *Builder {
@@ -122,4 +143,14 @@ func (b *Builder) Build() (*Resource, error) {
 		return nil, err
 	}
 	return &Resource{base: genericRes}, nil
+}
+
+// ExtractInto declares that this unstructured object produces the value of
+// cell. fn computes the value from a copy of the reconciled object; the
+// framework stores it in the cell and marks it present, immediately after the
+// object is applied or fetched. Extracting several values means several
+// ExtractInto calls, one per cell. This is a package-level function because Go
+// methods cannot introduce the extra type parameter V.
+func ExtractInto[V any](b *Builder, cell *concepts.Data[V], fn func(uns.Unstructured) (V, error)) {
+	generic.ExtractInto(&b.base.BaseBuilder, cell, generic.WrapExtraction(fn))
 }

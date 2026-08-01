@@ -74,3 +74,53 @@ func TestBuilder_WithDataExtractor(t *testing.T) {
 	require.NoError(t, res.ExtractData())
 	assert.True(t, called)
 }
+
+func TestExtractIntoDeclaredExtraction(t *testing.T) {
+	t.Parallel()
+	cell := concepts.NewData[string]("team-label")
+	obj := validObject()
+	obj.SetLabels(map[string]string{"team": "platform"})
+	builder := withRequiredHandlers(NewBuilder(obj))
+	ExtractInto(builder, cell, func(o uns.Unstructured) (string, error) {
+		return o.GetLabels()["team"], nil
+	})
+
+	res, err := builder.Build()
+	require.NoError(t, err)
+
+	produced := res.ProducedData()
+	require.Len(t, produced, 1)
+	assert.Equal(t, "team-label", produced[0].Name())
+
+	require.NoError(t, res.ExtractData())
+	v, ok := cell.Get()
+	assert.True(t, ok)
+	assert.Equal(t, "platform", v)
+}
+
+func TestWithDataGuardAndOptionalDataDeclarations(t *testing.T) {
+	t.Parallel()
+	guarded := concepts.NewData[string]("db-host")
+	optional := concepts.NewData[string]("db-port")
+	builder := withRequiredHandlers(NewBuilder(validObject())).WithDataGuard(guarded).WithOptionalData(optional)
+
+	res, err := builder.Build()
+	require.NoError(t, err)
+
+	consumed := res.ConsumedData()
+	require.Len(t, consumed, 2)
+	assert.Equal(t, "db-host", consumed[0].Cell.Name())
+	assert.False(t, consumed[0].Optional)
+	assert.Equal(t, "db-port", consumed[1].Cell.Name())
+	assert.True(t, consumed[1].Optional)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.Equal(t, `waiting for data "db-host"`, status.Reason)
+
+	guarded.Set("postgres.default.svc")
+	status, err = res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
+}

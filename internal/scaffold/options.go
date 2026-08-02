@@ -9,6 +9,7 @@ import (
 
 var (
 	apiVersionPattern   = regexp.MustCompile(`^v[0-9]+((alpha|beta)[0-9]+)?$`)
+	apiGroupPattern     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 	exportedNamePattern = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
 	packageNamePattern  = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 	identifierPattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -55,11 +56,15 @@ func (o Options) Resolve() (TemplateData, error) {
 	if !o.GroupSet {
 		return TemplateData{}, fmt.Errorf(`--group is required (pass --group "" for core API group types)`)
 	}
-
-	lastSegment := lastPathSegment(importPath)
+	if o.Group != "" && !apiGroupPattern.MatchString(o.Group) {
+		return TemplateData{}, fmt.Errorf(
+			`--group %q is not a valid API group (a DNS subdomain, or "" for core API group types)`, o.Group,
+		)
+	}
 
 	version := o.Version
 	if version == "" {
+		lastSegment := lastPathSegment(importPath)
 		if !apiVersionPattern.MatchString(lastSegment) {
 			return TemplateData{}, fmt.Errorf(
 				"--version is required: the last segment %q of the import path is not an API version",
@@ -67,6 +72,8 @@ func (o Options) Resolve() (TemplateData, error) {
 			)
 		}
 		version = lastSegment
+	} else if !apiVersionPattern.MatchString(version) {
+		return TemplateData{}, fmt.Errorf("--version %q is not a valid API version", version)
 	}
 
 	kind := o.Kind

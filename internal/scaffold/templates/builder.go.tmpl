@@ -105,7 +105,7 @@ type Builder struct {
 {{- end}}
 func NewBuilder(obj {{.PointerType}}) *Builder {
 	identityFunc := func(o {{.PointerType}}) string {
-		return fmt.Sprintf("{{.IdentityFormat}}", {{.IdentityArgs}})
+		return fmt.Sprintf({{printf "%q" .IdentityFormat}}, {{.IdentityArgs}})
 	}
 
 	base := generic.{{$spec.GenericConstructor}}[{{.PointerType}}, *Mutator](

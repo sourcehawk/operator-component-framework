@@ -91,9 +91,9 @@ func TestBuilderBuildValidation(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, res)
 {{- if .ClusterScoped}}
-			assert.Equal(t, "{{.APIVersion}}/{{.Kind}}/test-object", res.Identity())
+			assert.Equal(t, {{printf "%q" (printf "%s/%s/test-object" .APIVersion .Kind)}}, res.Identity())
 {{- else}}
-			assert.Equal(t, "{{.APIVersion}}/{{.Kind}}/test-ns/test-object", res.Identity())
+			assert.Equal(t, {{printf "%q" (printf "%s/%s/test-ns/test-object" .APIVersion .Kind)}}, res.Identity())
 {{- end}}
 		})
 	}

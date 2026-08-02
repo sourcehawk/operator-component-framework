@@ -117,6 +117,55 @@ func TestResolveDerivations(t *testing.T) {
 	}
 }
 
+func TestResolveAcceptsValidGroupsAndVersions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		mutate          func(*Options)
+		expectedGroup   string
+		expectedVersion string
+	}{
+		{
+			name:            "non core group",
+			mutate:          func(o *Options) { o.Group = "rbac.authorization.k8s.io" },
+			expectedGroup:   "rbac.authorization.k8s.io",
+			expectedVersion: "v1",
+		},
+		{
+			name:            "dashed group label",
+			mutate:          func(o *Options) { o.Group = "cert-manager.io" },
+			expectedGroup:   "cert-manager.io",
+			expectedVersion: "v1",
+		},
+		{
+			name:            "empty group is the core API group",
+			mutate:          func(o *Options) { o.Group = "" },
+			expectedGroup:   "",
+			expectedVersion: "v1",
+		},
+		{
+			name:            "explicit version",
+			mutate:          func(o *Options) { o.Version = "v2beta1" },
+			expectedGroup:   "apps",
+			expectedVersion: "v2beta1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opts := validOptions()
+			tt.mutate(&opts)
+
+			data, err := opts.Resolve()
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedGroup, data.Group)
+			assert.Equal(t, tt.expectedVersion, data.Version)
+		})
+	}
+}
+
 func TestResolveValidationErrors(t *testing.T) {
 	t.Parallel()
 
@@ -164,6 +213,26 @@ func TestResolveValidationErrors(t *testing.T) {
 			name:        "version not derivable",
 			mutate:      func(o *Options) { o.Type = "example.io/apis/messaging.Queue" },
 			expectedErr: `--version is required: the last segment "messaging" of the import path is not an API version`,
+		},
+		{
+			name:        "uppercase group",
+			mutate:      func(o *Options) { o.Group = "Apps" },
+			expectedErr: `--group "Apps" is not a valid API group (a DNS subdomain, or "" for core API group types)`,
+		},
+		{
+			name:        "group label ends with a dash",
+			mutate:      func(o *Options) { o.Group = "apps-.io" },
+			expectedErr: `--group "apps-.io" is not a valid API group`,
+		},
+		{
+			name:        "group with a Go string break out",
+			mutate:      func(o *Options) { o.Group = `a"+os.Getenv("X")+"b` },
+			expectedErr: `--group "a\"+os.Getenv(\"X\")+\"b" is not a valid API group`,
+		},
+		{
+			name:        "explicit version is not an API version",
+			mutate:      func(o *Options) { o.Version = "1.0" },
+			expectedErr: `--version "1.0" is not a valid API version`,
 		},
 		{
 			name:        "invalid package name",
@@ -233,6 +302,7 @@ func TestVariantSpecs(t *testing.T) {
 	assert.False(t, static.HasStatus)
 	assert.False(t, static.HasGrace)
 	assert.False(t, static.HasSuspension)
+	assert.Empty(t, static.LifecycleInterfaces)
 
 	workload := VariantWorkload.Spec()
 	assert.Equal(t, "NewWorkloadBuilder", workload.GenericConstructor)
@@ -241,16 +311,25 @@ func TestVariantSpecs(t *testing.T) {
 	assert.Equal(t, "concepts.AliveConvergingStatusHealthy", workload.StatusConstant)
 	assert.True(t, workload.HasGrace)
 	assert.True(t, workload.HasSuspension)
+	assert.Equal(t, []string{
+		"concepts.Alive: for health and readiness tracking.",
+		"concepts.Graceful: for health reporting once the grace period expires.",
+	}, workload.LifecycleInterfaces)
 
 	task := VariantTask.Spec()
 	assert.Equal(t, "concepts.CompletionStatusWithReason", task.StatusResult)
 	assert.Equal(t, "concepts.CompletionStatusCompleted", task.StatusConstant)
 	assert.False(t, task.HasGrace)
 	assert.True(t, task.HasSuspension)
+	assert.Equal(t, []string{"concepts.Completable: for run-to-completion tracking."}, task.LifecycleInterfaces)
 
 	integration := VariantIntegration.Spec()
 	assert.Equal(t, "WithCustomOperationalStatus", integration.StatusSetter)
 	assert.Equal(t, "DefaultOperationalStatusHandler", integration.StatusHandler)
 	assert.Equal(t, "concepts.OperationalStatusOperational", integration.StatusConstant)
 	assert.True(t, integration.HasGrace)
+	assert.Equal(t, []string{
+		"concepts.Operational: for external-dependency readiness tracking.",
+		"concepts.Graceful: for health reporting once the grace period expires.",
+	}, integration.LifecycleInterfaces)
 }

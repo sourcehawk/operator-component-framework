@@ -682,10 +682,9 @@ func buildBackendComponent(owner *v1alpha1.WebApp) (*component.Component, error)
 
     // First resource: a config source. Once it is applied, the declared
     // extraction reads a value out of the live object and into the cell.
-    configBuilder := static.NewBuilder(newBackendConfig(owner))
-    static.ExtractInto(configBuilder, endpoint, func(obj uns.Unstructured) (string, error) {
-        value, _, err := uns.NestedString(obj.Object, "data", "endpoint")
-        return value, err
+    configBuilder := configmap.NewBuilder(newBackendConfigMap(owner))
+    configmap.ExtractInto(configBuilder, endpoint, func(cm corev1.ConfigMap) (string, error) {
+        return cm.Data["endpoint"], nil
     })
     configRes, err := configBuilder.Build()
     if err != nil {
@@ -695,18 +694,16 @@ func buildBackendComponent(owner *v1alpha1.WebApp) (*component.Component, error)
     // Second resource: a consumer that needs the endpoint. The data guard blocks
     // it until the cell is set earlier in this same reconcile cycle; the mutation
     // then injects the value at Mutate() time.
-    consumerBuilder := static.NewBuilder(newBackendConsumer(owner))
+    consumerBuilder := deployment.NewBuilder(newBackendDeployment(owner))
     consumerBuilder.WithDataGuard(endpoint)
-    consumerBuilder.WithMutation(unstruct.Mutation{
+    consumerBuilder.WithMutation(deployment.Mutation{
         Name: "set-endpoint",
-        Mutate: func(m *unstruct.Mutator) error {
+        Mutate: func(m *deployment.Mutator) error {
             value, err := endpoint.Require()
             if err != nil {
                 return err
             }
-            m.EditContent(func(e *editors.UnstructuredContentEditor) error {
-                return e.SetNestedString(value, "spec", "endpoint")
-            })
+            m.EnsureContainerEnvVar(corev1.EnvVar{Name: "BACKEND_ENDPOINT", Value: value})
             return nil
         },
     })

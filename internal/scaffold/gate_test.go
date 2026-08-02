@@ -144,7 +144,7 @@ func writeGateModule(t *testing.T, repoRoot, moduleDir string) {
 func runGo(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 
-	cmd := exec.Command("go", args...)
+	cmd := exec.CommandContext(t.Context(), "go", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod")
 
@@ -173,7 +173,7 @@ func mustRunGo(t *testing.T, dir string, args ...string) string {
 func runGoTestJSON(t *testing.T, dir string) ([]testEvent, string, error) {
 	t.Helper()
 
-	cmd := exec.Command("go", "test", "-json", "./...")
+	cmd := exec.CommandContext(t.Context(), "go", "test", "-json", "./...")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod")
 

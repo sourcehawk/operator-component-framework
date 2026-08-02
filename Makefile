@@ -90,6 +90,28 @@ fmt-go: ## Format Go source files.
 fmt-md: prettier ## Format Markdown files.
 	$(PRETTIER) --write '**/*.md' --ignore-path .gitignore
 
+PLUGIN_SKILLS := plugin/skills
+
+.PHONY: sync-plugin
+sync-plugin: ## Sync framework docs into the Claude plugin skill references.
+	rm -rf $(PLUGIN_SKILLS)/building-components/references \
+		$(PLUGIN_SKILLS)/using-primitives/references \
+		$(PLUGIN_SKILLS)/custom-resource-wrappers/references \
+		$(PLUGIN_SKILLS)/structuring-operators/references \
+		$(PLUGIN_SKILLS)/testing-operators/references
+	mkdir -p $(PLUGIN_SKILLS)/building-components/references \
+		$(PLUGIN_SKILLS)/using-primitives/references/primitives \
+		$(PLUGIN_SKILLS)/custom-resource-wrappers/references \
+		$(PLUGIN_SKILLS)/structuring-operators/references \
+		$(PLUGIN_SKILLS)/testing-operators/references
+	cp docs/component.md $(PLUGIN_SKILLS)/building-components/references/component.md
+	cp docs/primitives.md $(PLUGIN_SKILLS)/using-primitives/references/primitives.md
+	cp docs/primitives/*.md $(PLUGIN_SKILLS)/using-primitives/references/primitives/
+	cp docs/custom-resource.md $(PLUGIN_SKILLS)/custom-resource-wrappers/references/custom-resource.md
+	cp docs/guidelines.md $(PLUGIN_SKILLS)/structuring-operators/references/guidelines.md
+	cp docs/compatibility.md $(PLUGIN_SKILLS)/structuring-operators/references/compatibility.md
+	cp docs/testing.md $(PLUGIN_SKILLS)/testing-operators/references/testing.md
+
 .PHONY: prettier
 prettier: $(PRETTIER) ## Download prettier locally if necessary.
 $(PRETTIER): $(LOCALBIN)

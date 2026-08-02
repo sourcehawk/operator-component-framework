@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -29,3 +29,28 @@ jobs:
 
       - name: Run linter
         run: make lint
+
+  plugin:
+    name: Validate Claude plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v6
+
+      - name: Install tools with asdf
+        uses: asdf-vm/actions/install@v4
+        with:
+          only: nodejs
+
+      - name: Check plugin references are in sync with docs
+        run: |
+          make sync-plugin
+          git add -A plugin
+          git status --porcelain plugin
+          git diff --cached --exit-code -- plugin
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate plugin and marketplace
+        run: claude plugin validate .

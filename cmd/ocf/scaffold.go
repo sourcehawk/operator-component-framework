@@ -41,8 +41,7 @@ func newScaffoldWrapperCommand() *cobra.Command {
 		Long: "Generate a custom-resource wrapper package for a Kubernetes kind the built-in\n" +
 			"primitives do not cover. The generated package compiles and its tests pass as\n" +
 			"soon as the wrapped type resolves in your module.",
-		Args:         cobra.NoArgs,
-		SilenceUsage: true,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.GroupSet = cmd.Flags().Changed("group")
 
@@ -84,7 +83,7 @@ func newScaffoldWrapperCommand() *cobra.Command {
 // printSummary reports what was generated and what the user has to do next.
 func printSummary(cmd *cobra.Command, data scaffold.TemplateData, dir string, written []string) error {
 	out := cmd.OutOrStdout()
-	display := testDirDisplay(dir)
+	display := displayDir(dir)
 
 	if _, err := fmt.Fprintf(out, "Generated %s wrapper package %q in %s:\n", data.Variant, data.Package, display); err != nil {
 		return err
@@ -112,10 +111,11 @@ func printSummary(cmd *cobra.Command, data scaffold.TemplateData, dir string, wr
 	return err
 }
 
-// testDirDisplay formats dir as a copy-pasteable path argument: an absolute dir is
-// printed as-is, and a relative dir keeps or gains a leading "./" so it is
-// recognized as a filesystem path rather than a package import path.
-func testDirDisplay(dir string) string {
+// displayDir formats dir for the summary output as a copy-pasteable path
+// argument: an absolute dir is printed as-is, and a relative dir keeps or gains a
+// leading "./" so it is recognized as a filesystem path rather than a package
+// import path.
+func displayDir(dir string) string {
 	display := filepath.ToSlash(dir)
 	if filepath.IsAbs(dir) {
 		return display

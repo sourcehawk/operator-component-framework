@@ -160,10 +160,9 @@ func applyResources(
 		// extracted data is available to subsequent resources' mutations. This
 		// path is used during suspension, where a consumer's content mutations
 		// still run and may Require a cell an earlier managed producer fills.
+		// extractResourceData already wraps failures with the resource identity.
 		if err := extractResourceData([]Resource{entry.Resource}); err != nil {
-			return nil, fmt.Errorf(
-				"failed to extract data from resource %s: %w", entry.Resource.Identity(), err,
-			)
+			return nil, err
 		}
 	}
 
@@ -245,10 +244,9 @@ func reconcileResources(
 
 		// Per-resource data extraction: run immediately after processing so that
 		// extracted data is available to subsequent resources' guards and mutations.
+		// extractResourceData already wraps failures with the resource identity.
 		if err := extractResourceData([]Resource{resource}); err != nil {
-			return nil, fmt.Errorf(
-				"failed to extract data from resource %s: %w", resource.Identity(), err,
-			)
+			return nil, err
 		}
 	}
 

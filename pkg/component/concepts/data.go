@@ -73,8 +73,9 @@ func (d *Data[T]) Require() (T, error) {
 }
 
 // Set stores a value in the cell and marks it present. Set is called by
-// declared extractions (ExtractInto); calling it manually bypasses topology
-// validation and is unsupported.
+// declared extractions (ExtractInto). The one supported manual use is a test
+// seeding a cell before rendering a cluster-free preview; any other manual
+// call bypasses topology validation and is unsupported.
 func (d *Data[T]) Set(value T) {
 	d.value = value
 	d.set = true

@@ -67,6 +67,28 @@ func TestBuildRejectsProducerRegisteredAfterConsumer(t *testing.T) {
 	assert.Contains(t, err.Error(), "no earlier resource produces it")
 }
 
+func TestBuildRejectsTypedNilConsumedCell(t *testing.T) {
+	consumer := &fakeDataResource{
+		identity: "v1/Secret/default/creds",
+		consumed: []concepts.DataConsumption{{Cell: (*concepts.Data[string])(nil)}},
+	}
+
+	_, err := newDataComponentBuilder().WithResource(consumer).Build()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "declares a nil data cell read")
+}
+
+func TestBuildRejectsTypedNilProducedCell(t *testing.T) {
+	producer := &fakeDataResource{
+		identity: "v1/ConfigMap/default/config",
+		produced: []concepts.DataCell{(*concepts.Data[string])(nil)},
+	}
+
+	_, err := newDataComponentBuilder().WithResource(producer).Build()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "declares a nil data cell write")
+}
+
 func TestBuildRejectsDistinctCellsSharingAName(t *testing.T) {
 	a := concepts.NewData[string]("db-host")
 	b := concepts.NewData[int]("db-host")

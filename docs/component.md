@@ -475,6 +475,13 @@ Resources with `DeleteOnSuspend` enabled are **not** created if already absent; 
 suspended, which avoids a create-then-delete loop on every reconcile while the component stays suspended. Resources that
 are not `Suspendable` are left in place.
 
+Guards are not evaluated during suspension, but [declared extractions](#declared-data) still run for each managed
+resource in registration order, so a mutation that calls `Require()` on a cell an earlier managed resource produces
+still works while the component is suspended. Cells produced by read-only resources (which are not fetched during
+suspension) or by resources with `DeleteOnSuspend` (which are skipped once absent) stay absent for as long as the
+component is suspended. A mutation that depends on one of those must use `Get()` rather than `Require()` if the
+component can ever be suspended.
+
 ## ReconcileContext
 
 `ReconcileContext` carries all dependencies for a reconciliation pass. Pass it from your controller on each call:
@@ -627,7 +634,10 @@ Multiple resources may produce the same cell. That is allowed, and at runtime th
 wins, because each one overwrites the cell as it runs.
 
 Only resources that actually reconcile participate. Declarations on resources registered with `Delete()`,
-`DeleteWhen()`, or `OrphanWhen()` never run an extraction and are not considered.
+`DeleteWhen()`, or `OrphanWhen()` never run an extraction and are not considered. A resource whose `GatedBy` gate is
+disabled is moved to the delete set at registration, so if it was the only producer of a cell, `Build()` fails with the
+no-earlier-producer error; that is intentional, and it surfaces the broken data flow at build time rather than leaving a
+reader permanently blocked at runtime.
 
 ### Inspecting the topology
 

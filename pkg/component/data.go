@@ -2,9 +2,27 @@ package component
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 )
+
+// isNilCell reports whether the cell is a nil interface or an interface holding
+// a typed-nil value such as (*concepts.Data[string])(nil). Both forms panic on
+// the first method call, so validation rejects them with a build error rather
+// than letting the panic escape. It mirrors isNilResource in builder.go.
+func isNilCell(cell concepts.DataCell) bool {
+	if cell == nil {
+		return true
+	}
+	v := reflect.ValueOf(cell)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.Interface:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
 
 // validateDataTopology walks resources in registration order and validates the
 // component's declared data flow:
@@ -47,7 +65,7 @@ func validateDataTopology(componentName string, entries []reconcileEntry) ([]con
 		// registered strictly earlier.
 		if consumer, ok := entry.Resource.(concepts.DataConsumer); ok {
 			for _, consumption := range consumer.ConsumedData() {
-				if consumption.Cell == nil {
+				if isNilCell(consumption.Cell) {
 					errs = append(errs, fmt.Errorf(
 						"resource %q in component %q declares a nil data cell read", identity, componentName,
 					))
@@ -65,7 +83,7 @@ func validateDataTopology(componentName string, entries []reconcileEntry) ([]con
 
 		if producer, ok := entry.Resource.(concepts.DataProducer); ok {
 			for _, cell := range producer.ProducedData() {
-				if cell == nil {
+				if isNilCell(cell) {
 					errs = append(errs, fmt.Errorf(
 						"resource %q in component %q declares a nil data cell write", identity, componentName,
 					))

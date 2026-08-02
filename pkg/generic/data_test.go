@@ -75,6 +75,21 @@ func TestProducedDataOrderAndDedupe(t *testing.T) {
 	assert.Same(t, port, produced[1].(*concepts.Data[string]))
 }
 
+func TestExtractIntoLastProducerWins(t *testing.T) {
+	cell := concepts.NewData[string]("db-host")
+	b := newDataTestBuilder()
+	ExtractInto(&b.BaseBuilder, cell, func(*corev1.ConfigMap) (string, error) { return "first", nil })
+	ExtractInto(&b.BaseBuilder, cell, func(*corev1.ConfigMap) (string, error) { return "second", nil })
+
+	res, err := b.Build()
+	require.NoError(t, err)
+	require.NoError(t, res.ExtractData())
+
+	v, ok := cell.Get()
+	assert.True(t, ok)
+	assert.Equal(t, "second", v)
+}
+
 func TestExtractIntoNilCellRejectedAtBuild(t *testing.T) {
 	b := newDataTestBuilder()
 	ExtractInto[*corev1.ConfigMap, *mockMutator, string](&b.BaseBuilder, nil, func(*corev1.ConfigMap) (string, error) {

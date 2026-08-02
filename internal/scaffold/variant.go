@@ -19,6 +19,10 @@ const (
 // Variants lists every supported variant in flag-documentation order.
 var Variants = []Variant{VariantStatic, VariantWorkload, VariantTask, VariantIntegration}
 
+// convergingStatusMethod is the resource method every status-bearing variant
+// forwards its status through. Only the result type differs per variant.
+const convergingStatusMethod = "ConvergingStatus"
+
 // VariantSpec describes how a variant wires into pkg/generic. Templates read it
 // instead of branching on the variant name.
 type VariantSpec struct {
@@ -32,7 +36,8 @@ type VariantSpec struct {
 	HasStatus bool
 	// StatusSetter is the builder method registering the status handler.
 	StatusSetter string
-	// StatusMethod is the resource method forwarding the status, always "ConvergingStatus".
+	// StatusMethod is the resource method forwarding the status, always
+	// convergingStatusMethod.
 	StatusMethod string
 	// StatusResult is the qualified status result type.
 	StatusResult string
@@ -72,7 +77,7 @@ func (v Variant) Spec() VariantSpec {
 			GenericResource:    "WorkloadResource",
 			HasStatus:          true,
 			StatusSetter:       "WithCustomConvergeStatus",
-			StatusMethod:       "ConvergingStatus",
+			StatusMethod:       convergingStatusMethod,
 			StatusResult:       "concepts.AliveStatusWithReason",
 			StatusHandler:      "DefaultConvergingStatusHandler",
 			StatusConstant:     "concepts.AliveConvergingStatusHealthy",
@@ -92,7 +97,7 @@ func (v Variant) Spec() VariantSpec {
 			GenericResource:    "TaskResource",
 			HasStatus:          true,
 			StatusSetter:       "WithCustomConvergeStatus",
-			StatusMethod:       "ConvergingStatus",
+			StatusMethod:       convergingStatusMethod,
 			StatusResult:       "concepts.CompletionStatusWithReason",
 			StatusHandler:      "DefaultConvergingStatusHandler",
 			StatusConstant:     "concepts.CompletionStatusCompleted",
@@ -110,7 +115,7 @@ func (v Variant) Spec() VariantSpec {
 			GenericResource:    "IntegrationResource",
 			HasStatus:          true,
 			StatusSetter:       "WithCustomOperationalStatus",
-			StatusMethod:       "ConvergingStatus",
+			StatusMethod:       convergingStatusMethod,
 			StatusResult:       "concepts.OperationalStatusWithReason",
 			StatusHandler:      "DefaultOperationalStatusHandler",
 			StatusConstant:     "concepts.OperationalStatusOperational",

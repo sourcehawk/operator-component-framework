@@ -225,20 +225,22 @@ func ExpandedStorageMutation(version string) pvc.Mutation {
     }
 }
 
-var boundVolumeName string
+boundVolume := concepts.NewData[string]("bound-volume")
 
-resource, err := pvc.NewBuilder(base).
+builder := pvc.NewBuilder(base).
     WithMutation(StorageRequestMutation(owner.Spec.Version)).
-    WithMutation(ExpandedStorageMutation(owner.Spec.Version)).
-    WithDataExtractor(func(p corev1.PersistentVolumeClaim) error {
-        boundVolumeName = p.Spec.VolumeName
-        return nil
-    }).
-    Build()
+    WithMutation(ExpandedStorageMutation(owner.Spec.Version))
+
+pvc.ExtractInto(builder, boundVolume, func(p corev1.PersistentVolumeClaim) (string, error) {
+    return p.Spec.VolumeName, nil
+})
+
+resource, err := builder.Build()
 ```
 
 On versions 2.0.0 and above, `ExpandedStorageMutation` fires and sets the storage request to 50Gi. On earlier versions,
-only the base 10Gi request is applied. After each reconcile cycle, the data extractor captures the bound volume name.
+only the base 10Gi request is applied. After each reconcile cycle, the declared extraction captures the bound volume
+name into the `bound-volume` cell.
 
 ## Guidance
 
@@ -249,8 +251,8 @@ invalid requests.
 **Prefer `WithCustomSuspendDeletionDecision` over deleting PVCs manually.** If you need PVCs to be cleaned up during
 suspension, register a deletion decision handler rather than deleting them in a mutation.
 
-**Use `WithDataExtractor` to read bound volume information.** The bound volume name and actual allocated capacity are
-server-assigned. Read them with a data extractor after reconciliation rather than caching them in mutation logic.
+**Use `ExtractInto` to read bound volume information.** The bound volume name and actual allocated capacity are
+server-assigned. Declare an extraction into a data cell rather than caching them in mutation logic.
 
 **Use string status values in conditions.** The operational status values that appear in conditions are the runtime
 strings `"Operational"`, `"OperationPending"`, and `"OperationFailing"`, not the Go constant identifiers.

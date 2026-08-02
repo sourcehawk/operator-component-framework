@@ -11,7 +11,7 @@ metadata.
 | **Operational**       | Reports `OperationPending` until the ingress controller assigns an address, then `Operational`       |
 | **Graceful**          | Reports `Degraded` until a load balancer IP or hostname is assigned, then `Healthy`                  |
 | **Suspendable**       | No-op by default. Ingress is left in place; backend returns 502/503 when the backing service is down |
-| **DataExtractable**   | Reads assigned load balancer addresses after each sync cycle via `WithDataExtractor`                 |
+| **DataExtractable**   | Reads assigned load balancer addresses after each sync cycle via `ExtractInto`                       |
 | **Mutation pipeline** | Typed editors for metadata and Ingress spec (rules, TLS, class name, default backend)                |
 
 See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface

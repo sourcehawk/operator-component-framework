@@ -236,6 +236,9 @@ message:
 `comp.Reconcile(ctx, recCtx)` runs the following steps on every call. They match the authoritative order in the
 `Reconcile` GoDoc.
 
+Every declared [data cell](#declared-data) is cleared before step 1 runs, so no value extracted during a previous
+reconcile can be observed during this one.
+
 1. **Feature gate check.** If a feature gate is set and disabled, all managed resources are deleted and the condition is
    set to `True/Disabled`. No further processing occurs. A gate evaluation error sets `FeatureGateError`.
 2. **Prerequisite check.** If prerequisites are registered and the initialization barrier is still active, all
@@ -246,8 +249,8 @@ message:
    remaining steps are skipped. Guards are not evaluated during suspension.
 4. **Resource reconciliation.** All non-delete resources are processed sequentially in registration order, managed or
    read-only alike. For each resource: its guard (if any) is evaluated and a blocked guard stops that resource and all
-   later ones; the resource is applied (managed) or fetched (read-only); its data extractors run immediately, making
-   extracted data available to subsequent resources' guards and mutations.
+   later ones; the resource is applied (managed) or fetched (read-only); its declared data extractions run immediately,
+   making the extracted values available to subsequent resources' data guards and mutations.
 5. **Status aggregation.** The converging status of every processed resource is collected, including any blocked-guard
    result.
 6. **Condition update.** A new component condition is derived from the aggregate resource status, the previous
@@ -257,7 +260,8 @@ message:
 
 ```mermaid
 flowchart TD
-    Start([Reconcile]) --> Gate{Feature gate set?}
+    Start([Reconcile]) --> Reset[Clear declared data cells]
+    Reset --> Gate{Feature gate set?}
     Gate -->|disabled| DelAll[Delete all resources] --> Disabled([True / Disabled])
     Gate -->|enabled or unset| Prereq{Barrier active<br/>and prereqs set?}
     Prereq -->|unmet| NotMet([False / PrerequisiteNotMet])
@@ -270,7 +274,7 @@ flowchart TD
     DelMarked --> End([Return; controller calls FlushStatus])
 ```
 
-A read-only resource registered before a managed one can extract data that feeds the managed resource's guard or
+A read-only resource registered before a managed one can extract data that feeds the managed resource's data guard or
 mutations within the same reconcile cycle. Read-only resources that implement `ObservationRecorder` have the fetched
 object recorded back onto them so later inspection sees live cluster state; resources built from `generic.BaseResource`
 do this automatically. Managed resources are applied with Server-Side Apply and receive a controller owner reference,
@@ -288,6 +292,25 @@ later ones, but a guard's outcome usually depends on cluster state and earlier e
 in a cluster-free render. `Preview` therefore returns the full desired set, including resources a given reconcile might
 skip behind a blocked guard, which keeps the snapshot deterministic and focused on baseline construction, mutation
 wiring, and registration order.
+
+No extraction runs during a preview either, so every [data cell](#declared-data) is unset. A mutation that calls `Get`
+degrades quietly and simply omits the enriched field. A mutation that calls `Require` returns an error wrapping
+`concepts.ErrDataNotExtracted`, which fails the whole preview. Tests that render such a resource must seed the cell
+first:
+
+```go
+comp, dbHost, err := BuildComponent(owner)
+if err != nil {
+    return err
+}
+dbHost.Set("postgres.default.svc") // stand in for the value a real reconcile would extract
+
+objs, err := comp.Preview()
+```
+
+Return the cells from your component assembly function so tests can reach them, as
+[`examples/extraction-and-guards`](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/extraction-and-guards)
+does.
 
 Each managed resource must implement [`concepts.Previewable`](primitives.md#lifecycle-interfaces) (`Preview()`). All
 built-in primitives satisfy it through `generic.BaseResource`. A custom resource must implement it to be previewable;
@@ -320,6 +343,9 @@ the names of registered mutations and the subset that fire at the version the co
 implements the same interface so version-matrix golden generation can introspect it. See
 [`concepts.MutationInspector`](primitives.md#lifecycle-interfaces) for the contract and the [Testing](testing.md) guide
 for how it drives version-matrix goldens.
+
+The data-flow counterpart is `concepts.DataInspector` (`DataTopology()`), which reports the declared flow of every data
+cell through the component without running any extraction. See [Inspecting the topology](#inspecting-the-topology).
 
 ### Cluster-scoped resources
 
@@ -515,63 +541,167 @@ them in a single write. Persisting after each component would race the component
 [Keep Controllers Thin](guidelines.md#keep-controllers-thin) and
 [One Component Per Logical Condition](guidelines.md#one-component-per-logical-condition).
 
-## Guards
+## Declared Data
 
-Guards let resources within a component express runtime dependencies on each other. A guard is a precondition function
-registered on a resource and evaluated before the resource is applied. If the guard returns `Blocked`, the resource and
-all resources registered after it are skipped for that reconcile cycle.
-
-Combined with per-resource data extraction, guards enable indirect dependency graphs: resource A is applied first, its
-data extractor populates a shared variable, and resource B's guard checks that variable before allowing B to proceed.
-
-### Registering a guard
-
-Guards are registered on the resource builder with `WithGuard`. The guard receives a copy of the resource object and
-returns a `concepts.GuardStatusWithReason`. The following example shows the full pattern: a first resource extracts a
-value after being applied, and a second resource guards against running before that value is available.
+Resources inside one component pass observed values to each other through **data cells**. A cell is created in the
+component assembly function, written by a declared extraction on an earlier resource, and read by later resources'
+guards and mutations during the same reconcile.
 
 ```go
-func buildBackendComponent(owner *v1alpha1.WebApp, endpoint *string) (*component.Component, error) {
-    // First resource: a config source. After it is applied, the data extractor
-    // reads a value from the live object into *endpoint.
-    configRes, err := static.NewBuilder(newBackendConfig(owner)).
-        WithDataExtractor(func(obj uns.Unstructured) error {
-            *endpoint = obj.Object["data"].(map[string]any)["endpoint"].(string)
-            return nil
-        }).
-        Build()
+dbHost := concepts.NewData[string]("db-host")
+```
+
+`concepts.Data[T]` is named, typed, and presence-aware, which is what separates "not extracted yet" from "extracted as
+the empty string".
+
+| Method                 | Returns                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| `Name() string`        | The diagnostic name, used in guard reasons, validation errors, and topology output |
+| `IsSet() bool`         | Whether the cell currently holds a value                                           |
+| `Get() (T, bool)`      | The value and its presence; the zero value of `T` when unset                       |
+| `Require() (T, error)` | The value, or an error wrapping `concepts.ErrDataNotExtracted` and naming the cell |
+
+There is deliberately no panicking accessor: reconciler code must degrade to conditions and requeues, never crash the
+manager. Cell identity is the pointer, not the name.
+
+`Set` and `Clear` are exported because the extraction runner and the reconcile-start reset live in other packages.
+Calling them from resource code bypasses topology validation and is unsupported. Seeding a cell in a test before
+[previewing](#previewing-desired-state) is the one intended manual use of `Set`.
+
+### Declaring a write
+
+Every primitive package exports an `ExtractInto` function that records "this resource produces this cell". It is a
+package-level function rather than a builder method because a Go method cannot introduce the value type parameter.
+
+```go
+configmap.ExtractInto(cmBuilder, dbHost, func(cm corev1.ConfigMap) (string, error) {
+    return cm.Data["db-host"], nil
+})
+```
+
+The function runs immediately after the resource is applied (managed) or fetched (read-only), and the framework stores
+its result in the cell and marks it present. If it returns an error, the reconcile fails with that error. Extracting
+several values from one object means several `ExtractInto` calls, one per cell.
+
+Custom resource wrappers expose the same shape by delegating to `generic.ExtractInto`; see the
+[custom resource guide](custom-resource.md#5-implement-the-builder).
+
+### Declaring a read
+
+Two builder methods record "this resource reads this cell", and both accept any number of cells:
+
+- `WithDataGuard(cells...)` blocks the resource until every listed cell is set. See [Guards](#guards).
+- `WithOptionalData(cells...)` does not gate. Use it when the resource proceeds either way and a mutation enriches the
+  object only when the value is there.
+
+Both modes are validated and both show up in the topology. The
+[Guidelines](guidelines.md#use-data-extraction-and-guards-for-intra-component-dependencies) page has the table of
+consumption modes and when to pick each.
+
+### Reset at the start of each reconcile
+
+`Reconcile` clears every declared cell before it does anything else. Cells created in the assembly function are already
+scoped to one reconcile; the reset is a hardening so that a cell which somehow outlives its assembly function still
+cannot leak a value from one pass into the next. Sharing a cell across components is unsupported, because both the reset
+and the validation below are per component.
+
+### Build-time validation
+
+`Build()` walks the resources in registration order and rejects a component whose data flow cannot work.
+
+Every cell a resource reads must have a producer registered **strictly earlier**. A producer never satisfies its own
+read, since extraction runs after mutations on the same resource:
+
+```text
+resource "v1/Secret/default/db-credentials" reads data "db-host" but no earlier resource produces it
+```
+
+No two distinct cells may share a name. Pointer identity is what the checks run on; the name check exists so diagnostics
+and topology output stay unambiguous:
+
+```text
+resource "v1/ConfigMap/default/app-config" in component "database" declares data "db-host", but a distinct cell already uses that name; data names must be unique within a component
+```
+
+Multiple resources may produce the same cell. That is allowed, and at runtime the last registered producer's extraction
+wins, because each one overwrites the cell as it runs.
+
+Only resources that actually reconcile participate. Declarations on resources registered with `Delete()`,
+`DeleteWhen()`, or `OrphanWhen()` never run an extraction and are not considered.
+
+### Inspecting the topology
+
+The built component satisfies `concepts.DataInspector`. `DataTopology()` returns one `concepts.DataEdge` per declared
+cell, in first-producer registration order, without running any extraction:
+
+```go
+for _, edge := range comp.DataTopology() {
+    fmt.Printf("%s: produced by %v, guarded by %v, optional for %v\n",
+        edge.Data, edge.Producers, edge.Guarded, edge.Optional)
+}
+```
+
+`Producers`, `Guarded`, and `Optional` hold resource identities in registration order. This is the data-flow counterpart
+of [`concepts.MutationInspector`](primitives.md#lifecycle-interfaces): nothing in the reconcile path calls it, and tests
+can assert a component's declared data flow the same way they assert its registered mutations.
+
+## Guards
+
+Guards let resources within a component express runtime dependencies on each other. A guard is a precondition evaluated
+before the resource is applied. If it reports `Blocked`, the resource and all resources registered after it are skipped
+for that reconcile cycle.
+
+There are two forms. A **data guard**, declared with `WithDataGuard(cells...)`, blocks until every listed
+[data cell](#declared-data) holds a value; the framework writes both the guard and its reason. A **custom guard**,
+registered with `WithGuard`, runs arbitrary logic against the resource object. A resource may use both: data guards are
+evaluated first, and the custom guard is consulted only once every guarded cell is set.
+
+### Blocking on declared data
+
+Reach for `WithDataGuard` whenever the precondition is "an earlier resource produced this value". The example below is
+the full pattern: a config source declares an extraction, and a consumer declares a guard and a mutation that read it.
+
+```go
+func buildBackendComponent(owner *v1alpha1.WebApp) (*component.Component, error) {
+    endpoint := concepts.NewData[string]("backend-endpoint")
+
+    // First resource: a config source. Once it is applied, the declared
+    // extraction reads a value out of the live object and into the cell.
+    configBuilder := static.NewBuilder(newBackendConfig(owner))
+    static.ExtractInto(configBuilder, endpoint, func(obj uns.Unstructured) (string, error) {
+        value, _, err := uns.NestedString(obj.Object, "data", "endpoint")
+        return value, err
+    })
+    configRes, err := configBuilder.Build()
     if err != nil {
         return nil, err
     }
 
-    // Second resource: a consumer that needs the extracted endpoint. Its guard
-    // blocks until *endpoint is populated earlier in this same reconcile cycle;
-    // the mutation then injects the value at Mutate() time.
-    consumerRes, err := static.NewBuilder(newBackendConsumer(owner)).
-        WithGuard(func(_ uns.Unstructured) (concepts.GuardStatusWithReason, error) {
-            if *endpoint == "" {
-                return concepts.GuardStatusWithReason{
-                    Status: concepts.GuardStatusBlocked,
-                    Reason: "waiting for backend endpoint",
-                }, nil
+    // Second resource: a consumer that needs the endpoint. The data guard blocks
+    // it until the cell is set earlier in this same reconcile cycle; the mutation
+    // then injects the value at Mutate() time.
+    consumerBuilder := static.NewBuilder(newBackendConsumer(owner))
+    consumerBuilder.WithDataGuard(endpoint)
+    consumerBuilder.WithMutation(unstruct.Mutation{
+        Name: "set-endpoint",
+        Mutate: func(m *unstruct.Mutator) error {
+            value, err := endpoint.Require()
+            if err != nil {
+                return err
             }
-            return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
-        }).
-        WithMutation(unstruct.Mutation{
-            Name: "set-endpoint",
-            Mutate: func(m *unstruct.Mutator) error {
-                m.EditContent(func(e *editors.UnstructuredContentEditor) error {
-                    return e.SetNestedString(*endpoint, "spec", "endpoint")
-                })
-                return nil
-            },
-        }).
-        Build()
+            m.EditContent(func(e *editors.UnstructuredContentEditor) error {
+                return e.SetNestedString(value, "spec", "endpoint")
+            })
+            return nil
+        },
+    })
+    consumerRes, err := consumerBuilder.Build()
     if err != nil {
         return nil, err
     }
 
-    // Registration order matters: the config source must be registered before the consumer.
+    // Registration order matters: the config source must be registered before the
+    // consumer, and Build() rejects the component if it is not.
     return component.NewComponentBuilder().
         WithName("backend").
         WithConditionType("BackendReady").
@@ -581,11 +711,36 @@ func buildBackendComponent(owner *v1alpha1.WebApp, endpoint *string) (*component
 }
 ```
 
-The guard receives the resource's object but need not use it. Guards that only check external state (closure variables
-populated by prior extractors) can ignore the parameter.
+The reason comes from the cells, so a blocked consumer reports `waiting for data "backend-endpoint"` without anyone
+writing that string, and it cannot drift when the dependency changes. Guarding on several cells names every missing one:
+`waiting for data "backend-endpoint", "api-token"`.
+
+### Registering a custom guard
+
+Use `WithGuard` for preconditions that are not "a value exists". The guard receives a copy of the resource object and
+returns a `concepts.GuardStatusWithReason`.
+
+```go
+res, err := deployment.NewBuilder(base).
+    WithGuard(func(_ appsv1.Deployment) (concepts.GuardStatusWithReason, error) {
+        if !owner.Spec.LicenseAccepted {
+            return concepts.GuardStatusWithReason{
+                Status: concepts.GuardStatusBlocked,
+                Reason: "waiting for the license terms to be accepted",
+            }, nil
+        }
+        return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
+    }).
+    Build()
+```
+
+The guard receives the resource's object but need not use it, as above. Passing nil to `WithGuard` clears any previously
+registered custom guard; it does not affect declared data guards.
 
 ### Guard behavior
 
+- Data guards are evaluated before the custom guard. If any guarded cell is unset, the resource is `Blocked` with the
+  generated reason and the custom guard is never called.
 - Guards are evaluated in registration order, before each resource is applied.
 - When a guard returns `Blocked`, the blocked resource contributes a `Blocked` status to the component condition
   regardless of its participation mode, and all resources after it are skipped entirely. This override exists because a
@@ -601,7 +756,7 @@ A blocked guard produces a condition like:
 type: BackendReady
 status: "False"
 reason: Blocked
-message: "waiting for backend endpoint"
+message: 'waiting for data "backend-endpoint"'
 ```
 
 The `Blocked` status is not sticky. It is self-reinforcing only because the guard re-evaluates on every reconcile; when

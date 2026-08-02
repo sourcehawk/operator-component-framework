@@ -237,18 +237,23 @@ was called.
 
 ## Data Extraction
 
-All four variants support data extraction. The extractor receives a value copy of the reconciled object after each sync
-cycle:
+All four variants support declared extraction through a package-level `ExtractInto`, which records that the resource
+produces the value of a data cell. The function receives a value copy of the reconciled object after each sync cycle:
 
 ```go
-builder.WithDataExtractor(func(obj uns.Unstructured) error {
-    ip, found, _ := uns.NestedString(obj.Object, "status", "atProvider", "ipAddress")
-    if found {
-        myComponent.ResourceIP = ip
-    }
-    return nil
+providerIP := concepts.NewData[string]("provider-ip")
+
+builder := static.NewBuilder(obj)
+static.ExtractInto(builder, providerIP, func(obj uns.Unstructured) (string, error) {
+    ip, _, err := uns.NestedString(obj.Object, "status", "atProvider", "ipAddress")
+    return ip, err
 })
 ```
+
+An absent field yields the zero value and the cell is still marked present, which a data guard treats as satisfied.
+Return an error from the function instead when a missing field should fail the reconcile and leave the cell unset.
+Resources registered later in the same component block on the cell with `WithDataGuard(providerIP)` or read it
+opportunistically with `WithOptionalData(providerIP)`. See [Declared Data](../component.md#declared-data).
 
 ## Suspension Handlers
 
@@ -287,7 +292,9 @@ obj.SetGroupVersionKind(schema.GroupVersionKind{
 obj.SetName("app-db")
 obj.SetNamespace(owner.Namespace)
 
-resource, err := integration.NewBuilder(obj).
+dbEndpoint := concepts.NewData[string]("db-endpoint")
+
+builder := integration.NewBuilder(obj).
     WithMutation(unstruct.Mutation{
         Name:    "connection-config",
         Feature: feature.NewVersionGate(owner.Spec.Version, nil),
@@ -311,13 +318,14 @@ resource, err := integration.NewBuilder(obj).
         default:
             return concepts.OperationalStatusWithReason{Status: concepts.OperationalStatusFailing, Reason: phase}, nil
         }
-    }).
-    WithDataExtractor(func(o uns.Unstructured) error {
-        endpoint, _, _ := uns.NestedString(o.Object, "status", "endpoint")
-        myComponent.DBEndpoint = endpoint
-        return nil
-    }).
-    Build()
+    })
+
+integration.ExtractInto(builder, dbEndpoint, func(o uns.Unstructured) (string, error) {
+    endpoint, _, err := uns.NestedString(o.Object, "status", "endpoint")
+    return endpoint, err
+})
+
+resource, err := builder.Build()
 ```
 
 ## Guidance

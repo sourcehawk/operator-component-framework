@@ -121,17 +121,23 @@ The pointed-to value is snapshotted at registration time, so later caller-side c
 
 ## Data Extraction
 
-`WithDataExtractor` runs a callback after successful reconciliation with a value copy of the reconciled ServiceAccount.
-Use it to surface generated fields to other resources:
+`serviceaccount.ExtractInto` declares that this ServiceAccount produces the value of a data cell, which is how you
+surface generated fields to other resources. The function receives a value copy of the reconciled ServiceAccount and
+runs immediately after each sync cycle:
 
 ```go
-resource, err := serviceaccount.NewBuilder(base).
-    WithDataExtractor(func(sa corev1.ServiceAccount) error {
-        sharedState.ServiceAccountName = sa.Name
-        return nil
-    }).
-    Build()
+saName := concepts.NewData[string]("app-service-account")
+
+builder := serviceaccount.NewBuilder(base)
+serviceaccount.ExtractInto(builder, saName, func(sa corev1.ServiceAccount) (string, error) {
+    return sa.Name, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(saName)` or read it
+opportunistically with `WithOptionalData(saName)`. See [Declared Data](../component.md#declared-data).
 
 ## Full Example
 

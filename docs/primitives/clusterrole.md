@@ -192,16 +192,22 @@ Pass `nil` to clear the aggregation rule. Within a single feature, the last `Set
 
 ## Data Extraction
 
-`WithDataExtractor` runs a callback after successful reconciliation with a value copy of the reconciled ClusterRole:
+`clusterrole.ExtractInto` declares that this ClusterRole produces the value of a data cell. The function receives a
+value copy of the reconciled ClusterRole and runs immediately after each sync cycle:
 
 ```go
-resource, err := clusterrole.NewBuilder(base).
-    WithDataExtractor(func(cr rbacv1.ClusterRole) error {
-        sharedState.ClusterRoleName = cr.Name
-        return nil
-    }).
-    Build()
+roleName := concepts.NewData[string]("viewer-cluster-role")
+
+builder := clusterrole.NewBuilder(base)
+clusterrole.ExtractInto(builder, roleName, func(cr rbacv1.ClusterRole) (string, error) {
+    return cr.Name, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(roleName)` or read it
+opportunistically with `WithOptionalData(roleName)`. See [Declared Data](../component.md#declared-data).
 
 ## Full Example
 

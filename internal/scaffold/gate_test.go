@@ -5,6 +5,9 @@ package scaffold_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -188,8 +191,17 @@ func runGoTestJSON(t *testing.T, dir string) ([]testEvent, string, error) {
 	decoder := json.NewDecoder(strings.NewReader(rawStdout))
 	for {
 		var ev testEvent
-		if decodeErr := decoder.Decode(&ev); decodeErr != nil {
+		decodeErr := decoder.Decode(&ev)
+		if errors.Is(decodeErr, io.EOF) {
 			break
+		}
+		if decodeErr != nil {
+			// Anything other than EOF means the event stream is truncated or
+			// corrupted. Report it rather than silently dropping the remaining
+			// events, which would surface later as a package that appears to
+			// have run no tests.
+			return events, rawStdout + stderr.String(),
+				errors.Join(runErr, fmt.Errorf("decode go test -json output: %w", decodeErr))
 		}
 		events = append(events, ev)
 	}

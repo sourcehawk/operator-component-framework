@@ -154,17 +154,23 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Data Extraction
 
-`WithDataExtractor` runs a callback after successful reconciliation with a value copy of the reconciled Role. Use it to
-surface the applied rules or metadata to other resources:
+`role.ExtractInto` declares that this Role produces the value of a data cell, which is how you surface the applied rules
+or metadata to other resources. The function receives a value copy of the reconciled Role and runs immediately after
+each sync cycle:
 
 ```go
-resource, err := role.NewBuilder(base).
-    WithDataExtractor(func(r rbacv1.Role) error {
-        sharedState.RoleName = r.Name
-        return nil
-    }).
-    Build()
+roleName := concepts.NewData[string]("app-role")
+
+builder := role.NewBuilder(base)
+role.ExtractInto(builder, roleName, func(r rbacv1.Role) (string, error) {
+    return r.Name, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(roleName)` or read it
+opportunistically with `WithOptionalData(roleName)`. See [Declared Data](../component.md#declared-data).
 
 ## Full Example
 

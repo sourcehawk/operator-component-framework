@@ -1,7 +1,6 @@
 package secret
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -110,33 +109,4 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 
 	got := obj.(*corev1.Secret)
 	assert.Equal(t, []byte("b"), got.Data["order"])
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	s := newValidSecret()
-
-	var extracted []byte
-	res, err := NewBuilder(s).
-		WithDataExtractor(func(c corev1.Secret) error {
-			extracted = c.Data["key"]
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, []byte("value"), extracted)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidSecret()).
-		WithDataExtractor(func(_ corev1.Secret) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

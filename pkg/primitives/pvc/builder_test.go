@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -173,49 +172,56 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.DeleteOnSuspendHandler)
 		assert.True(t, res.base.DeleteOnSuspendHandler(nil))
 	})
+}
 
-	t.Run("WithDataExtractor", func(t *testing.T) {
-		t.Parallel()
-		p := &corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-pvc",
-				Namespace: "test-ns",
-			},
-			Spec: corev1.PersistentVolumeClaimSpec{
-				Resources: corev1.VolumeResourceRequirements{
-					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse("10Gi"),
-					},
-				},
-			},
-		}
-		called := false
-		extractor := func(_ corev1.PersistentVolumeClaim) error {
-			called = true
-			return nil
-		}
-		res, err := NewBuilder(p).
-			WithDataExtractor(extractor).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 1)
-		err = res.base.DataExtractors[0](&corev1.PersistentVolumeClaim{})
-		require.NoError(t, err)
-		assert.True(t, called)
+func TestExtractIntoDeclaredExtraction(t *testing.T) {
+	t.Parallel()
+	cell := concepts.NewData[string]("team-label")
+	builder := NewBuilder(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "pvc", Namespace: "default", Labels: map[string]string{"team": "platform"}},
+	})
+	ExtractInto(builder, cell, func(o corev1.PersistentVolumeClaim) (string, error) {
+		return o.Labels["team"], nil
 	})
 
-	t.Run("WithDataExtractor nil", func(t *testing.T) {
-		t.Parallel()
-		p := &corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-pvc",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(p).
-			WithDataExtractor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 0)
-	})
+	res, err := builder.Build()
+	require.NoError(t, err)
+
+	produced := res.ProducedData()
+	require.Len(t, produced, 1)
+	assert.Equal(t, "team-label", produced[0].Name())
+
+	require.NoError(t, res.ExtractData())
+	v, ok := cell.Get()
+	assert.True(t, ok)
+	assert.Equal(t, "platform", v)
+}
+
+func TestWithDataGuardAndOptionalDataDeclarations(t *testing.T) {
+	t.Parallel()
+	guarded := concepts.NewData[string]("db-host")
+	optional := concepts.NewData[string]("db-port")
+	builder := NewBuilder(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "pvc", Namespace: "default"},
+	}).WithDataGuard(guarded).WithOptionalData(optional)
+
+	res, err := builder.Build()
+	require.NoError(t, err)
+
+	consumed := res.ConsumedData()
+	require.Len(t, consumed, 2)
+	assert.Equal(t, "db-host", consumed[0].Cell.Name())
+	assert.False(t, consumed[0].Optional)
+	assert.Equal(t, "db-port", consumed[1].Cell.Name())
+	assert.True(t, consumed[1].Optional)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.Equal(t, `waiting for data "db-host"`, status.Reason)
+
+	guarded.Set("postgres.default.svc")
+	status, err = res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
 }

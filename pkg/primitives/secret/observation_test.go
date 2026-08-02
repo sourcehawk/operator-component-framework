@@ -20,18 +20,18 @@ import (
 // check guards against silent regressions of issue #118.
 var _ concepts.ObservationRecorder = (*Resource)(nil)
 
-// TestReadOnlyExtractor_ObservesClusterState reproduces the user-reported
+// TestReadOnlyExtraction_ObservesClusterState reproduces the user-reported
 // scenario from issue #115 / #118 end-to-end against a real *Resource: build
 // the Resource via the public builder, fetch it through a fake client, hand
 // the fetched object to the framework's RecordObservation hook, run
-// ExtractData, and assert that the registered extractor sees the live cluster
+// ExtractData, and assert that the declared extraction sees the live cluster
 // data rather than the inert base used to construct the resource.
 //
 // The framework-side wiring is covered by pkg/component/read_test.go using
 // mock resources; this test exercises the same chain through a real primitive,
 // so a regression in either the wrapper's forwarding or the BaseResource
 // implementation is caught here.
-func TestReadOnlyExtractor_ObservesClusterState(t *testing.T) {
+func TestReadOnlyExtraction_ObservesClusterState(t *testing.T) {
 	ctx := t.Context()
 
 	scheme := runtime.NewScheme()
@@ -56,13 +56,12 @@ func TestReadOnlyExtractor_ObservesClusterState(t *testing.T) {
 		},
 	}
 
-	var captured []byte
-	res, err := NewBuilder(base).
-		WithDataExtractor(func(s corev1.Secret) error {
-			captured = s.Data["token"]
-			return nil
-		}).
-		Build()
+	cell := concepts.NewData[[]byte]("token")
+	builder := NewBuilder(base)
+	ExtractInto(builder, cell, func(s corev1.Secret) ([]byte, error) {
+		return s.Data["token"], nil
+	})
+	res, err := builder.Build()
 	require.NoError(t, err)
 
 	// Simulate the framework's read flow: deep-copy the desired base, fetch
@@ -74,6 +73,8 @@ func TestReadOnlyExtractor_ObservesClusterState(t *testing.T) {
 	require.NoError(t, res.RecordObservation(fetched))
 	require.NoError(t, res.ExtractData())
 
+	captured, ok := cell.Get()
+	require.True(t, ok)
 	assert.Equal(t, []byte("from-cluster"), captured,
-		"the extractor must see the cluster's Secret data, not the empty base")
+		"the declared extraction must see the cluster's Secret data, not the empty base")
 }

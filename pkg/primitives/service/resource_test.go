@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -167,33 +166,4 @@ func TestResource_SuspensionStatus(t *testing.T) {
 	status, err := res.SuspensionStatus()
 	require.NoError(t, err)
 	assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	svc := newValidService()
-
-	var extracted string
-	res, err := NewBuilder(svc).
-		WithDataExtractor(func(s corev1.Service) error {
-			extracted = s.Spec.Selector["app"]
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "test", extracted)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidService()).
-		WithDataExtractor(func(_ corev1.Service) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

@@ -112,6 +112,11 @@ type Component struct {
 	// component reconciles for the first time. Once the component passes through
 	// to normal reconciliation, prerequisites are never re-evaluated.
 	prerequisites []Prerequisite
+
+	// dataCells holds every declared data cell, in first-producer registration
+	// order, collected at Build time. Reconcile clears them all at the start of
+	// each pass so no extracted value leaks between reconciles.
+	dataCells []concepts.DataCell
 }
 
 // reconcileEntry pairs a resource with its configuration options.
@@ -254,7 +259,10 @@ func (c *Component) Resource(identity string) (Resource, bool) {
 // once per reconciliation, typically via defer so that conditions set on error
 // paths are still written.
 //
-// Reconciliation follows these steps:
+// Before any step runs, every declared data cell on the component is cleared,
+// so no value extracted during a previous reconcile leaks into this one.
+//
+// Reconciliation then follows these steps:
 //
 //  1. Feature gate check: If a feature gate is set and disabled, all resources
 //     managed by the component are deleted and the condition is set to
@@ -269,9 +277,15 @@ func (c *Component) Resource(identity string) (Resource, bool) {
 //     is permanently cleared and prerequisites are never re-evaluated.
 //
 //  3. Suspension check: If the component is marked as suspended, it performs
-//     suspension of all managed (non-read-only) resources. Guards are not evaluated.
-//     The status is updated to reflect suspension progress (PendingSuspension,
-//     Suspending, or Suspended), and then deletion resources are processed.
+//     suspension of all managed (non-read-only) resources. Guards are not evaluated,
+//     but declared data extraction runs for each managed resource in registration
+//     order, so mutations that require a cell produced by an earlier managed
+//     resource still succeed while suspended. Cells produced by read-only resources
+//     (which are not fetched during suspension) or by resources deleted on suspend
+//     remain absent; readers of those must use Get, not Require, if the component
+//     can be suspended. The status is updated to reflect suspension progress
+//     (PendingSuspension, Suspending, or Suspended), and then deletion resources
+//     are processed.
 //
 //  4. Resource reconciliation: All non-delete resources are processed sequentially
 //     in registration order, regardless of whether they are managed or read-only.
@@ -279,7 +293,7 @@ func (c *Component) Resource(identity string) (Resource, bool) {
 //     - Its guard (if any) is evaluated. A blocked guard stops processing of that
 //     resource and all subsequent resources.
 //     - The resource is either applied (managed) or fetched (read-only).
-//     - Its data extractors run immediately, making extracted data available to
+//     - Its declared data extractions run immediately, making extracted data available to
 //     subsequent resources' guards and mutations.
 //
 //  5. Status Aggregation: Collects converging status from all processed resources
@@ -299,6 +313,12 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		"condition", c.conditionType,
 	)
 	ctx = log.IntoContext(ctx, logger)
+
+	// Reset declared data cells before anything else runs so no extracted
+	// value leaks from a previous reconcile into this one.
+	for _, cell := range c.dataCells {
+		cell.Clear()
+	}
 
 	mapper := rec.Client.RESTMapper()
 	if mapper == nil {

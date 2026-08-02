@@ -125,6 +125,9 @@ func applyResource(
 //     often have implicit dependencies (e.g., a Deployment depending on a ConfigMap).
 //  3. Status Collection: For each resource that implements a lifecycle concept interface,
 //     its converging status is collected after the Apply operation.
+//  4. Data Extraction: Each resource's declared data extractions run immediately after it
+//     is applied, so a later resource's mutations can read what an earlier one produced.
+//     Guards are not evaluated on this path; the caller uses reconcileResources for that.
 //
 // Server-Side Apply behavior:
 //   - The resource's desired state is built via Object() + Mutate(), then patched into the
@@ -151,6 +154,15 @@ func applyResources(
 		}
 		if result != nil {
 			results = append(results, *result)
+		}
+
+		// Per-resource data extraction: run immediately after the apply so that
+		// extracted data is available to subsequent resources' mutations. This
+		// path is used during suspension, where a consumer's content mutations
+		// still run and may Require a cell an earlier managed producer fills.
+		// extractResourceData already wraps failures with the resource identity.
+		if err := extractResourceData([]Resource{entry.Resource}); err != nil {
+			return nil, err
 		}
 	}
 
@@ -232,10 +244,9 @@ func reconcileResources(
 
 		// Per-resource data extraction: run immediately after processing so that
 		// extracted data is available to subsequent resources' guards and mutations.
+		// extractResourceData already wraps failures with the resource identity.
 		if err := extractResourceData([]Resource{resource}); err != nil {
-			return nil, fmt.Errorf(
-				"failed to extract data from resource %s: %w", resource.Identity(), err,
-			)
+			return nil, err
 		}
 	}
 

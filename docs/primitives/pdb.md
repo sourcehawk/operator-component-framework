@@ -154,17 +154,23 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Data Extraction
 
-Use `WithDataExtractor` to read generated or server-populated fields after each sync cycle. The extractor receives a
-value copy of the reconciled PDB:
+`pdb.ExtractInto` declares that this PDB produces the value of a data cell, which is how you read generated or
+server-populated fields. The function receives a value copy of the reconciled PDB after each sync cycle:
 
 ```go
-pdb.NewBuilder(base).
-    WithDataExtractor(func(p policyv1.PodDisruptionBudget) error {
-        // p.Status.ExpectedPods is populated by the Kubernetes PDB controller
-        myComponent.ExpectedPods = p.Status.ExpectedPods
-        return nil
-    })
+expectedPods := concepts.NewData[int32]("expected-pods")
+
+builder := pdb.NewBuilder(base)
+pdb.ExtractInto(builder, expectedPods, func(p policyv1.PodDisruptionBudget) (int32, error) {
+    // Status.ExpectedPods is populated by the Kubernetes PDB controller.
+    return p.Status.ExpectedPods, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(expectedPods)` or read it
+opportunistically with `WithOptionalData(expectedPods)`. See [Declared Data](../component.md#declared-data).
 
 ## Full Example
 
@@ -237,5 +243,5 @@ protects. If a mutation renames pods or changes their labels, update the PDB sel
 **Register mutations in dependency order.** If mutation B relies on state set by mutation A, register A first.
 
 **Use data extraction to read `Status` fields.** Fields like `Status.ExpectedPods`, `Status.CurrentHealthy`, and
-`Status.DisruptionsAllowed` are populated by the Kubernetes PDB controller after reconciliation. Access them through
-`WithDataExtractor` rather than inspecting the baseline object.
+`Status.DisruptionsAllowed` are populated by the Kubernetes PDB controller after reconciliation. Declare an extraction
+into a data cell rather than inspecting the baseline object.

@@ -347,29 +347,3 @@ func TestResource_SuspensionStatus(t *testing.T) {
 		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
 	})
 }
-
-func TestResource_ExtractData(t *testing.T) {
-	ds := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec: appsv1.DaemonSetSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{Name: "web", Image: "nginx:latest"}},
-				},
-			},
-		},
-	}
-
-	extractedImage := ""
-	res, err := NewBuilder(ds).
-		WithDataExtractor(func(d appsv1.DaemonSet) error {
-			extractedImage = d.Spec.Template.Spec.Containers[0].Image
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.NoError(t, err)
-	assert.Equal(t, "nginx:latest", extractedImage)
-}

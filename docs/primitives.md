@@ -88,7 +88,7 @@ A primitive participates in status aggregation by implementing one or more lifec
 | `Completable`     | `Completed`, `TaskRunning`, `TaskPending`, `TaskFailing` | Jobs and task primitives                         |
 | `Operational`     | `Operational`, `OperationPending`, `OperationFailing`    | Services, Ingresses, CronJobs                    |
 | `Guardable`       | `Blocked`                                                | Resources with runtime preconditions             |
-| `DataExtractable` | _(no status, side-effecting)_                            | Resources that expose post-sync data             |
+| `DataExtractable` | _(no status, side-effecting)_                            | Resources that publish post-sync values to cells |
 
 !!! warning "`Guardable` reports only `Blocked`"
 
@@ -360,8 +360,8 @@ those.
 ## Usage Examples
 
 The example below builds a frontend `Deployment` for a hypothetical `WebApp` operator, adds a version-gated sidecar
-mutation, targets multiple containers, guards on a value extracted from an earlier resource, and registers the result
-with a component.
+mutation, targets multiple containers, guards on a value declared and extracted by an earlier resource, and registers
+the result with a component.
 
 === "Building and registering a primitive"
 
@@ -398,6 +398,10 @@ with a component.
         },
     }
 
+    // apiEndpoint is created by the component assembly function and written by
+    // an earlier resource's declared extraction.
+    apiEndpoint := concepts.NewData[string]("api-endpoint")
+
     res, err := deployment.NewBuilder(base).
         // 2. A mutation: add a sidecar, gated on a version constraint, and
         //    configure it. The sidecar is added then edited in one pass.
@@ -427,17 +431,10 @@ with a component.
                 return nil
             },
         }).
-        // 4. A guard: do not apply until a precondition (here, a value
-        //    extracted from an earlier resource) is satisfied.
-        WithGuard(func(_ appsv1.Deployment) (concepts.GuardStatusWithReason, error) {
-            if apiEndpoint == "" {
-                return concepts.GuardStatusWithReason{
-                    Status: concepts.GuardStatusBlocked,
-                    Reason: "waiting for backend endpoint",
-                }, nil
-            }
-            return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
-        }).
+        // 4. A data guard: do not apply until the earlier resource has extracted
+        //    the endpoint. The framework generates the blocked reason from the
+        //    cell name, here `waiting for data "api-endpoint"`.
+        WithDataGuard(apiEndpoint).
         Build()
     if err != nil {
         return nil, err
@@ -462,9 +459,9 @@ with a component.
 
 !!! note "Guards versus prerequisites"
 
-    A [guard](component.md#guards) handles a dependency **within** one component: an earlier resource extracts data after
-    it is applied, and a later resource's guard checks that data before proceeding. For a dependency **between**
-    components (the frontend cannot start until the backend is ready), use
+    A [guard](component.md#guards) handles a dependency **within** one component: an earlier resource extracts a value
+    into a [data cell](component.md#declared-data) after it is applied, and a later resource blocks on that cell before
+    proceeding. For a dependency **between** components (the frontend cannot start until the backend is ready), use
     [prerequisites](component.md#prerequisites) on the component builder instead. See
     [Guards](component.md#guards) for the full behavioral contract.
 

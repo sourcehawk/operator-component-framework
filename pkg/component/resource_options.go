@@ -67,7 +67,7 @@ type resourceOptions struct {
 	BlockOnAbsence bool
 	// IgnoreIfAbsent applies to read-only resources. When true, a NotFound response
 	// when reading the resource is silently ignored: the entry is skipped, no
-	// condition or observation is recorded, the data extractor is not invoked, and
+	// condition or observation is recorded, no declared data extraction is run, and
 	// reconciliation of subsequent resources continues. Last-known state is
 	// preserved across an absence. Mutually exclusive with BlockOnAbsence.
 	IgnoreIfAbsent bool

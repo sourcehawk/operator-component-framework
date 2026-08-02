@@ -1,8 +1,6 @@
 package resources
 
 import (
-	"fmt"
-
 	"github.com/sourcehawk/operator-component-framework/examples/extraction-and-guards/app"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -26,25 +24,24 @@ func BaseSecret(owner *app.ExampleApp) *corev1.Secret {
 	}
 }
 
-// NewSecretResource constructs a Secret for database credentials. A guard
-// blocks this resource until the db-host value has been extracted from the
-// preceding ConfigMap.
-func NewSecretResource(owner *app.ExampleApp, dbHost *string) (component.Resource, error) {
+// NewSecretResource constructs a Secret for database credentials. A declared
+// data guard blocks it until the db-host cell has been extracted from the
+// preceding ConfigMap, and a mutation copies the extracted host into the
+// Secret so the credentials and endpoint travel together.
+func NewSecretResource(owner *app.ExampleApp, dbHost *concepts.Data[string]) (component.Resource, error) {
 	builder := secret.NewBuilder(BaseSecret(owner))
 
-	builder.WithGuard(func(_ corev1.Secret) (concepts.GuardStatusWithReason, error) {
-		if *dbHost == "" {
-			fmt.Println("  Guard: blocked, waiting for db-host from ConfigMap")
-			return concepts.GuardStatusWithReason{
-				Status: concepts.GuardStatusBlocked,
-				Reason: "waiting for db-host to be extracted from ConfigMap",
-			}, nil
-		}
-
-		fmt.Printf("  Guard: unblocked, db-host is %q\n", *dbHost)
-		return concepts.GuardStatusWithReason{
-			Status: concepts.GuardStatusUnblocked,
-		}, nil
+	builder.WithDataGuard(dbHost)
+	builder.WithMutation(secret.Mutation{
+		Name: "db-host-entry",
+		Mutate: func(m *secret.Mutator) error {
+			host, err := dbHost.Require()
+			if err != nil {
+				return err
+			}
+			m.SetStringData("db-host", host)
+			return nil
+		},
 	})
 
 	return builder.Build()

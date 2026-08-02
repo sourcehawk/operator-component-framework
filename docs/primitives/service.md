@@ -154,19 +154,22 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Data Extraction
 
-Use `WithDataExtractor` to read values from the reconciled Service after each sync cycle, such as the assigned ClusterIP
-or LoadBalancer ingress:
+`service.ExtractInto` declares that this Service produces the value of a data cell, such as the assigned ClusterIP or
+LoadBalancer ingress. The function receives a value copy of the reconciled Service after each sync cycle:
 
 ```go
-var assignedIP string
+clusterIP := concepts.NewData[string]("backend-cluster-ip")
 
-resource, err := service.NewBuilder(base).
-    WithDataExtractor(func(svc corev1.Service) error {
-        assignedIP = svc.Spec.ClusterIP
-        return nil
-    }).
-    Build()
+builder := service.NewBuilder(base)
+service.ExtractInto(builder, clusterIP, func(svc corev1.Service) (string, error) {
+    return svc.Spec.ClusterIP, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(clusterIP)` or read it
+opportunistically with `WithOptionalData(clusterIP)`. See [Declared Data](../component.md#declared-data).
 
 ## Operational Status
 
@@ -278,16 +281,17 @@ func MetricsPortMutation(version string, enabled bool) service.Mutation {
     }
 }
 
-var assignedIP string
+clusterIP := concepts.NewData[string]("backend-cluster-ip")
 
-resource, err := service.NewBuilder(base).
+builder := service.NewBuilder(base).
     WithMutation(BaseServiceMutation(owner.Spec.Version)).
-    WithMutation(MetricsPortMutation(owner.Spec.Version, owner.Spec.EnableMetrics)).
-    WithDataExtractor(func(svc corev1.Service) error {
-        assignedIP = svc.Spec.ClusterIP
-        return nil
-    }).
-    Build()
+    WithMutation(MetricsPortMutation(owner.Spec.Version, owner.Spec.EnableMetrics))
+
+service.ExtractInto(builder, clusterIP, func(svc corev1.Service) (string, error) {
+    return svc.Spec.ClusterIP, nil
+})
+
+resource, err := builder.Build()
 ```
 
 When `EnableMetrics` is true, the Service exposes both the HTTP and metrics ports. When false, only HTTP is configured.
@@ -305,5 +309,5 @@ repeated calls with the same name produce the same result.
 **Leave Services in place during suspension.** The no-op default is correct for most Services. Only override
 `WithCustomSuspendDeletionDecision` when your use case requires explicitly removing the Service during suspension.
 
-**Use `WithDataExtractor` for assigned addresses.** ClusterIP and LoadBalancer ingress are server-assigned. Read them
-with a data extractor after reconciliation rather than caching them in mutation logic.
+**Use `ExtractInto` for assigned addresses.** ClusterIP and LoadBalancer ingress are server-assigned. Declare an
+extraction into a data cell rather than caching them in mutation logic.

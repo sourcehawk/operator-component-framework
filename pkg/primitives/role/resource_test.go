@@ -1,7 +1,6 @@
 package role
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -139,34 +138,4 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	require.Len(t, got.Rules, 2)
 	assert.Equal(t, []string{"secrets"}, got.Rules[0].Resources)
 	assert.Equal(t, []string{"configmaps"}, got.Rules[1].Resources)
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	role := newValidRole()
-
-	var extracted []rbacv1.PolicyRule
-	res, err := NewBuilder(role).
-		WithDataExtractor(func(r rbacv1.Role) error {
-			extracted = r.Rules
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	require.Len(t, extracted, 1)
-	assert.Equal(t, []string{"pods"}, extracted[0].Resources)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidRole()).
-		WithDataExtractor(func(_ rbacv1.Role) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

@@ -174,17 +174,23 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Data Extraction
 
-`WithDataExtractor` runs a callback after successful reconciliation with a value copy of the reconciled
-ClusterRoleBinding. Use it to surface binding metadata to other resources:
+`clusterrolebinding.ExtractInto` declares that this ClusterRoleBinding produces the value of a data cell, which is how
+you surface binding metadata to other resources. The function receives a value copy of the reconciled ClusterRoleBinding
+and runs immediately after each sync cycle:
 
 ```go
-resource, err := clusterrolebinding.NewBuilder(base).
-    WithDataExtractor(func(crb rbacv1.ClusterRoleBinding) error {
-        sharedState.ClusterRoleBindingName = crb.Name
-        return nil
-    }).
-    Build()
+bindingName := concepts.NewData[string]("viewer-cluster-role-binding")
+
+builder := clusterrolebinding.NewBuilder(base)
+clusterrolebinding.ExtractInto(builder, bindingName, func(crb rbacv1.ClusterRoleBinding) (string, error) {
+    return crb.Name, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(bindingName)` or read it
+opportunistically with `WithOptionalData(bindingName)`. See [Declared Data](../component.md#declared-data).
 
 ## Full Example
 

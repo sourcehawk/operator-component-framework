@@ -11,6 +11,7 @@ metadata:
 ---
 apiVersion: v1
 data:
+  db-host: cG9zdGdyZXMuZGVmYXVsdC5zdmM=
   password: Y2hhbmdlbWU=
   username: YXBwLXVzZXI=
 kind: Secret

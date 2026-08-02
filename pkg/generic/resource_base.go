@@ -2,6 +2,8 @@ package generic
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -13,7 +15,13 @@ type BaseResource[T client.Object, M FeatureMutator] struct {
 
 	IdentityFunc func(T) string
 
-	DataExtractors []func(T) error
+	// DataExtractions holds the declared data extractions recorded by
+	// ExtractInto, run by ExtractData after the resource is applied or fetched.
+	DataExtractions []DataExtraction[T]
+
+	// DataConsumptions holds the declared data reads recorded by WithDataGuard
+	// and WithOptionalData, in declaration order.
+	DataConsumptions []concepts.DataConsumption
 
 	NewMutator func(T) M
 	Mutations  []Mutation[M]
@@ -133,27 +141,50 @@ func (r *BaseResource[T, M]) Preview() (client.Object, error) {
 	return r.PreviewObject()
 }
 
-// ExtractData runs all registered data extractors against a deep copy of the reconciled object.
+// ExtractData runs all declared data extractions against a deep copy of the
+// reconciled object, storing each computed value in its cell.
 //
-// For managed resources the reconciled object is the desired state produced by Mutate.
-// For read-only resources it is the object most recently supplied via RecordObservation,
-// which the read flow invokes after fetching from the cluster.
+// For managed resources the reconciled object is the desired state produced by
+// Mutate. For read-only resources it is the object most recently supplied via
+// RecordObservation, which the read flow invokes after fetching from the
+// cluster. Extractions run on every reconcile pass.
 func (r *BaseResource[T, M]) ExtractData() error {
 	copyObj, ok := r.DesiredObject.DeepCopyObject().(T)
 	if !ok {
 		return fmt.Errorf("failed to deep copy object of type %T", r.DesiredObject)
 	}
 
-	for _, extractor := range r.DataExtractors {
-		if extractor == nil {
-			continue
-		}
-		if err := extractor(copyObj); err != nil {
-			return err
+	for _, extraction := range r.DataExtractions {
+		if err := extraction.Extract(copyObj); err != nil {
+			return fmt.Errorf("extract data %q: %w", extraction.Cell.Name(), err)
 		}
 	}
 
 	return nil
+}
+
+// ProducedData returns the cells this resource declares extractions into,
+// deduplicated by cell identity, in declaration order. It satisfies
+// concepts.DataProducer.
+func (r *BaseResource[T, M]) ProducedData() []concepts.DataCell {
+	seen := make(map[concepts.DataCell]struct{}, len(r.DataExtractions))
+	cells := make([]concepts.DataCell, 0, len(r.DataExtractions))
+	for _, extraction := range r.DataExtractions {
+		if _, ok := seen[extraction.Cell]; ok {
+			continue
+		}
+		seen[extraction.Cell] = struct{}{}
+		cells = append(cells, extraction.Cell)
+	}
+	return cells
+}
+
+// ConsumedData returns the resource's declared data reads in declaration
+// order. It satisfies concepts.DataConsumer.
+func (r *BaseResource[T, M]) ConsumedData() []concepts.DataConsumption {
+	out := make([]concepts.DataConsumption, len(r.DataConsumptions))
+	copy(out, r.DataConsumptions)
+	return out
 }
 
 // RecordObservation stores the supplied object as the resource's most recently observed
@@ -175,10 +206,31 @@ func (r *BaseResource[T, M]) RecordObservation(observed client.Object) error {
 	return nil
 }
 
-// GuardStatus evaluates the resource's guard precondition.
-// If no guard handler is configured, the resource is unconditionally unblocked.
-// The handler receives a deep copy of the desired object to prevent accidental mutations.
+// GuardStatus evaluates the resource's guard preconditions.
+//
+// Declared data guards (WithDataGuard) are evaluated first: if any guarded
+// cell is unset, the resource is Blocked with a framework-generated reason
+// naming the missing cells. Only when every guarded cell is set is the custom
+// guard handler (WithGuard) consulted. If neither is configured, the resource
+// is unconditionally unblocked.
+//
+// The custom handler receives a deep copy of the desired object to prevent
+// accidental mutations.
 func (r *BaseResource[T, M]) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	var missing []string
+	for _, consumption := range r.DataConsumptions {
+		if consumption.Optional || consumption.Cell.IsSet() {
+			continue
+		}
+		missing = append(missing, strconv.Quote(consumption.Cell.Name()))
+	}
+	if len(missing) > 0 {
+		return concepts.GuardStatusWithReason{
+			Status: concepts.GuardStatusBlocked,
+			Reason: "waiting for data " + strings.Join(missing, ", "),
+		}, nil
+	}
+
 	if r.GuardHandler == nil {
 		return concepts.GuardStatusWithReason{
 			Status: concepts.GuardStatusUnblocked,

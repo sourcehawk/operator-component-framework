@@ -1,9 +1,9 @@
 package rolebinding
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -102,52 +102,56 @@ func TestBuilder_WithMutation(t *testing.T) {
 	assert.Equal(t, "test-mutation", res.base.Mutations[0].Name)
 }
 
-func TestBuilder_WithDataExtractor(t *testing.T) {
+func TestExtractIntoDeclaredExtraction(t *testing.T) {
 	t.Parallel()
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+	cell := concepts.NewData[string]("team-label")
+	builder := NewBuilder(&rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "default", Labels: map[string]string{"team": "platform"}},
 		RoleRef:    testRoleRef(),
-	}
-	called := false
-	extractor := func(_ rbacv1.RoleBinding) error {
-		called = true
-		return nil
-	}
-	res, err := NewBuilder(rb).
-		WithDataExtractor(extractor).
-		Build()
+	})
+	ExtractInto(builder, cell, func(o rbacv1.RoleBinding) (string, error) {
+		return o.Labels["team"], nil
+	})
+
+	res, err := builder.Build()
 	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 1)
-	require.NoError(t, res.base.DataExtractors[0](&rbacv1.RoleBinding{}))
-	assert.True(t, called)
+
+	produced := res.ProducedData()
+	require.Len(t, produced, 1)
+	assert.Equal(t, "team-label", produced[0].Name())
+
+	require.NoError(t, res.ExtractData())
+	v, ok := cell.Get()
+	assert.True(t, ok)
+	assert.Equal(t, "platform", v)
 }
 
-func TestBuilder_WithDataExtractor_Nil(t *testing.T) {
+func TestWithDataGuardAndOptionalDataDeclarations(t *testing.T) {
 	t.Parallel()
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
+	guarded := concepts.NewData[string]("db-host")
+	optional := concepts.NewData[string]("db-port")
+	builder := NewBuilder(&rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "rb", Namespace: "default"},
 		RoleRef:    testRoleRef(),
-	}
-	res, err := NewBuilder(rb).
-		WithDataExtractor(nil).
-		Build()
-	require.NoError(t, err)
-	assert.Len(t, res.base.DataExtractors, 0)
-}
+	}).WithDataGuard(guarded).WithOptionalData(optional)
 
-func TestBuilder_WithDataExtractor_ErrorPropagated(t *testing.T) {
-	t.Parallel()
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-rb", Namespace: "test-ns"},
-		RoleRef:    testRoleRef(),
-	}
-	res, err := NewBuilder(rb).
-		WithDataExtractor(func(_ rbacv1.RoleBinding) error {
-			return errors.New("extractor error")
-		}).
-		Build()
+	res, err := builder.Build()
 	require.NoError(t, err)
-	err = res.base.DataExtractors[0](&rbacv1.RoleBinding{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extractor error")
+
+	consumed := res.ConsumedData()
+	require.Len(t, consumed, 2)
+	assert.Equal(t, "db-host", consumed[0].Cell.Name())
+	assert.False(t, consumed[0].Optional)
+	assert.Equal(t, "db-port", consumed[1].Cell.Name())
+	assert.True(t, consumed[1].Optional)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.Equal(t, `waiting for data "db-host"`, status.Reason)
+
+	guarded.Set("postgres.default.svc")
+	status, err = res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
 }

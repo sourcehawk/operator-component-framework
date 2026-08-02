@@ -18,18 +18,18 @@ package came from.
 `ocf scaffold wrapper` generates a custom-resource wrapper package for a Kubernetes kind the built-in primitives do not
 cover.
 
-| Flag               | Required | Default                                                    | Meaning                                                              |
-| ------------------ | -------- | ---------------------------------------------------------- | -------------------------------------------------------------------- |
-| `--type`           | yes      |                                                            | Wrapped Go type as `<import-path>.<TypeName>`, split on the last dot |
-| `--variant`        | yes      |                                                            | `static`, `workload`, `task`, or `integration`                       |
-| `--group`          | yes      |                                                            | API group. Pass `--group ""` for core API group types                |
-| `--version`        | no       | last import-path segment when it looks like an API version | API version                                                          |
-| `--kind`           | no       | the type name                                              | Kind used in the identity string                                     |
-| `--cluster-scoped` | no       | `false`                                                    | Omit the namespace segment and require an empty namespace            |
-| `--alias`          | no       | derived                                                    | Import alias for the wrapped type's package                          |
-| `--package`        | no       | lowercased kind                                            | Go package name of the generated package                             |
-| `--out`            | no       | `./<package>`                                              | Output directory                                                     |
-| `--force`          | no       | `false`                                                    | Write into a non-empty directory                                     |
+| Flag               | Required | Default                                                                        | Meaning                                                              |
+| ------------------ | -------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `--type`           | yes      |                                                                                | Wrapped Go type as `<import-path>.<TypeName>`, split on the last dot |
+| `--variant`        | yes      |                                                                                | `static`, `workload`, `task`, or `integration`                       |
+| `--group`          | yes      |                                                                                | API group. Pass `--group ""` for core API group types                |
+| `--version`        | no       | last import-path segment when it looks like an API version; required otherwise | API version                                                          |
+| `--kind`           | no       | the type name                                                                  | Kind used in the identity string                                     |
+| `--cluster-scoped` | no       | `false`                                                                        | Omit the namespace segment and require an empty namespace            |
+| `--alias`          | no       | derived                                                                        | Import alias for the wrapped type's package                          |
+| `--package`        | no       | lowercased kind                                                                | Go package name of the generated package                             |
+| `--out`            | no       | `./<package>`                                                                  | Output directory                                                     |
+| `--force`          | no       | `false`                                                                        | Write into a non-empty directory                                     |
 
 ### Choosing a variant
 
@@ -94,7 +94,13 @@ start replacing the scaffolded defaults.
 the last segment, lowercased and with every character that cannot appear in a Go identifier stripped. In the example
 above, `github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1` derives `certmanagerv1` from `certmanager` and
 `v1`. When the last segment does not look like an API version, the sanitized last segment is used alone. Pass `--alias`
-to override the derived name.
+to override the derived name. If no valid Go identifier can be derived at all, `ocf` exits with an error and `--alias`
+must be passed explicitly.
+
+`--version` defaults to the import path's last segment only when that segment looks like an API version: a lowercase `v`
+followed by digits, optionally followed by `alpha` or `beta` and more digits, for example `v1`, `v2beta1`, or
+`v1alpha3`. When the last segment does not match, for example an import path ending in `/api` or `/types`, `ocf` exits
+with `--version is required` and you must pass `--version` explicitly.
 
 `ocf` never edits your `go.mod`. It only prints a next-steps block telling you to run `go mod tidy` (or `go get`) if
 your module does not already depend on the wrapped type's package.

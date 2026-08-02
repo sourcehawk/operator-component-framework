@@ -83,6 +83,23 @@ go get github.com/sourcehawk/operator-component-framework
 
 Requires Go 1.25.6+ and [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) v0.22 or later.
 
+## Scaffolding
+
+Wrapping a CRD the built-in primitives do not cover is mechanical. The `ocf` CLI generates the whole wrapper package,
+compiling and tested, from one command:
+
+```bash
+go install github.com/sourcehawk/operator-component-framework/cmd/ocf@latest
+
+ocf scaffold wrapper \
+  --type github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1.Certificate \
+  --variant integration \
+  --group cert-manager.io
+```
+
+See the [CLI guide](https://sourcehawk.github.io/operator-component-framework/cli/) for the full flag set and what to
+replace in the generated code.
+
 ## Documentation
 
 Full documentation, including a step-by-step tutorial, is at
@@ -94,6 +111,7 @@ Full documentation, including a step-by-step tutorial, is at
 | [Component](https://sourcehawk.github.io/operator-component-framework/component/)              | Lifecycle, status model, grace periods, suspension, guards   |
 | [Primitives](https://sourcehawk.github.io/operator-component-framework/primitives/)            | Typed wrappers, the mutation system, editors, feature gating |
 | [Custom Resources](https://sourcehawk.github.io/operator-component-framework/custom-resource/) | Wrap your own CRDs with `pkg/generic`                        |
+| [CLI](https://sourcehawk.github.io/operator-component-framework/cli/)                          | Scaffold wrapper packages with `ocf scaffold wrapper`        |
 | [Guidelines](https://sourcehawk.github.io/operator-component-framework/guidelines/)            | Patterns for structuring operators well                      |
 | [Testing](https://sourcehawk.github.io/operator-component-framework/testing/)                  | Golden snapshots and version-matrix coverage                 |
 | [Compatibility](https://sourcehawk.github.io/operator-component-framework/compatibility/)      | Supported Kubernetes and controller-runtime versions         |

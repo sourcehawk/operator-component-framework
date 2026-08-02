@@ -109,6 +109,7 @@ nav:
       - Escape Hatch:
           - Unstructured: primitives/unstructured.md
   - Guides:
+      - CLI: cli.md
       - Guidelines: guidelines.md
       - Testing: testing.md
   - Reference:

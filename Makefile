@@ -1,5 +1,5 @@
 .PHONY: all
-all: fmt lint test test-examples build-examples
+all: fmt lint test test-scaffold test-examples build-examples
 
 ##@ General
 
@@ -146,6 +146,10 @@ lint-go:
 .PHONY: test
 test: setup-envtest
 	go test -v $(shell go list ./... | grep -v /examples/) -coverprofile cover.out
+
+.PHONY: test-scaffold
+test-scaffold: ## Scaffold every wrapper variant into a temp module and run its tests.
+	go test -tags scaffold -count=1 -run TestScaffoldedWrappers ./internal/scaffold/...
 
 .PHONY: build-examples
 build-examples: ## Build all example binaries.

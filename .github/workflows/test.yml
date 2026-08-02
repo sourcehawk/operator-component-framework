@@ -23,3 +23,6 @@ jobs:
         run: |
           go mod tidy
           make test
+
+      - name: Running Scaffold Gate
+        run: make test-scaffold

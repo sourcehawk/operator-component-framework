@@ -1,0 +1,116 @@
+// Package {{.Package}} provides a builder and resource for managing {{.Kind}} objects.
+package {{.Package}}
+
+import (
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+	{{.ImportAlias}} {{printf "%q" .ImportPath}}
+)
+
+// Mutation defines a mutation that is applied to the {{.Kind}} Mutator
+// only if its associated feature gate is enabled.
+type Mutation feature.Mutation[*Mutator]
+
+type featurePlan struct {
+	metadataEdits []func(*editors.ObjectMetaEditor) error
+	objectEdits   []func({{.PointerType}}) error
+}
+
+// Mutator is a high-level helper for modifying {{.Kind}} objects.
+//
+// It uses a "plan-and-apply" pattern: mutations are recorded first, then
+// applied to the {{.Kind}} in a single controlled pass when Apply() is called.
+//
+// The Mutator maintains feature boundaries: each feature's mutations are planned
+// together and applied in the order the features were registered.
+//
+// Apply order within each feature:
+//  1. Object metadata edits
+//  2. Object edits
+//
+// Mutator implements editors.ObjectMutator.
+type Mutator struct {
+	obj {{.PointerType}}
+
+	plans  []featurePlan
+	active *featurePlan
+}
+
+// NewMutator creates a new Mutator for the given {{.Kind}}.
+// The constructor creates the initial feature scope automatically.
+func NewMutator(obj {{.PointerType}}) *Mutator {
+	m := &Mutator{
+		obj: obj,
+	}
+	m.NextFeature()
+	return m
+}
+
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
+	m.plans = append(m.plans, featurePlan{})
+	m.active = &m.plans[len(m.plans)-1]
+}
+
+// EditObjectMetadata records a mutation for the {{.Kind}}'s own metadata.
+//
+// Metadata edits are applied before object edits within the same feature.
+// A nil edit function is ignored.
+func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
+	if edit == nil {
+		return
+	}
+	m.active.metadataEdits = append(m.active.metadataEdits, edit)
+}
+
+// Edit records a mutation for the {{.Kind}} itself.
+//
+// The edit function receives the object being reconciled and may set any field
+// on it. Wrap frequently used edits in named methods on the Mutator so feature
+// mutations stay self-documenting, the way the built-in primitives layer typed
+// helpers over their editors. Object edits are applied after metadata edits
+// within the same feature, in registration order.
+//
+// A nil edit function is ignored.
+func (m *Mutator) Edit(edit func({{.PointerType}}) error) {
+	if edit == nil {
+		return
+	}
+	m.active.objectEdits = append(m.active.objectEdits, edit)
+}
+
+// Apply executes all recorded mutation intents on the underlying {{.Kind}}.
+//
+// Execution order across all registered features:
+//
+//  1. Metadata edits (in registration order within each feature)
+//  2. Object edits (in registration order within each feature)
+//
+// Features are applied in the order they were registered. Later features observe
+// the {{.Kind}} as modified by all previous features.
+func (m *Mutator) Apply() error {
+	for _, plan := range m.plans {
+		// 1. Metadata edits
+		if len(plan.metadataEdits) > 0 {
+			editor := editors.NewObjectMetaEditor(&m.obj.ObjectMeta)
+			for _, edit := range plan.metadataEdits {
+				if err := edit(editor); err != nil {
+					return err
+				}
+			}
+		}
+
+		// 2. Object edits
+		for _, edit := range plan.objectEdits {
+			if err := edit(m.obj); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}

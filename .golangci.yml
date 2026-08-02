@@ -2,6 +2,8 @@ version: "2"
 
 run:
   timeout: 5m
+  build-tags:
+    - scaffold
 
 linters:
   default: none

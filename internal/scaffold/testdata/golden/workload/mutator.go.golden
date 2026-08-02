@@ -1,0 +1,116 @@
+// Package deployment provides a builder and resource for managing Deployment objects.
+package deployment
+
+import (
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+	appsv1 "k8s.io/api/apps/v1"
+)
+
+// Mutation defines a mutation that is applied to the Deployment Mutator
+// only if its associated feature gate is enabled.
+type Mutation feature.Mutation[*Mutator]
+
+type featurePlan struct {
+	metadataEdits []func(*editors.ObjectMetaEditor) error
+	objectEdits   []func(*appsv1.Deployment) error
+}
+
+// Mutator is a high-level helper for modifying Deployment objects.
+//
+// It uses a "plan-and-apply" pattern: mutations are recorded first, then
+// applied to the Deployment in a single controlled pass when Apply() is called.
+//
+// The Mutator maintains feature boundaries: each feature's mutations are planned
+// together and applied in the order the features were registered.
+//
+// Apply order within each feature:
+//  1. Object metadata edits
+//  2. Object edits
+//
+// Mutator implements editors.ObjectMutator.
+type Mutator struct {
+	obj *appsv1.Deployment
+
+	plans  []featurePlan
+	active *featurePlan
+}
+
+// NewMutator creates a new Mutator for the given Deployment.
+// The constructor creates the initial feature scope automatically.
+func NewMutator(obj *appsv1.Deployment) *Mutator {
+	m := &Mutator{
+		obj: obj,
+	}
+	m.NextFeature()
+	return m
+}
+
+// NextFeature advances to a new feature planning scope. All subsequent mutation
+// registrations will be grouped into this scope until NextFeature is called again.
+//
+// The first scope is created automatically by NewMutator. This method is called
+// by the framework between mutations to maintain per-feature ordering semantics.
+func (m *Mutator) NextFeature() {
+	m.plans = append(m.plans, featurePlan{})
+	m.active = &m.plans[len(m.plans)-1]
+}
+
+// EditObjectMetadata records a mutation for the Deployment's own metadata.
+//
+// Metadata edits are applied before object edits within the same feature.
+// A nil edit function is ignored.
+func (m *Mutator) EditObjectMetadata(edit func(*editors.ObjectMetaEditor) error) {
+	if edit == nil {
+		return
+	}
+	m.active.metadataEdits = append(m.active.metadataEdits, edit)
+}
+
+// Edit records a mutation for the Deployment itself.
+//
+// The edit function receives the object being reconciled and may set any field
+// on it. Wrap frequently used edits in named methods on the Mutator so feature
+// mutations stay self-documenting, the way the built-in primitives layer typed
+// helpers over their editors. Object edits are applied after metadata edits
+// within the same feature, in registration order.
+//
+// A nil edit function is ignored.
+func (m *Mutator) Edit(edit func(*appsv1.Deployment) error) {
+	if edit == nil {
+		return
+	}
+	m.active.objectEdits = append(m.active.objectEdits, edit)
+}
+
+// Apply executes all recorded mutation intents on the underlying Deployment.
+//
+// Execution order across all registered features:
+//
+//  1. Metadata edits (in registration order within each feature)
+//  2. Object edits (in registration order within each feature)
+//
+// Features are applied in the order they were registered. Later features observe
+// the Deployment as modified by all previous features.
+func (m *Mutator) Apply() error {
+	for _, plan := range m.plans {
+		// 1. Metadata edits
+		if len(plan.metadataEdits) > 0 {
+			editor := editors.NewObjectMetaEditor(&m.obj.ObjectMeta)
+			for _, edit := range plan.metadataEdits {
+				if err := edit(editor); err != nil {
+					return err
+				}
+			}
+		}
+
+		// 2. Object edits
+		for _, edit := range plan.objectEdits {
+			if err := edit(m.obj); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}

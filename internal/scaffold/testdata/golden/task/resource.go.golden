@@ -1,0 +1,146 @@
+package job
+
+import (
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
+	batchv1 "k8s.io/api/batch/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// Resource is a high-level abstraction for managing Job objects within a
+// controller's reconciliation loop.
+//
+// It implements the following component interfaces:
+//   - component.Resource: for basic identity and mutation behaviour.
+//   - concepts.Completable: for run-to-completion tracking.
+//   - concepts.Suspendable: for temporary deactivation.
+//   - concepts.Guardable: for conditional reconciliation based on a guard precondition.
+//   - concepts.DataExtractable: for exporting values after successful reconciliation.
+//   - concepts.DataProducer and concepts.DataConsumer: for declared data topology.
+//   - concepts.ObservationRecorder: for surfacing live cluster state to declared data extractions on read-only reconciliation.
+//   - concepts.Previewable: for cluster-free rendering of the desired state.
+//   - concepts.MutationInspector: for introspecting registered and firing mutations.
+type Resource struct {
+	base *generic.TaskResource[*batchv1.Job, *Mutator]
+}
+
+// Identity returns a unique identifier for the Job in the format
+// "batch/v1/Job/<namespace>/<name>".
+func (r *Resource) Identity() string {
+	return r.base.Identity()
+}
+
+// Object returns a deep copy of the underlying Job object.
+//
+// The returned object implements client.Object, making it compatible with
+// controller-runtime's Client for Create, Update, and Patch operations.
+func (r *Resource) Object() (client.Object, error) {
+	return r.base.Object()
+}
+
+// Mutate transforms the current state of the Job into the desired state.
+//
+// The mutation process follows this order:
+//  1. The desired base state is applied to the current object.
+//  2. Feature mutations: all registered feature-gated mutations are applied in order.
+//  3. Suspension: if the resource is suspending, the suspension mutation is applied.
+//
+// This method is invoked by the framework during the Update phase of reconciliation.
+func (r *Resource) Mutate(current client.Object) error {
+	return r.base.Mutate(current)
+}
+
+// ConvergingStatus evaluates whether the Job has reached its completed state.
+//
+// By default it uses DefaultConvergingStatusHandler. The return value carries a status and
+// a human-readable reason, both surfaced in the component's conditions.
+func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.CompletionStatusWithReason, error) {
+	return r.base.ConvergingStatus(op)
+}
+
+// DeleteOnSuspend determines whether the Job is deleted from the cluster when
+// the parent component is suspended.
+//
+// By default it uses DefaultDeleteOnSuspendHandler.
+func (r *Resource) DeleteOnSuspend() bool {
+	return r.base.DeleteOnSuspend()
+}
+
+// Suspend triggers the deactivation of the Job.
+//
+// It registers a mutation executed during the next Mutate call. By default it uses
+// DefaultSuspendMutationHandler.
+func (r *Resource) Suspend() error {
+	return r.base.Suspend()
+}
+
+// SuspensionStatus monitors the progress of the suspension process.
+//
+// By default it uses DefaultSuspensionStatusHandler. The framework uses it to decide
+// when the component has reached a fully suspended state.
+func (r *Resource) SuspensionStatus() (concepts.SuspensionStatusWithReason, error) {
+	return r.base.SuspensionStatus()
+}
+
+// GuardStatus evaluates the resource's guard precondition.
+// If no guard was registered, the resource is unconditionally unblocked.
+func (r *Resource) GuardStatus() (concepts.GuardStatusWithReason, error) {
+	return r.base.GuardStatus()
+}
+
+// ExtractData executes all declared data extractions against a deep copy of the
+// reconciled Job.
+//
+// This is called by the framework after successful reconciliation, allowing the
+// component to read generated or updated values from the Job.
+func (r *Resource) ExtractData() error {
+	return r.base.ExtractData()
+}
+
+// ProducedData returns the cells this Job declares extractions into.
+// It satisfies concepts.DataProducer for component topology validation and
+// introspection.
+func (r *Resource) ProducedData() []concepts.DataCell {
+	return r.base.ProducedData()
+}
+
+// ConsumedData returns the Job's declared data reads. It satisfies
+// concepts.DataConsumer for component topology validation and introspection.
+func (r *Resource) ConsumedData() []concepts.DataConsumption {
+	return r.base.ConsumedData()
+}
+
+// RecordObservation stores the supplied object as the resource's most recently
+// observed cluster state. The framework invokes this on read-only resources after
+// fetching them so that declared data extractions observe the live object rather
+// than the inert base used to construct the resource.
+func (r *Resource) RecordObservation(observed client.Object) error {
+	return r.base.RecordObservation(observed)
+}
+
+// Preview renders the Job as a client.Object with feature mutations applied,
+// without modifying the resource's internal state. It satisfies the component's
+// Previewable capability so the component can assemble a cluster-free preview.
+//
+// Suspension mutations are not applied; the preview reflects content state only.
+// Callers needing the concrete type can type-assert the returned object.
+func (r *Resource) Preview() (client.Object, error) {
+	return r.base.Preview()
+}
+
+// RegisteredMutations returns the deduplicated Names of every mutation registered on
+// the Job, independent of version. It satisfies concepts.MutationInspector so
+// the resource can be introspected for version-matrix golden generation.
+func (r *Resource) RegisteredMutations() []string {
+	return r.base.RegisteredMutations()
+}
+
+// FiringSet returns the Names of registered mutations whose gate is enabled for the
+// version the Job was built at. It satisfies concepts.MutationInspector.
+func (r *Resource) FiringSet() ([]string, error) {
+	return r.base.FiringSet()
+}
+
+var _ concepts.MutationInspector = (*Resource)(nil)
+var _ concepts.DataProducer = (*Resource)(nil)
+var _ concepts.DataConsumer = (*Resource)(nil)

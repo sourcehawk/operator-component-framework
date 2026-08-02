@@ -70,7 +70,7 @@ func deleteResources(
 
 		rec.Recorder.Eventf(
 			rec.Owner, v1.EventTypeNormal, "ResourceDeleted",
-			fmt.Sprintf("Resource %s deleted due to %s", resource.Identity(), cfg.reason),
+			"Resource %s deleted due to %s", resource.Identity(), cfg.reason,
 		)
 	}
 

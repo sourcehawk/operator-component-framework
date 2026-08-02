@@ -73,5 +73,5 @@ func RecordApplyOperationEvent(
 		message = fmt.Sprintf("%s (%s)", message, strings.Join(messageKeyValuePairs, ", "))
 	}
 
-	recorder.Eventf(owner, v1.EventTypeNormal, applyOperationReason(op, object), message)
+	recorder.Event(owner, v1.EventTypeNormal, applyOperationReason(op, object), message)
 }

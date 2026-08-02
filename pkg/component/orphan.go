@@ -67,7 +67,7 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 		}
 		if removed {
 			rec.Recorder.Eventf(rec.Owner, v1.EventTypeNormal, "ResourceOrphaned",
-				fmt.Sprintf("Resource %s orphaned: owner reference removed", resource.Identity()))
+				"Resource %s orphaned: owner reference removed", resource.Identity())
 		}
 	}
 	return errors.Join(errs...)

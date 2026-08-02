@@ -129,6 +129,19 @@ func Test_RecordResourceOperationEvent(t *testing.T) {
 			expectedMessage: "Updated XRoleNested 'test-xrole-nested'",
 		},
 		{
+			name: "key value pairs containing percent signs are not interpreted as format verbs",
+			object: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-deployment",
+				},
+			},
+			owner:           &appsv1.Deployment{},
+			operation:       concepts.ConvergingOperationUpdated,
+			keyValuePairs:   []string{"progress=50%", "template=%s"},
+			expectedReason:  "UpdatedDeployment",
+			expectedMessage: "Updated Deployment 'test-deployment' (progress=50%, template=%s)",
+		},
+		{
 			name: "unchanged object through custom operation",
 			object: &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{

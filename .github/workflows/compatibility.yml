@@ -18,11 +18,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - controller-runtime: "0.24"
+            cr-version: "v0.24.1"
+            k8s: "0.36"
+            k8s-version: "v0.36.1"
+            current: true
           - controller-runtime: "0.23"
             cr-version: "v0.23.3"
             k8s: "0.35"
             k8s-version: "v0.35.2"
-            current: true
+            current: false
           - controller-runtime: "0.22"
             cr-version: "v0.22.0"
             k8s: "0.34"

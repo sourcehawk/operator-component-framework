@@ -170,7 +170,7 @@ run-examples: ## Run all examples to verify they execute without error.
 ##@ E2E Testing
 
 KIND_CLUSTER_NAME ?= ocf-e2e
-KIND_IMAGE ?= kindest/node:v1.31.0
+KIND_IMAGE ?= kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
 
 .PHONY: kind-create
 kind-create: ## Create a kind cluster for E2E tests (skips if it already exists).

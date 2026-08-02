@@ -5,8 +5,12 @@ policy for tested combinations, and how compatibility is verified.
 
 ## Go Requirement
 
-The framework requires **Go 1.25 or later** (declared in `go.mod`). Consumer projects must use Go 1.25 or later to build
+The framework requires **Go 1.26 or later** (declared in `go.mod`). Consumer projects must use Go 1.26 or later to build
 against this framework. Go's toolchain version selection ensures the consumer project picks up the same minimum.
+
+This minimum is inherited from controller-runtime v0.24, which itself declares `go 1.26.0`. It applies to every
+combination in the matrix below, including the ones that pin older controller-runtime and `k8s.io/*` versions: pinning
+those dependencies down does not lower the framework's own Go requirement.
 
 ## Supported Versions
 
@@ -14,8 +18,9 @@ The framework is tested against the following version combinations:
 
 | Framework | controller-runtime | k8s.io/\* | Kubernetes | Go   | Status  |
 | --------- | ------------------ | --------- | ---------- | ---- | ------- |
-| main      | v0.23.x            | v0.35.x   | 1.35       | 1.25 | Primary |
-| main      | v0.22.x            | v0.34.x   | 1.34       | 1.25 | Tested  |
+| main      | v0.24.x            | v0.36.x   | 1.36       | 1.26 | Primary |
+| main      | v0.23.x            | v0.35.x   | 1.35       | 1.26 | Tested  |
+| main      | v0.22.x            | v0.34.x   | 1.34       | 1.26 | Tested  |
 
 **Primary** is the version combination used in `go.mod` and in the main CI pipeline.
 

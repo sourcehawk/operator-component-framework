@@ -131,13 +131,14 @@ satisfied right now).
 
 ## Compatibility
 
-The framework requires Go 1.25 or later, and its own supported dependency combinations are documented in
+The framework requires Go 1.26 or later, and its own supported dependency combinations are documented in
 `references/compatibility.md`:
 
 | Framework | controller-runtime | k8s.io/\* | Kubernetes | Go   | Status  |
 | --------- | ------------------ | --------- | ---------- | ---- | ------- |
-| main      | v0.23.x            | v0.35.x   | 1.35       | 1.25 | Primary |
-| main      | v0.22.x            | v0.34.x   | 1.34       | 1.25 | Tested  |
+| main      | v0.24.x            | v0.36.x   | 1.36       | 1.26 | Primary |
+| main      | v0.23.x            | v0.35.x   | 1.35       | 1.26 | Tested  |
+| main      | v0.22.x            | v0.34.x   | 1.34       | 1.26 | Tested  |
 
 **Primary** is tested on every commit and is what `go.mod` declares. **Tested** combinations are verified weekly and are
 fully supported: bugs reported against a Tested combination are treated as bugs in the framework, not as unsupported

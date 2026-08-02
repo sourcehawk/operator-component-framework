@@ -1,0 +1,264 @@
+package {{.Package}}
+
+import (
+	"fmt"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
+	{{.ImportAlias}} "{{.ImportPath}}"
+)
+{{- $spec := .Spec}}
+{{- if $spec.HasStatus}}
+
+// {{$spec.StatusHandler}} reports whether the {{.Kind}} has reached its {{$spec.StatusNoun}} state.
+//
+// This is a scaffolded default: it reports {{$spec.StatusValue}} unconditionally, without
+// reading the {{.Kind}}'s status. Replace it with logic that inspects the fields
+// your {{.Kind}} reports readiness through.
+func {{$spec.StatusHandler}}(
+	_ concepts.ConvergingOperation, _ {{.PointerType}},
+) ({{$spec.StatusResult}}, error) {
+	return {{$spec.StatusResult}}{
+		Status: {{$spec.StatusConstant}},
+		Reason: "Scaffolded default status, replace with {{.Kind}}-specific logic",
+	}, nil
+}
+{{- end}}
+{{- if $spec.HasGrace}}
+
+// DefaultGraceStatusHandler reports the {{.Kind}}'s health once the component's grace
+// period has expired.
+//
+// This is a scaffolded default: it reports Healthy unconditionally. Replace it with
+// logic that distinguishes Healthy, Degraded, and Down for your {{.Kind}}, and keep it
+// consistent with {{$spec.StatusHandler}}: grace must not report Healthy for a state
+// the status handler considers unhealthy.
+func DefaultGraceStatusHandler(_ {{.PointerType}}) (concepts.GraceStatusWithReason, error) {
+	return concepts.GraceStatusWithReason{
+		Status: concepts.GraceStatusHealthy,
+		Reason: "Scaffolded default grace status, replace with {{.Kind}}-specific logic",
+	}, nil
+}
+{{- end}}
+{{- if $spec.HasSuspension}}
+
+// DefaultSuspendMutationHandler is the mutation applied to the {{.Kind}} when the
+// component is suspended.
+//
+// This is a scaffolded default: it records no mutation, so the {{.Kind}} is left
+// untouched while suspended. Replace it with the change that stops your workload,
+// for example scaling to zero or setting a suspended field.
+func DefaultSuspendMutationHandler(_ *Mutator) error {
+	return nil
+}
+
+// DefaultSuspensionStatusHandler reports progress towards a suspended state.
+//
+// This is a scaffolded default: it reports Suspended immediately, matching the
+// no-op suspension mutation. Replace it alongside DefaultSuspendMutationHandler so
+// the reported progress reflects the mutation you apply.
+func DefaultSuspensionStatusHandler(_ {{.PointerType}}) (concepts.SuspensionStatusWithReason, error) {
+	return concepts.SuspensionStatusWithReason{
+		Status: concepts.SuspensionStatusSuspended,
+		Reason: "Scaffolded default suspension status, replace with {{.Kind}}-specific logic",
+	}, nil
+}
+
+// DefaultDeleteOnSuspendHandler decides whether the {{.Kind}} is deleted from the
+// cluster when the component is suspended.
+//
+// This is a scaffolded default: it returns false, so the {{.Kind}} is kept. Return
+// true if suspension should remove it instead.
+func DefaultDeleteOnSuspendHandler(_ {{.PointerType}}) bool {
+	return false
+}
+{{- end}}
+
+// Builder is a configuration helper for creating and customizing the {{.Kind}} Resource.
+//
+{{- if $spec.HasStatus}}
+// It provides a fluent API for registering mutations, status handlers and declared
+// data extractions. Build() validates the configuration and returns an initialized
+// Resource ready for use in a reconciliation loop.
+{{- else}}
+// It provides a fluent API for registering mutations and declared data extractions.
+// Build() validates the configuration and returns an initialized Resource ready for
+// use in a reconciliation loop.
+{{- end}}
+type Builder struct {
+	base *generic.{{$spec.GenericBuilder}}[{{.PointerType}}, *Mutator]
+}
+
+// NewBuilder initializes a new Builder with the provided {{.Kind}} object.
+//
+// The {{.Kind}} object serves as the desired base state. During reconciliation the
+// framework makes the cluster's state match this base state, modified by any
+// registered mutations.
+//
+{{- if .ClusterScoped}}
+// The provided {{.Kind}} must have a Name set, and must not have a Namespace because
+// the kind is cluster-scoped, which is validated during the Build() call.
+{{- else}}
+// The provided {{.Kind}} must have a Name set and a Namespace set, which is
+// validated during the Build() call.
+{{- end}}
+func NewBuilder(obj {{.PointerType}}) *Builder {
+	identityFunc := func(o {{.PointerType}}) string {
+		return fmt.Sprintf("{{.IdentityFormat}}", {{.IdentityArgs}})
+	}
+
+	base := generic.{{$spec.GenericConstructor}}[{{.PointerType}}, *Mutator](
+		obj,
+		identityFunc,
+		NewMutator,
+	)
+{{- if .ClusterScoped}}
+
+	base.MarkClusterScoped()
+{{- end}}
+{{- if $spec.HasStatus}}
+
+	base.
+		{{$spec.StatusSetter}}({{$spec.StatusHandler}}).
+{{- if $spec.HasGrace}}
+		WithCustomGraceStatus(DefaultGraceStatusHandler).
+{{- end}}
+		WithCustomSuspendStatus(DefaultSuspensionStatusHandler).
+		WithCustomSuspendMutation(DefaultSuspendMutationHandler).
+		WithCustomSuspendDeletionDecision(DefaultDeleteOnSuspendHandler)
+{{- end}}
+
+	return &Builder{
+		base: base,
+	}
+}
+
+// WithMutation registers one or more feature-based mutations for the {{.Kind}}.
+//
+// Mutations are applied sequentially during the Mutate() phase of reconciliation.
+// A mutation with a nil Feature is applied unconditionally; one with a non-nil
+// Feature is applied only when that feature is enabled.
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*Mutator](m))
+	}
+	return b
+}
+{{- if $spec.HasStatus}}
+
+// {{$spec.StatusSetter}} overrides the default logic for determining whether the
+// {{.Kind}} has reached its {{$spec.StatusNoun}} state.
+//
+// The default behavior uses {{$spec.StatusHandler}}, which reports {{$spec.StatusValue}}
+// unconditionally. This handler is required by the generic layer, so it is registered
+// in NewBuilder and can only be replaced, never cleared.
+func (b *Builder) {{$spec.StatusSetter}}(
+	handler func(concepts.ConvergingOperation, {{.PointerType}}) ({{$spec.StatusResult}}, error),
+) *Builder {
+	b.base.{{$spec.StatusSetter}}(handler)
+	return b
+}
+{{- end}}
+{{- if $spec.HasGrace}}
+
+// WithCustomGraceStatus overrides how the {{.Kind}} reports its health once the
+// component's grace period has expired.
+//
+// The default behavior uses DefaultGraceStatusHandler.
+func (b *Builder) WithCustomGraceStatus(
+	handler func({{.PointerType}}) (concepts.GraceStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomGraceStatus(handler)
+	return b
+}
+{{- end}}
+{{- if $spec.HasSuspension}}
+
+// WithCustomSuspendStatus overrides how the progress of suspension is reported.
+//
+// The default behavior uses DefaultSuspensionStatusHandler.
+func (b *Builder) WithCustomSuspendStatus(
+	handler func({{.PointerType}}) (concepts.SuspensionStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomSuspendStatus(handler)
+	return b
+}
+
+// WithCustomSuspendMutation defines how the {{.Kind}} is modified when the component
+// is suspended.
+//
+// The default behavior uses DefaultSuspendMutationHandler.
+func (b *Builder) WithCustomSuspendMutation(handler func(*Mutator) error) *Builder {
+	b.base.WithCustomSuspendMutation(handler)
+	return b
+}
+
+// WithCustomSuspendDeletionDecision overrides the decision of whether to delete the
+// {{.Kind}} when the component is suspended.
+//
+// The default behavior uses DefaultDeleteOnSuspendHandler.
+func (b *Builder) WithCustomSuspendDeletionDecision(handler func({{.PointerType}}) bool) *Builder {
+	b.base.WithCustomSuspendDeletionDecision(handler)
+	return b
+}
+{{- end}}
+
+// WithGuard registers a guard precondition that is evaluated before the {{.Kind}} is
+// applied during reconciliation. If the guard returns Blocked, the {{.Kind}} and all
+// resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(
+	guard func({{.QualifiedType}}) (concepts.GuardStatusWithReason, error),
+) *Builder {
+	b.base.WithGuard(generic.WrapGuard(guard))
+	return b
+}
+
+// WithDataGuard declares that the {{.Kind}} reads the given data cells and must not
+// be applied until every one of them is set. The framework generates the guard and
+// its reason (waiting for data "<name>"), and component Build validates that a
+// producer for each cell is registered earlier. Data guards are evaluated before any
+// custom guard registered with WithGuard.
+func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
+	b.base.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares that the {{.Kind}} reads the given data cells without
+// gating on them. Component Build still validates that a producer is registered
+// earlier, and the dependency stays visible to introspection. Consumers in this mode
+// use Get and skip quietly when a cell is absent.
+func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
+	b.base.WithOptionalData(cells...)
+	return b
+}
+
+// Build validates the configuration and returns the initialized Resource.
+//
+// It returns an error if:
+//   - No {{.Kind}} object was provided.
+//   - The {{.Kind}} is missing a Name.
+{{- if .ClusterScoped}}
+//   - The {{.Kind}} has a Namespace set, which a cluster-scoped kind must not have.
+{{- else}}
+//   - The {{.Kind}} is missing a Namespace.
+{{- end}}
+//   - Two registered mutations share a name.
+func (b *Builder) Build() (*Resource, error) {
+	genericRes, err := b.base.Build()
+	if err != nil {
+		return nil, err
+	}
+	return &Resource{base: genericRes}, nil
+}
+
+// ExtractInto declares that this {{.Kind}} produces the value of cell. fn computes
+// the value from a copy of the reconciled {{.Kind}}; the framework stores it in the
+// cell and marks it present, immediately after the {{.Kind}} is applied or fetched.
+// Extracting several values means several ExtractInto calls, one per cell. This is a
+// package-level function because Go methods cannot introduce the extra type
+// parameter V.
+func ExtractInto[V any](b *Builder, cell *concepts.Data[V], fn func({{.QualifiedType}}) (V, error)) {
+	generic.ExtractInto(&b.base.BaseBuilder, cell, generic.WrapExtraction(fn))
+}

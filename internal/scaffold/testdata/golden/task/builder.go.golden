@@ -1,0 +1,202 @@
+package job
+
+import (
+	"fmt"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/sourcehawk/operator-component-framework/pkg/feature"
+	"github.com/sourcehawk/operator-component-framework/pkg/generic"
+	batchv1 "k8s.io/api/batch/v1"
+)
+
+// DefaultConvergingStatusHandler reports whether the Job has reached its completed state.
+//
+// This is a scaffolded default: it reports Completed unconditionally, without
+// reading the Job's status. Replace it with logic that inspects the fields
+// your Job reports readiness through.
+func DefaultConvergingStatusHandler(
+	_ concepts.ConvergingOperation, _ *batchv1.Job,
+) (concepts.CompletionStatusWithReason, error) {
+	return concepts.CompletionStatusWithReason{
+		Status: concepts.CompletionStatusCompleted,
+		Reason: "Scaffolded default status, replace with Job-specific logic",
+	}, nil
+}
+
+// DefaultSuspendMutationHandler is the mutation applied to the Job when the
+// component is suspended.
+//
+// This is a scaffolded default: it records no mutation, so the Job is left
+// untouched while suspended. Replace it with the change that stops your workload,
+// for example scaling to zero or setting a suspended field.
+func DefaultSuspendMutationHandler(_ *Mutator) error {
+	return nil
+}
+
+// DefaultSuspensionStatusHandler reports progress towards a suspended state.
+//
+// This is a scaffolded default: it reports Suspended immediately, matching the
+// no-op suspension mutation. Replace it alongside DefaultSuspendMutationHandler so
+// the reported progress reflects the mutation you apply.
+func DefaultSuspensionStatusHandler(_ *batchv1.Job) (concepts.SuspensionStatusWithReason, error) {
+	return concepts.SuspensionStatusWithReason{
+		Status: concepts.SuspensionStatusSuspended,
+		Reason: "Scaffolded default suspension status, replace with Job-specific logic",
+	}, nil
+}
+
+// DefaultDeleteOnSuspendHandler decides whether the Job is deleted from the
+// cluster when the component is suspended.
+//
+// This is a scaffolded default: it returns false, so the Job is kept. Return
+// true if suspension should remove it instead.
+func DefaultDeleteOnSuspendHandler(_ *batchv1.Job) bool {
+	return false
+}
+
+// Builder is a configuration helper for creating and customizing the Job Resource.
+//
+// It provides a fluent API for registering mutations, status handlers and declared
+// data extractions. Build() validates the configuration and returns an initialized
+// Resource ready for use in a reconciliation loop.
+type Builder struct {
+	base *generic.TaskBuilder[*batchv1.Job, *Mutator]
+}
+
+// NewBuilder initializes a new Builder with the provided Job object.
+//
+// The Job object serves as the desired base state. During reconciliation the
+// framework makes the cluster's state match this base state, modified by any
+// registered mutations.
+//
+// The provided Job must have a Name set and a Namespace set, which is
+// validated during the Build() call.
+func NewBuilder(obj *batchv1.Job) *Builder {
+	identityFunc := func(o *batchv1.Job) string {
+		return fmt.Sprintf("batch/v1/Job/%s/%s", o.Namespace, o.Name)
+	}
+
+	base := generic.NewTaskBuilder[*batchv1.Job, *Mutator](
+		obj,
+		identityFunc,
+		NewMutator,
+	)
+
+	base.
+		WithCustomConvergeStatus(DefaultConvergingStatusHandler).
+		WithCustomSuspendStatus(DefaultSuspensionStatusHandler).
+		WithCustomSuspendMutation(DefaultSuspendMutationHandler).
+		WithCustomSuspendDeletionDecision(DefaultDeleteOnSuspendHandler)
+
+	return &Builder{
+		base: base,
+	}
+}
+
+// WithMutation registers one or more feature-based mutations for the Job.
+//
+// Mutations are applied sequentially during the Mutate() phase of reconciliation.
+// A mutation with a nil Feature is applied unconditionally; one with a non-nil
+// Feature is applied only when that feature is enabled.
+func (b *Builder) WithMutation(ms ...Mutation) *Builder {
+	for _, m := range ms {
+		b.base.WithMutation(feature.Mutation[*Mutator](m))
+	}
+	return b
+}
+
+// WithCustomConvergeStatus overrides the default logic for determining whether the
+// Job has reached its completed state.
+//
+// The default behavior uses DefaultConvergingStatusHandler, which reports Completed
+// unconditionally. This handler is required by the generic layer, so it is registered
+// in NewBuilder and can only be replaced, never cleared.
+func (b *Builder) WithCustomConvergeStatus(
+	handler func(concepts.ConvergingOperation, *batchv1.Job) (concepts.CompletionStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomConvergeStatus(handler)
+	return b
+}
+
+// WithCustomSuspendStatus overrides how the progress of suspension is reported.
+//
+// The default behavior uses DefaultSuspensionStatusHandler.
+func (b *Builder) WithCustomSuspendStatus(
+	handler func(*batchv1.Job) (concepts.SuspensionStatusWithReason, error),
+) *Builder {
+	b.base.WithCustomSuspendStatus(handler)
+	return b
+}
+
+// WithCustomSuspendMutation defines how the Job is modified when the component
+// is suspended.
+//
+// The default behavior uses DefaultSuspendMutationHandler.
+func (b *Builder) WithCustomSuspendMutation(handler func(*Mutator) error) *Builder {
+	b.base.WithCustomSuspendMutation(handler)
+	return b
+}
+
+// WithCustomSuspendDeletionDecision overrides the decision of whether to delete the
+// Job when the component is suspended.
+//
+// The default behavior uses DefaultDeleteOnSuspendHandler.
+func (b *Builder) WithCustomSuspendDeletionDecision(handler func(*batchv1.Job) bool) *Builder {
+	b.base.WithCustomSuspendDeletionDecision(handler)
+	return b
+}
+
+// WithGuard registers a guard precondition that is evaluated before the Job is
+// applied during reconciliation. If the guard returns Blocked, the Job and all
+// resources registered after it are skipped until the guard clears.
+// Passing nil clears any previously registered guard.
+func (b *Builder) WithGuard(
+	guard func(batchv1.Job) (concepts.GuardStatusWithReason, error),
+) *Builder {
+	b.base.WithGuard(generic.WrapGuard(guard))
+	return b
+}
+
+// WithDataGuard declares that the Job reads the given data cells and must not
+// be applied until every one of them is set. The framework generates the guard and
+// its reason (waiting for data "<name>"), and component Build validates that a
+// producer for each cell is registered earlier. Data guards are evaluated before any
+// custom guard registered with WithGuard.
+func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
+	b.base.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares that the Job reads the given data cells without
+// gating on them. Component Build still validates that a producer is registered
+// earlier, and the dependency stays visible to introspection. Consumers in this mode
+// use Get and skip quietly when a cell is absent.
+func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
+	b.base.WithOptionalData(cells...)
+	return b
+}
+
+// Build validates the configuration and returns the initialized Resource.
+//
+// It returns an error if:
+//   - No Job object was provided.
+//   - The Job is missing a Name.
+//   - The Job is missing a Namespace.
+//   - Two registered mutations share a name.
+func (b *Builder) Build() (*Resource, error) {
+	genericRes, err := b.base.Build()
+	if err != nil {
+		return nil, err
+	}
+	return &Resource{base: genericRes}, nil
+}
+
+// ExtractInto declares that this Job produces the value of cell. fn computes
+// the value from a copy of the reconciled Job; the framework stores it in the
+// cell and marks it present, immediately after the Job is applied or fetched.
+// Extracting several values means several ExtractInto calls, one per cell. This is a
+// package-level function because Go methods cannot introduce the extra type
+// parameter V.
+func ExtractInto[V any](b *Builder, cell *concepts.Data[V], fn func(batchv1.Job) (V, error)) {
+	generic.ExtractInto(&b.base.BaseBuilder, cell, generic.WrapExtraction(fn))
+}

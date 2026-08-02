@@ -176,7 +176,9 @@ func mustRunGo(t *testing.T, dir string, args ...string) string {
 func runGoTestJSON(t *testing.T, dir string) ([]testEvent, string, error) {
 	t.Helper()
 
-	cmd := exec.CommandContext(t.Context(), "go", "test", "-json", "./...")
+	// -count=1 disables the test cache so the gate genuinely executes the
+	// generated tests on every run rather than replaying a previous result.
+	cmd := exec.CommandContext(t.Context(), "go", "test", "-count=1", "-json", "./...")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod")
 

@@ -13,7 +13,7 @@ import (
 //
 // This is a scaffolded default: it reports Operational unconditionally, without
 // reading the Ingress's status. Replace it with logic that inspects the fields
-// your Ingress reports readiness through.
+// your Ingress reports its operational state through.
 func DefaultOperationalStatusHandler(
 	_ concepts.ConvergingOperation, _ *networkingv1.Ingress,
 ) (concepts.OperationalStatusWithReason, error) {
@@ -41,8 +41,8 @@ func DefaultGraceStatusHandler(_ *networkingv1.Ingress) (concepts.GraceStatusWit
 // component is suspended.
 //
 // This is a scaffolded default: it records no mutation, so the Ingress is left
-// untouched while suspended. Replace it with the change that stops your workload,
-// for example scaling to zero or setting a suspended field.
+// untouched while suspended. Replace it with the change that takes the Ingress
+// out of service, for example scaling to zero or setting a suspended field.
 func DefaultSuspendMutationHandler(_ *Mutator) error {
 	return nil
 }

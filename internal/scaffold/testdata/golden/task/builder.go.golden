@@ -13,7 +13,7 @@ import (
 //
 // This is a scaffolded default: it reports Completed unconditionally, without
 // reading the Job's status. Replace it with logic that inspects the fields
-// your Job reports readiness through.
+// your Job reports its completed state through.
 func DefaultConvergingStatusHandler(
 	_ concepts.ConvergingOperation, _ *batchv1.Job,
 ) (concepts.CompletionStatusWithReason, error) {
@@ -27,8 +27,8 @@ func DefaultConvergingStatusHandler(
 // component is suspended.
 //
 // This is a scaffolded default: it records no mutation, so the Job is left
-// untouched while suspended. Replace it with the change that stops your workload,
-// for example scaling to zero or setting a suspended field.
+// untouched while suspended. Replace it with the change that takes the Job
+// out of service, for example scaling to zero or setting a suspended field.
 func DefaultSuspendMutationHandler(_ *Mutator) error {
 	return nil
 }

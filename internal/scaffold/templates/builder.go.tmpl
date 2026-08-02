@@ -15,7 +15,7 @@ import (
 //
 // This is a scaffolded default: it reports {{$spec.StatusValue}} unconditionally, without
 // reading the {{.Kind}}'s status. Replace it with logic that inspects the fields
-// your {{.Kind}} reports readiness through.
+// your {{.Kind}} reports its {{$spec.StatusNoun}} state through.
 func {{$spec.StatusHandler}}(
 	_ concepts.ConvergingOperation, _ {{.PointerType}},
 ) ({{$spec.StatusResult}}, error) {
@@ -47,8 +47,8 @@ func DefaultGraceStatusHandler(_ {{.PointerType}}) (concepts.GraceStatusWithReas
 // component is suspended.
 //
 // This is a scaffolded default: it records no mutation, so the {{.Kind}} is left
-// untouched while suspended. Replace it with the change that stops your workload,
-// for example scaling to zero or setting a suspended field.
+// untouched while suspended. Replace it with the change that takes the {{.Kind}}
+// out of service, for example scaling to zero or setting a suspended field.
 func DefaultSuspendMutationHandler(_ *Mutator) error {
 	return nil
 }

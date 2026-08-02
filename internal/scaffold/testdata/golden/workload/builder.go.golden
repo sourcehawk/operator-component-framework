@@ -13,7 +13,7 @@ import (
 //
 // This is a scaffolded default: it reports Healthy unconditionally, without
 // reading the Deployment's status. Replace it with logic that inspects the fields
-// your Deployment reports readiness through.
+// your Deployment reports its converged state through.
 func DefaultConvergingStatusHandler(
 	_ concepts.ConvergingOperation, _ *appsv1.Deployment,
 ) (concepts.AliveStatusWithReason, error) {
@@ -41,8 +41,8 @@ func DefaultGraceStatusHandler(_ *appsv1.Deployment) (concepts.GraceStatusWithRe
 // component is suspended.
 //
 // This is a scaffolded default: it records no mutation, so the Deployment is left
-// untouched while suspended. Replace it with the change that stops your workload,
-// for example scaling to zero or setting a suspended field.
+// untouched while suspended. Replace it with the change that takes the Deployment
+// out of service, for example scaling to zero or setting a suspended field.
 func DefaultSuspendMutationHandler(_ *Mutator) error {
 	return nil
 }

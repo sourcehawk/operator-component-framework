@@ -1,0 +1,14 @@
+{
+  "name": "ocf",
+  "displayName": "Operator Component Framework",
+  "version": "0.1.0",
+  "description": "Skills, scaffolding commands, and a guidelines reviewer for building Kubernetes operators with the operator-component-framework.",
+  "author": {
+    "name": "sourcehawk",
+    "url": "https://github.com/sourcehawk"
+  },
+  "homepage": "https://sourcehawk.github.io/operator-component-framework/",
+  "repository": "https://github.com/sourcehawk/operator-component-framework",
+  "license": "Apache-2.0",
+  "keywords": ["kubernetes", "operator", "controller-runtime", "go"]
+}

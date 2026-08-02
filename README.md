@@ -100,6 +100,21 @@ Full documentation, including a step-by-step tutorial, is at
 
 The full Go API reference is on [pkg.go.dev](https://pkg.go.dev/github.com/sourcehawk/operator-component-framework).
 
+## Claude Code plugin
+
+The repository ships a [Claude Code](https://code.claude.com) plugin that teaches Claude the framework's concepts and
+idioms: skills for components, primitives, custom resource wrappers, operator structure, and testing, plus scaffolding
+commands and a guidelines reviewer.
+
+Install it from this repository:
+
+```
+/plugin marketplace add sourcehawk/operator-component-framework
+/plugin install ocf
+```
+
+Then use `/ocf:docs <topic>`, `/ocf:new-component`, `/ocf:new-wrapper`, and `/ocf:review` inside your operator project.
+
 ## Contributing
 
 Contributions are welcome. Open an issue to discuss significant changes before submitting a pull request. New code

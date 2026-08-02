@@ -1,0 +1,16 @@
+{
+  "name": "operator-component-framework",
+  "description": "Claude Code plugin marketplace for the operator-component-framework.",
+  "owner": {
+    "name": "sourcehawk",
+    "url": "https://github.com/sourcehawk"
+  },
+  "plugins": [
+    {
+      "name": "ocf",
+      "source": "./plugin",
+      "description": "Skills, scaffolding commands, and a guidelines reviewer for building Kubernetes operators with the operator-component-framework.",
+      "category": "development"
+    }
+  ]
+}

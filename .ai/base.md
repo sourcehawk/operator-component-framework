@@ -92,17 +92,28 @@ semantics. GoDoc is part of the public API surface.
 
 Update documentation in the **same response** as the code change — never leave them out of sync.
 
-| Code area changed                                 | Documentation to update   |
-| ------------------------------------------------- | ------------------------- |
-| Component builder, reconciliation, status model   | `docs/component.md`       |
-| Primitives, field application, editors, selectors | `docs/primitives.md`      |
-| Primitive implementations                         | `docs/primitives/*.md`    |
-| Generic building blocks, custom resource wrappers | `docs/custom-resource.md` |
-| Operator structuring patterns, best practices     | `docs/guidelines.md`      |
-| Any `pkg/` export visible in the quick start      | `README.md`               |
-| Examples                                          | `examples/*/README.md`    |
+| Code area changed                                 | Documentation to update                    |
+| ------------------------------------------------- | ------------------------------------------ |
+| Component builder, reconciliation, status model   | `docs/component.md`                        |
+| Primitives, field application, editors, selectors | `docs/primitives.md`                       |
+| Primitive implementations                         | `docs/primitives/*.md`                     |
+| Generic building blocks, custom resource wrappers | `docs/custom-resource.md`                  |
+| Operator structuring patterns, best practices     | `docs/guidelines.md`                       |
+| Any `pkg/` export visible in the quick start      | `README.md`                                |
+| Examples                                          | `examples/*/README.md`                     |
+| Any file under `docs/` synced into the plugin     | Run `make sync-plugin` (CI fails on drift) |
 
 When updating documentation in markdown files, make sure to run `make fmt-md` for consistent formatting.
+
+### Claude Code plugin
+
+The repository ships a Claude Code plugin for framework consumers in `plugin/` (marketplace manifest at
+`.claude-plugin/marketplace.json`). Two rules keep it accurate:
+
+- Files under `plugin/skills/*/references/` are generated copies of `docs/` files. Never edit them by hand; edit the
+  source under `docs/` and run `make sync-plugin`.
+- When changing public API behaviour, check whether the distilled guidance in the affected `plugin/skills/*/SKILL.md` is
+  stale and update it in the same response.
 
 ### Examples
 

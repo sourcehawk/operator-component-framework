@@ -24,6 +24,7 @@ Understand the intended design first:
 - `docs/primitives.md` — primitive categories, field application, mutation system, editors, selectors
 - `docs/primitives/*.md` — primitive implementations
 - `docs/custom-resource.md` — implementing custom resource wrappers using `pkg/generic`
+- `docs/cli.md` — the `ocf` scaffolding CLI, its flags, and what the generated code contains
 - `docs/guidelines.md` — best practices for structuring operators (desired state, one component per condition, etc.)
 - `docs/compatibility.md` — supported version combinations and compatibility policy
 
@@ -38,6 +39,7 @@ Verify the real API before using or documenting it. Key packages:
   plus the per-kind `LiftMutation` adapters
 - `pkg/generic/` — generic building blocks for custom resource wrappers (reconciliation, mutation sequencing,
   suspension, data extraction)
+- `cmd/ocf/` and `internal/scaffold/` — the `ocf` CLI and the wrapper templates it renders
 - `pkg/mutation/editors/` — available methods per editor type
 - `pkg/mutation/selectors/` — available container selectors
 - `pkg/feature/feature.go` — `NewVersionGate`, `Mutation[T]`
@@ -98,6 +100,7 @@ Update documentation in the **same response** as the code change — never leave
 | Primitives, field application, editors, selectors | `docs/primitives.md`      |
 | Primitive implementations                         | `docs/primitives/*.md`    |
 | Generic building blocks, custom resource wrappers | `docs/custom-resource.md` |
+| Wrapper templates, CLI flags                      | `docs/cli.md`             |
 | Operator structuring patterns, best practices     | `docs/guidelines.md`      |
 | Any `pkg/` export visible in the quick start      | `README.md`               |
 | Examples                                          | `examples/*/README.md`    |

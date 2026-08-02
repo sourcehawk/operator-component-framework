@@ -18,6 +18,12 @@ status, and mutator logic, exactly the way the built-in primitives do.
     (`pkg/primitives/unstructured/static`). See [Unstructured Primitives](primitives.md#unstructured-primitives). This
     guide covers the wrapper pattern, which gives you a typed, self-documenting API for a kind you manage often.
 
+!!! tip "Generate this pattern"
+
+    `ocf scaffold wrapper` generates the complete package this page describes: mutator, builder, resource, and tests,
+    compiling and passing on a fresh scaffold. See the [CLI](cli.md) guide. This page stays the reference for what the
+    generated code means and what to replace in it.
+
 ---
 
 ## Steps

@@ -161,6 +161,25 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 | `EnsureContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `EnsureArg(arg)`     |
 | `RemoveContainerArg(arg)`     | `EditContainers(AllContainers(), ...)` → `RemoveArg(arg)`     |
 
+## Data Extraction
+
+`pod.ExtractInto` declares that this Pod produces the value of a data cell, such as the address assigned to it by the
+cluster. The function receives a value copy of the reconciled Pod after each sync cycle:
+
+```go
+agentIP := concepts.NewData[string]("agent-pod-ip")
+
+builder := pod.NewBuilder(base)
+pod.ExtractInto(builder, agentIP, func(p corev1.Pod) (string, error) {
+    return p.Status.PodIP, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(agentIP)` or read it
+opportunistically with `WithOptionalData(agentIP)`. See [Declared Data](../component.md#declared-data).
+
 ## Suspension
 
 Pods cannot be paused. The default behavior deletes the pod when the component is suspended.

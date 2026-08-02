@@ -225,6 +225,26 @@ m.EnsureVolumeClaimTemplate(corev1.PersistentVolumeClaim{
     such updates. The mutator silently skips these operations on existing StatefulSets (identified by a non-empty
     `ResourceVersion`). Plan your storage layout before the first creation.
 
+## Data Extraction
+
+`statefulset.ExtractInto` declares that this StatefulSet produces the value of a data cell, such as the controller
+revision the pods are currently running. The function receives a value copy of the reconciled StatefulSet after each
+sync cycle:
+
+```go
+currentRevision := concepts.NewData[string]("db-current-revision")
+
+builder := statefulset.NewBuilder(base)
+statefulset.ExtractInto(builder, currentRevision, func(sts appsv1.StatefulSet) (string, error) {
+    return sts.Status.CurrentRevision, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(currentRevision)` or read it
+opportunistically with `WithOptionalData(currentRevision)`. See [Declared Data](../component.md#declared-data).
+
 ## Suspension
 
 When the component is suspended, the StatefulSet is scaled to zero replicas. The resource is not deleted.

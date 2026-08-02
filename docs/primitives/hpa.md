@@ -175,6 +175,26 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 })
 ```
 
+## Data Extraction
+
+`hpa.ExtractInto` declares that this HPA produces the value of a data cell, which is how the replica count the
+autoscaler settled on reaches the resources that consume it. The function receives a value copy of the reconciled HPA
+after each sync cycle:
+
+```go
+currentReplicas := concepts.NewData[int32]("backend-current-replicas")
+
+builder := hpa.NewBuilder(base)
+hpa.ExtractInto(builder, currentReplicas, func(h autoscalingv2.HorizontalPodAutoscaler) (int32, error) {
+    return h.Status.CurrentReplicas, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(currentReplicas)` or read it
+opportunistically with `WithOptionalData(currentReplicas)`. See [Declared Data](../component.md#declared-data).
+
 ## Operational Status
 
 The default handler inspects `Status.Conditions`:

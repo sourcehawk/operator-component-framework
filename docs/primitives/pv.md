@@ -150,6 +150,28 @@ The `Mutator` exposes convenience wrappers for the most common PV spec operation
 Use these for simple, single-operation mutations. Use `EditPVSpec` when you need multiple operations or raw access in a
 single edit block.
 
+## Data Extraction
+
+`pv.ExtractInto` declares that this PersistentVolume produces the value of a data cell, such as the claim the volume was
+bound to. The function receives a value copy of the reconciled PersistentVolume after each sync cycle:
+
+```go
+boundClaim := concepts.NewData[string]("data-volume-claim")
+
+builder := pv.NewBuilder(base)
+pv.ExtractInto(builder, boundClaim, func(v corev1.PersistentVolume) (string, error) {
+    if v.Spec.ClaimRef == nil {
+        return "", nil
+    }
+    return v.Spec.ClaimRef.Name, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(boundClaim)` or read it
+opportunistically with `WithOptionalData(boundClaim)`. See [Declared Data](../component.md#declared-data).
+
 ## Operational Status
 
 The PV primitive implements `concepts.Operational`. The default handler maps PV phase to operational status:

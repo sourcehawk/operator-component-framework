@@ -195,6 +195,25 @@ agent.WithMutation(daemonset.LiftMutation(sharedAuthMutation()))
 
 See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the full pattern.
 
+## Data Extraction
+
+`daemonset.ExtractInto` declares that this DaemonSet produces the value of a data cell, such as how many nodes are
+running a ready pod. The function receives a value copy of the reconciled DaemonSet after each sync cycle:
+
+```go
+readyNodes := concepts.NewData[int32]("collector-ready-nodes")
+
+builder := daemonset.NewBuilder(base)
+daemonset.ExtractInto(builder, readyNodes, func(ds appsv1.DaemonSet) (int32, error) {
+    return ds.Status.NumberReady, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(readyNodes)` or read it
+opportunistically with `WithOptionalData(readyNodes)`. See [Declared Data](../component.md#declared-data).
+
 ## Suspension
 
 DaemonSets have no replicas field, so there is no clean in-place pause mechanism. By default, the DaemonSet is

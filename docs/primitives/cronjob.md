@@ -194,6 +194,29 @@ a plain function accepting `*cronjob.Mutator` and call it directly.
 
 See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the cross-kind pattern.
 
+## Data Extraction
+
+`cronjob.ExtractInto` declares that this CronJob produces the value of a data cell, which is how scheduling state
+observed on the object reaches the resources that consume it. The function receives a value copy of the reconciled
+CronJob after each sync cycle:
+
+```go
+lastSchedule := concepts.NewData[metav1.Time]("cleanup-last-schedule")
+
+builder := cronjob.NewBuilder(base)
+cronjob.ExtractInto(builder, lastSchedule, func(cj batchv1.CronJob) (metav1.Time, error) {
+    if cj.Status.LastScheduleTime == nil {
+        return metav1.Time{}, nil
+    }
+    return *cj.Status.LastScheduleTime, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(lastSchedule)` or read it
+opportunistically with `WithOptionalData(lastSchedule)`. See [Declared Data](../component.md#declared-data).
+
 ## Operational Status
 
 `DefaultOperationalStatusHandler` always reports `Operational`. A CronJob is a passive scheduler: once it exists in the

@@ -201,6 +201,25 @@ frontend.WithMutation(deployment.LiftMutation(sharedAuthMutation()))
 
 See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the full pattern.
 
+## Data Extraction
+
+`deployment.ExtractInto` declares that this Deployment produces the value of a data cell, such as the revision the
+rollout landed on. The function receives a value copy of the reconciled Deployment after each sync cycle:
+
+```go
+revision := concepts.NewData[string]("web-server-revision")
+
+builder := deployment.NewBuilder(base)
+deployment.ExtractInto(builder, revision, func(d appsv1.Deployment) (string, error) {
+    return d.Annotations["deployment.kubernetes.io/revision"], nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(revision)` or read it
+opportunistically with `WithOptionalData(revision)`. See [Declared Data](../component.md#declared-data).
+
 ## Suspension
 
 When the component is suspended, the Deployment is scaled to zero replicas. The resource is not deleted.

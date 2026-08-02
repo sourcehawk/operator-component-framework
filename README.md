@@ -125,12 +125,37 @@ The repository ships a [Claude Code](https://code.claude.com) plugin that teache
 idioms: skills for components, primitives, custom resource wrappers, operator structure, and testing, plus scaffolding
 commands and a guidelines reviewer.
 
-Install it from this repository:
+Install it for yourself from this repository:
 
 ```
 /plugin marketplace add sourcehawk/operator-component-framework
 /plugin install ocf
 ```
+
+To share it with everyone working on your operator, commit the marketplace and plugin to your repository's
+`.claude/settings.json`. Pin `ref` to the framework tag your `go.mod` requires, so the skills Claude reads describe the
+same API you compile against:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "operator-component-framework": {
+      "source": {
+        "source": "github",
+        "repo": "sourcehawk/operator-component-framework",
+        "ref": "v0.18.0"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ocf@operator-component-framework": true
+  }
+}
+```
+
+Collaborators are prompted to install the plugin the first time they trust the project folder. Bump `ref` in the same
+commit that bumps the framework in `go.mod`; without it the marketplace tracks the default branch and the guidance can
+drift ahead of your pinned release.
 
 Then use `/ocf:docs <topic>`, `/ocf:new-component`, `/ocf:new-wrapper`, and `/ocf:review` inside your operator project.
 

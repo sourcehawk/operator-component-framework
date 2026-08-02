@@ -10,8 +10,7 @@ package concepts
 // All built-in primitives satisfy this through generic.BaseResource. User code
 // does not call ExtractData; declare extractions on the builder instead.
 type DataExtractable interface {
-	// ExtractData performs the data extraction from the resource's underlying Kubernetes object.
-	// The implementation should store the extracted data in its own fields or shared state
-	// where it can be accessed by the caller.
+	// ExtractData runs the resource's declared data extractions against its
+	// reconciled Kubernetes object, storing each computed value in its cell.
 	ExtractData() error
 }

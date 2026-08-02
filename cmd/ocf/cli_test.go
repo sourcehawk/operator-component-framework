@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"testing"
 
@@ -39,6 +41,134 @@ func TestVersionCommandPrintsVersion(t *testing.T) {
 	out, err := runCommand(t, "version")
 	require.NoError(t, err)
 	assert.NotEmpty(t, out)
+}
+
+func TestScaffoldWrapperGeneratesPackage(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "certificate")
+
+	out, err := runCommand(t,
+		"scaffold", "wrapper",
+		"--type", "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1.Certificate",
+		"--variant", "integration",
+		"--group", "cert-manager.io",
+		"--out", dir,
+	)
+	require.NoError(t, err)
+
+	for _, name := range []string{"builder.go", "builder_test.go", "mutator.go", "resource.go"} {
+		assert.FileExists(t, filepath.Join(dir, name))
+	}
+
+	assert.Contains(t, out, dir)
+	assert.Contains(t, out, "go mod tidy")
+	assert.Contains(t, out, "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1")
+}
+
+func TestScaffoldWrapperDefaultsOutToPackageDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	_, err := runCommand(t,
+		"scaffold", "wrapper",
+		"--type", "k8s.io/api/core/v1.ConfigMap",
+		"--variant", "static",
+		"--group", "",
+	)
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(dir, "configmap", "builder.go"))
+}
+
+func TestScaffoldWrapperRefusesNonEmptyDirectoryWithoutForce(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "keep.go"), []byte("package keep\n"), 0o644))
+
+	_, err := runCommand(t,
+		"scaffold", "wrapper",
+		"--type", "k8s.io/api/core/v1.ConfigMap",
+		"--variant", "static",
+		"--group", "",
+		"--out", dir,
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not empty")
+}
+
+func TestScaffoldWrapperForceWritesIntoNonEmptyDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "keep.go"), []byte("package keep\n"), 0o644))
+
+	_, err := runCommand(t,
+		"scaffold", "wrapper",
+		"--type", "k8s.io/api/core/v1.ConfigMap",
+		"--variant", "static",
+		"--group", "",
+		"--out", dir,
+		"--force",
+	)
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(dir, "builder.go"))
+	assert.FileExists(t, filepath.Join(dir, "keep.go"))
+}
+
+func TestScaffoldWrapperFlagErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		args        []string
+		expectedErr string
+	}{
+		{
+			name:        "missing type",
+			args:        []string{"scaffold", "wrapper", "--variant", "static", "--group", ""},
+			expectedErr: "--type is required",
+		},
+		{
+			name:        "missing variant",
+			args:        []string{"scaffold", "wrapper", "--type", "k8s.io/api/core/v1.ConfigMap", "--group", ""},
+			expectedErr: "--variant is required",
+		},
+		{
+			name: "unknown variant",
+			args: []string{
+				"scaffold", "wrapper",
+				"--type", "k8s.io/api/core/v1.ConfigMap", "--variant", "daemon", "--group", "",
+			},
+			expectedErr: "--variant must be one of static, workload, task, integration",
+		},
+		{
+			name:        "group not provided",
+			args:        []string{"scaffold", "wrapper", "--type", "k8s.io/api/core/v1.ConfigMap", "--variant", "static"},
+			expectedErr: "--group is required",
+		},
+		{
+			name: "version not derivable",
+			args: []string{
+				"scaffold", "wrapper",
+				"--type", "example.io/apis/messaging.Queue", "--variant", "static", "--group", "messaging.example.io",
+			},
+			expectedErr: "--version is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			args := make([]string, 0, len(tt.args)+2)
+			args = append(args, tt.args...)
+			args = append(args, "--out", filepath.Join(t.TempDir(), "pkg"))
+			_, err := runCommand(t, args...)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
 }
 
 func TestVersionFrom(t *testing.T) {

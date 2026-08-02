@@ -177,6 +177,28 @@ function accepting `*job.Mutator` and call it directly.
 
 See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the cross-kind pattern.
 
+## Data Extraction
+
+`job.ExtractInto` declares that this Job produces the value of a data cell, such as how many pods have run to
+completion. The function receives a value copy of the reconciled Job after each sync cycle:
+
+```go
+succeeded := concepts.NewData[int32]("migration-succeeded-pods")
+
+builder := job.NewBuilder(base)
+job.ExtractInto(builder, succeeded, func(j batchv1.Job) (int32, error) {
+    return j.Status.Succeeded, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(succeeded)` or read it
+opportunistically with `WithOptionalData(succeeded)`. See [Declared Data](../component.md#declared-data).
+
+Guard on the Job's `Completable` status when a later resource must wait for the Job to finish. Data cells carry values
+between resources; they are not a substitute for the completion condition.
+
 ## Suspension
 
 Jobs use the `Completable` lifecycle rather than `Alive`. The suspension behavior differs from Workload primitives:

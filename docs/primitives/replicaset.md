@@ -169,6 +169,25 @@ that accepts `*replicaset.Mutator` and call it directly from a `replicaset.Mutat
 
 See [workload-kind-agnostic mutations](../primitives.md#workload-kind-agnostic-mutations) for the cross-kind pattern.
 
+## Data Extraction
+
+`replicaset.ExtractInto` declares that this ReplicaSet produces the value of a data cell, such as the number of pods
+reporting ready. The function receives a value copy of the reconciled ReplicaSet after each sync cycle:
+
+```go
+readyReplicas := concepts.NewData[int32]("worker-ready-replicas")
+
+builder := replicaset.NewBuilder(base)
+replicaset.ExtractInto(builder, readyReplicas, func(rs appsv1.ReplicaSet) (int32, error) {
+    return rs.Status.ReadyReplicas, nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(readyReplicas)` or read it
+opportunistically with `WithOptionalData(readyReplicas)`. See [Declared Data](../component.md#declared-data).
+
 ## Suspension
 
 When the component is suspended, the ReplicaSet is scaled to zero replicas. The resource is not deleted.

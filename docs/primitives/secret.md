@@ -245,6 +245,28 @@ func ChecksumAnnotationMutation(version, secretHash string) deployment.Mutation 
 When the Secret mutations change (version upgrade, feature toggle), `DesiredHash` returns a different value on the same
 reconcile cycle, the pod template annotation changes, and Kubernetes triggers a rolling restart.
 
+## Data Extraction
+
+`secret.ExtractInto` declares that this Secret produces the value of a data cell, which is how a generated credential
+reaches the resources that need it. The function receives a value copy of the reconciled Secret after each sync cycle:
+
+```go
+password := concepts.NewData[string]("app-password")
+
+builder := secret.NewBuilder(base)
+secret.ExtractInto(builder, password, func(s corev1.Secret) (string, error) {
+    return string(s.Data["password"]), nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(password)` or read it
+opportunistically with `WithOptionalData(password)`. See [Declared Data](../component.md#declared-data).
+
+A cell extracted from a Secret holds the decoded plaintext for the rest of the reconcile. Use it to build the object you
+are applying, and keep it out of conditions, events, and log lines.
+
 ## Full Example
 
 ```go

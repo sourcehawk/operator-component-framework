@@ -266,6 +266,26 @@ func ChecksumAnnotationMutation(version, configHash string) deployment.Mutation 
 When the ConfigMap mutations change (version upgrade, feature toggle), `DesiredHash` returns a different value on the
 same reconcile cycle, the pod template annotation changes, and Kubernetes triggers a rolling restart.
 
+## Data Extraction
+
+`configmap.ExtractInto` declares that this ConfigMap produces the value of a data cell, which is how a rendered
+configuration value reaches the resources that consume it. The function receives a value copy of the reconciled
+ConfigMap after each sync cycle:
+
+```go
+bootstrapServers := concepts.NewData[string]("bootstrap-servers")
+
+builder := configmap.NewBuilder(base)
+configmap.ExtractInto(builder, bootstrapServers, func(cm corev1.ConfigMap) (string, error) {
+    return cm.Data["bootstrap-servers"], nil
+})
+
+resource, err := builder.Build()
+```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(bootstrapServers)` or read it
+opportunistically with `WithOptionalData(bootstrapServers)`. See [Declared Data](../component.md#declared-data).
+
 ## Full Example
 
 ```go

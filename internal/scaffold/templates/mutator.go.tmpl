@@ -4,7 +4,7 @@ package {{.Package}}
 import (
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
-	{{.ImportAlias}} "{{.ImportPath}}"
+	{{.ImportAlias}} {{printf "%q" .ImportPath}}
 )
 
 // Mutation defines a mutation that is applied to the {{.Kind}} Mutator

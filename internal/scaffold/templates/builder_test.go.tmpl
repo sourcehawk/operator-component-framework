@@ -7,7 +7,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	{{.ImportAlias}} "{{.ImportPath}}"
+	{{.ImportAlias}} {{printf "%q" .ImportPath}}
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

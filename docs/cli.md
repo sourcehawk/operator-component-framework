@@ -106,6 +106,12 @@ start replacing the scaffolded defaults.
 
 ## Import handling
 
+The import path in `--type` is everything before the last dot, and all four generated files import it, so `ocf` checks
+its shape before it writes anything. It must be slash-separated elements of ASCII letters, digits and `-`, `.`, `_`, `~`
+or `+`, with no empty element and no element starting or ending in a dot. Anything else is rejected with
+`--type import path "..." is not a valid Go import path` and no files are written. Only the shape is checked, so a
+well-formed path to a package that does not exist still passes here.
+
 `--alias` defaults to a derived name when omitted: the sanitized second-to-last import-path segment concatenated with
 the last segment, lowercased and with every character that cannot appear in a Go identifier stripped. In the example
 above, `github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1` derives `certmanagerv1` from `certmanager` and

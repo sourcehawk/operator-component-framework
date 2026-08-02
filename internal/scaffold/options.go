@@ -8,12 +8,13 @@ import (
 )
 
 var (
-	apiVersionPattern   = regexp.MustCompile(`^v[0-9]+((alpha|beta)[0-9]+)?$`)
-	apiGroupPattern     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
-	exportedNamePattern = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
-	packageNamePattern  = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	identifierPattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	nonAlphanumeric     = regexp.MustCompile(`[^a-z0-9]`)
+	apiVersionPattern        = regexp.MustCompile(`^v[0-9]+((alpha|beta)[0-9]+)?$`)
+	apiGroupPattern          = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+	importPathElementPattern = regexp.MustCompile(`^[A-Za-z0-9_~+.-]+$`)
+	exportedNamePattern      = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
+	packageNamePattern       = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	identifierPattern        = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	nonAlphanumeric          = regexp.MustCompile(`[^a-z0-9]`)
 )
 
 // Options are the raw flag values of "ocf scaffold wrapper" before validation
@@ -142,11 +143,38 @@ func splitType(value string) (importPath, typeName string, err error) {
 	if typeName == "" {
 		return "", "", fmt.Errorf("--type must be <import-path>.<TypeName>, got %q", value)
 	}
+	if !validImportPath(importPath) {
+		return "", "", fmt.Errorf("--type import path %q is not a valid Go import path", importPath)
+	}
 	if !exportedNamePattern.MatchString(typeName) {
 		return "", "", fmt.Errorf("--type type name %q must be an exported Go identifier", typeName)
 	}
 
 	return importPath, typeName, nil
+}
+
+// validImportPath reports whether path is shaped like a Go import path: one or
+// more slash-separated elements, each non-empty, built only from the ASCII
+// letters, digits and "-._~+" the module system allows in a path element, and
+// neither starting nor ending in a dot. It checks the shape of the path only,
+// the way the go command does before it ever looks at a module cache, so an
+// import path that no module provides still passes and only a path no package
+// could ever have is rejected.
+func validImportPath(path string) bool {
+	if path == "" {
+		return false
+	}
+
+	for _, element := range strings.Split(path, "/") {
+		if !importPathElementPattern.MatchString(element) {
+			return false
+		}
+		if strings.HasPrefix(element, ".") || strings.HasSuffix(element, ".") {
+			return false
+		}
+	}
+
+	return true
 }
 
 // parseVariant maps the flag value to a Variant.

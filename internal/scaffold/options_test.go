@@ -75,6 +75,17 @@ func TestResolveDerivations(t *testing.T) {
 			expectedKind:  "Queue",
 		},
 		{
+			name: "multi segment import path with dashes and underscores",
+			mutate: func(o *Options) {
+				o.Type = "example.io/go-api/v2_x/messaging/v1beta2.Queue"
+				o.Group = "messaging.example.io"
+			},
+			expectedAlias: "messagingv1beta2",
+			expectedVer:   "v1beta2",
+			expectedPkg:   "queue",
+			expectedKind:  "Queue",
+		},
+		{
 			name: "explicit overrides win",
 			mutate: func(o *Options) {
 				o.Alias = "customalias"
@@ -193,6 +204,22 @@ func TestResolveValidationErrors(t *testing.T) {
 			name:        "empty import path",
 			mutate:      func(o *Options) { o.Type = ".Deployment" },
 			expectedErr: "--type is missing an import path",
+		},
+		{
+			name:   "import path with a Go import break out",
+			mutate: func(o *Options) { o.Type = "k8s.io/api/core/v1\"\n\t_ \"os.ConfigMap" },
+			expectedErr: "--type import path \"k8s.io/api/core/v1\\\"\\n\\t_ \\\"os\" " +
+				"is not a valid Go import path",
+		},
+		{
+			name:        "import path with a space",
+			mutate:      func(o *Options) { o.Type = "k8s.io/api/core v1.ConfigMap" },
+			expectedErr: `--type import path "k8s.io/api/core v1" is not a valid Go import path`,
+		},
+		{
+			name:        "import path with an empty element",
+			mutate:      func(o *Options) { o.Type = "example.io//v1.Queue" },
+			expectedErr: `--type import path "example.io//v1" is not a valid Go import path`,
 		},
 		{
 			name:        "missing variant",

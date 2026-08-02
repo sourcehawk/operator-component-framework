@@ -3,7 +3,7 @@ package {{.Package}}
 import (
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/generic"
-	{{.ImportAlias}} "{{.ImportPath}}"
+	{{.ImportAlias}} {{printf "%q" .ImportPath}}
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 {{- $spec := .Spec}}

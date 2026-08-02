@@ -13,16 +13,8 @@ import (
 //
 // It implements the following component interfaces:
 //   - component.Resource: for basic identity and mutation behaviour.
-{{- if eq .Variant "workload"}}
-//   - concepts.Alive: for health and readiness tracking.
-//   - concepts.Graceful: for health reporting once the grace period expires.
-{{- end}}
-{{- if eq .Variant "task"}}
-//   - concepts.Completable: for run-to-completion tracking.
-{{- end}}
-{{- if eq .Variant "integration"}}
-//   - concepts.Operational: for external-dependency readiness tracking.
-//   - concepts.Graceful: for health reporting once the grace period expires.
+{{- range $spec.LifecycleInterfaces}}
+//   - {{.}}
 {{- end}}
 {{- if $spec.HasSuspension}}
 //   - concepts.Suspendable: for temporary deactivation.

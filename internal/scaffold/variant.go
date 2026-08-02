@@ -48,6 +48,11 @@ type VariantSpec struct {
 	HasGrace bool
 	// HasSuspension reports whether the variant supports suspension handlers.
 	HasSuspension bool
+	// LifecycleInterfaces are the variant-specific bullets of the generated
+	// Resource's "It implements the following component interfaces" list, each
+	// rendered as "<interface>: <what it is for>." after the component.Resource
+	// bullet and before the ones every variant shares.
+	LifecycleInterfaces []string
 }
 
 // Spec returns the generic-layer wiring for the variant. The zero VariantSpec is
@@ -75,6 +80,10 @@ func (v Variant) Spec() VariantSpec {
 			StatusNoun:         "converged",
 			HasGrace:           true,
 			HasSuspension:      true,
+			LifecycleInterfaces: []string{
+				"concepts.Alive: for health and readiness tracking.",
+				"concepts.Graceful: for health reporting once the grace period expires.",
+			},
 		}
 	case VariantTask:
 		return VariantSpec{
@@ -90,6 +99,9 @@ func (v Variant) Spec() VariantSpec {
 			StatusValue:        "Completed",
 			StatusNoun:         "completed",
 			HasSuspension:      true,
+			LifecycleInterfaces: []string{
+				"concepts.Completable: for run-to-completion tracking.",
+			},
 		}
 	case VariantIntegration:
 		return VariantSpec{
@@ -106,6 +118,10 @@ func (v Variant) Spec() VariantSpec {
 			StatusNoun:         "operational",
 			HasGrace:           true,
 			HasSuspension:      true,
+			LifecycleInterfaces: []string{
+				"concepts.Operational: for external-dependency readiness tracking.",
+				"concepts.Graceful: for health reporting once the grace period expires.",
+			},
 		}
 	default:
 		return VariantSpec{}

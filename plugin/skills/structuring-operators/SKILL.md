@@ -18,7 +18,8 @@ around.
 
 **Mutations are pure functions of the spec.** A mutation computes its output from the owner spec and other build-time
 inputs only. It never reads a resource's live cluster state to decide what to write, and within a single resource it
-runs before that resource's own data extractors, so a mutation cannot see data its own resource has not yet produced.
+runs before that resource's own declared extractions, so a mutation can never read a data cell its own resource
+produces.
 
 **One component per logical condition.** If users would ask "is the backend ready?" and "is the frontend ready?" as
 separate questions, those are separate components, each reporting its own condition. Combine resources into one
@@ -41,7 +42,7 @@ checklist: a change that violates one of these rules is a candidate for rework, 
 | Mutation Ordering and Container-Name Dependencies                   | Use broad, name-independent selectors for version-independent mutations, and register name-specific mutations before any compat mutation that renames the container.                                                                    |
 | Layer Mutations in a Fixed Order                                    | Order a resource's mutations into fixed layers: defaults, compat, overrides, then checksum, so the pipeline reads the same way for every workload.                                                                                      |
 | Prefer Reverting Compat Mutations Over Forward Mutations            | Keep the baseline at the latest shape and add a version-gated revert mutation per structural change, rather than holding the baseline at an old shape and patching it forward.                                                          |
-| Use Data Extraction and Guards for Intra-Component Dependencies     | When one resource depends on data from another resource in the same component, register a data extractor on the source and a guard on the dependent.                                                                                    |
+| Use Data Extraction and Guards for Intra-Component Dependencies     | When one resource depends on data from another resource in the same component, declare the flow with a data cell: `ExtractInto` on the producer, `WithDataGuard` or `WithOptionalData` on the consumer.                                 |
 | Use Prerequisites for Cross-Component Dependencies                  | When a component cannot start until another component is ready, attach a prerequisite instead of orchestrating ordering in the controller.                                                                                              |
 | Use Feature Gates for Optional Components and Conditional Resources | Gate optional pieces with a feature gate so the framework owns the full lifecycle, including deletion when the gate flips off.                                                                                                          |
 | Provide a User-Override Escape Hatch as the Last Mutation           | Apply a documented user-override mutation as the last value-producing mutation so the user's input shadows the operator's own defaults.                                                                                                 |
@@ -59,37 +60,35 @@ checklist: a change that violates one of these rules is a candidate for rework, 
 Three mechanisms cover three different dependency shapes. Picking the wrong one either breaks silently or forces
 orchestration logic back into the controller.
 
-**Data extraction and guards, for a dependency between two resources inside one component.** Register a data extractor
-on the source resource and a guard on the dependent resource. Do not assume a resource is ready just because it was
-registered earlier; the guard is what actually enforces the wait.
+**Declared data, for a dependency between two resources inside one component.** Create a typed cell with
+`concepts.NewData[T]`, declare the producer's extraction with the primitive package's `ExtractInto` function, and
+declare the consumer's read with `WithDataGuard` (block until present, read with `Require`) or `WithOptionalData` (never
+gates; a mutation reads with `Get` and enriches only when the value is there). `Build()` rejects the component unless a
+producer is registered strictly earlier than every reader, so a broken flow is a build error rather than a resource
+waiting forever.
 
 ```go
-var roleARN string
+roleARN := concepts.NewData[string]("cloud-role-arn")
 
-roleRes, _ := static.NewBuilder(cloudRole(app)).
-    WithDataExtractor(func(obj uns.Unstructured) error {
-        roleARN, _, _ = unstructured.NestedString(obj.Object, "status", "arn")
-        return nil
-    }).
-    Build()
+roleBuilder := static.NewBuilder(cloudRole(app))
+static.ExtractInto(roleBuilder, roleARN, func(obj uns.Unstructured) (string, error) {
+    arn, _, err := uns.NestedString(obj.Object, "status", "arn")
+    return arn, err
+})
+roleRes, _ := roleBuilder.Build()
 
-bucketRes, _ := static.NewBuilder(cloudBucket(app)).
-    WithGuard(func(_ uns.Unstructured) (concepts.GuardStatusWithReason, error) {
-        if roleARN == "" {
-            return concepts.GuardStatusWithReason{
-                Status: concepts.GuardStatusBlocked,
-                Reason: "waiting for cloud role ARN",
-            }, nil
-        }
-        return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
-    }).
-    Build()
+bucketBuilder := static.NewBuilder(cloudBucket(app))
+bucketBuilder.WithDataGuard(roleARN)
+bucketRes, _ := bucketBuilder.Build()
 ```
 
-The guard re-evaluates every reconcile, so it naturally re-blocks the dependent if its input disappears. Prefer stable
-values (a status field written once, a generated credential reference) over values that can transiently clear during
-normal operation (a replica count, a field cleared mid rolling-update), or the guard will re-block a resource that is
-already running.
+`WithDataGuard` generates both the guard and its reason (`waiting for data "cloud-role-arn"`), so the message users read
+cannot drift from the real dependency; keep `WithGuard` for preconditions that are not "a value exists". A data guard
+re-evaluates every reconcile, so it naturally re-blocks the dependent if its input disappears. Prefer stable values (a
+status field written once, a generated credential reference) over values that can transiently clear during normal
+operation (a replica count, a field cleared mid rolling-update), or the guard will re-block a resource that is already
+running. This applies doubly to optional enrichment, which has no guard to hold the resource back: a source value that
+comes and goes makes the enriched field flap.
 
 **Prerequisites, for a dependency between two components.** Attach `WithPrerequisite` on the dependent component rather
 than sequencing the components in the controller.

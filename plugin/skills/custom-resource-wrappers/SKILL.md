@@ -16,7 +16,7 @@ Reach for a custom resource wrapper only when the kind an operator manages has n
 defined by the project or a third-party operator, or a standard Kubernetes kind the built-in set does not yet wrap.
 
 `pkg/generic` supplies the building blocks (reconciliation mechanics, the plan-and-apply mutation flow, suspension,
-guards, data extraction). A wrapper package combines these with kind-specific identity, status, and mutator logic, the
+guards, declared data). A wrapper package combines these with kind-specific identity, status, and mutator logic, the
 same way the built-in primitives do.
 
 If the CRD has no typed Go struct, the unstructured static primitive (`pkg/primitives/unstructured/static`) manages it
@@ -48,9 +48,9 @@ interfaces:
 | **Task**        | `generic.TaskResource`        | `Completable`, `Suspendable`, `Guardable`, `DataExtractable`             | Run-to-completion workloads                            |
 | **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable` | External-dependency objects (services, ingresses)      |
 
-Every generic resource also satisfies `concepts.Previewable` and `concepts.MutationInspector`, regardless of category.
-The category choice determines which status handlers are required or meaningful (see Choosing a category below) and
-which methods the resource wrapper needs to implement.
+Every generic resource also satisfies `concepts.Previewable`, `concepts.MutationInspector`, `concepts.DataProducer`, and
+`concepts.DataConsumer`, regardless of category. The category choice determines which status handlers are required or
+meaningful (see Choosing a category below) and which methods the resource wrapper needs to implement.
 
 ### 2. Define the mutation type alias
 
@@ -174,8 +174,21 @@ func (b *Builder) Build() (*Resource, error) {
 }
 ```
 
-`generic.WrapGuard` and `generic.WrapExtractor` convert value-receiver callbacks (`func(T)`) into the pointer-receiver
-form the generic layer expects, so the wrapper's public API can take the kind by value.
+Expose declared data the same way every built-in primitive does: forward `WithDataGuard(cells ...concepts.DataCell)` and
+`WithOptionalData(cells ...concepts.DataCell)` to the base as fluent methods, and add a package-level `ExtractInto`
+function. It is package-level rather than a builder method because a Go method cannot introduce the value type
+parameter; `generic.ExtractInto` takes a `*generic.BaseBuilder`, which every category builder embeds.
+
+```go
+func ExtractInto[V any](
+    b *Builder, cell *concepts.Data[V], fn func(examplev1.MessageQueue) (V, error),
+) {
+    generic.ExtractInto(&b.base.BaseBuilder, cell, generic.WrapExtraction(fn))
+}
+```
+
+`generic.WrapGuard` and `generic.WrapExtraction` convert value-receiver callbacks (`func(T)` and `func(T) (V, error)`)
+into the pointer-receiver form the generic layer expects, so the wrapper's public API can take the kind by value.
 
 ### 6. Implement the resource
 
@@ -184,16 +197,20 @@ package exports a concrete type rather than a generic one; list the interfaces i
 `Preview()`: it satisfies `concepts.Previewable`, and without it `component.Preview()` fails at runtime and golden
 snapshot tests cannot render the resource. `RegisteredMutations()` and `FiringSet()` satisfy
 `concepts.MutationInspector` and are used by version-matrix golden generation to introspect which mutations a resource
-registers and which fire at a given version; delegate both to the base. Forward `RecordObservation` whenever the
-resource may be registered read-only with a data extractor, since the framework feeds the fetched cluster object back to
-the resource before extraction runs.
+registers and which fire at a given version; delegate both to the base. Forward `ProducedData` and `ConsumedData`
+whenever the resource can take part in a component's data flow, which is always if the builder exposes `ExtractInto`,
+`WithDataGuard`, or `WithOptionalData`: they satisfy `concepts.DataProducer` and `concepts.DataConsumer`, and without
+them build-time topology validation silently passes, `DataTopology()` omits the resource, and its cells are never
+cleared at the start of a reconcile. Forward `RecordObservation` whenever the resource may be registered read-only and
+declares an extraction, since the framework feeds the fetched cluster object back to the resource before extraction
+runs.
 
 Which methods to include depends on category: a Static resource needs only `Identity`, `Object`, `Mutate`,
-`GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, and `FiringSet`. Workload, Task,
-and Integration resources add `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, and `SuspensionStatus`; Workload and
-Integration additionally add `GraceStatus`. For Task and Integration resources, `ConvergingStatus` returns
-`concepts.CompletionStatusWithReason` and `concepts.OperationalStatusWithReason` respectively, matching the generic base
-method signature.
+`GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, and
+`FiringSet`. Workload, Task, and Integration resources add `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, and
+`SuspensionStatus`; Workload and Integration additionally add `GraceStatus`. For Task and Integration resources,
+`ConvergingStatus` returns `concepts.CompletionStatusWithReason` and `concepts.OperationalStatusWithReason`
+respectively, matching the generic base method signature.
 
 ### 7. Define feature mutations
 

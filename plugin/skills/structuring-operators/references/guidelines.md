@@ -59,9 +59,9 @@ A mutation must be a pure function of the owner spec and other inputs available 
 resource's live cluster state to decide what to write.
 
 This is not only a style preference. Within a single resource, the framework applies mutations **before** data
-extraction runs, so a closure variable populated by a data extractor on the same builder still holds its zero value when
-that resource's mutations execute. Data extraction passes observed state from an **earlier** resource to a **later**
-resource, not back into a resource's own mutations.
+extraction runs, so a cell written by an extraction declared on the same builder is still unset when that resource's
+mutations execute. Declared data passes observed state from an **earlier** resource to a **later** resource, not back
+into a resource's own mutations.
 
 A mutation that produces the same desired object for the same spec, regardless of what currently exists in the cluster,
 aligns with Server-Side Apply's declarative model and keeps reconciliation predictable. If you find yourself wanting to
@@ -202,9 +202,9 @@ status even while controller-runtime backs off.
 
 ## Resource Registration Order Is Execution Order
 
-Resources reconcile in the exact order they are registered with `WithResource`. This is deliberate: guards and data
-extractors depend on it, and reading the calls top to bottom tells you the order with no implicit dependency graph to
-reconstruct.
+Resources reconcile in the exact order they are registered with `WithResource`. This is deliberate: guards and declared
+data extraction depend on it, and reading the calls top to bottom tells you the order with no implicit dependency graph
+to reconstruct.
 
 Register dependencies before dependents. A common per-component bundle reads as a dependency chain: read-only Secret
 references first (with [`BlockOnAbsence`](component.md#resource-registration-options) so an absent Secret blocks the
@@ -222,8 +222,9 @@ comp, err := component.NewComponentBuilder().
     Build()
 ```
 
-The flip side is that reordering these calls can silently break data flow between extractors and guards, so document the
-dependency where one exists.
+Reordering these calls breaks data flow between a resource that extracts a value and a later one that reads it. Where
+the flow is declared with [data cells](#use-data-extraction-and-guards-for-intra-component-dependencies), `Build()`
+turns that mistake into a build error instead of a resource that waits forever.
 
 ## Mutation Ordering and Container-Name Dependencies
 
@@ -319,39 +320,79 @@ the number of supported versions, and each one deletes cleanly when its version 
 
 ## Use Data Extraction and Guards for Intra-Component Dependencies
 
-When one resource depends on data from another resource in the **same** component, register a data extractor on the
-source and a guard on the dependent. Do not assume a resource is ready just because it was registered earlier.
+When one resource depends on data from another resource in the **same** component, declare the flow rather than passing
+a variable between two closures. A `concepts.Data[T]` cell is a named, typed, presence-aware container: the producer
+declares an extraction into it, the consumer declares its read, and `Build()` verifies the two are registered in an
+order that can actually work.
 
 ```go
-var roleARN string
+func buildDatabaseComponent(app *v1alpha1.WebApp) (*component.Component, error) {
+    dbHost := concepts.NewData[string]("db-host")
 
-roleRes, _ := static.NewBuilder(cloudRole(app)).
-    WithDataExtractor(func(obj uns.Unstructured) error {
-        roleARN, _, _ = unstructured.NestedString(obj.Object, "status", "arn")
-        return nil
-    }).
-    Build()
+    cmBuilder := configmap.NewBuilder(dbConfig(app))
+    configmap.ExtractInto(cmBuilder, dbHost, func(cm corev1.ConfigMap) (string, error) {
+        return cm.Data["db-host"], nil
+    })
+    cmRes, err := cmBuilder.Build()
+    if err != nil {
+        return nil, err
+    }
 
-bucketRes, _ := static.NewBuilder(cloudBucket(app)).
-    WithGuard(func(_ uns.Unstructured) (concepts.GuardStatusWithReason, error) {
-        if roleARN == "" {
-            return concepts.GuardStatusWithReason{
-                Status: concepts.GuardStatusBlocked,
-                Reason: "waiting for cloud role ARN",
-            }, nil
-        }
-        return concepts.GuardStatusWithReason{Status: concepts.GuardStatusUnblocked}, nil
-    }).
-    Build()
+    secretBuilder := secret.NewBuilder(dbCredentials(app))
+    secretBuilder.WithDataGuard(dbHost)
+    secretBuilder.WithMutation(secret.Mutation{
+        Name: "db-host-entry",
+        Mutate: func(m *secret.Mutator) error {
+            host, err := dbHost.Require()
+            if err != nil {
+                return err
+            }
+            m.SetStringData("db-host", host)
+            return nil
+        },
+    })
+    secretRes, err := secretBuilder.Build()
+    if err != nil {
+        return nil, err
+    }
+
+    // The producer must be registered before the consumer; Build() enforces it.
+    return component.NewComponentBuilder().
+        WithName("database").
+        WithConditionType("DatabaseReady").
+        WithResource(cmRes).
+        WithResource(secretRes).
+        Build()
+}
 ```
 
-A blocked guard surfaces as a `Blocked` condition reason, so users can see why a resource has not been created yet. The
-shared variable is scoped to one reconcile, which prevents state leaking between reconciles.
+Create cells inside the component assembly function so they stay scoped to a single reconcile. The component clears
+every declared cell before it reconciles anything, so a cell that somehow outlives its assembly function still cannot
+carry a value into the next pass. Sharing one cell across components is unsupported: validation and reset are per
+component.
 
-Prefer **stable** values for guard conditions. A guard re-evaluates every reconcile, so a value that can transiently
-disappear (a replica count, a field cleared during a rolling update) will re-block a resource that is already running.
-Good targets appear once and persist: a status field written by a controller, a provisioned IP, a generated credential
-reference.
+`WithDataGuard` generates both the guard and its reason, so the message a user reads (`waiting for data "db-host"`)
+cannot drift from the real dependency. A blocked data guard surfaces as the same `Blocked` condition reason any guard
+produces. Keep `WithGuard` for preconditions that are not "a value exists", such as a status phase reaching a specific
+value.
+
+Three consumption modes cover the useful cases:
+
+| Mode                       | Declaration        | Accessor  | Behavior when absent                              |
+| -------------------------- | ------------------ | --------- | ------------------------------------------------- |
+| Block until present        | `WithDataGuard`    | `Require` | Resource waits, the condition explains why        |
+| Proceed, enrich when ready | `WithOptionalData` | `Get`     | Mutation skips; the field appears on a later pass |
+| Proceed, fail loudly       | `WithOptionalData` | `Require` | Mutation errors, the component reports a failure  |
+
+`WithOptionalData` never gates. Declare it anyway: the build-time check then still verifies that some earlier resource
+produces the cell, because an optional read with no producer can never be satisfied and is almost always a mistake, and
+the dependency stays visible to introspection.
+
+Prefer **stable** values. A guard re-evaluates every reconcile, so a value that can transiently disappear (a replica
+count, a field cleared during a rolling update) will re-block a resource that is already running. Good targets appear
+once and persist: a status field written by a controller, a provisioned IP, a generated credential reference. This
+applies doubly to optional enrichment, which has no guard to hold the resource back: a source value that comes and goes
+makes the enriched field flap, rewriting the consuming resource on every swing.
 
 ## Use Prerequisites for Cross-Component Dependencies
 
@@ -440,19 +481,23 @@ func extraEnv(app *v1alpha1.WebApp) deployment.Mutation {
 Because `EnsureEnvVars` replaces existing entries by name, registering this mutation after the operator's own env
 mutations lets a user value shadow an operator-emitted one without you enumerating every overridable field.
 
-A related use of a final mutation is **secret-rotation restart**: each read-only Secret has a data extractor that hashes
-its contents into a shared map, and a final mutation stamps that map onto the pod template as annotations through
-`EditPodTemplateMetadata`. A Secret rotation changes a hash, which changes the pod template, which triggers a rolling
-restart. Keep the map empty during preview so golden snapshots stay stable.
+A related use of a final mutation is **secret-rotation restart**: each read-only Secret declares an extraction that
+hashes its contents into a cell, the workload declares those cells with `WithOptionalData`, and a final mutation stamps
+the hashes it can read onto the pod template as annotations through `EditPodTemplateMetadata`. A Secret rotation changes
+a hash, which changes the pod template, which triggers a rolling restart. Optional reads keep the workload moving when a
+Secret has not been fetched yet, and cells are unset in a cluster-free preview, so golden snapshots stay stable without
+any special casing.
 
 ```go
-func checksumAnnotations(hashes map[string]string) deployment.Mutation {
+func checksumAnnotations(hashes map[string]*concepts.Data[string]) deployment.Mutation {
     return deployment.Mutation{
         Name: "ChecksumAnnotations",
         Mutate: func(m *deployment.Mutator) error {
             m.EditPodTemplateMetadata(func(e *editors.ObjectMetaEditor) error {
-                for k, v := range hashes {
-                    e.EnsureAnnotation("checksum/"+k, v)
+                for name, cell := range hashes {
+                    if hash, ok := cell.Get(); ok {
+                        e.EnsureAnnotation("checksum/"+name, hash)
+                    }
                 }
                 return nil
             })

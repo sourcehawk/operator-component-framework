@@ -62,6 +62,11 @@ Serializing one without a scheme fails with an incomplete-`TypeMeta` error, so p
 `golden.ComponentPreviewer` (`Preview() ([]client.Object, error)`). All built-in primitives satisfy `Previewer` through
 `generic.BaseResource`, and a built `*component.Component` satisfies `ComponentPreviewer` directly.
 
+`Preview` runs no declared data extraction, so every data cell is unset during a golden render. A mutation that calls
+`Get` quietly omits the enriched field; one that calls `Require` fails the preview with an error wrapping
+`concepts.ErrDataNotExtracted`. Seed the cell before rendering (`dbHost.Set("postgres.default.svc")`), and have the
+component assembly function return its cells so tests can reach them.
+
 ```go
 var update = flag.Bool("update", false, "update golden files")
 

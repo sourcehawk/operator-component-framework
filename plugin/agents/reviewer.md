@@ -27,9 +27,9 @@ actually violated.
    primary container), with a mutation filling the gap instead. A baseline that is not a valid, readable resource on its
    own, whose validity depends on mutations having already run, is a violation.
 2. **Mutations Are Pure Functions of the Spec.** Look for a mutation that reads live cluster state (a client `Get` or
-   `List` inside `Mutate`, or a closure variable meant to be populated by that same resource's own data extractor) to
-   decide what to write. Mutations run before data extraction on the same resource, so a mutation depending on its own
-   resource's extractor output is reading a zero value, not observed state.
+   `List` inside `Mutate`, or a `Require`/`Get` call on a data cell that same resource declares an `ExtractInto` for) to
+   decide what to write. Mutations run before declared extraction on the same resource, so a mutation reading its own
+   resource's cell always sees it unset: `Require` errors and `Get` reports absent, never observed state.
 3. **Leave Version-Dependent Fields Empty in the Baseline.** Look for a version-dependent field, most commonly the
    container image, set directly in the baseline rather than left empty for a single mutation to own. Split ownership
    between the baseline and a mutation for the same field is the violation.
@@ -61,10 +61,16 @@ actually violated.
     version-gated revert mutation per structural change. Look for a compat mutation that introduces a new field rather
     than only rolling one back.
 11. **Use Data Extraction and Guards for Intra-Component Dependencies.** Look for a resource that assumes an
-    earlier-registered resource in the same component is ready without a `WithGuard` enforcing the wait. Look for a
-    guard keyed on a value that can transiently disappear (a replica count, a field cleared during a rolling update)
-    instead of a stable value (a status field written once, a provisioned IP, a generated credential reference); an
-    unstable guard value re-blocks a resource that is already running.
+    earlier-registered resource in the same component is ready without a `WithDataGuard` (or, for preconditions that are
+    not "a value exists", a `WithGuard`) enforcing the wait. Look for a value passed between resources through a shared
+    closure variable and a hand-written `WithGuard` instead of a declared `concepts.Data` cell with `ExtractInto` and
+    `WithDataGuard`, which bypasses build-time topology validation and keeps the dependency invisible to
+    `DataTopology()`. Look for a guard or extraction keyed on a value that can transiently disappear (a replica count, a
+    field cleared during a rolling update) instead of a stable value (a status field written once, a provisioned IP, a
+    generated credential reference); an unstable value re-blocks a resource that is already running, and with
+    `WithOptionalData` enrichment, which has no guard to hold the resource back, it makes the enriched field flap. In a
+    component that can be suspended, look for a mutation calling `Require()` on a cell produced by a read-only resource
+    or a `DeleteOnSuspend` resource; those cells stay absent during suspension, so the mutation must use `Get()`.
 12. **Use Prerequisites for Cross-Component Dependencies.** Look for cross-component startup ordering orchestrated in
     the controller instead of expressed with `WithPrerequisite` and `DependsOn`. Look for a prerequisite used to model
     ongoing health coupling between components; a prerequisite is a one-time startup barrier, permanently satisfied

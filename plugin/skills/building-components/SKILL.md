@@ -4,7 +4,7 @@ description:
   Use when creating or modifying a component built with the operator-component-framework
   (github.com/sourcehawk/operator-component-framework) - covers the component builder, resource registration, feature
   gates, prerequisites, the reconciliation lifecycle, conditions and the status model, grace periods, suspension,
-  ReconcileContext, FlushStatus, and guards.
+  ReconcileContext, FlushStatus, guards, and declared data cells.
 ---
 
 # Building Components
@@ -54,9 +54,10 @@ deletion and gating options. See `references/component.md` for the full option m
 ## Registration order is execution order
 
 Resources reconcile sequentially in the order they were registered with `WithResource`. A resource registered earlier
-can populate data (via a data extractor) that a later resource's guard or mutation depends on; the reverse never works.
-Resources registered for deletion (`Delete()`, `DeleteWhen()`, or all managed resources when a feature gate is disabled)
-are removed from the cluster in that same registration order in the final reconciliation step; the framework does not
+can extract a value into a data cell that a later resource's data guard or mutation reads; the reverse never works, and
+for declared data `Build()` rejects a registration order that cannot work (see Declared data below). Resources
+registered for deletion (`Delete()`, `DeleteWhen()`, or all managed resources when a feature gate is disabled) are
+removed from the cluster in that same registration order in the final reconciliation step; the framework does not
 reverse it. Design registration order around real dependencies, not convenience.
 
 ## Feature gates and prerequisites
@@ -77,7 +78,8 @@ entirely.
 
 ## Reconciliation lifecycle
 
-`comp.Reconcile(ctx, recCtx)` runs these steps, in order, every call:
+`comp.Reconcile(ctx, recCtx)` runs these steps, in order, every call. Before step 1, every declared data cell is
+cleared, so no value extracted during a previous reconcile can be observed during this one.
 
 1. **Feature gate check.** Disabled -> delete all managed resources, condition `True/Disabled`. Gate error ->
    `FeatureGateError`, no further steps.
@@ -88,8 +90,8 @@ entirely.
    suspension.
 4. **Resource reconciliation.** Non-delete resources are processed sequentially in registration order: each resource's
    guard (if any) is checked, a blocked guard halts that resource and every later one, then the resource is applied
-   (managed) or fetched (read-only), and its data extractors run immediately so later resources can see the extracted
-   data.
+   (managed) or fetched (read-only), and its declared data extractions run immediately so later resources' data guards
+   and mutations can see the extracted values.
 5. **Status aggregation.** The converging status of every processed resource (including a blocked-guard result) is
    collected.
 6. **Condition update.** A new condition is derived from the aggregate status, the previous condition, and the grace
@@ -134,14 +136,51 @@ prerequisite barrier is active, suspension is a no-op, since no resources exist 
 cluster are created directly in their suspended state (for example, a Deployment created with zero replicas), so they
 are ready the instant suspension ends.
 
+## Declared data
+
+Resources inside one component pass observed values to each other through typed, presence-aware **data cells**, created
+in the component assembly function with `concepts.NewData[T]("name")`. The producer declares an extraction with the
+primitive package's `ExtractInto` function (package-level, because a Go method cannot introduce the value type
+parameter); it runs immediately after the resource is applied (managed) or fetched (read-only) and stores the result in
+the cell. Consumers declare their reads on the builder: `WithDataGuard(cells...)` blocks the resource until every listed
+cell is set, `WithOptionalData(cells...)` never gates and suits mutations that enrich the object only when the value is
+there. Read a cell with `Require()` (errors with `concepts.ErrDataNotExtracted` when unset) or `Get()` (value plus
+presence).
+
+```go
+dbHost := concepts.NewData[string]("db-host")
+
+cmBuilder := configmap.NewBuilder(dbConfig(app))
+configmap.ExtractInto(cmBuilder, dbHost, func(cm corev1.ConfigMap) (string, error) {
+    return cm.Data["db-host"], nil
+})
+```
+
+`Build()` validates the topology: every cell a resource reads must have a producer registered **strictly earlier** (a
+producer never satisfies its own read, since extraction runs after mutations on the same resource), and no two distinct
+cells may share a name. Optional reads are validated too, so declare them even though they never gate. Sharing a cell
+across components is unsupported; validation and the reconcile-start reset are per component. The built component
+reports the declared flow through `DataTopology()` (`concepts.DataInspector`) without running any extraction.
+
+Two caveats. During suspension, declared extractions still run for managed resources, but cells produced by read-only
+resources or by resources with `DeleteOnSuspend` stay absent, so a mutation depending on one of those must use `Get()`
+rather than `Require()` if the component can ever be suspended. `Preview()` runs no extraction either, so a mutation
+calling `Require()` fails the preview unless the test seeds the cell with `Set` first; return cells from the assembly
+function so tests can reach them.
+
 ## Guards and ReconcileContext
 
-A guard is a precondition function registered on a resource with `WithGuard`, evaluated before that resource is applied.
-It receives a copy of the resource's object and returns a `concepts.GuardStatusWithReason`. If it returns
-`GuardStatusBlocked`, that resource and every resource registered after it are skipped for the cycle, and the condition
-reports status `False` with reason `Blocked`. Combined with a data extractor on an earlier resource, guards let resource
-B wait on a value resource A only produces once applied, without either resource knowing about the other's type. A guard
-evaluation error is treated as a reconciliation failure (`Error`). Guards are not evaluated during suspension.
+A guard is a precondition evaluated before a resource is applied. If it reports `GuardStatusBlocked`, that resource and
+every resource registered after it are skipped for the cycle, and the condition reports status `False` with reason
+`Blocked`. A guard evaluation error is treated as a reconciliation failure (`Error`). Guards are not evaluated during
+suspension.
+
+There are two forms. A **data guard**, declared with `WithDataGuard(cells...)`, blocks until every listed data cell
+holds a value; the framework generates both the guard and its reason (`waiting for data "db-host"`), so the message a
+user reads cannot drift from the real dependency. A **custom guard**, registered with `WithGuard`, receives a copy of
+the resource's object and returns a `concepts.GuardStatusWithReason` from arbitrary logic; keep it for preconditions
+that are not "a value exists", such as a status phase reaching a specific value. A resource may use both: data guards
+are evaluated first, and the custom guard is consulted only once every guarded cell is set.
 
 `ReconcileContext` carries everything a reconcile pass needs: `Client`, `Scheme`, `Recorder`, an optional `Metrics`
 recorder, and `Owner` (the CRD instance that owns the component). Build one per reconcile from your controller and pass
@@ -160,8 +199,9 @@ conditions in one reconcile and persist them in one write, instead of racing a w
   the resource diverge unpredictably across cluster versions; gate the value with a mutation instead.
 - Giving one component more than one logical condition collapses distinct failure modes into a single status, hiding
   which underlying concern actually broke; split it into one component per condition instead.
-- Registering resources without regard to their real dependency order silently breaks guards and data extractors that
-  assume an earlier resource already ran; registration order must match the actual dependency order.
+- Registering resources without regard to their real dependency order breaks guards and data flow that assume an earlier
+  resource already ran. `Build()` turns the mistake into an error where the flow is declared with data cells, but custom
+  guards still break silently; registration order must match the actual dependency order.
 
 ## Ground truth
 

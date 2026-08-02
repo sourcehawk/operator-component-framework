@@ -8,7 +8,7 @@ Look up operator-component-framework documentation for: $ARGUMENTS
 Resolution order:
 
 1. Search the bundled references first. They live under `${CLAUDE_PLUGIN_ROOT}/skills/*/references/`:
-   - `building-components/references/component.md`: component builder, lifecycle, status model, guards
+   - `building-components/references/component.md`: component builder, lifecycle, status model, guards, declared data
    - `using-primitives/references/primitives.md`: primitive concepts, mutation system, editors, selectors
    - `using-primitives/references/primitives/<kind>.md`: per-kind primitive builders and mutators
    - `custom-resource-wrappers/references/custom-resource.md`: wrapping CRD-backed types with pkg/generic

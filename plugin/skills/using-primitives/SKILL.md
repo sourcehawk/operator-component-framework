@@ -4,7 +4,8 @@ description:
   Use when creating or editing Kubernetes resource primitives with the operator-component-framework - primitive builders
   and categories, baseline desired state, the mutation system, boolean and version feature gating (NewBooleanGate,
   NewVersionGate), mutation editors, container selectors, server-side apply behaviour, workload-kind-agnostic mutations
-  (WorkloadMutator), and unstructured primitives.
+  (WorkloadMutator), declared data on primitive builders (ExtractInto, WithDataGuard, WithOptionalData), and
+  unstructured primitives.
 ---
 
 # Using Primitives
@@ -155,6 +156,15 @@ agent.WithMutation(daemonset.LiftMutation(authEnv()))
 The interface deliberately omits what is not common to all three kinds: per-kind spec editors (`EditDeploymentSpec`,
 `EditStatefulSetSpec`, `EditDaemonSetSpec`), `EnsureReplicas` (no replica field on DaemonSet), and StatefulSet-only
 VolumeClaimTemplate methods. Reach for the concrete mutator type for those.
+
+## Declared data on primitive builders
+
+Every primitive builder participates in a component's declared data flow the same way: a package-level
+`ExtractInto(builder, cell, fn)` function declares that the resource produces a `concepts.Data[V]` cell (package-level
+because a Go method cannot introduce the value type parameter), and the builder methods `WithDataGuard(cells...)` and
+`WithOptionalData(cells...)` declare its reads. Component `Build()` validates that every read has a producer registered
+earlier. The mechanics, consumption modes, and validation rules live in the `ocf:building-components` skill; verify a
+kind's exact `ExtractInto` signature with `go doc` on its package.
 
 ## Server-side apply
 

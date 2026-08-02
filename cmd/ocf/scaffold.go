@@ -84,8 +84,9 @@ func newScaffoldWrapperCommand() *cobra.Command {
 // printSummary reports what was generated and what the user has to do next.
 func printSummary(cmd *cobra.Command, data scaffold.TemplateData, dir string, written []string) error {
 	out := cmd.OutOrStdout()
+	display := testDirDisplay(dir)
 
-	if _, err := fmt.Fprintf(out, "Generated %s wrapper package %q in %s:\n", data.Variant, data.Package, dir); err != nil {
+	if _, err := fmt.Fprintf(out, "Generated %s wrapper package %q in %s:\n", data.Variant, data.Package, display); err != nil {
 		return err
 	}
 	for _, path := range written {
@@ -101,7 +102,7 @@ func printSummary(cmd *cobra.Command, data scaffold.TemplateData, dir string, wr
 		return err
 	}
 	if _, err := fmt.Fprintf(
-		out, "  2. Run go test ./%s/... to verify the generated package.\n", filepath.ToSlash(dir),
+		out, "  2. Run go test %s/... to verify the generated package.\n", display,
 	); err != nil {
 		return err
 	}
@@ -109,4 +110,18 @@ func printSummary(cmd *cobra.Command, data scaffold.TemplateData, dir string, wr
 		out, "  3. Replace the scaffolded default handlers in builder.go with %s-specific logic.\n", data.Kind,
 	)
 	return err
+}
+
+// testDirDisplay formats dir as a copy-pasteable path argument: an absolute dir is
+// printed as-is, and a relative dir keeps or gains a leading "./" so it is
+// recognized as a filesystem path rather than a package import path.
+func testDirDisplay(dir string) string {
+	display := filepath.ToSlash(dir)
+	if filepath.IsAbs(dir) {
+		return display
+	}
+	if strings.HasPrefix(display, "./") || strings.HasPrefix(display, "../") {
+		return display
+	}
+	return "./" + display
 }

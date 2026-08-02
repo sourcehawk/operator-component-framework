@@ -64,13 +64,17 @@ func TestScaffoldWrapperGeneratesPackage(t *testing.T) {
 	assert.Contains(t, out, dir)
 	assert.Contains(t, out, "go mod tidy")
 	assert.Contains(t, out, "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1")
+
+	// dir is absolute (rooted at t.TempDir()), so the printed go test invocation
+	// must use it as-is, not glued onto a "./" prefix.
+	assert.Contains(t, out, "  2. Run go test "+dir+"/... to verify the generated package.\n")
 }
 
 func TestScaffoldWrapperDefaultsOutToPackageDirectory(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	_, err := runCommand(t,
+	out, err := runCommand(t,
 		"scaffold", "wrapper",
 		"--type", "k8s.io/api/core/v1.ConfigMap",
 		"--variant", "static",
@@ -78,6 +82,10 @@ func TestScaffoldWrapperDefaultsOutToPackageDirectory(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.FileExists(t, filepath.Join(dir, "configmap", "builder.go"))
+
+	// The default output directory is relative, so the printed go test
+	// invocation must be a copy-pasteable relative path, prefixed with "./".
+	assert.Contains(t, out, "  2. Run go test ./configmap/... to verify the generated package.\n")
 }
 
 func TestScaffoldWrapperRefusesNonEmptyDirectoryWithoutForce(t *testing.T) {

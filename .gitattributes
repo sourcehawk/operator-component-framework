@@ -1,0 +1,10 @@
+# Generated files. These are collapsed by default in pull request diffs and
+# excluded from language statistics. Never edit them directly: change the source
+# and re-run the target that produces them.
+
+# Verbatim copies of docs/, produced by `make sync-plugin`.
+plugin/skills/*/references/** linguist-generated=true
+
+# Produced by `make ai-instructions` from .ai/base.md and .ai/review.md.
+.github/copilot-instructions.md linguist-generated=true
+.github/copilot-review-guidelines.md linguist-generated=true

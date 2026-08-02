@@ -1,7 +1,6 @@
 package rolebinding
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -95,33 +94,4 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 	got := obj.(*rbacv1.RoleBinding)
 	assert.Equal(t, "sa", got.Subjects[0].Name)
 	assert.Equal(t, "from-mutation", got.Subjects[1].Name)
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	rb := newValidRB()
-
-	var extracted string
-	res, err := NewBuilder(rb).
-		WithDataExtractor(func(r rbacv1.RoleBinding) error {
-			extracted = r.Subjects[0].Name
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "sa", extracted)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidRB()).
-		WithDataExtractor(func(_ rbacv1.RoleBinding) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

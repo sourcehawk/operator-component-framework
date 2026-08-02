@@ -12,7 +12,7 @@ import (
 // Builder is a configuration helper for creating and customizing a NetworkPolicy
 // Resource.
 //
-// It provides a fluent API for registering mutations and data extractors.
+// It provides a fluent API for registering mutations and declared data extractions.
 // Build() validates the configuration and returns an initialized Resource
 // ready for use in a reconciliation loop.
 type Builder struct {
@@ -62,15 +62,22 @@ func (b *Builder) WithGuard(guard func(networkingv1.NetworkPolicy) (concepts.Gua
 	return b
 }
 
-// WithDataExtractor registers a function to read values from the NetworkPolicy
-// after it has been successfully reconciled.
-//
-// The extractor receives a value copy of the reconciled NetworkPolicy. This is
-// useful for surfacing the applied policy rules to other components or resources.
-//
-// A nil extractor is ignored.
-func (b *Builder) WithDataExtractor(extractor func(networkingv1.NetworkPolicy) error) *Builder {
-	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
+// WithDataGuard declares that the NetworkPolicy reads the given data cells and
+// must not be applied until every one of them is set. The framework generates
+// the guard and its reason (waiting for data "<name>"), and component Build
+// validates that a producer for each cell is registered earlier. Data guards
+// are evaluated before any custom guard registered with WithGuard.
+func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
+	b.base.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares that the NetworkPolicy reads the given data cells
+// without gating on them. Component Build still validates that a producer is
+// registered earlier, and the dependency stays visible to introspection.
+// Consumers in this mode use Get and skip quietly when a cell is absent.
+func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
+	b.base.WithOptionalData(cells...)
 	return b
 }
 
@@ -85,4 +92,14 @@ func (b *Builder) Build() (*Resource, error) {
 		return nil, err
 	}
 	return &Resource{base: genericRes}, nil
+}
+
+// ExtractInto declares that this NetworkPolicy produces the value of cell. fn
+// computes the value from a copy of the reconciled NetworkPolicy; the framework
+// stores it in the cell and marks it present, immediately after the NetworkPolicy
+// is applied or fetched. Extracting several values means several ExtractInto
+// calls, one per cell. This is a package-level function because Go methods
+// cannot introduce the extra type parameter V.
+func ExtractInto[V any](b *Builder, cell *concepts.Data[V], fn func(networkingv1.NetworkPolicy) (V, error)) {
+	generic.ExtractInto(&b.base.BaseBuilder, cell, generic.WrapExtraction(fn))
 }

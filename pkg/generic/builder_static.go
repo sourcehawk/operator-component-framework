@@ -50,12 +50,17 @@ func (b *StaticBuilder[T, M]) WithGuard(
 	return b
 }
 
-// WithDataExtractor registers a typed data extractor to run after successful
-// reconciliation.
-func (b *StaticBuilder[T, M]) WithDataExtractor(
-	extractor func(T) error,
-) *StaticBuilder[T, M] {
-	b.BaseBuilder.WithDataExtractor(extractor)
+// WithDataGuard declares blocking data reads for the static resource. See
+// BaseBuilder.WithDataGuard.
+func (b *StaticBuilder[T, M]) WithDataGuard(cells ...concepts.DataCell) *StaticBuilder[T, M] {
+	b.BaseBuilder.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares non-blocking data reads for the static resource.
+// See BaseBuilder.WithOptionalData.
+func (b *StaticBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) *StaticBuilder[T, M] {
+	b.BaseBuilder.WithOptionalData(cells...)
 	return b
 }
 

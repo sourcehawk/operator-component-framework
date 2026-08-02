@@ -6,6 +6,7 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/examples/extraction-and-guards/app"
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/primitives/configmap"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,16 +28,16 @@ func BaseConfigMap(owner *app.ExampleApp) *corev1.ConfigMap {
 	}
 }
 
-// NewConfigMapResource constructs a ConfigMap for database config. After
-// reconciliation, the data extractor captures the db-host value into the
-// provided pointer so downstream resources can use it.
-func NewConfigMapResource(owner *app.ExampleApp, dbHost *string) (component.Resource, error) {
+// NewConfigMapResource constructs a ConfigMap for database config. The
+// declared extraction captures the db-host value into the provided cell so
+// downstream resources can guard on it and read it.
+func NewConfigMapResource(owner *app.ExampleApp, dbHost *concepts.Data[string]) (component.Resource, error) {
 	builder := configmap.NewBuilder(BaseConfigMap(owner))
 
-	builder.WithDataExtractor(func(cm corev1.ConfigMap) error {
-		*dbHost = cm.Data["db-host"]
-		fmt.Printf("  Extracted db-host: %q\n", *dbHost)
-		return nil
+	configmap.ExtractInto(builder, dbHost, func(cm corev1.ConfigMap) (string, error) {
+		host := cm.Data["db-host"]
+		fmt.Printf("  Extracted db-host: %q\n", host)
+		return host, nil
 	})
 
 	return builder.Build()

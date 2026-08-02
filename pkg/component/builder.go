@@ -60,6 +60,10 @@ func (b *Builder) Build() (*Component, error) {
 		))
 	}
 
+	cells, dataErrs := validateDataTopology(b.component.name, b.component.reconcileResources)
+	b.buildErrors = append(b.buildErrors, dataErrs...)
+	b.component.dataCells = cells
+
 	if len(b.buildErrors) > 0 {
 		return nil, errors.Join(b.buildErrors...)
 	}

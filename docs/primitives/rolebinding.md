@@ -157,17 +157,23 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Data Extraction
 
-`WithDataExtractor` runs a callback after successful reconciliation with a value copy of the reconciled RoleBinding. Use
-it to surface binding metadata to other resources:
+`rolebinding.ExtractInto` declares that this RoleBinding produces the value of a data cell, which is how you surface
+binding metadata to other resources. The function receives a value copy of the reconciled RoleBinding and runs
+immediately after each sync cycle:
 
 ```go
-resource, err := rolebinding.NewBuilder(base).
-    WithDataExtractor(func(rb rbacv1.RoleBinding) error {
-        sharedState.RoleBindingName = rb.Name
-        return nil
-    }).
-    Build()
+bindingName := concepts.NewData[string]("app-role-binding")
+
+builder := rolebinding.NewBuilder(base)
+rolebinding.ExtractInto(builder, bindingName, func(rb rbacv1.RoleBinding) (string, error) {
+    return rb.Name, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(bindingName)` or read it
+opportunistically with `WithOptionalData(bindingName)`. See [Declared Data](../component.md#declared-data).
 
 ## Full Example
 

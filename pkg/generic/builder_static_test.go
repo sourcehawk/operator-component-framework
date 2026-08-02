@@ -26,14 +26,6 @@ func TestStaticBuilder(t *testing.T) {
 		assert.Equal(t, obj, res.DesiredObject)
 	})
 
-	t.Run("with data extractor", func(t *testing.T) {
-		extractor := func(_ *corev1.ConfigMap) error { return nil }
-		builder := NewStaticBuilder(obj, identityFunc, newMutator).
-			WithDataExtractor(extractor)
-		res, _ := builder.Build()
-		assert.Len(t, res.DataExtractors, 1)
-	})
-
 	t.Run("with mutation", func(t *testing.T) {
 		mut := Mutation[*mockMutator]{
 			Name:    "test-mutation",

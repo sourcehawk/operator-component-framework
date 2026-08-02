@@ -193,42 +193,56 @@ func TestBuilder(t *testing.T) {
 		require.NotNil(t, res.base.DeleteOnSuspendHandler)
 		assert.True(t, res.base.DeleteOnSuspendHandler(nil))
 	})
+}
 
-	t.Run("WithDataExtractor", func(t *testing.T) {
-		t.Parallel()
-		deploy := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-deploy",
-				Namespace: "test-ns",
-			},
-		}
-		called := false
-		extractor := func(_ appsv1.Deployment) error {
-			called = true
-			return nil
-		}
-		res, err := NewBuilder(deploy).
-			WithDataExtractor(extractor).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 1)
-		err = res.base.DataExtractors[0](&appsv1.Deployment{})
-		require.NoError(t, err)
-		assert.True(t, called)
+func TestExtractIntoDeclaredExtraction(t *testing.T) {
+	t.Parallel()
+	cell := concepts.NewData[string]("team-label")
+	builder := NewBuilder(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "deploy", Namespace: "default", Labels: map[string]string{"team": "platform"}},
+	})
+	ExtractInto(builder, cell, func(o appsv1.Deployment) (string, error) {
+		return o.Labels["team"], nil
 	})
 
-	t.Run("WithDataExtractor nil", func(t *testing.T) {
-		t.Parallel()
-		deploy := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-deploy",
-				Namespace: "test-ns",
-			},
-		}
-		res, err := NewBuilder(deploy).
-			WithDataExtractor(nil).
-			Build()
-		require.NoError(t, err)
-		assert.Len(t, res.base.DataExtractors, 0)
-	})
+	res, err := builder.Build()
+	require.NoError(t, err)
+
+	produced := res.ProducedData()
+	require.Len(t, produced, 1)
+	assert.Equal(t, "team-label", produced[0].Name())
+
+	require.NoError(t, res.ExtractData())
+	v, ok := cell.Get()
+	assert.True(t, ok)
+	assert.Equal(t, "platform", v)
+}
+
+func TestWithDataGuardAndOptionalDataDeclarations(t *testing.T) {
+	t.Parallel()
+	guarded := concepts.NewData[string]("db-host")
+	optional := concepts.NewData[string]("db-port")
+	builder := NewBuilder(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "deploy", Namespace: "default"},
+	}).WithDataGuard(guarded).WithOptionalData(optional)
+
+	res, err := builder.Build()
+	require.NoError(t, err)
+
+	consumed := res.ConsumedData()
+	require.Len(t, consumed, 2)
+	assert.Equal(t, "db-host", consumed[0].Cell.Name())
+	assert.False(t, consumed[0].Optional)
+	assert.Equal(t, "db-port", consumed[1].Cell.Name())
+	assert.True(t, consumed[1].Optional)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.Equal(t, `waiting for data "db-host"`, status.Reason)
+
+	guarded.Set("postgres.default.svc")
+	status, err = res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
 }

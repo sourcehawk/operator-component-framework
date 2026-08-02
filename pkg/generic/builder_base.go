@@ -72,16 +72,36 @@ func (b *BaseBuilder[T, M]) WithGuard(handler func(T) (concepts.GuardStatusWithR
 	b.BaseRes.GuardHandler = handler
 }
 
-// WithDataExtractor registers a typed data extractor to run immediately after the
-// resource has been processed during reconciliation.
+// WithDataGuard declares that the resource reads the given cells and must not
+// be applied until every one of them is set. The framework generates the guard
+// and its reason (for example: waiting for data "db-host"), so the reason can
+// never drift from the actual dependency. A blocked data guard surfaces as the
+// same Blocked condition reason custom guards produce.
 //
-// For managed resources, the extractor receives the object as it stands after feature
-// mutations have been applied. For read-only resources, it receives the object as it
-// was just fetched from the cluster. Extractors must be idempotent because they run on
-// every reconcile pass.
-func (b *BaseBuilder[T, M]) WithDataExtractor(extractor func(T) error) {
-	if extractor != nil {
-		b.BaseRes.DataExtractors = append(b.BaseRes.DataExtractors, extractor)
+// Data guards are evaluated before any custom guard registered with WithGuard;
+// both may be combined. Component Build validates that a producer for each
+// cell is registered strictly earlier in the component.
+func (b *BaseBuilder[T, M]) WithDataGuard(cells ...concepts.DataCell) {
+	for _, cell := range cells {
+		b.BaseRes.DataConsumptions = append(
+			b.BaseRes.DataConsumptions,
+			concepts.DataConsumption{Cell: cell, Optional: false},
+		)
+	}
+}
+
+// WithOptionalData declares that the resource reads the given cells without
+// gating on them. The declaration exists so component Build still verifies a
+// producer is registered earlier (an optional read with no producer is
+// permanently absent, which is dead code and almost certainly a bug) and so
+// the dependency stays visible to introspection. Consumers in this mode use
+// Get and skip quietly when the cell is absent.
+func (b *BaseBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) {
+	for _, cell := range cells {
+		b.BaseRes.DataConsumptions = append(
+			b.BaseRes.DataConsumptions,
+			concepts.DataConsumption{Cell: cell, Optional: true},
+		)
 	}
 }
 
@@ -134,6 +154,29 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 
 	if b.BaseRes.NewMutator == nil {
 		return errors.New("mutator factory cannot be nil")
+	}
+
+	// Declared data extractions must reference a real cell and a real
+	// extraction function. A typed-nil cell or nil fn passed to ExtractInto is
+	// recorded and rejected here so the failure surfaces at build time with a
+	// clear message instead of panicking mid-reconcile.
+	for _, extraction := range b.BaseRes.DataExtractions {
+		if isNil(extraction.Cell) {
+			return errors.New("declared data extraction requires a non-nil cell")
+		}
+		if extraction.Extract == nil {
+			return fmt.Errorf(
+				"declared data extraction into %q requires a non-nil extraction function",
+				extraction.Cell.Name(),
+			)
+		}
+	}
+
+	// Declared data reads must reference a real cell for the same reason.
+	for _, consumption := range b.BaseRes.DataConsumptions {
+		if isNil(consumption.Cell) {
+			return errors.New("declared data read (WithDataGuard or WithOptionalData) requires a non-nil cell")
+		}
 	}
 
 	// Mutation names must be unique within a resource. A name is the identifier

@@ -2,7 +2,7 @@
 
 This guide is for operator authors who need to manage a Kubernetes object that the [built-in primitives](primitives.md)
 do not cover. The built-in set handles the common kinds (Deployments, StatefulSets, ConfigMaps, Services, and more) and
-is highly customizable through status handlers, suspension logic, mutations, and data extractors. Reach for a custom
+is highly customizable through status handlers, suspension logic, mutations, and declared data. Reach for a custom
 resource only when the kind you manage has no matching primitive:
 
 - A **custom CRD** defined by your project or a third-party operator.
@@ -68,8 +68,8 @@ interfaces. For the full description of each interface and the runtime string va
 | **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable` | External-dependency objects (services, ingresses)      |
 
 In addition to the category-specific interfaces, every generic resource also satisfies
-[`concepts.Previewable`](primitives.md#lifecycle-interfaces) and `concepts.MutationInspector`, and your wrapper exposes
-both. They are covered in [Step 6](#6-implement-the-resource).
+[`concepts.Previewable`](primitives.md#lifecycle-interfaces), `concepts.MutationInspector`, `concepts.DataProducer`, and
+`concepts.DataConsumer`, and your wrapper exposes all four. They are covered in [Step 6](#6-implement-the-resource).
 
 The rest of the guide uses Workload as the primary example. The pattern is identical for the other categories, with
 fewer handlers to implement.
@@ -457,9 +457,20 @@ func (b *Builder) WithGuard(
     return b
 }
 
-// WithDataExtractor registers a data extractor to run after the resource is processed.
-func (b *Builder) WithDataExtractor(extractor func(examplev1.MessageQueue) error) *Builder {
-    b.base.WithDataExtractor(generic.WrapExtractor(extractor))
+// WithDataGuard declares that the resource reads the given data cells and must not
+// be applied until every one of them is set. The framework generates the guard and
+// its reason; component Build validates that a producer for each cell is registered
+// earlier. Data guards are evaluated before any custom guard.
+func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
+    b.base.WithDataGuard(cells...)
+    return b
+}
+
+// WithOptionalData declares that the resource reads the given data cells without
+// gating on them. Component Build still validates that a producer is registered
+// earlier, and the dependency stays visible to introspection.
+func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
+    b.base.WithOptionalData(cells...)
     return b
 }
 
@@ -487,16 +498,40 @@ func (b *Builder) Build() (*Resource, error) {
     }
     return &Resource{base: genericRes}, nil
 }
+
+// ExtractInto declares that this MessageQueue produces the value of cell. fn
+// computes the value from a copy of the reconciled MessageQueue; the framework
+// stores it in the cell and marks it present, immediately after the object is
+// applied or fetched. This is a package-level function because a Go method
+// cannot introduce the extra type parameter V.
+func ExtractInto[V any](
+    b *Builder, cell *concepts.Data[V], fn func(examplev1.MessageQueue) (V, error),
+) {
+    generic.ExtractInto(&b.base.BaseBuilder, cell, generic.WrapExtraction(fn))
+}
 ```
 
 The builder exposes `WithCustomSuspendStatus`, `WithCustomSuspendMutation`, and `WithCustomSuspendDeletionDecision` the
 same way if callers need to override suspension behavior after construction; they are omitted above for brevity.
 
+Callers then use the package-level form, mirroring every built-in primitive:
+
+```go
+replicas := concepts.NewData[int32]("queue-replicas")
+
+builder := messagequeue.NewBuilder(mq)
+messagequeue.ExtractInto(builder, replicas, func(q examplev1.MessageQueue) (int32, error) {
+    return q.Status.ReadyReplicas, nil
+})
+```
+
 !!! note "Builder conventions"
 
-    - **`generic.WrapGuard` and `generic.WrapExtractor`** convert value-receiver callbacks (`func(T)`) into the
-      pointer-receiver form (`func(*T)`) the generic layer expects, so your public API can take the kind by value. The
-      built-in builders use both.
+    - **`generic.WrapGuard` and `generic.WrapExtraction`** convert value-receiver callbacks (`func(T)` and
+      `func(T) (V, error)`) into the pointer-receiver form (`func(*T)` and `func(*T) (V, error)`) the generic layer
+      expects, so your public API can take the kind by value. The built-in builders use both.
+    - **Reach the embedded base for `ExtractInto`.** `generic.ExtractInto` takes a `*generic.BaseBuilder`, so pass
+      `&b.base.BaseBuilder`. Every category builder embeds it.
     - **Register defaults in the constructor.** Set the handlers your CRD has meaningful semantics for, then let callers
       override them per resource.
     - **Return `*Builder` from every method** for fluent chaining.
@@ -531,6 +566,8 @@ import (
 //   - concepts.Suspendable (DeleteOnSuspend, Suspend, SuspensionStatus)
 //   - concepts.Guardable (GuardStatus)
 //   - concepts.DataExtractable (ExtractData)
+//   - concepts.DataProducer (ProducedData)
+//   - concepts.DataConsumer (ConsumedData)
 //   - concepts.ObservationRecorder (RecordObservation)
 //   - concepts.Previewable (Preview)
 //   - concepts.MutationInspector (RegisteredMutations, FiringSet)
@@ -578,6 +615,16 @@ func (r *Resource) ExtractData() error {
     return r.base.ExtractData()
 }
 
+// ProducedData returns the cells this resource declares extractions into.
+func (r *Resource) ProducedData() []concepts.DataCell {
+    return r.base.ProducedData()
+}
+
+// ConsumedData returns the resource's declared data reads, blocking and optional alike.
+func (r *Resource) ConsumedData() []concepts.DataConsumption {
+    return r.base.ConsumedData()
+}
+
 func (r *Resource) RecordObservation(observed client.Object) error {
     return r.base.RecordObservation(observed)
 }
@@ -600,6 +647,8 @@ func (r *Resource) FiringSet() ([]string, error) {
 
 // Compile-time guarantee that the wrapper exposes the inspection surface.
 var _ concepts.MutationInspector = (*Resource)(nil)
+var _ concepts.DataProducer = (*Resource)(nil)
+var _ concepts.DataConsumer = (*Resource)(nil)
 ```
 
 !!! warning "Do not omit `Preview`"
@@ -611,18 +660,24 @@ var _ concepts.MutationInspector = (*Resource)(nil)
 them, but [version-matrix golden generation](testing.md) uses them to introspect which mutations a resource registers
 and which fire at a given version. Delegate both to the base, as shown.
 
-Forward `RecordObservation` whenever the resource may be registered read-only with a data extractor. The framework feeds
-the fetched cluster object back to the resource before extraction runs; without it, the extractor would see the inert
-base passed to the builder rather than live cluster state.
+Forward `ProducedData` and `ConsumedData` whenever the resource can take part in a component's data flow, which is
+always if your builder exposes `ExtractInto`, `WithDataGuard`, or `WithOptionalData`. They satisfy
+`concepts.DataProducer` and `concepts.DataConsumer`. Without them the component sees no declarations, so
+[build-time topology validation](component.md#build-time-validation) silently passes, `DataTopology()` omits the
+resource, and its cells are never cleared at the start of a reconcile.
+
+Forward `RecordObservation` whenever the resource may be registered read-only and declares an extraction. The framework
+feeds the fetched cluster object back to the resource before extraction runs; without it, the extraction would see the
+inert base passed to the builder rather than live cluster state.
 
 Which methods to include depends on the category:
 
-| Category    | Methods to include                                                                                                                                                                                                    |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet` |
-| Static      | `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet`                                                                                      |
-| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet`                |
-| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet` |
+| Category    | Methods to include                                                                                                                                                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workload    | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet` |
+| Static      | `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet`                                                                                      |
+| Task        | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet`                |
+| Integration | `Identity`, `Object`, `Mutate`, `ConvergingStatus`, `GraceStatus`, `DeleteOnSuspend`, `Suspend`, `SuspensionStatus`, `GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, `FiringSet` |
 
 For task and integration resources, `ConvergingStatus` returns `concepts.CompletionStatusWithReason` and
 `concepts.OperationalStatusWithReason` respectively, matching the generic base method signature.
@@ -763,10 +818,10 @@ implications.
 ### Static resources
 
 Static resources have the simplest implementation. They do not participate in convergence, grace, or suspension
-reporting. The builder uses `generic.NewStaticBuilder`, which supports `WithMutation`, `WithGuard`, and
-`WithDataExtractor`. The resource wrapper needs only `Identity`, `Object`, `Mutate`, `GuardStatus`, `ExtractData`,
-`RecordObservation`, `Preview`, `RegisteredMutations`, and `FiringSet`. `pkg/primitives/configmap` is a complete
-reference.
+reporting. The builder uses `generic.NewStaticBuilder`, which supports `WithMutation`, `WithGuard`, `WithDataGuard`, and
+`WithOptionalData`, plus a package-level `ExtractInto`. The resource wrapper needs only `Identity`, `Object`, `Mutate`,
+`GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, and
+`FiringSet`. `pkg/primitives/configmap` is a complete reference.
 
 ### Task resources
 
@@ -851,13 +906,13 @@ logic.
 
 ## Reference
 
-| Package                  | Contains                                                       |
-| ------------------------ | -------------------------------------------------------------- |
-| `pkg/generic`            | Generic resource types, builders, `WrapGuard`, `WrapExtractor` |
-| `pkg/feature`            | `Mutation`, `Gate`, `VersionGate`, `NewVersionGate`            |
-| `pkg/component/concepts` | Lifecycle interfaces and status type constants                 |
-| `pkg/component`          | Component builder, resource registration, reconciliation       |
-| `pkg/primitives/*`       | Built-in implementations to use as references                  |
+| Package                  | Contains                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `pkg/generic`            | Generic resource types, builders, `ExtractInto`, `WrapGuard`, `WrapExtraction` |
+| `pkg/feature`            | `Mutation`, `Gate`, `VersionGate`, `NewVersionGate`                            |
+| `pkg/component/concepts` | Lifecycle interfaces, status type constants, `NewData`, `DataCell`             |
+| `pkg/component`          | Component builder, resource registration, reconciliation                       |
+| `pkg/primitives/*`       | Built-in implementations to use as references                                  |
 
 For a complete, runnable wrapper of a third-party CRD (using the unstructured static builder rather than a typed
 struct), see `examples/custom-resource`. </content> </invoke>

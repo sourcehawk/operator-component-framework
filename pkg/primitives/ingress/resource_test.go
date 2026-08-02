@@ -1,7 +1,6 @@
 package ingress
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -213,33 +212,4 @@ func TestResource_SuspensionStatus(t *testing.T) {
 	status, err := res.SuspensionStatus()
 	require.NoError(t, err)
 	assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	ing := newValidIngress()
-
-	var extracted string
-	res, err := NewBuilder(ing).
-		WithDataExtractor(func(i networkingv1.Ingress) error {
-			extracted = *i.Spec.IngressClassName
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "nginx", extracted)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidIngress()).
-		WithDataExtractor(func(_ networkingv1.Ingress) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

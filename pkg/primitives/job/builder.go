@@ -12,7 +12,7 @@ import (
 // Builder is a configuration helper for creating and customizing a Job Resource.
 //
 // It provides a fluent API for registering mutations, status handlers, and
-// data extractors. This builder ensures that the resulting Resource is
+// declared data extractions. This builder ensures that the resulting Resource is
 // properly initialized and validated before use in a reconciliation loop.
 type Builder struct {
 	base *generic.TaskBuilder[*batchv1.Job, *Mutator]
@@ -138,16 +138,22 @@ func (b *Builder) WithGuard(
 	return b
 }
 
-// WithDataExtractor registers a function to harvest information from the
-// Job after it has been successfully reconciled.
-//
-// This is useful for capturing auto-generated fields (like completion status
-// or pod names) and making them available to other components or resources via
-// the framework's data extraction mechanism.
-func (b *Builder) WithDataExtractor(
-	extractor func(batchv1.Job) error,
-) *Builder {
-	b.base.WithDataExtractor(generic.WrapExtractor(extractor))
+// WithDataGuard declares that the Job reads the given data cells and
+// must not be applied until every one of them is set. The framework generates
+// the guard and its reason (waiting for data "<name>"), and component Build
+// validates that a producer for each cell is registered earlier. Data guards
+// are evaluated before any custom guard registered with WithGuard.
+func (b *Builder) WithDataGuard(cells ...concepts.DataCell) *Builder {
+	b.base.WithDataGuard(cells...)
+	return b
+}
+
+// WithOptionalData declares that the Job reads the given data cells
+// without gating on them. Component Build still validates that a producer is
+// registered earlier, and the dependency stays visible to introspection.
+// Consumers in this mode use Get and skip quietly when a cell is absent.
+func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
+	b.base.WithOptionalData(cells...)
 	return b
 }
 
@@ -164,4 +170,14 @@ func (b *Builder) Build() (*Resource, error) {
 		return nil, err
 	}
 	return &Resource{base: genericRes}, nil
+}
+
+// ExtractInto declares that this Job produces the value of cell. fn
+// computes the value from a copy of the reconciled Job; the framework
+// stores it in the cell and marks it present, immediately after the Job
+// is applied or fetched. Extracting several values means several ExtractInto
+// calls, one per cell. This is a package-level function because Go methods
+// cannot introduce the extra type parameter V.
+func ExtractInto[V any](b *Builder, cell *concepts.Data[V], fn func(batchv1.Job) (V, error)) {
+	generic.ExtractInto(&b.base.BaseBuilder, cell, generic.WrapExtraction(fn))
 }

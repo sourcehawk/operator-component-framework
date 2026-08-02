@@ -1,7 +1,6 @@
 package configmap
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -108,33 +107,4 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	require.NoError(t, res.Mutate(current))
 
 	assert.Equal(t, "b", current.Data["order"])
-}
-
-func TestResource_ExtractData(t *testing.T) {
-	cm := newValidCM()
-
-	var extracted string
-	res, err := NewBuilder(cm).
-		WithDataExtractor(func(c corev1.ConfigMap) error {
-			extracted = c.Data["key"]
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "value", extracted)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidCM()).
-		WithDataExtractor(func(_ corev1.ConfigMap) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

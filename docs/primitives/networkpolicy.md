@@ -10,7 +10,7 @@ resource, providing a structured mutation API for managing pod selectors, ingres
 | **Static lifecycle**  | No health tracking, grace periods, or suspension. The resource is reconciled to desired state              |
 | **Mutation pipeline** | Typed editors for NetworkPolicy spec and object metadata, with a `Raw()` escape hatch                      |
 | **Append semantics**  | Ingress and egress rules have no unique key; `AppendIngressRule`/`AppendEgressRule` append unconditionally |
-| **DataExtractable**   | Reads values back from the reconciled NetworkPolicy after each sync cycle via `WithDataExtractor`          |
+| **DataExtractable**   | Reads values back from the reconciled NetworkPolicy after each sync cycle via `ExtractInto`                |
 
 See [Lifecycle Interfaces](../primitives.md#lifecycle-interfaces) for the full set of status values each interface
 reports.
@@ -169,19 +169,23 @@ m.EditObjectMetadata(func(e *editors.ObjectMetaEditor) error {
 
 ## Data Extraction
 
-Use `WithDataExtractor` to read values from the reconciled NetworkPolicy after each sync cycle. This is useful when
-downstream resources need to observe the final applied policy (for example, its resource version or assigned labels):
+`networkpolicy.ExtractInto` declares that this NetworkPolicy produces the value of a data cell. This is useful when
+downstream resources need to observe the final applied policy (for example, its resource version or assigned labels).
+The function receives a value copy of the reconciled NetworkPolicy after each sync cycle:
 
 ```go
-var policyName string
+policyName := concepts.NewData[string]("frontend-network-policy")
 
-resource, err := networkpolicy.NewBuilder(base).
-    WithDataExtractor(func(np networkingv1.NetworkPolicy) error {
-        policyName = np.Name
-        return nil
-    }).
-    Build()
+builder := networkpolicy.NewBuilder(base)
+networkpolicy.ExtractInto(builder, policyName, func(np networkingv1.NetworkPolicy) (string, error) {
+    return np.Name, nil
+})
+
+resource, err := builder.Build()
 ```
+
+Resources registered later in the same component block on the cell with `WithDataGuard(policyName)` or read it
+opportunistically with `WithOptionalData(policyName)`. See [Declared Data](../component.md#declared-data).
 
 ## Full Example
 

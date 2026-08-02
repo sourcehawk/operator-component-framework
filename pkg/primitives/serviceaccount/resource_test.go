@@ -1,7 +1,6 @@
 package serviceaccount
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -97,33 +96,3 @@ func TestResource_Mutate_WithMutation(t *testing.T) {
 }
 
 // --- Resource.ExtractData tests ---
-
-func TestResource_ExtractData(t *testing.T) {
-	sa := newValidSA()
-	sa.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "reg"}}
-
-	var extractedName string
-	res, err := NewBuilder(sa).
-		WithDataExtractor(func(s corev1.ServiceAccount) error {
-			extractedName = s.ImagePullSecrets[0].Name
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, "reg", extractedName)
-}
-
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidSA()).
-		WithDataExtractor(func(_ corev1.ServiceAccount) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
-}

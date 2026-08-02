@@ -3,6 +3,7 @@ package static
 import (
 	"testing"
 
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	unstruct "github.com/sourcehawk/operator-component-framework/pkg/primitives/unstructured"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,24 +96,52 @@ func TestBuilder_WithMutation(t *testing.T) {
 	require.NotNil(t, res)
 }
 
-func TestBuilder_WithDataExtractor(t *testing.T) {
+func TestExtractIntoDeclaredExtraction(t *testing.T) {
+	t.Parallel()
+	cell := concepts.NewData[string]("team-label")
 	obj := validObject()
-	called := false
-	b := NewBuilder(obj)
-	b.WithDataExtractor(func(_ uns.Unstructured) error {
-		called = true
-		return nil
+	obj.SetLabels(map[string]string{"team": "platform"})
+	builder := NewBuilder(obj)
+	ExtractInto(builder, cell, func(o uns.Unstructured) (string, error) {
+		return o.GetLabels()["team"], nil
 	})
-	res, err := b.Build()
+
+	res, err := builder.Build()
 	require.NoError(t, err)
+
+	produced := res.ProducedData()
+	require.Len(t, produced, 1)
+	assert.Equal(t, "team-label", produced[0].Name())
+
 	require.NoError(t, res.ExtractData())
-	assert.True(t, called)
+	v, ok := cell.Get()
+	assert.True(t, ok)
+	assert.Equal(t, "platform", v)
 }
 
-func TestBuilder_WithDataExtractor_NilIgnored(t *testing.T) {
-	b := NewBuilder(validObject())
-	b.WithDataExtractor(nil)
-	res, err := b.Build()
+func TestWithDataGuardAndOptionalDataDeclarations(t *testing.T) {
+	t.Parallel()
+	guarded := concepts.NewData[string]("db-host")
+	optional := concepts.NewData[string]("db-port")
+	builder := NewBuilder(validObject()).WithDataGuard(guarded).WithOptionalData(optional)
+
+	res, err := builder.Build()
 	require.NoError(t, err)
-	require.NoError(t, res.ExtractData())
+
+	consumed := res.ConsumedData()
+	require.Len(t, consumed, 2)
+	assert.Equal(t, "db-host", consumed[0].Cell.Name())
+	assert.False(t, consumed[0].Optional)
+	assert.Equal(t, "db-port", consumed[1].Cell.Name())
+	assert.True(t, consumed[1].Optional)
+
+	status, err := res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusBlocked, status.Status)
+	assert.Equal(t, `waiting for data "db-host"`, status.Reason)
+
+	guarded.Set("postgres.default.svc")
+	status, err = res.GuardStatus()
+	require.NoError(t, err)
+	assert.Equal(t, concepts.GuardStatusUnblocked, status.Status)
 }

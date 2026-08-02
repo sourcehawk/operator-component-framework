@@ -1,7 +1,6 @@
 package pdb
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/feature"
@@ -114,28 +113,4 @@ func TestResource_Mutate_FeatureOrdering(t *testing.T) {
 	require.NoError(t, res.Mutate(obj))
 	got := obj.(*policyv1.PodDisruptionBudget)
 	assert.Equal(t, "b", got.Labels["order"])
-}
-func TestResource_ExtractData(t *testing.T) {
-	p := newValidPDB()
-	var extracted int32
-	res, err := NewBuilder(p).
-		WithDataExtractor(func(pdb policyv1.PodDisruptionBudget) error {
-			extracted = pdb.Spec.MinAvailable.IntVal
-			return nil
-		}).
-		Build()
-	require.NoError(t, err)
-	require.NoError(t, res.ExtractData())
-	assert.Equal(t, int32(2), extracted)
-}
-func TestResource_ExtractData_Error(t *testing.T) {
-	res, err := NewBuilder(newValidPDB()).
-		WithDataExtractor(func(_ policyv1.PodDisruptionBudget) error {
-			return errors.New("extract error")
-		}).
-		Build()
-	require.NoError(t, err)
-	err = res.ExtractData()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "extract error")
 }

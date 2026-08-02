@@ -38,6 +38,9 @@ func TestDeploymentShape(t *testing.T) {
 	res, err := resources.NewDeploymentResource(owner)
 	require.NoError(t, err)
 
-	golden.AssertYAML(t, "testdata/deployment.yaml", res.(golden.Previewer),
+	previewer, ok := res.(golden.Previewer)
+	require.True(t, ok)
+
+	golden.AssertYAML(t, "testdata/deployment.yaml", previewer,
 		golden.WithScheme(testScheme()), golden.Update(*update))
 }

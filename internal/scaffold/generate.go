@@ -24,14 +24,14 @@ func Generate(data TemplateData, outDir string, force bool) ([]string, error) {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(outDir, 0o750); err != nil {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create output directory %q: %w", outDir, err)
 	}
 
 	written := make([]string, 0, len(GeneratedFiles))
 	for _, name := range GeneratedFiles {
 		path := filepath.Join(outDir, name)
-		if err := os.WriteFile(path, files[name], 0o600); err != nil {
+		if err := os.WriteFile(path, files[name], 0o644); err != nil {
 			return nil, fmt.Errorf("write %q: %w", path, err)
 		}
 		written = append(written, path)

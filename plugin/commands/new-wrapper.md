@@ -18,9 +18,16 @@ First invoke the `ocf:custom-resource-wrappers` skill and follow it. Then:
    - The Go type and import path of the custom resource.
    - The resource category (this decides which status handlers the wrapper implements).
    - Namespaced or cluster-scoped.
-5. Implement the wrapper following the eight steps in the skill, in order: category, mutation type alias, mutator,
-   status handlers, builder, resource, feature mutations, component registration. Match the layout of any existing
-   wrapper in this repository if one exists.
-6. Verify exact framework signatures with `go doc github.com/sourcehawk/operator-component-framework/pkg/generic` before
+5. Generate the package with the framework CLI rather than writing it by hand:
+   `ocf scaffold wrapper --type <import-path>.<TypeName> --variant <category> --group <api-group>`, adding
+   `--cluster-scoped` for a cluster-scoped kind. Install it first if it is missing
+   (`go install github.com/sourcehawk/operator-component-framework/cmd/ocf@latest`), and run `go mod tidy` afterwards so
+   the wrapped type resolves. If the CLI cannot be installed, or the package already exists and is being extended,
+   implement the wrapper by hand following the eight steps in the skill, in order: category, mutation type alias,
+   mutator, status handlers, builder, resource, feature mutations, component registration. Match the layout of any
+   existing wrapper in this repository if one exists.
+6. Replace the scaffolded defaults with kind-specific logic: the status handlers report healthy, completed, or
+   operational unconditionally, and the suspension handlers are no-ops. Each carries a comment saying so.
+7. Verify exact framework signatures with `go doc github.com/sourcehawk/operator-component-framework/pkg/generic` before
    finalizing; do not invent interfaces.
-7. Write tests per the `ocf:testing-operators` skill, build, run the project's tests, and report what was created.
+8. Write tests per the `ocf:testing-operators` skill, build, run the project's tests, and report what was created.

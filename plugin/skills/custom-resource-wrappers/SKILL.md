@@ -25,6 +25,24 @@ API is not needed for a kind the operator touches only occasionally. Write a ful
 the kind is managed often enough to justify a dedicated package. Other unstructured variants exist per resource
 category; see the using-primitives skill for the full set.
 
+## Generate the package first
+
+The framework ships a CLI that generates this whole pattern:
+
+```bash
+go install github.com/sourcehawk/operator-component-framework/cmd/ocf@latest
+ocf scaffold wrapper --type <import-path>.<TypeName> --variant <static|workload|task|integration> --group <api-group>
+```
+
+It writes `mutator.go`, `builder.go`, `resource.go`, and `builder_test.go` into `./<package>`, wired to the framework
+version the CLI was built from, with working default status handlers marked as scaffolded defaults to replace. Prefer it
+over writing the files by hand: the boilerplate below is what it produces, so the remaining work is replacing those
+defaults with kind-specific logic.
+
+Run `go mod tidy` afterwards if the module does not already depend on the wrapped type's API package, since the CLI
+never edits `go.mod`. The steps below stay the reference for what the generated code means, and for the cases the CLI
+does not cover: an existing wrapper being extended, or a kind whose scaffold has already been customized.
+
 A custom resource is three wrapped pieces: the builder configures and validates, producing a resource; the resource
 delegates lifecycle methods to a generic base; the mutator records and applies changes to the Kubernetes object.
 

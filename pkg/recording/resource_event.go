@@ -72,10 +72,12 @@ func applyOperationMessage(op concepts.ConvergingOperation, object client.Object
 // for its owning resource (owner).
 //
 // The event is recorded on the owner, with the applied object attached as the event's
-// related object and the operation verb ("Create" or "Update") as its action.
+// related object and the operation verb as its action.
 //
 //   - ConvergingOperationNone: No event is recorded
-//   - Other operations: An event of type Normal is recorded
+//   - ConvergingOperationCreated: An event of type Normal with the action "Create"
+//   - ConvergingOperationUpdated: An event of type Normal with the action "Update"
+//   - Any other operation value: An event of type Normal with the action "Unchanged"
 //   - messageKeyValuePairs are strings expected in the format "myKey=myValue" and are prepended to the generated
 //     event message for additional information
 func RecordApplyOperationEvent(

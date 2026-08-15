@@ -41,6 +41,12 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 			orphaned client.Object
 		)
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			// Each attempt reports only what it observed itself. Without this reset, an
+			// attempt that conflicts after setting removed would leak that state into a
+			// later attempt whose object has since been deleted, and the event would
+			// claim an orphaning that never landed.
+			removed, orphaned = false, nil
+
 			live := obj.DeepCopyObject().(client.Object)
 			if getErr := rec.Client.Get(ctx, key, live); getErr != nil {
 				if apierrors.IsNotFound(getErr) {
@@ -50,7 +56,6 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 			}
 			refs := live.GetOwnerReferences()
 			kept := make([]metav1.OwnerReference, 0, len(refs))
-			removed = false
 			for _, ref := range refs {
 				if ref.UID == ownerUID {
 					removed = true

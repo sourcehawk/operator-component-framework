@@ -1,12 +1,16 @@
 package component
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -81,6 +85,37 @@ func TestOrphanResources(t *testing.T) {
 		recorder, ok := rc.EventRecorder.(*spyRecorder)
 		require.True(t, ok)
 		assert.Empty(t, recorder.recorded())
+	})
+	t.Run("records no event when the object is deleted between a conflicting update and the retry", func(t *testing.T) {
+		owner := newOwner()
+		scheme := setupScheme()
+		gvr := schema.GroupResource{Resource: "configmaps"}
+
+		// First attempt finds the owner reference and conflicts on update; by the time
+		// the retry re-reads the object, it is gone. Nothing was orphaned.
+		mockClient := &MockClient{}
+		mockClient.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				live := args.Get(2).(client.Object)
+				live.SetOwnerReferences([]metav1.OwnerReference{ownerRef("owner-uid", "test-owner")})
+			}).Return(nil).Once()
+		mockClient.On("Update", mock.Anything, mock.Anything, mock.Anything).
+			Return(apierrors.NewConflict(gvr, "test-cm", errors.New("object was modified"))).Once()
+		mockClient.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(apierrors.NewNotFound(gvr, "test-cm")).Once()
+
+		res := &MockResource{}
+		res.On("Object").Return(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "test-cm", Namespace: ns}}, nil)
+		res.On("Identity").Return("v1/ConfigMap/test-cm")
+
+		rc := setupReconcileContext(scheme, owner, mockClient)
+		require.NoError(t, orphanResources(t.Context(), rc, []Resource{res}))
+
+		recorder, ok := rc.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+		assert.Empty(t, recorder.recorded(), "no orphan event for an object that was deleted before it could be orphaned")
+
+		mockClient.AssertExpectations(t)
 	})
 	t.Run("removes only this owner's reference", func(t *testing.T) {
 		fc, rc, res := seed(t, newOwner(), ownerRef("owner-uid", "test-owner"), ownerRef("other-uid", "other-owner"))

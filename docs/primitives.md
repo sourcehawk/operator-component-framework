@@ -145,7 +145,7 @@ primitives coexist with other controllers that touch the same resources.
     field not declared in schema
     ```
 
-    This happens when a CRD's Go type **embeds a core struct**. A CRD that declares
+    This happens when a CRD's Go type **uses a core struct as a field type**. A CRD that declares
     `spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, reusing the Kubernetes type rather than
     restating it, marshals `status: {}` inside every template while its own schema declares no `status` there. An
     `Update` prunes the field silently, which is why the error only appears after a move to SSA.

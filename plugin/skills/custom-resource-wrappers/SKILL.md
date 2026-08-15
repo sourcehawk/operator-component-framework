@@ -3,7 +3,7 @@ name: custom-resource-wrappers
 description:
   Use when wrapping a custom resource (a CRD-backed type not covered by the built-in primitives) as an
   operator-component-framework primitive using pkg/generic - covers choosing a resource category, mutation type aliases,
-  implementing the mutator, extending it with editors for CRDs that embed pod templates, status handlers, suspending an
+  implementing the mutator, extending it with editors for CRDs that carry pod templates, status handlers, suspending an
   external CR that destroys data when scaled down (scale-to-zero vs delete-on-suspend), an Apply rejected with "field
   not declared in schema", the builder, the resource type, feature mutations, component registration, and regenerating a
   scaffolded wrapper with ocf scaffold wrapper --force.
@@ -156,7 +156,7 @@ func (m *Mutator) Apply() error {
 **Extend the generated mutator with `editors` instead of hand-rolled loops.** The mutator sketched above is written by
 hand, so its seam is whatever you gave it (`SetReplicas`). A scaffolded mutator is the same contract with a different
 surface: it emits a general `Edit(func(*T) error)` and `EditObjectMetadata`, and that is what you extend. Those two are
-enough for a flat spec and not enough for a CRD that embeds a pod template per node group, a common shape once a CRD
+enough for a flat spec and not enough for a CRD that carries a pod template per node group, a common shape once a CRD
 describes a clustered workload. Written by hand, every container mutation repeats the same find-the-container-or-add-it
 loop. Every editor in `pkg/mutation/editors` has an exported constructor that takes a pointer to the field it edits, so
 it works on a container or pod spec nested anywhere in your CRD: `editors.NewContainerEditor(*corev1.Container)`,
@@ -378,12 +378,12 @@ field not declared in schema
 ```
 
 The API server's field manager types a patch against the target's OpenAPI schema before merging, so a Go type that
-describes more than the CRD declares fails the whole apply. The usual cause is an **embedded core struct**: a CRD
-declaring `spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim` marshals `status: {}` inside every
-template while its own schema declares no `status` there. `Update` prunes the field silently, which is why the error
-appears on the first apply after a move from `Update`-based reconciliation. The struct tag is not the missing piece:
-`PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`, and `omitempty` has no effect on a struct value in
-`encoding/json`, so a zero status still marshals as `{}`.
+describes more than the CRD declares fails the whole apply. The usual cause is a **core struct used as a field type**: a
+CRD declaring `spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim` marshals `status: {}` inside
+every template while its own schema declares no `status` there. `Update` prunes the field silently, which is why the
+error appears on the first apply after a move from `Update`-based reconciliation. The struct tag is not the missing
+piece: `PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`, and `omitempty` has no effect on a struct
+value in `encoding/json`, so a zero status still marshals as `{}`.
 
 **The framework has no hook for this.** No builder option rewrites the object between `Mutate` and the patch. Two
 approaches work today.
@@ -406,7 +406,7 @@ func (c applyClient) Patch(
         return err
     }
     u := &unstructured.Unstructured{Object: content}
-    pruneUndeclaredFields(u) // delete the exact undeclared paths, here the embedded status
+    pruneUndeclaredFields(u) // delete the exact undeclared paths, here the nested status
     if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {
         return err
     }

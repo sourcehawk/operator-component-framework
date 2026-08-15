@@ -185,7 +185,7 @@ field not declared in schema
 ```
 
 The built-in primitives are unaffected, since the API server's schema for a built-in kind matches its Go type. The
-failure belongs to wrapped third-party CRDs whose Go type **embeds a core struct**. A CRD declaring
+failure belongs to wrapped third-party CRDs whose Go type **uses a core struct as a field type**. A CRD declaring
 `spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim` marshals `status: {}` inside every template
 while its own schema declares no `status` there. `Update` prunes the field silently, which is why the error only appears
 after a move to SSA. The struct tag is not the missing piece: `PersistentVolumeClaim.Status` does carry

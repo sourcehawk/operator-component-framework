@@ -244,7 +244,7 @@ The mutator above is written by hand, so its seam is whatever you gave it: `SetR
 scaffolded mutator is the same contract with a different surface. It exposes a general `Edit(func(*T) error)` alongside
 `EditObjectMetadata`, and the rest of this section extends that one.
 
-`Edit` and `EditObjectMetadata` are enough for flat specs. They are not enough for a CRD that embeds a pod template per
+`Edit` and `EditObjectMetadata` are enough for flat specs. They are not enough for a CRD that carries a pod template per
 node group, which is a common shape once a CRD describes a clustered workload. Written by hand, every container mutation
 repeats the same find-the-container-or-add-it loop, and each copy of that loop is a place to get the selector semantics
 wrong.
@@ -1009,19 +1009,20 @@ failed to create typed patch object: .spec.nodeSets[0].volumeClaimTemplates[0].s
 field not declared in schema
 ```
 
-The cause is an **embedded core struct**. Say `MessageQueue` declares `spec.nodeSets[].volumeClaimTemplates` as
-`[]corev1.PersistentVolumeClaim`, the way a CRD does whenever it reuses a Kubernetes type instead of restating it. Every
-marshalled `MessageQueue` then carries `status: {}` inside each volume claim template, while the CRD's OpenAPI schema
-declares no `status` there. An `Update` prunes the field and says nothing. An `Apply` is rejected, because the API
-server's field manager types the patch against the schema before it merges anything.
+The cause is a **core Kubernetes struct used as a field type**. Say `MessageQueue` declares
+`spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, the way a CRD does whenever it reuses a
+Kubernetes type instead of restating it. Every marshalled `MessageQueue` then carries `status: {}` inside each volume
+claim template, while the CRD's OpenAPI schema declares no `status` there. An `Update` prunes the field and says
+nothing. An `Apply` is rejected, because the API server's field manager types the patch against the schema before it
+merges anything.
 
 `PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`, so the tag is not the problem and looking for a
 missing one is a dead end. `omitempty` has no effect on a struct value in `encoding/json`: it omits empty maps, slices,
 strings, and zero numbers, but never a struct, so a zero `PersistentVolumeClaimStatus` still marshals as `{}`.
 
 Any operator that moves from `Update`-based reconciliation to this framework meets the error on its first apply against
-a real CRD. Nothing about it is specific to one vendor's kind: any wrapped typed CRD that embeds a core struct with a
-struct-valued field the schema does not declare behaves the same way.
+a real CRD. Nothing about it is specific to one vendor's kind: any wrapped typed CRD that uses a core struct as a field
+type behaves the same way, whenever that struct has a struct-valued field the schema does not declare.
 
 **The framework has no hook for this.** There is no builder option that rewrites the object between `Mutate` and the
 patch. Two approaches work today.
@@ -1054,7 +1055,7 @@ func (c applyClient) Patch(
         return err
     }
     u := &unstructured.Unstructured{Object: content}
-    pruneUndeclaredFields(u) // drop the embedded status fields the schema omits
+    pruneUndeclaredFields(u) // drop the nested status fields the schema omits
 
     if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {
         return err

@@ -3,8 +3,9 @@ name: building-components
 description:
   Use when creating or modifying a component built with the operator-component-framework
   (github.com/sourcehawk/operator-component-framework) - covers the component builder, resource registration, feature
-  gates, prerequisites, the reconciliation lifecycle, conditions and the status model, grace periods, suspension,
-  ReconcileContext, FlushStatus, guards, and declared data cells.
+  gates, prerequisites, the reconciliation lifecycle, conditions and the status model, aggregating component conditions
+  into an owner-level condition, grace periods, suspension, ReconcileContext, FlushStatus, guards, and declared data
+  cells.
 ---
 
 # Building Components
@@ -118,6 +119,16 @@ failing/converging/pending states, then the ready states (`Healthy`, `Operationa
 does.
 
 `Reconcile` only stages the condition on the in-memory owner object; it is not the writer of record to the cluster.
+
+`component.Aggregate(conditionType, owner, comps...)` returns one owner-level condition that collapses the conditions of
+several components. It writes nothing, so the controller stages the returned condition with `meta.SetStatusCondition`
+before `FlushStatus` persists it. The aggregate status is `True` if and only if every component condition is `True`, and
+priority never decides `True` or `False`. The reason and message come from the governing component. If any component
+condition is not `True`, the governing component is the one with the highest `Status.Priority()` among those. If all of
+them are `True`, it is the one with the highest priority among all of them. A rule that derives the status from priority
+instead reports a CR with a failing component as ready, because `Suspended` has priority 15 and condition status `True`
+while `AliveFailing` has priority 13 and condition status `False`. A partly suspended CR therefore reports `True` with
+reason `Suspended`, and a call with no components reports `False` with reason `Unknown`.
 
 ## Grace period and suspension
 

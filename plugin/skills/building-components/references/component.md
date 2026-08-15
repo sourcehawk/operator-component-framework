@@ -446,6 +446,68 @@ A resource registered with [`component.Auxiliary()`](#resource-registration-opti
 health to this aggregation. A blocked guard on an auxiliary resource still contributes, because a blocked guard halts
 the whole pipeline.
 
+### Aggregating components into one owner condition
+
+A controller that runs several components usually needs one condition for all of them. `component.Aggregate` derives
+that aggregate condition from the component conditions already on the owner:
+
+```go
+func Aggregate(conditionType ConditionType, owner OperatorCRD, comps ...*Component) Condition
+```
+
+The controller stages the result on the owner like any other condition:
+
+```go
+ready := component.Aggregate("Ready", owner, brokerComponent, gatewayComponent)
+meta.SetStatusCondition(owner.GetStatusConditions(), metav1.Condition(ready))
+```
+
+Two separate decisions produce the result.
+
+**Truth by unanimity.** The aggregate condition status is `True` if and only if every component condition is `True`.
+Priority never decides `True` or `False`.
+
+**Reason by priority.** The reason and message come from the governing component. If any component condition is not
+`True`, the governing component is the one with the highest `Status.Priority()` among those. If all of them are `True`,
+it is the one with the highest priority among all of them. Argument order breaks ties, so the result is deterministic.
+
+The two decisions must stay separate. A rule that derives truth from priority reports `True`/`Suspended` for an owner
+with a failing component. `Suspended` has priority 15 and maps to condition status `True`, and `AliveFailing` has
+priority 13 and maps to `False`. Unanimity decides whether every component is in its expected state. Priority decides
+which component the reader must look at first.
+
+`Aggregate` reads each component condition through `Component.GetCondition`. For a component that never reconciled, that
+method returns a synthetic `Unknown` condition with status `False`. A new custom resource therefore never reports ready.
+The `ObservedGeneration` field takes the generation of the owner.
+
+The message of the aggregate condition has the form `<component name>: <component message>`. It therefore names the
+governing component and keeps the text of that component. If the governing condition has no message, the aggregate
+message is the component name alone.
+
+| Component conditions passed in | Aggregate condition     |
+| ------------------------------ | ----------------------- |
+| all `Healthy`                  | `True`, `Healthy`       |
+| `Healthy` and `AliveFailing`   | `False`, `AliveFailing` |
+| `Suspended` and `AliveFailing` | `False`, `AliveFailing` |
+| all `Suspended`                | `True`, `Suspended`     |
+| `Suspended` and `Healthy`      | `True`, `Suspended`     |
+| `Healthy` and `Disabled`       | `True`, `Disabled`      |
+| one component never reconciled | `False`, `Unknown`      |
+| one component errored          | `False`, `Error`        |
+| no components passed           | `False`, `Unknown`      |
+
+Four properties of the aggregate condition are easy to miss:
+
+- Partial suspension reports `True` with reason `Suspended`. A suspended component is in its expected state and cannot
+  make the aggregate false. An operator that wants owner-level suspension as an explicit state must branch on its own
+  suspend field before it calls `Aggregate`.
+- A component disabled by a feature gate reports `True`/`Disabled` and therefore counts as ready, for the same reason.
+- `Aggregate` looks only at the components that you pass in. If the controller no longer builds a component, the
+  condition of that component stays on the owner. `Aggregate` ignores that stale condition, but users still see it,
+  because [`FlushStatus`](#persisting-status-with-flushstatus) merges conditions by type and never prunes them.
+- The returned `Condition` is a plain struct. A caller that wants different prose can change the message before it
+  stages the condition with `meta.SetStatusCondition`.
+
 ## Grace Period
 
 The grace period defines how long a component may remain in a converging state (`Creating`, `Updating`, `Scaling`)

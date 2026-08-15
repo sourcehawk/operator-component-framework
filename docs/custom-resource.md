@@ -240,10 +240,14 @@ func (m *Mutator) Apply() error {
 
 ### Extending the mutator with editors and selectors
 
-The generated mutator gives you `Edit` and `EditObjectMetadata` and stops there. That is enough for flat specs. It is
-not enough for a CRD that embeds a pod template per node group, which is a common shape once a CRD describes a clustered
-workload. Written by hand, every container mutation repeats the same find-the-container-or-add-it loop, and each copy of
-that loop is a place to get the selector semantics wrong.
+The mutator above is written by hand, so its seam is whatever you gave it: `SetReplicas`, `SetMaxConnections`. A
+scaffolded mutator is the same contract with a different surface. It exposes a general `Edit(func(*T) error)` alongside
+`EditObjectMetadata`, and the rest of this section extends that one.
+
+`Edit` and `EditObjectMetadata` are enough for flat specs. They are not enough for a CRD that embeds a pod template per
+node group, which is a common shape once a CRD describes a clustered workload. Written by hand, every container mutation
+repeats the same find-the-container-or-add-it loop, and each copy of that loop is a place to get the selector semantics
+wrong.
 
 Put the hand-written helpers in their own file beside the generated `mutator.go` (see
 [Generated and hand-written files](#generated-and-hand-written-files)) and build them on `pkg/mutation/editors` and

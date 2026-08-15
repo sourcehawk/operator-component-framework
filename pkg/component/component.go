@@ -51,7 +51,7 @@ type ReconcileContext struct {
 	// Scheme is the runtime scheme for the operator.
 	Scheme *runtime.Scheme
 	// EventRecorder is the event recorder for publishing Kubernetes events.
-	// Obtain one from the controller-runtime manager with GetEventRecorder.
+	// Obtain one from the controller-runtime manager with GetEventRecorder(name).
 	EventRecorder events.EventRecorder
 	// Metrics is the recorder for status condition metrics. It is optional; if
 	// nil, [FlushStatus] will skip metric emission.

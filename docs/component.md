@@ -495,7 +495,7 @@ component can ever be suspended.
 recCtx := component.ReconcileContext{
     Client:        r.Client,        // sigs.k8s.io/controller-runtime/pkg/client
     Scheme:        r.Scheme,        // *runtime.Scheme
-    EventRecorder: r.EventRecorder, // events.EventRecorder, from manager.GetEventRecorder
+    EventRecorder: r.EventRecorder, // events.EventRecorder, from manager.GetEventRecorder(name)
     Metrics:       r.Metrics,       // component.MetricsRecorder (condition metrics), optional
     Owner:         owner,           // the CRD that owns this component
 }

@@ -3,9 +3,9 @@ name: using-primitives
 description:
   Use when creating or editing Kubernetes resource primitives with the operator-component-framework - primitive builders
   and categories, baseline desired state, the mutation system, boolean and version feature gating (NewBooleanGate,
-  NewVersionGate), mutation editors, container selectors, server-side apply behaviour, workload-kind-agnostic mutations
-  (WorkloadMutator), declared data on primitive builders (ExtractInto, WithDataGuard, WithOptionalData), and
-  unstructured primitives.
+  NewVersionGate), mutation editors, container selectors, server-side apply behaviour including an Apply rejected with
+  "field not declared in schema", workload-kind-agnostic mutations (WorkloadMutator), declared data on primitive
+  builders (ExtractInto, WithDataGuard, WithOptionalData), and unstructured primitives.
 ---
 
 # Using Primitives
@@ -175,6 +175,27 @@ and fields set by other controllers or webhooks are left untouched. The field ma
 fields from other managers while leaving fields it does not include with their current owners. This is what lets
 primitives coexist with other controllers touching the same resource without a perpetual-update fight over stripped
 server defaults.
+
+**A Go type that overstates the CRD schema breaks Apply.** The API server's field manager types the patch against the
+target's OpenAPI schema before merging anything, so an undeclared field fails the whole apply and the server returns:
+
+```text
+failed to create typed patch object: .spec.nodeSets[0].volumeClaimTemplates[0].status:
+field not declared in schema
+```
+
+The built-in primitives are unaffected, since the API server's schema for a built-in kind matches its Go type. The
+failure belongs to wrapped third-party CRDs whose Go type embeds a core struct. ECK's `Elasticsearch` declares
+`nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, whose `Status` and `ObjectMeta.CreationTimestamp`
+carry no `omitempty`, so every marshalled object contains `status: {}` and `metadata.creationTimestamp: null` inside
+each template while the CRD schema declares neither. `Update` prunes them silently, which is why the error only appears
+after a move to SSA. The framework offers no hook to rewrite an object between mutation and apply. The two honest
+options are a `client.Client` decorator installed in `ReconcileContext.Client` that deletes the named undeclared paths
+from the patch (here `status` and `metadata.creationTimestamp` inside each `volumeClaimTemplates` entry) and decodes the
+server's response back into the typed object, or managing the kind through the unstructured primitives below, whose
+content map holds only the fields you put in it. The `ocf:custom-resource-wrappers` skill carries both in full,
+including why the response must be decoded back: the framework keeps that same object as the resource's desired state,
+and the status handlers read it after the apply.
 
 ## Cluster-scoped and unstructured primitives
 

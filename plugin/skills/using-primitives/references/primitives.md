@@ -145,11 +145,13 @@ primitives coexist with other controllers that touch the same resources.
     field not declared in schema
     ```
 
-    This happens when a CRD's Go type embeds a core struct. ECK's `Elasticsearch` declares
-    `nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, whose `Status` and
-    `ObjectMeta.CreationTimestamp` carry no `omitempty`, so every marshalled object contains `status: {}` and
-    `metadata.creationTimestamp: null` inside each template. ECK's CRD schema declares neither. An `Update` prunes them
-    silently, which is why the error only appears after a move to SSA.
+    This happens when a CRD's Go type **embeds a core struct**. A CRD that declares
+    `spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, reusing the Kubernetes type rather than
+    restating it, marshals `status: {}` inside every template while its own schema declares no `status` there. An
+    `Update` prunes the field silently, which is why the error only appears after a move to SSA.
+
+    The struct tag is not the missing piece: `PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`.
+    `omitempty` simply has no effect on a struct value in `encoding/json`, so a zero status still marshals as `{}`.
 
     The built-in primitives are unaffected: their kinds are built-in, and the API server's schema for them matches the
     Go types. The failure belongs to wrapped third-party CRDs. The framework offers no hook to rewrite an object

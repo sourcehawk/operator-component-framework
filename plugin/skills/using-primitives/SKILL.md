@@ -185,17 +185,18 @@ field not declared in schema
 ```
 
 The built-in primitives are unaffected, since the API server's schema for a built-in kind matches its Go type. The
-failure belongs to wrapped third-party CRDs whose Go type embeds a core struct. ECK's `Elasticsearch` declares
-`nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, whose `Status` and `ObjectMeta.CreationTimestamp`
-carry no `omitempty`, so every marshalled object contains `status: {}` and `metadata.creationTimestamp: null` inside
-each template while the CRD schema declares neither. `Update` prunes them silently, which is why the error only appears
-after a move to SSA. The framework offers no hook to rewrite an object between mutation and apply. The two honest
-options are a `client.Client` decorator installed in `ReconcileContext.Client` that deletes the named undeclared paths
-from the patch (here `status` and `metadata.creationTimestamp` inside each `volumeClaimTemplates` entry) and decodes the
-server's response back into the typed object, or managing the kind through the unstructured primitives below, whose
-content map holds only the fields you put in it. The `ocf:custom-resource-wrappers` skill carries both in full,
-including why the response must be decoded back: the framework keeps that same object as the resource's desired state,
-and the status handlers read it after the apply.
+failure belongs to wrapped third-party CRDs whose Go type **embeds a core struct**. A CRD declaring
+`spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim` marshals `status: {}` inside every template
+while its own schema declares no `status` there. `Update` prunes the field silently, which is why the error only appears
+after a move to SSA. The struct tag is not the missing piece: `PersistentVolumeClaim.Status` does carry
+`json:"status,omitempty"`, and `omitempty` simply has no effect on a struct value in `encoding/json`.
+
+The framework offers no hook to rewrite an object between mutation and apply. The two honest options are a
+`client.Client` decorator installed in `ReconcileContext.Client` that deletes the named undeclared paths from the patch
+(here `status` inside each `volumeClaimTemplates` entry) and decodes the server's response back into the typed object,
+or managing the kind through the unstructured primitives below, whose content map holds only the fields you put in it.
+The `ocf:custom-resource-wrappers` skill carries both in full, including why the response must be decoded back: the
+framework keeps that same object as the resource's desired state, and the status handlers read it after the apply.
 
 ## Cluster-scoped and unstructured primitives
 

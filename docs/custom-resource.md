@@ -241,9 +241,9 @@ func (m *Mutator) Apply() error {
 ### Extending the mutator with editors and selectors
 
 The generated mutator gives you `Edit` and `EditObjectMetadata` and stops there. That is enough for flat specs. It is
-not enough for a CRD that embeds pod templates, which many third-party operators do: ECK gives each `nodeSet` a
-`podTemplate`, Strimzi and CloudNativePG carry equivalent fields. Written by hand, every container mutation repeats the
-same find-the-container-or-add-it loop, and each copy of that loop is a place to get the selector semantics wrong.
+not enough for a CRD that embeds a pod template per node group, which is a common shape once a CRD describes a clustered
+workload. Written by hand, every container mutation repeats the same find-the-container-or-add-it loop, and each copy of
+that loop is a place to get the selector semantics wrong.
 
 Put the hand-written helpers in their own file beside the generated `mutator.go` (see
 [Generated and hand-written files](#generated-and-hand-written-files)) and build them on `pkg/mutation/editors` and
@@ -251,6 +251,11 @@ Put the hand-written helpers in their own file beside the generated `mutator.go`
 editor works on any object that contains that field. `editors.NewContainerEditor(*corev1.Container)` brings
 `EnsureEnvVars`, `EnsureArgs`, `SetResourceLimit`, and the rest to a container nested anywhere in your CRD, and
 `editors.NewPodSpecEditor(*corev1.PodSpec)` does the same for volumes, tolerations, and node selectors.
+
+Record the helper through the generated `Edit` method rather than adding a field to `featurePlan`. `Edit` appends to the
+active feature plan and the generated `Apply` runs it in registration order, so the helper lives entirely in your own
+file and survives the next `--force`. Its GoDoc asks for exactly this: wrap frequently used edits in named methods on
+the mutator.
 
 ```go
 // podtemplate.go, hand-written beside the generated mutator.go.
@@ -267,12 +272,12 @@ import (
 func (m *Mutator) EditNodeSetContainers(
     nodeSet string, sel selectors.ContainerSelector, fn func(*editors.ContainerEditor) error,
 ) {
-    m.active.templateOps = append(m.active.templateOps, func(spec *examplev1.MessageQueueSpec) error {
-        for i := range spec.NodeSets {
-            if spec.NodeSets[i].Name != nodeSet {
+    m.Edit(func(mq *examplev1.MessageQueue) error {
+        for i := range mq.Spec.NodeSets {
+            if mq.Spec.NodeSets[i].Name != nodeSet {
                 continue
             }
-            containers := spec.NodeSets[i].PodTemplate.Spec.Containers
+            containers := mq.Spec.NodeSets[i].PodTemplate.Spec.Containers
             for j := range containers {
                 if !sel(j, &containers[j]) {
                     continue
@@ -287,9 +292,7 @@ func (m *Mutator) EditNodeSetContainers(
 }
 ```
 
-`templateOps` is a new field on `featurePlan`, of type `[]func(*examplev1.MessageQueueSpec) error`, and `Apply` runs it
-alongside the generated operation slices and returns the first error. A feature mutation then reads the way a built-in
-primitive's does:
+A feature mutation then reads the way a built-in primitive's does:
 
 ```go
 m.EditNodeSetContainers("data", selectors.ContainerNamed("broker"), func(e *editors.ContainerEditor) error {
@@ -451,11 +454,15 @@ suspension then erases the data it exists to preserve.
 One question decides it: **does the external operator destroy state when it is scaled down?** If it does, suspend by
 deletion behind a safety-gated status handler. If it does not, scale to zero.
 
-ECK is the public example. An `Elasticsearch` declares its storage through `nodeSets[].volumeClaimTemplates`, and ECK
-deletes the PersistentVolumeClaims of the nodes it scales away. A suspension mutation that sets every `nodeSet.count` to
-zero therefore drops the cluster's data. Deleting the `Elasticsearch` object is the safe operation instead, but only
-once `spec.volumeClaimDeletePolicy` is set to the value that retains claims on cluster deletion
-(`DeleteOnScaledownOnly`). When the CR is recreated on resume, ECK reattaches the existing claims.
+The behavior to watch for is common among operators that manage stateful clusters: **the operator reclaims a node's
+PersistentVolumeClaim when that node is scaled away**. Under that behavior a suspension mutation that sets the replica
+or node count to zero destroys exactly the data suspension exists to preserve. Deleting the CR is the safe operation
+instead, provided its spec carries a policy that retains the claims when the object is removed. On resume the CR is
+recreated and the operator reattaches the claims it kept.
+
+Read the CRD's own documentation for which field expresses that policy and what its retaining value is. The shape of the
+answer is what matters here, not the spelling: a spec field the wrapper can set, whose effect is observable on the
+applied object.
 
 The pattern has four parts, and the framework's ordering guarantee is what makes it safe. `Suspendable` states it
 directly: the resource must reach `SuspensionStatusSuspended` before it is deleted.
@@ -998,14 +1005,19 @@ failed to create typed patch object: .spec.nodeSets[0].volumeClaimTemplates[0].s
 field not declared in schema
 ```
 
-The cause is an embedded core struct. ECK's `Elasticsearch` declares `nodeSets[].volumeClaimTemplates` as
-`[]corev1.PersistentVolumeClaim`. That struct has no `omitempty` on `Status` or on `ObjectMeta.CreationTimestamp`, so a
-marshalled `Elasticsearch` always carries `status: {}` and `metadata.creationTimestamp: null` inside every volume claim
-template. The CRD's OpenAPI schema declares neither field. An `Update` prunes them and says nothing. An `Apply` is
-rejected, because the API server's field manager types the patch against the schema before it merges anything.
+The cause is an **embedded core struct**. Say `MessageQueue` declares `spec.nodeSets[].volumeClaimTemplates` as
+`[]corev1.PersistentVolumeClaim`, the way a CRD does whenever it reuses a Kubernetes type instead of restating it. Every
+marshalled `MessageQueue` then carries `status: {}` inside each volume claim template, while the CRD's OpenAPI schema
+declares no `status` there. An `Update` prunes the field and says nothing. An `Apply` is rejected, because the API
+server's field manager types the patch against the schema before it merges anything.
+
+`PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`, so the tag is not the problem and looking for a
+missing one is a dead end. `omitempty` has no effect on a struct value in `encoding/json`: it omits empty maps, slices,
+strings, and zero numbers, but never a struct, so a zero `PersistentVolumeClaimStatus` still marshals as `{}`.
 
 Any operator that moves from `Update`-based reconciliation to this framework meets the error on its first apply against
-real CRDs, and it affects wrapped typed CRDs in general, not only ECK.
+a real CRD. Nothing about it is specific to one vendor's kind: any wrapped typed CRD that embeds a core struct with a
+struct-valued field the schema does not declare behaves the same way.
 
 **The framework has no hook for this.** There is no builder option that rewrites the object between `Mutate` and the
 patch. Two approaches work today.
@@ -1038,7 +1050,7 @@ func (c applyClient) Patch(
         return err
     }
     u := &unstructured.Unstructured{Object: content}
-    pruneUndeclaredFields(u) // drop the embedded status and creationTimestamp fields
+    pruneUndeclaredFields(u) // drop the embedded status fields the schema omits
 
     if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {
         return err
@@ -1060,8 +1072,9 @@ recCtx := component.ReconcileContext{
 ```
 
 `pruneUndeclaredFields` is specific to the kind and its CRD. Keep it narrow: delete the exact paths the schema omits,
-for example `status` and `metadata.creationTimestamp` under each `spec.nodeSets[*].volumeClaimTemplates[*]`. A blanket
-"strip every empty map" pass will eventually remove a field the operator meant to send.
+for example `status` under each `spec.nodeSets[*].volumeClaimTemplates[*]`. A blanket "strip every empty map" pass will
+eventually remove a field the operator meant to send. Confirm the paths against the object your wrapper actually
+marshals rather than assuming: `json.Marshal` on the built desired state shows precisely which fields are on the wire.
 
 ### Manage the kind through the unstructured primitives
 

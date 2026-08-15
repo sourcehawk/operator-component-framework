@@ -154,26 +154,30 @@ func (m *Mutator) Apply() error {
 ```
 
 **Extend the generated mutator with `editors` instead of hand-rolled loops.** The scaffold emits `Edit` and
-`EditObjectMetadata` only, which is enough for a flat spec and not enough for a CRD that embeds pod templates (ECK's
-`nodeSets[].podTemplate`, and the equivalents in Strimzi and CloudNativePG). Written by hand, every container mutation
-repeats the same find-the-container-or-add-it loop. Every editor in `pkg/mutation/editors` has an exported constructor
-that takes a pointer to the field it edits, so it works on a container or pod spec nested anywhere in your CRD:
+`EditObjectMetadata` only, which is enough for a flat spec and not enough for a CRD that embeds a pod template per node
+group, a common shape once a CRD describes a clustered workload. Written by hand, every container mutation repeats the
+same find-the-container-or-add-it loop. Every editor in `pkg/mutation/editors` has an exported constructor that takes a
+pointer to the field it edits, so it works on a container or pod spec nested anywhere in your CRD:
 `editors.NewContainerEditor(*corev1.Container)`, `editors.NewPodSpecEditor(*corev1.PodSpec)`,
 `editors.NewObjectMetaEditor(*metav1.ObjectMeta)`. Pair them with `pkg/mutation/selectors` rather than comparing
 container names in the loop, so the wrapper obeys the same selector semantics as the built-in workloads. Put the helper
 in its own file beside the generated `mutator.go`:
+
+Record through the generated `Edit` method, never by adding a field to `featurePlan`. `featurePlan` lives in the
+generated `mutator.go`, so a new field there is erased by the next `--force`. `Edit` appends to the active feature plan
+and the generated `Apply` runs it, which keeps the helper entirely in your own file:
 
 ```go
 // podtemplate.go, hand-written.
 func (m *Mutator) EditNodeSetContainers(
     nodeSet string, sel selectors.ContainerSelector, fn func(*editors.ContainerEditor) error,
 ) {
-    m.active.templateOps = append(m.active.templateOps, func(spec *examplev1.MessageQueueSpec) error {
-        for i := range spec.NodeSets {
-            if spec.NodeSets[i].Name != nodeSet {
+    m.Edit(func(mq *examplev1.MessageQueue) error {
+        for i := range mq.Spec.NodeSets {
+            if mq.Spec.NodeSets[i].Name != nodeSet {
                 continue
             }
-            containers := spec.NodeSets[i].PodTemplate.Spec.Containers
+            containers := mq.Spec.NodeSets[i].PodTemplate.Spec.Containers
             for j := range containers {
                 if !sel(j, &containers[j]) {
                     continue
@@ -187,9 +191,6 @@ func (m *Mutator) EditNodeSetContainers(
     })
 }
 ```
-
-`templateOps` is a new `featurePlan` field of type `[]func(*examplev1.MessageQueueSpec) error`, run by `Apply` alongside
-the generated slices.
 
 ### 4. Implement status handlers
 
@@ -219,10 +220,12 @@ pods, and wrong for an external CR whose operator reclaims volumes on scale-down
 data it exists to preserve. **One question decides it: does the external operator destroy state when it is scaled
 down?** If it does, suspend by deletion behind a safety-gated status handler.
 
-ECK is the public example. An `Elasticsearch` stores data through `nodeSets[].volumeClaimTemplates`, and ECK deletes the
-PersistentVolumeClaims of the nodes it scales away, so a suspension mutation that sets every `nodeSet.count` to zero
-drops the cluster's data. Deleting the object is the safe operation instead, once `spec.volumeClaimDeletePolicy` retains
-claims on cluster deletion. On resume, the CR is recreated and ECK reattaches the existing claims.
+The behavior to watch for is common among operators that manage stateful clusters: the operator reclaims a node's
+PersistentVolumeClaim when that node is scaled away. A suspension mutation that sets the replica or node count to zero
+then drops the cluster's data. Deleting the CR is the safe operation instead, provided its spec carries a policy that
+retains the claims when the object is removed. On resume the CR is recreated and the operator reattaches the claims it
+kept. Read the CRD's own documentation for which field expresses that policy; what matters here is the shape, a spec
+field the wrapper can set whose effect is observable on the applied object.
 
 The pattern has four parts, and `concepts.Suspendable` states the guarantee that makes it safe: the resource must reach
 `SuspensionStatusSuspended` before it is deleted.
@@ -373,12 +376,13 @@ failed to create typed patch object: .spec.nodeSets[0].volumeClaimTemplates[0].s
 field not declared in schema
 ```
 
-SSA validates a patch against the target's OpenAPI schema before merging, so a Go type that describes more than the CRD
-declares fails the whole apply. The usual cause is an embedded core struct: ECK's `Elasticsearch` declares
-`nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, whose `Status` and `ObjectMeta.CreationTimestamp`
-carry no `omitempty`, so every marshalled object contains `status: {}` and `metadata.creationTimestamp: null` inside
-each template, and the CRD schema declares neither. `Update` prunes them silently, which is why the error appears on the
-first apply after a move from `Update`-based reconciliation.
+The API server's field manager types a patch against the target's OpenAPI schema before merging, so a Go type that
+describes more than the CRD declares fails the whole apply. The usual cause is an **embedded core struct**: a CRD
+declaring `spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim` marshals `status: {}` inside every
+template while its own schema declares no `status` there. `Update` prunes the field silently, which is why the error
+appears on the first apply after a move from `Update`-based reconciliation. The struct tag is not the missing piece:
+`PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`, and `omitempty` has no effect on a struct value in
+`encoding/json`, so a zero status still marshals as `{}`.
 
 **The framework has no hook for this.** No builder option rewrites the object between `Mutate` and the patch. Two
 approaches work today.
@@ -401,7 +405,7 @@ func (c applyClient) Patch(
         return err
     }
     u := &unstructured.Unstructured{Object: content}
-    pruneUndeclaredFields(u) // delete the exact paths the CRD schema omits
+    pruneUndeclaredFields(u) // delete the exact undeclared paths, here the embedded status
     if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {
         return err
     }

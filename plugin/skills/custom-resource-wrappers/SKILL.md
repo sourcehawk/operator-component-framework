@@ -3,8 +3,10 @@ name: custom-resource-wrappers
 description:
   Use when wrapping a custom resource (a CRD-backed type not covered by the built-in primitives) as an
   operator-component-framework primitive using pkg/generic - covers choosing a resource category, mutation type aliases,
-  implementing the mutator, status handlers, the builder, the resource type, feature mutations, and component
-  registration.
+  implementing the mutator, extending it with editors for CRDs that embed pod templates, status handlers, suspending an
+  external CR that destroys data when scaled down (scale-to-zero vs delete-on-suspend), an Apply rejected with "field
+  not declared in schema", the builder, the resource type, feature mutations, component registration, and regenerating a
+  scaffolded wrapper with ocf scaffold wrapper --force.
 ---
 
 # Custom Resource Wrappers
@@ -42,6 +44,24 @@ defaults with kind-specific logic.
 Run `go mod tidy` afterwards if the module does not already depend on the wrapped type's API package, since the CLI
 never edits `go.mod`. The steps below stay the reference for what the generated code means, and for the cases the CLI
 does not cover: an existing wrapper being extended, or a kind whose scaffold has already been customized.
+
+### Generated and hand-written files
+
+The CLI owns exactly four files in the package: `builder.go`, `builder_test.go`, `mutator.go`, and `resource.go`. Every
+other file is yours, and `--force` rewrites only those four. Treat that as the package layout, not as a workaround: the
+real status handlers go in `handlers.go` and the mutator helpers in their own file, beside the generated four, so
+regeneration cannot delete them.
+
+To take a newer scaffold into an existing wrapper:
+
+1. Commit or stash first, so the regeneration diff is readable.
+2. Re-run `ocf scaffold wrapper` with the same `--type`, `--variant`, and `--group`, plus `--force`.
+3. Read the diff on the four generated files. Your own files are untouched.
+4. Point `NewBuilder` back at your handlers: the regenerated `builder.go` carries the scaffolded `Default*Handler` stubs
+   and their registration, so it registers the stubs again.
+5. Run `go build ./...` and the package tests.
+
+Step 4 is the only manual step, and it is exactly why the real handlers live outside `builder.go`.
 
 A custom resource is three wrapped pieces: the builder configures and validates, producing a resource; the resource
 delegates lifecycle methods to a generic base; the mutator records and applies changes to the Kubernetes object.
@@ -133,6 +153,44 @@ func (m *Mutator) Apply() error {
 }
 ```
 
+**Extend the generated mutator with `editors` instead of hand-rolled loops.** The scaffold emits `Edit` and
+`EditObjectMetadata` only, which is enough for a flat spec and not enough for a CRD that embeds pod templates (ECK's
+`nodeSets[].podTemplate`, and the equivalents in Strimzi and CloudNativePG). Written by hand, every container mutation
+repeats the same find-the-container-or-add-it loop. Every editor in `pkg/mutation/editors` has an exported constructor
+that takes a pointer to the field it edits, so it works on a container or pod spec nested anywhere in your CRD:
+`editors.NewContainerEditor(*corev1.Container)`, `editors.NewPodSpecEditor(*corev1.PodSpec)`,
+`editors.NewObjectMetaEditor(*metav1.ObjectMeta)`. Pair them with `pkg/mutation/selectors` rather than comparing
+container names in the loop, so the wrapper obeys the same selector semantics as the built-in workloads. Put the helper
+in its own file beside the generated `mutator.go`:
+
+```go
+// podtemplate.go, hand-written.
+func (m *Mutator) EditNodeSetContainers(
+    nodeSet string, sel selectors.ContainerSelector, fn func(*editors.ContainerEditor) error,
+) {
+    m.active.templateOps = append(m.active.templateOps, func(spec *examplev1.MessageQueueSpec) error {
+        for i := range spec.NodeSets {
+            if spec.NodeSets[i].Name != nodeSet {
+                continue
+            }
+            containers := spec.NodeSets[i].PodTemplate.Spec.Containers
+            for j := range containers {
+                if !sel(j, &containers[j]) {
+                    continue
+                }
+                if err := fn(editors.NewContainerEditor(&containers[j])); err != nil {
+                    return err
+                }
+            }
+        }
+        return nil
+    })
+}
+```
+
+`templateOps` is a new `featurePlan` field of type `[]func(*examplev1.MessageQueueSpec) error`, run by `Apply` alongside
+the generated slices.
+
 ### 4. Implement status handlers
 
 Status handlers translate the CRD's runtime state into framework status types. Which handlers are needed depends on
@@ -147,6 +205,45 @@ The convergence handler and the grace handler evaluate the same object in the sa
 between them. When convergence returns `Healthy`, grace is never called; for every other state, grace must not
 contradict convergence by also returning `Healthy`. The component logs a warning when it detects this inconsistency; if
 intentional, pass `component.SuppressGraceInconsistencyWarning()` to `WithResource` to silence it.
+
+**Every handler that takes the wrapped type receives the object as it stands after the apply of the current reconcile.**
+`Mutate` stores the mutated object on the resource and the SSA patch decodes the API server's response into that same
+object, so a handler reads server-populated fields, `Generation` and `Status` included, and can trust
+`status.observedGeneration` to say whether the object's own controller has seen the spec just applied. The suspension
+mutation handler is the exception: it takes the mutator, before the patch is sent.
+
+#### Scale-to-zero or delete-on-suspend?
+
+The scaffolded default scales to zero and keeps the object. That is right for a workload whose storage outlives its
+pods, and wrong for an external CR whose operator reclaims volumes on scale-down, because suspension then erases the
+data it exists to preserve. **One question decides it: does the external operator destroy state when it is scaled
+down?** If it does, suspend by deletion behind a safety-gated status handler.
+
+ECK is the public example. An `Elasticsearch` stores data through `nodeSets[].volumeClaimTemplates`, and ECK deletes the
+PersistentVolumeClaims of the nodes it scales away, so a suspension mutation that sets every `nodeSet.count` to zero
+drops the cluster's data. Deleting the object is the safe operation instead, once `spec.volumeClaimDeletePolicy` retains
+claims on cluster deletion. On resume, the CR is recreated and ECK reattaches the existing claims.
+
+The pattern has four parts, and `concepts.Suspendable` states the guarantee that makes it safe: the resource must reach
+`SuspensionStatusSuspended` before it is deleted.
+
+1. The suspension mutation (`WithCustomSuspendMutation`) **ensures the retaining policy**. It scales nothing down.
+2. The status handler (`WithCustomSuspendStatus`) reports `concepts.SuspensionStatusSuspended` **only when the applied
+   CR is safe to delete**: the policy is present on the object, `status.observedGeneration` has caught up with
+   `metadata.generation`, and no data migration is in flight. Report `concepts.SuspensionStatusPending` or
+   `concepts.SuspensionStatusSuspending` until then.
+3. `DeleteOnSuspend()` returns true (`WithCustomSuspendDeletionDecision`).
+4. The framework deletes the object, and only after the status handler reported `concepts.SuspensionStatusSuspended`.
+
+**All three handlers are mandatory for this pattern.** The generic layer defaults suspension status to `Suspended` and
+the suspension mutation to a no-op, so registering only `WithCustomSuspendDeletionDecision` produces an immediate,
+unconditional delete of an object that was never made safe to delete. `Build()` does not catch this: it hard-fails only
+on a missing convergence handler.
+
+Reporting `Suspended` straight from the desired state defeats the pattern for the same reason: it grants deletion of an
+object whose own controller has not yet acted on the retention policy. While the component stays suspended and the
+object is already absent, the framework reports `Suspended` without recreating it, so there is no create-then-delete
+loop.
 
 ### 5. Implement the builder
 
@@ -268,6 +365,56 @@ wrapper implements (step 6 above):
 
 For cluster-scoped CRDs, call `MarkClusterScoped()` on the generic builder before building. Validation then rejects a
 non-empty namespace instead of requiring one, and the identity function should omit the namespace segment.
+
+## When Apply is rejected: "field not declared in schema"
+
+```text
+failed to create typed patch object: .spec.nodeSets[0].volumeClaimTemplates[0].status:
+field not declared in schema
+```
+
+SSA validates a patch against the target's OpenAPI schema before merging, so a Go type that describes more than the CRD
+declares fails the whole apply. The usual cause is an embedded core struct: ECK's `Elasticsearch` declares
+`nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, whose `Status` and `ObjectMeta.CreationTimestamp`
+carry no `omitempty`, so every marshalled object contains `status: {}` and `metadata.creationTimestamp: null` inside
+each template, and the CRD schema declares neither. `Update` prunes them silently, which is why the error appears on the
+first apply after a move from `Update`-based reconciliation.
+
+**The framework has no hook for this.** No builder option rewrites the object between `Mutate` and the patch. Two
+approaches work today.
+
+**Sanitize in a `client.Client` decorator installed in `ReconcileContext.Client`.** The framework owns the apply path:
+`applyResource` patches the very object `Mutate` stored as the resource's desired state, and the response is decoded
+back into that same object, which the status, grace, and suspension handlers then read. A sanitizer must therefore prune
+the request **and** put the server's response back into the typed object, which makes the decorator the only workable
+place today.
+
+```go
+func (c applyClient) Patch(
+    ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption,
+) error {
+    if patch.Type() != types.ApplyPatchType {
+        return c.Client.Patch(ctx, obj, patch, opts...)
+    }
+    content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+    if err != nil {
+        return err
+    }
+    u := &unstructured.Unstructured{Object: content}
+    pruneUndeclaredFields(u) // delete the exact paths the CRD schema omits
+    if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {
+        return err
+    }
+    return runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, obj) // response back into obj
+}
+```
+
+Keep `pruneUndeclaredFields` narrow, deleting named paths. A blanket "strip every empty map" pass eventually removes a
+field the operator meant to send.
+
+**Or manage the kind through the unstructured primitives** (`pkg/primitives/unstructured/*`), whose baseline is a
+`*unstructured.Unstructured`. No Go struct is marshalled, so no undeclared field appears. The cost is the typed API:
+mutations edit the content map through `editors.UnstructuredContentEditor`.
 
 ## Anti-patterns
 

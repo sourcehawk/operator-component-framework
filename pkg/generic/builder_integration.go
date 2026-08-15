@@ -90,6 +90,10 @@ func (b *IntegrationBuilder[T, M]) WithCustomGraceStatus(
 }
 
 // WithCustomSuspendStatus overrides the integration suspension status handler.
+//
+// The handler receives the object as it stands after the suspension apply of
+// the current reconcile, so it observes server-populated fields such as
+// Generation and Status. See BaseBuilder.WithCustomSuspendStatus.
 func (b *IntegrationBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),
 ) *IntegrationBuilder[T, M] {
@@ -98,6 +102,10 @@ func (b *IntegrationBuilder[T, M]) WithCustomSuspendStatus(
 }
 
 // WithCustomSuspendMutation overrides the integration suspension mutation handler.
+//
+// The handler receives the mutator for the object that is about to be applied,
+// which after the first reconcile carries the API server's response from the
+// previous apply. See BaseBuilder.WithCustomSuspendMutation.
 func (b *IntegrationBuilder[T, M]) WithCustomSuspendMutation(
 	handler func(M) error,
 ) *IntegrationBuilder[T, M] {
@@ -106,6 +114,10 @@ func (b *IntegrationBuilder[T, M]) WithCustomSuspendMutation(
 }
 
 // WithCustomSuspendDeletionDecision overrides the integration delete-on-suspend decision handler.
+//
+// The handler is consulted both before the suspension apply and after the
+// resource reports Suspended, so the decision must be stable across both.
+// See BaseBuilder.WithCustomSuspendDeletionDecision.
 func (b *IntegrationBuilder[T, M]) WithCustomSuspendDeletionDecision(
 	handler func(T) bool,
 ) *IntegrationBuilder[T, M] {

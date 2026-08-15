@@ -75,6 +75,10 @@ func (b *TaskBuilder[T, M]) WithCustomConvergeStatus(
 }
 
 // WithCustomSuspendStatus overrides the task suspension status handler.
+//
+// The handler receives the object as it stands after the suspension apply of
+// the current reconcile, so it observes server-populated fields such as
+// Generation and Status. See BaseBuilder.WithCustomSuspendStatus.
 func (b *TaskBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),
 ) *TaskBuilder[T, M] {
@@ -83,6 +87,10 @@ func (b *TaskBuilder[T, M]) WithCustomSuspendStatus(
 }
 
 // WithCustomSuspendMutation overrides the task suspension mutation handler.
+//
+// The handler receives the mutator for the object that is about to be applied,
+// which after the first reconcile carries the API server's response from the
+// previous apply. See BaseBuilder.WithCustomSuspendMutation.
 func (b *TaskBuilder[T, M]) WithCustomSuspendMutation(
 	handler func(M) error,
 ) *TaskBuilder[T, M] {
@@ -91,6 +99,10 @@ func (b *TaskBuilder[T, M]) WithCustomSuspendMutation(
 }
 
 // WithCustomSuspendDeletionDecision overrides the task delete-on-suspend decision handler.
+//
+// The handler is consulted both before the suspension apply and after the
+// resource reports Suspended, so the decision must be stable across both.
+// See BaseBuilder.WithCustomSuspendDeletionDecision.
 func (b *TaskBuilder[T, M]) WithCustomSuspendDeletionDecision(
 	handler func(T) bool,
 ) *TaskBuilder[T, M] {

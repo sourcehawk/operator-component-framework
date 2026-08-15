@@ -15,7 +15,8 @@ import (
 //  2. Reason by priority. The Reason and Message come from the governing
 //     component: the one with the highest [Status.Priority] among the conditions
 //     whose status is not True, if any exist, otherwise the highest among all of
-//     them. Argument order breaks ties, so the result is deterministic.
+//     them. When two candidates tie on priority, the first component passed wins,
+//     so the result is deterministic.
 //
 // Keeping the two decisions apart is what makes the result trustworthy. Deriving
 // truth from priority instead would report True with reason Suspended for an
@@ -102,7 +103,7 @@ func Aggregate(conditionType ConditionType, owner OperatorCRD, comps ...*Compone
 // condition. A condition whose status is not True always supersedes one that is
 // True, so the reason is drawn from the group that explains why the aggregate is
 // false. Within the same group the higher Status.Priority wins. A tie leaves
-// current in place, which makes argument order the tie-breaker.
+// current in place, so the first component passed to Aggregate wins it.
 func supersedes(candidate, current Condition) bool {
 	candidateTrue := candidate.Status == metav1.ConditionTrue
 	currentTrue := current.Status == metav1.ConditionTrue

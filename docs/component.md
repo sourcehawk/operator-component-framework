@@ -469,7 +469,8 @@ Priority never decides `True` or `False`.
 
 **Reason by priority.** The reason and message come from the governing component. If any component condition is not
 `True`, the governing component is the one with the highest `Status.Priority()` among those. If all of them are `True`,
-it is the one with the highest priority among all of them. Argument order breaks ties, so the result is deterministic.
+it is the one with the highest priority among all of them. When two component conditions tie on priority, the first
+component passed to `Aggregate` wins, so the result is deterministic.
 
 The two decisions must stay separate. A rule that derives truth from priority reports `True`/`Suspended` for an owner
 with a failing component. `Suspended` has priority 15 and maps to condition status `True`, and `AliveFailing` has

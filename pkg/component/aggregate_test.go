@@ -190,7 +190,7 @@ func TestAggregate(t *testing.T) {
 			},
 		},
 		{
-			name:   "argument order breaks a priority tie within the non-True group",
+			name:   "the first component passed wins a priority tie within the non-True group",
 			staged: []stagedComponent{failing("broker", "Broker is down."), failing("gateway", "Gateway is down.")},
 			expected: component.Condition{
 				Status:  metav1.ConditionFalse,
@@ -199,7 +199,7 @@ func TestAggregate(t *testing.T) {
 			},
 		},
 		{
-			name:   "argument order breaks a priority tie within the True group",
+			name:   "the first component passed wins a priority tie within the True group",
 			staged: []stagedComponent{suspended("broker"), suspended("gateway"), healthy("worker")},
 			expected: component.Condition{
 				Status:  metav1.ConditionTrue,

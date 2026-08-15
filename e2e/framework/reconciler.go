@@ -8,7 +8,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -28,9 +28,9 @@ type ComponentFactory func(owner *TestApp) (*component.Component, error)
 // construction to per-test factories registered by namespace/name key.
 type E2EReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Metrics  component.Recorder
+	Scheme        *runtime.Scheme
+	EventRecorder events.EventRecorder
+	Metrics       component.MetricsRecorder
 
 	mu                 sync.RWMutex
 	resourceFactories  map[string]ResourceFactory
@@ -41,13 +41,13 @@ type E2EReconciler struct {
 func NewE2EReconciler(
 	c client.Client,
 	scheme *runtime.Scheme,
-	recorder record.EventRecorder,
-	metrics component.Recorder,
+	recorder events.EventRecorder,
+	metrics component.MetricsRecorder,
 ) *E2EReconciler {
 	return &E2EReconciler{
 		Client:             c,
 		Scheme:             scheme,
-		Recorder:           recorder,
+		EventRecorder:      recorder,
 		Metrics:            metrics,
 		resourceFactories:  make(map[string]ResourceFactory),
 		componentFactories: make(map[string]ComponentFactory),
@@ -123,11 +123,11 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_
 	}
 
 	recCtx := component.ReconcileContext{
-		Client:   r.Client,
-		Scheme:   r.Scheme,
-		Recorder: r.Recorder,
-		Metrics:  r.Metrics,
-		Owner:    owner,
+		Client:        r.Client,
+		Scheme:        r.Scheme,
+		EventRecorder: r.EventRecorder,
+		Metrics:       r.Metrics,
+		Owner:         owner,
 	}
 	defer func() {
 		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {

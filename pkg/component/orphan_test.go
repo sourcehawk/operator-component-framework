@@ -57,6 +57,31 @@ func TestOrphanResources(t *testing.T) {
 		res.On("Identity").Return("v1/ConfigMap/missing")
 		require.NoError(t, orphanResources(t.Context(), setupReconcileContext(scheme, owner, fc), []Resource{res}))
 	})
+	t.Run("records an orphan event carrying the released object", func(t *testing.T) {
+		owner := newOwner()
+		_, rc, res := seed(t, owner, ownerRef("owner-uid", "test-owner"))
+		require.NoError(t, orphanResources(t.Context(), rc, []Resource{res}))
+
+		recorder, ok := rc.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+
+		orphaned := recorder.recordedWithReason("ResourceOrphaned")
+		require.Len(t, orphaned, 1)
+		assert.Equal(t, owner, orphaned[0].regarding, "event is recorded on the owner")
+		assert.Equal(t, "test-cm", orphaned[0].related.(client.Object).GetName(),
+			"released resource is attached as the related object")
+		assert.Equal(t, corev1.EventTypeNormal, orphaned[0].eventType)
+		assert.Equal(t, "Orphan", orphaned[0].action)
+		assert.Equal(t, "Resource v1/ConfigMap/test-cm orphaned: owner reference removed", orphaned[0].note)
+	})
+	t.Run("records no event when the owner reference was already absent", func(t *testing.T) {
+		_, rc, res := seed(t, newOwner())
+		require.NoError(t, orphanResources(t.Context(), rc, []Resource{res}))
+
+		recorder, ok := rc.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+		assert.Empty(t, recorder.recorded())
+	})
 	t.Run("removes only this owner's reference", func(t *testing.T) {
 		fc, rc, res := seed(t, newOwner(), ownerRef("owner-uid", "test-owner"), ownerRef("other-uid", "other-owner"))
 		require.NoError(t, orphanResources(t.Context(), rc, []Resource{res}))

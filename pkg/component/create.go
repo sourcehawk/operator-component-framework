@@ -108,7 +108,7 @@ func applyResource(
 		)
 	}
 
-	recording.RecordApplyOperationEvent(rec.Recorder, convergingOperation, obj, rec.Owner)
+	recording.RecordApplyOperationEvent(rec.EventRecorder, convergingOperation, obj, rec.Owner)
 
 	if status != nil {
 		return &reconcileResult{Status: *status}, nil

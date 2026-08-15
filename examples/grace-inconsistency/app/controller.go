@@ -7,7 +7,7 @@ import (
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -17,9 +17,9 @@ import (
 // SuppressGraceInconsistencyWarning() option.
 type Controller struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Metrics  component.Recorder
+	Scheme        *runtime.Scheme
+	EventRecorder events.EventRecorder
+	Metrics       component.MetricsRecorder
 
 	NewDeploymentResource func(*ExampleApp) (component.Resource, error)
 }
@@ -28,11 +28,11 @@ type Controller struct {
 // inconsistency suppression.
 func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err error) {
 	recCtx := component.ReconcileContext{
-		Client:   r.Client,
-		Scheme:   r.Scheme,
-		Recorder: r.Recorder,
-		Metrics:  r.Metrics,
-		Owner:    owner,
+		Client:        r.Client,
+		Scheme:        r.Scheme,
+		EventRecorder: r.EventRecorder,
+		Metrics:       r.Metrics,
+		Owner:         owner,
 	}
 	defer func() {
 		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {

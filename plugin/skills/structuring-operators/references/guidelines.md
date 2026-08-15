@@ -143,11 +143,11 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     }
 
     recCtx := component.ReconcileContext{
-        Client:   r.Client,
-        Scheme:   r.Scheme,
-        Recorder: r.Recorder,
-        Metrics:  r.Metrics,
-        Owner:    app,
+        Client:        r.Client,
+        Scheme:        r.Scheme,
+        EventRecorder: r.EventRecorder,
+        Metrics:       r.Metrics,
+        Owner:         app,
     }
     // Persist all staged conditions exactly once, even on the error path.
     defer func() {

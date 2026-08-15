@@ -13,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
@@ -47,10 +47,10 @@ var _ = Describe("OrphanWhen Garbage Collection", func() {
 		owner = framework.NewTestApp(ctx, k8sClient, ns, "orphan-owner")
 
 		recCtx = component.ReconcileContext{
-			Client:   k8sClient,
-			Scheme:   scheme.Scheme,
-			Recorder: record.NewFakeRecorder(100),
-			Owner:    owner,
+			Client:        k8sClient,
+			Scheme:        scheme.Scheme,
+			EventRecorder: events.NewFakeRecorder(100),
+			Owner:         owner,
 		}
 	})
 

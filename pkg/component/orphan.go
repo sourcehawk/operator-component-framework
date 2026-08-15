@@ -36,7 +36,10 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 		}
 		key := client.ObjectKeyFromObject(obj)
 
-		var removed bool
+		var (
+			removed  bool
+			orphaned client.Object
+		)
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			live := obj.DeepCopyObject().(client.Object)
 			if getErr := rec.Client.Get(ctx, key, live); getErr != nil {
@@ -59,14 +62,18 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 				return nil
 			}
 			live.SetOwnerReferences(kept)
-			return rec.Client.Update(ctx, live)
+			if updateErr := rec.Client.Update(ctx, live); updateErr != nil {
+				return updateErr
+			}
+			orphaned = live
+			return nil
 		})
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to orphan resource %s: %w", resource.Identity(), err))
 			continue
 		}
 		if removed {
-			rec.Recorder.Eventf(rec.Owner, v1.EventTypeNormal, "ResourceOrphaned",
+			rec.EventRecorder.Eventf(rec.Owner, orphaned, v1.EventTypeNormal, "ResourceOrphaned", "Orphan",
 				"Resource %s orphaned: owner reference removed", resource.Identity())
 		}
 	}

@@ -13,7 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -54,7 +54,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	By("creating E2E reconciler")
-	recorder := record.NewFakeRecorder(1000)
+	recorder := events.NewFakeRecorder(1000)
 	metrics := &ocm.ConditionMetricRecorder{
 		Controller:              "e2e-component",
 		OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("e2e_component"),

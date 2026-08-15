@@ -24,6 +24,20 @@ The framework is tested against the following version combinations:
 
 **Primary** is the version combination used in `go.mod` and in the main CI pipeline.
 
+!!! note "Obtaining an event recorder on controller-runtime v0.22"
+
+    `ReconcileContext.EventRecorder` takes a `k8s.io/client-go/tools/events.EventRecorder`, which is a client-go type
+    available in every `k8s.io/*` version in the matrix. The manager accessor that returns one,
+    `manager.GetEventRecorder(name)`, was added in controller-runtime v0.23. On v0.22.x, build the recorder from
+    client-go directly instead:
+
+    ```go
+    broadcaster := events.NewEventBroadcasterAdapter(clientset)
+    recorder := broadcaster.NewRecorder("webapp-controller")
+    ```
+
+    The framework compiles and tests unchanged against v0.22.x; only the way a consumer obtains the recorder differs.
+
 **Tested** combinations are verified weekly by the compatibility CI workflow. They are fully supported: bugs reported
 against a Tested combination are treated as bugs in the framework, not as unsupported configurations. The distinction
 from Primary is operational only (Primary is tested on every commit; Tested combinations run on a weekly schedule).

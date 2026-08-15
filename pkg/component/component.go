@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,10 +32,10 @@ type OperatorCRD interface {
 	GetKind() string
 }
 
-// Recorder is an interface for recording status condition changes as metrics.
+// MetricsRecorder is an interface for recording status condition changes as metrics.
 // It is optional: a [ReconcileContext] may leave [ReconcileContext.Metrics]
 // nil, in which case [FlushStatus] skips metric emission.
-type Recorder interface {
+type MetricsRecorder interface {
 	// RecordConditionFor records a condition change for a specific object and kind.
 	RecordConditionFor(
 		kind string, object ocm.ObjectLike,
@@ -50,11 +50,12 @@ type ReconcileContext struct {
 	Client client.Client
 	// Scheme is the runtime scheme for the operator.
 	Scheme *runtime.Scheme
-	// Recorder is the event recorder for publishing Kubernetes events.
-	Recorder record.EventRecorder
+	// EventRecorder is the event recorder for publishing Kubernetes events.
+	// Obtain one from the controller-runtime manager with GetEventRecorder(name).
+	EventRecorder events.EventRecorder
 	// Metrics is the recorder for status condition metrics. It is optional; if
 	// nil, [FlushStatus] will skip metric emission.
-	Metrics Recorder
+	Metrics MetricsRecorder
 	// Owner is the custom resource that owns and is updated by the components.
 	Owner OperatorCRD
 }

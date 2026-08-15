@@ -167,8 +167,8 @@ func suspendResource(
 			}
 		}
 
-		rec.Recorder.Eventf(
-			rec.Owner, v1.EventTypeNormal, "ResourceDeleted",
+		rec.EventRecorder.Eventf(
+			rec.Owner, object, v1.EventTypeNormal, "ResourceDeleted", "Delete",
 			"Resource %s deleted on suspension", resource.Identity(),
 		)
 

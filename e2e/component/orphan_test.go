@@ -13,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
@@ -47,10 +47,10 @@ var _ = Describe("OrphanWhen Garbage Collection", func() {
 		owner = framework.NewTestApp(ctx, k8sClient, ns, "orphan-owner")
 
 		recCtx = component.ReconcileContext{
-			Client:   k8sClient,
-			Scheme:   scheme.Scheme,
-			Recorder: record.NewFakeRecorder(100),
-			Owner:    owner,
+			Client:        k8sClient,
+			Scheme:        scheme.Scheme,
+			EventRecorder: events.NewFakeRecorder(100),
+			Owner:         owner,
 		}
 	})
 
@@ -77,8 +77,17 @@ var _ = Describe("OrphanWhen Garbage Collection", func() {
 		Expect(k8sClient.Create(ctx, orphaned)).To(Succeed())
 
 		By("verifying both ConfigMaps start with the owner reference")
-		Expect(ownerReferenceUIDs(ctx, ns, "control-cm")).To(ContainElement(owner.UID))
-		Expect(ownerReferenceUIDs(ctx, ns, "orphan-cm")).To(ContainElement(owner.UID))
+		// k8sClient is the manager's cached client, so an object that was just created
+		// can still be absent from the informer cache. Poll both reads rather than
+		// asserting once, or a cold cache fails the spec before it tests anything.
+		Eventually(func(g Gomega) []types.UID {
+			return ownerReferenceUIDsG(g, ctx, ns, "control-cm")
+		}, framework.DefaultTimeout, framework.DefaultPolling).
+			Should(ContainElement(owner.UID))
+		Eventually(func(g Gomega) []types.UID {
+			return ownerReferenceUIDsG(g, ctx, ns, "orphan-cm")
+		}, framework.DefaultTimeout, framework.DefaultPolling).
+			Should(ContainElement(owner.UID))
 
 		By("reconciling a component that orphans the target ConfigMap")
 		orphanRes, err := configmap.NewBuilder(

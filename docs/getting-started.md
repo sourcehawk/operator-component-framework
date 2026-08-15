@@ -266,13 +266,13 @@ self-induced update conflicts.
 
 `ReconcileContext` has five fields:
 
-| Field      | Type                    | Notes                                                                            |
-| ---------- | ----------------------- | -------------------------------------------------------------------------------- |
-| `Client`   | `client.Client`         | The controller-runtime client.                                                   |
-| `Scheme`   | `*runtime.Scheme`       | The operator scheme.                                                             |
-| `Recorder` | `record.EventRecorder`  | For Kubernetes events. Your Kubebuilder manager provides one.                    |
-| `Metrics`  | `component.Recorder`    | Optional. Pass `nil` to skip status-condition metrics.                           |
-| `Owner`    | `component.OperatorCRD` | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`. |
+| Field           | Type                        | Notes                                                                            |
+| --------------- | --------------------------- | -------------------------------------------------------------------------------- |
+| `Client`        | `client.Client`             | The controller-runtime client.                                                   |
+| `Scheme`        | `*runtime.Scheme`           | The operator scheme.                                                             |
+| `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. `GetEventRecorder(name)` on the manager, v0.23 and later. |
+| `Metrics`       | `component.MetricsRecorder` | Optional. Pass `nil` to skip status-condition metrics.                           |
+| `Owner`         | `component.OperatorCRD`     | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`. |
 
 !!! note
 
@@ -288,15 +288,15 @@ import (
 
     "github.com/sourcehawk/operator-component-framework/pkg/component"
     "k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/client-go/tools/record"
+    "k8s.io/client-go/tools/events"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type Controller struct {
     client.Client
-    Scheme   *runtime.Scheme
-    Recorder record.EventRecorder
-    Metrics  component.Recorder
+    Scheme        *runtime.Scheme
+    EventRecorder events.EventRecorder
+    Metrics       component.MetricsRecorder
 
     NewDeploymentResource func(*ExampleApp) (component.Resource, error)
     NewConfigMapResource  func(*ExampleApp) (component.Resource, error)
@@ -304,11 +304,11 @@ type Controller struct {
 
 func (r *Controller) reconcile(ctx context.Context, owner *ExampleApp) (err error) {
     recCtx := component.ReconcileContext{
-        Client:   r.Client,
-        Scheme:   r.Scheme,
-        Recorder: r.Recorder,
-        Metrics:  r.Metrics,
-        Owner:    owner,
+        Client:        r.Client,
+        Scheme:        r.Scheme,
+        EventRecorder: r.EventRecorder,
+        Metrics:       r.Metrics,
+        Owner:         owner,
     }
     defer func() {
         if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {

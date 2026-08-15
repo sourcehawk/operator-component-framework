@@ -68,8 +68,8 @@ func deleteResources(
 			continue
 		}
 
-		rec.Recorder.Eventf(
-			rec.Owner, v1.EventTypeNormal, "ResourceDeleted",
+		rec.EventRecorder.Eventf(
+			rec.Owner, object, v1.EventTypeNormal, "ResourceDeleted", "Delete",
 			"Resource %s deleted due to %s", resource.Identity(), cfg.reason,
 		)
 	}

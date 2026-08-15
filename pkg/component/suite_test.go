@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -92,9 +91,9 @@ func createNamespace(ctx context.Context, prefix string) string {
 
 func newTestReconcileContext(owner OperatorCRD) ReconcileContext {
 	return ReconcileContext{
-		Client:   k8sClient,
-		Scheme:   scheme.Scheme,
-		Recorder: record.NewFakeRecorder(100),
+		Client:        k8sClient,
+		Scheme:        scheme.Scheme,
+		EventRecorder: &spyRecorder{},
 		Metrics: &ocm.ConditionMetricRecorder{
 			Controller:              "test-controller",
 			OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("test_namespace"),

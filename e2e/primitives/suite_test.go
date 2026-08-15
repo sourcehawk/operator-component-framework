@@ -20,7 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -80,7 +80,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	By("creating E2E reconcilers")
-	recorder := record.NewFakeRecorder(1000)
+	recorder := events.NewFakeRecorder(1000)
 	metrics := &ocm.ConditionMetricRecorder{
 		Controller:              "e2e-primitives",
 		OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("e2e_primitives"),

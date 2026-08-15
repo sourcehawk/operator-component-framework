@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -260,20 +259,17 @@ func TestSuspendResource(t *testing.T) {
 		err = cli.Get(ctx, client.ObjectKeyFromObject(obj), &v1.ConfigMap{})
 		assert.True(t, apierrors.IsNotFound(err))
 
-		recorder := rec.Recorder.(*record.FakeRecorder)
+		recorder, ok := rec.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
 
-		// Drain the "UpdatedConfigMap" event from applyResources
-		select {
-		case <-recorder.Events:
-		default:
-		}
-
-		select {
-		case event := <-recorder.Events:
-			assert.Contains(t, event, "ResourceDeleted")
-		default:
-			t.Fatal("expected event but none found")
-		}
+		deletions := recorder.recordedWithReason("ResourceDeleted")
+		require.Len(t, deletions, 1)
+		assert.Equal(t, owner, deletions[0].regarding, "event is recorded on the owner")
+		assert.Equal(t, obj.GetName(), deletions[0].related.(client.Object).GetName(),
+			"deleted resource is attached as the related object")
+		assert.Equal(t, v1.EventTypeNormal, deletions[0].eventType)
+		assert.Equal(t, "Delete", deletions[0].action)
+		assert.Contains(t, deletions[0].note, "deleted on suspension")
 	})
 
 	t.Run("should not delete if suspension is not completed", func(t *testing.T) {

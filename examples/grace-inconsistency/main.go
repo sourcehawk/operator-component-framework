@@ -19,7 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 )
 
 func main() {
@@ -45,9 +45,9 @@ func main() {
 
 	gauge := ocm.NewOperatorConditionsGauge("example")
 	controller := &app.Controller{
-		Client:   fakeClient,
-		Scheme:   scheme,
-		Recorder: record.NewFakeRecorder(100),
+		Client:        fakeClient,
+		Scheme:        scheme,
+		EventRecorder: events.NewFakeRecorder(100),
 		Metrics: &ocm.ConditionMetricRecorder{
 			Controller:              "example",
 			OperatorConditionsGauge: gauge,

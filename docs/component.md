@@ -493,11 +493,11 @@ component can ever be suspended.
 
 ```go
 recCtx := component.ReconcileContext{
-    Client:   r.Client,    // sigs.k8s.io/controller-runtime/pkg/client
-    Scheme:   r.Scheme,    // *runtime.Scheme
-    Recorder: r.Recorder,  // record.EventRecorder
-    Metrics:  r.Metrics,   // component.Recorder (condition metrics), optional
-    Owner:    owner,       // the CRD that owns this component
+    Client:        r.Client,        // sigs.k8s.io/controller-runtime/pkg/client
+    Scheme:        r.Scheme,        // *runtime.Scheme
+    EventRecorder: r.EventRecorder, // events.EventRecorder, from manager.GetEventRecorder(name)
+    Metrics:       r.Metrics,       // component.MetricsRecorder (condition metrics), optional
+    Owner:         owner,           // the CRD that owns this component
 }
 
 err = comp.Reconcile(ctx, recCtx)
@@ -507,6 +507,10 @@ Dependencies are passed explicitly so components stay testable and decoupled fro
 optional; when set, the framework records Prometheus metrics for every condition reported during a reconcile, using the
 recorder from [go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics). Leave it `nil` to opt
 out.
+
+`EventRecorder` takes a `k8s.io/client-go/tools/events.EventRecorder`. The manager accessor that returns one,
+`GetEventRecorder(name)`, was added in controller-runtime v0.23; on v0.22.x, build the recorder from client-go instead,
+as described in [Compatibility](compatibility.md).
 
 ## Persisting Status with FlushStatus
 
@@ -522,11 +526,11 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     }
 
     recCtx := component.ReconcileContext{
-        Client:   r.Client,
-        Scheme:   r.Scheme,
-        Recorder: r.Recorder,
-        Metrics:  r.Metrics,
-        Owner:    owner,
+        Client:        r.Client,
+        Scheme:        r.Scheme,
+        EventRecorder: r.EventRecorder,
+        Metrics:       r.Metrics,
+        Owner:         owner,
     }
     defer func() {
         if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {

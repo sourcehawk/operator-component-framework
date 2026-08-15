@@ -158,4 +158,60 @@ func TestDeleteResources(t *testing.T) {
 		resource1.AssertExpectations(t)
 		resource2.AssertExpectations(t)
 	})
+
+	t.Run("should record a deletion event carrying the deleted object and reason", func(t *testing.T) {
+		// Given
+		resourceObject := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-cm-event",
+				Namespace: namespace,
+			},
+		}
+		require.NoError(t, fakeClient.Create(ctx, resourceObject.DeepCopy()))
+
+		resource := &MockResource{}
+		resource.On("Object").Return(resourceObject, nil)
+		resource.On("Identity").Return("v1/ConfigMap/test-cm-event")
+
+		recCtx := setupReconcileContext(scheme, owner, fakeClient)
+
+		// When
+		err := deleteResources(ctx, recCtx, []Resource{resource}, withDeletionReason("suspension"))
+
+		// Then
+		require.NoError(t, err)
+
+		recorder, ok := recCtx.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+
+		deletions := recorder.recordedWithReason("ResourceDeleted")
+		require.Len(t, deletions, 1)
+		assert.Equal(t, owner, deletions[0].regarding, "event is recorded on the owner")
+		assert.Equal(t, "test-cm-event", deletions[0].related.(client.Object).GetName(),
+			"deleted resource is attached as the related object")
+		assert.Equal(t, corev1.EventTypeNormal, deletions[0].eventType)
+		assert.Equal(t, "Delete", deletions[0].action)
+		assert.Equal(t, "Resource v1/ConfigMap/test-cm-event deleted due to suspension", deletions[0].note)
+	})
+
+	t.Run("should record no event when the resource is already gone", func(t *testing.T) {
+		// Given
+		resource := &MockResource{}
+		resource.On("Object").Return(&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cm-absent", Namespace: namespace},
+		}, nil)
+		resource.On("Identity").Return("v1/ConfigMap/test-cm-absent")
+
+		recCtx := setupReconcileContext(scheme, owner, fakeClient)
+
+		// When
+		err := deleteResources(ctx, recCtx, []Resource{resource})
+
+		// Then
+		require.NoError(t, err)
+
+		recorder, ok := recCtx.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+		assert.Empty(t, recorder.recorded())
+	})
 }

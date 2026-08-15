@@ -270,7 +270,7 @@ self-induced update conflicts.
 | --------------- | --------------------------- | -------------------------------------------------------------------------------- |
 | `Client`        | `client.Client`             | The controller-runtime client.                                                   |
 | `Scheme`        | `*runtime.Scheme`           | The operator scheme.                                                             |
-| `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. Get one from the manager with `GetEventRecorder(name)`.   |
+| `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. `GetEventRecorder(name)` on the manager, v0.23 and later. |
 | `Metrics`       | `component.MetricsRecorder` | Optional. Pass `nil` to skip status-condition metrics.                           |
 | `Owner`         | `component.OperatorCRD`     | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`. |
 

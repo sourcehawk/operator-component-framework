@@ -508,6 +508,10 @@ optional; when set, the framework records Prometheus metrics for every condition
 recorder from [go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics). Leave it `nil` to opt
 out.
 
+`EventRecorder` takes a `k8s.io/client-go/tools/events.EventRecorder`. The manager accessor that returns one,
+`GetEventRecorder(name)`, was added in controller-runtime v0.23; on v0.22.x, build the recorder from client-go instead,
+as described in [Compatibility](compatibility.md).
+
 ## Persisting Status with FlushStatus
 
 `Component.Reconcile` only mutates the owner's status conditions in memory. The controller persists them by calling

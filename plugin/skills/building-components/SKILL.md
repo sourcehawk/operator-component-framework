@@ -183,9 +183,9 @@ that are not "a value exists", such as a status phase reaching a specific value.
 are evaluated first, and the custom guard is consulted only once every guarded cell is set.
 
 `ReconcileContext` carries everything a reconcile pass needs: `Client`, `Scheme`, `EventRecorder` (an
-`events.EventRecorder`, obtained from the manager with `GetEventRecorder(name)`), an optional `Metrics` recorder, and
-`Owner` (the CRD instance that owns the component). Build one per reconcile from your controller and pass it into
-`comp.Reconcile(ctx, recCtx)`.
+`events.EventRecorder`, obtained from the manager with `GetEventRecorder(name)` on controller-runtime v0.23 and later,
+or built from client-go on v0.22.x), an optional `Metrics` recorder, and `Owner` (the CRD instance that owns the
+component). Build one per reconcile from your controller and pass it into `comp.Reconcile(ctx, recCtx)`.
 
 `Component.Reconcile` mutates the owner's status conditions only in memory. The controller persists them by calling
 `component.FlushStatus(ctx, recCtx)` once per reconcile, typically deferred so conditions set on error paths are still

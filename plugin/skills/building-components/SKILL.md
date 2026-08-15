@@ -3,9 +3,10 @@ name: building-components
 description:
   Use when creating or modifying a component built with the operator-component-framework
   (github.com/sourcehawk/operator-component-framework) - covers the component builder, resource registration, feature
-  gates, prerequisites, the reconciliation lifecycle, conditions and the status model, aggregating component conditions
-  into an owner-level condition, grace periods, suspension, ReconcileContext, FlushStatus, guards, and declared data
-  cells.
+  gates, prerequisites, the reconciliation lifecycle, conditions and the status model, reading a component's condition
+  with GetCondition, aggregating component conditions into an owner-level condition, grace periods, suspension,
+  ReconcileContext, how a controller writes the owner CR's status (including a status-only controller that manages no
+  resources) and where observedGeneration is set, FlushStatus, guards, and declared data cells.
 ---
 
 # Building Components
@@ -118,6 +119,14 @@ failing/converging/pending states, then the ready states (`Healthy`, `Operationa
 `component.Auxiliary()` does not contribute its converging health to this aggregation, but a blocked guard on it still
 does.
 
+Read a component's condition back with `(*Component).GetCondition(owner) component.Condition`. When the owner carries no
+condition of that type, it returns a synthetic one rather than nothing: status `False`, reason `Unknown`, message
+`Component has not been reconciled yet.`, and the owner's current generation. That synthetic value is what keeps a
+not-yet-reconciled component visible to an owner-level aggregate, so prefer it over `meta.FindStatusCondition`, which
+returns nil and lets the component drop out unnoticed. `Condition.ComponentStatus()` converts the reason back to a typed
+`component.Status`, and `Status.Priority()` gives its aggregation priority. `GetCondition` reads the in-memory owner, so
+reconcile before you read it or you see the previous pass.
+
 `Reconcile` only stages the condition on the in-memory owner object; it is not the writer of record to the cluster.
 
 `component.Aggregate(conditionType, owner, comps...)` returns one owner-level condition that collapses the conditions of
@@ -204,6 +213,41 @@ written. `FlushStatus` performs a single `Status().Update`, wrapped in `retry.Re
 condition currently staged on the owner; conditions owned by other writers on the same object are preserved because
 `meta.SetStatusCondition` merges by condition type. This split lets a controller with several components stage several
 conditions in one reconcile and persist them in one write, instead of racing a write per component.
+
+That `Status().Update` writes the **whole status subresource**, not only the conditions, so fetch the owner fresh at the
+top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones. On a 409
+conflict `FlushStatus` refetches the owner and re-applies only the staged conditions, so a non-condition status field
+staged before the conflict is lost for that pass and must be staged again next reconcile.
+
+## One write path for the owner's status
+
+**A CR's status is written once per reconcile, through `FlushStatus`.** This holds even for a controller that builds no
+components at all. A validation-only CRD stages its condition with `meta.SetStatusCondition` and persists it with a
+`ReconcileContext` carrying only `Client` and `Owner`; `Scheme`, `EventRecorder`, and `Metrics` serve resource
+reconciliation and metrics, so a status-only controller leaves them unset.
+
+```go
+meta.SetStatusCondition(policy.GetStatusConditions(), metav1.Condition{
+    Type: "Validated", Status: metav1.ConditionTrue, Reason: "SpecValid",
+    Message: "Spec passed validation.", ObservedGeneration: policy.Generation,
+})
+policy.Status.ObservedGeneration = policy.Generation // owner-level field, see below
+return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
+    Client: r.Client, Owner: policy,
+})
+```
+
+**Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside
+`FlushStatus` puts two field managers on one conditions list, and because `FlushStatus` writes the full status the
+outcome depends on which call runs last: the `Update` can clobber the patched condition, or the patch can clobber what
+the `Update` wrote. Keep every owner-status write on the `meta.SetStatusCondition` plus `FlushStatus` path.
+
+**Owner-level `observedGeneration` is the controller's own field.** The framework stamps `ObservedGeneration` on every
+component condition it writes, from `owner.GetGeneration()`, but never writes `status.observedGeneration` on the owner:
+`OperatorCRD` requires only `GetStatusConditions` and `GetKind`, so there is no setter to call. Assign
+`owner.Status.ObservedGeneration = owner.Generation` before `FlushStatus` runs, in the same staging step that writes the
+owner's own condition. Note that this is a different field from the `ObservedGeneration` on each condition, and the
+snippet above sets both.
 
 ## Anti-patterns
 

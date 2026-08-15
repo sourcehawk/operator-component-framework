@@ -508,8 +508,14 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 	return err
 }
 
-// FlushStatus persists the owner's current status conditions to the Kubernetes
-// API and records condition metrics for every condition on the owner.
+// FlushStatus persists the owner's status to the Kubernetes API and records
+// condition metrics for every condition on the owner.
+//
+// FlushStatus issues a single Status().Update, which writes the entire status
+// subresource, not only the conditions. Fields the controller never staged are
+// sent exactly as they stand on the in-memory owner. The owner must therefore be
+// fetched fresh at the top of each reconcile: an owner carried over from an
+// earlier pass writes stale status values back over newer ones.
 //
 // Controllers must call FlushStatus exactly once per reconciliation, typically
 // via defer so that conditions set on error paths are still persisted:
@@ -530,10 +536,15 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //
 // On a 409 Conflict (for example if an external writer updated the owner
 // between the controller fetching it and this call) FlushStatus refetches the
-// owner, re-applies the conditions staged during reconciliation using
-// meta.SetStatusCondition, and retries. Conditions managed by other writers on
-// the owner are preserved because meta.SetStatusCondition merges by condition
-// type.
+// owner into the same variable, re-applies the conditions staged during
+// reconciliation using meta.SetStatusCondition, and retries. Conditions managed
+// by other writers on the owner are preserved because meta.SetStatusCondition
+// merges by condition type.
+//
+// Only the conditions are re-applied after a conflict. The refetch replaces the
+// in-memory owner with the server's object, so any non-condition status field
+// staged before the conflict is lost for that pass and must be staged again on
+// the next reconcile.
 //
 // rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
 // recording is skipped.

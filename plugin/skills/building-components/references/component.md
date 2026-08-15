@@ -121,6 +121,30 @@ builder.IncludeWhen(spec.ConfigRef != nil, func() component.Resource {
 }, component.ReadOnly(), component.BlockOnAbsence())
 ```
 
+The second real case is a kind the cluster may not serve at all. A `ServiceMonitor` exists only where the Prometheus
+Operator is installed, and the same holds for cert-manager kinds and for any optional CRD. Use a RESTMapper lookup as
+the `include` input, and let `GatedBy` keep owning the spec flag that says whether the user wants the resource:
+
+```go
+// The cluster serves the kind only when the CRD is installed.
+_, err := mgr.GetRESTMapper().RESTMapping(
+    schema.GroupKind{Group: "monitoring.coreos.com", Kind: "ServiceMonitor"}, "v1",
+)
+served := err == nil
+
+builder.IncludeWhen(served, func() component.Resource {
+    res, _ := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
+    return res
+}, component.GatedBy(metricsGate))
+```
+
+The two options answer different questions here, and they compose. `IncludeWhen(served, ...)` answers "can this cluster
+hold the resource at all", and `GatedBy(metricsGate)` answers "does this owner want it". When the CRD is present and the
+gate turns off, the framework deletes the `ServiceMonitor`, which is correct. When the CRD is absent, the resource is
+never registered, so the framework never attempts that delete. This matters because a delete against a kind the cluster
+no longer serves fails with a no-matches error from the REST mapper, and it would fail every reconcile. Removing a CRD
+already removes every instance of its kind, so there is nothing left for the component to clean up.
+
 A secondary use is migrating a resource from tracked to untracked without deleting it. Moving a resource from
 `WithResource` (or `IncludeWhen(true, ...)`) to `IncludeWhen(false, ...)` drops it from the component entirely: the
 component no longer creates, updates, or deletes it, so an already-present resource is left in place, rather than
@@ -258,8 +282,9 @@ reconcile can be observed during this one.
 5. **Status aggregation.** The converging status of every processed resource is collected, including any blocked-guard
    result.
 6. **Condition update.** A new component condition is derived from the aggregate resource status, the previous
-   condition, and the configured grace period, then written to the owner **in memory only**. `Reconcile` never calls the
-   Kubernetes status API; the controller persists with [`FlushStatus`](#persisting-status-with-flushstatus).
+   condition, and the configured grace period, then written to the owner **in memory only**. The derived `Reason` is a
+   [`component.Status`](#condition-priority-and-aggregation) value. `Reconcile` never calls the Kubernetes status API;
+   the controller persists with [`FlushStatus`](#persisting-status-with-flushstatus).
 7. **Resource deletion.** Resources registered for deletion are removed from the cluster, in the same registration order
    used for reconciliation; the framework does not reverse it.
 
@@ -403,6 +428,24 @@ stateDiagram-v2
     end note
 ```
 
+### Reading a component's condition
+
+`(*Component).GetCondition(owner OperatorCRD) Condition` returns the condition this component owns on the given owner.
+When the owner carries no condition of that type, it returns a synthetic one instead of nothing: status `False`, reason
+`Unknown`, message `Component has not been reconciled yet.`, and the owner's current generation. A controller that reads
+conditions this way therefore never mistakes a component that has not reconciled for a component that is ready.
+
+```go
+cond := comp.GetCondition(owner)         // component.Condition, an alias of metav1.Condition
+status := cond.ComponentStatus()         // component.Status, the reason as a typed value
+priority := status.Priority()            // the aggregation priority of that status
+```
+
+`GetCondition` reads the owner object in memory, so reconcile the component first. A condition read before
+`comp.Reconcile` reflects the previous pass. Prefer it over `meta.FindStatusCondition` on the owner's conditions: the
+synthetic `Unknown` is what keeps a not-yet-reconciled component visible to
+[owner-level aggregation](guidelines.md#derive-the-owners-aggregate-condition-from-component-conditions).
+
 ### Condition priority and aggregation
 
 When several resources are aggregated into one condition, the framework selects the state with the highest priority.
@@ -411,29 +454,36 @@ so a reader can determine exactly how a failing or mixed-state component aggrega
 outrank everything; the ready states (`Healthy`, `Operational`, `Completed`) are the lowest non-zero priorities;
 `Unknown` and any unrecognized reason are priority `0` and never influence aggregation.
 
-| Priority | Reason(s)                                        | Condition status | Category                                   |
-| -------- | ------------------------------------------------ | ---------------- | ------------------------------------------ |
-| 20       | `Error`, `FeatureGateError`                      | `False`          | Reconcile or gate failure                  |
-| 19       | `Down`                                           | `False`          | Grace expired, non-functional              |
-| 18       | `Degraded`                                       | `False`          | Grace expired, partially functional        |
-| 17       | `PendingSuspension`                              | `True`           | Suspension acknowledged, not started       |
-| 16       | `Suspending`                                     | `True`           | Converging towards suspended               |
-| 15       | `Suspended`                                      | `True`           | Fully suspended                            |
-| 14       | `Disabled`                                       | `True`           | Feature gate disabled                      |
-| 13       | `AliveFailing` (`Failing`)                       | `False`          | Workload cannot converge                   |
-| 12       | `OperationFailing`                               | `False`          | Integration cannot become operational      |
-| 11       | `CompletionFailing` (`TaskFailing`)              | `False`          | Task finished with an error                |
-| 10       | `GuardBlocked` (`Blocked`), `PrerequisiteNotMet` | `False`          | Precondition not met                       |
-| 9        | `AliveScaling` (`Scaling`)                       | `False`          | Workload converging                        |
-| 8        | `CompletionRunning` (`TaskRunning`)              | `False`          | Task running                               |
-| 7        | `AliveUpdating` (`Updating`)                     | `False`          | Workload converging                        |
-| 6        | `AliveCreating` (`Creating`)                     | `False`          | Workload converging                        |
-| 5        | `OperationPending`                               | `False`          | Integration waiting on a dependency        |
-| 4        | `CompletionPending` (`TaskPending`)              | `False`          | Task waiting to start                      |
-| 3        | `Healthy`                                        | `True`           | Workload ready                             |
-| 2        | `Operational`                                    | `True`           | Integration ready                          |
-| 1        | `Completed`                                      | `True`           | Task finished successfully                 |
-| 0        | `Unknown` and unrecognized                       | `Unknown`        | Not yet reconciled; ignored in aggregation |
+`Status.Priority()` is the exported way to consume this ordering. A controller that derives an owner-level condition
+from several component conditions calls it directly, as
+[Derive the Owner's Aggregate Condition from Component Conditions](guidelines.md#derive-the-owners-aggregate-condition-from-component-conditions)
+describes. A condition's `Reason` is always a `component.Status` value, never free text, so metrics and other consumers
+can key on the reason string. Convert one back with `Condition.ComponentStatus()`.
+
+| Priority | Reason(s)                                        | Condition status | Category                                          |
+| -------- | ------------------------------------------------ | ---------------- | ------------------------------------------------- |
+| 20       | `Error`, `FeatureGateError`                      | `False`          | Reconcile or gate failure                         |
+| 19       | `Down`                                           | `False`          | Grace expired, non-functional                     |
+| 18       | `Degraded`                                       | `False`          | Grace expired, partially functional               |
+| 17       | `PendingSuspension`                              | `True`           | Suspension acknowledged, not started              |
+| 16       | `Suspending`                                     | `True`           | Converging towards suspended                      |
+| 15       | `Suspended`                                      | `True`           | Fully suspended                                   |
+| 14       | `Disabled`                                       | `True`           | Feature gate disabled                             |
+| 13       | `AliveFailing` (`Failing`)                       | `False`          | Workload cannot converge                          |
+| 12       | `OperationFailing`                               | `False`          | Integration cannot become operational             |
+| 11       | `CompletionFailing` (`TaskFailing`)              | `False`          | Task finished with an error                       |
+| 10       | `GuardBlocked` (`Blocked`), `PrerequisiteNotMet` | `False`          | Precondition not met                              |
+| 9        | `AliveScaling` (`Scaling`)                       | `False`          | Workload converging                               |
+| 8        | `CompletionRunning` (`TaskRunning`)              | `False`          | Task running                                      |
+| 7        | `AliveUpdating` (`Updating`)                     | `False`          | Workload converging                               |
+| 6        | `AliveCreating` (`Creating`)                     | `False`          | Workload converging                               |
+| 5        | `OperationPending`                               | `False`          | Integration waiting on a dependency               |
+| 4        | `CompletionPending` (`TaskPending`)              | `False`          | Task waiting to start                             |
+| 3        | `Healthy`                                        | `True`           | Workload ready                                    |
+| 2        | `Operational`                                    | `True`           | Integration ready                                 |
+| 1        | `Completed`                                      | `True`           | Task finished successfully                        |
+| 0        | `Unknown`                                        | `False`          | Not yet reconciled; ignored in aggregation        |
+| 0        | Any unrecognized reason                          | not set here     | Written by another writer; ignored in aggregation |
 
 !!! note
 
@@ -441,6 +491,11 @@ outrank everything; the ready states (`Healthy`, `Operational`, `Completed`) are
     shared value: `AliveFailing` is `"Failing"`, `GuardBlocked` is `"Blocked"`, and the `Completion*` constants map to
     `"Completed"`, `"TaskRunning"`, `"TaskPending"`, and `"TaskFailing"`. The parentheses in the table give the runtime
     value where it differs from the constant name.
+
+    The two priority `0` rows differ in origin. `Unknown` is the framework's own synthetic condition for a component
+    that has not reconciled yet, and its condition status is `False`, which is what stops a fresh CR from reporting
+    ready. The framework never writes `metav1.ConditionUnknown`, so an unrecognized reason on the owner came from
+    another writer and the framework determines neither its reason nor its status.
 
 A resource registered with [`component.Auxiliary()`](#resource-registration-options) does not contribute its converging
 health to this aggregation. A blocked guard on an auxiliary resource still contributes, because a blocked guard halts
@@ -609,16 +664,74 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
 }
 ```
 
-`FlushStatus` performs one `Status().Update` call that writes every condition currently on the owner in memory, wrapped
-in `retry.RetryOnConflict`. If another writer updated the owner between the controller's initial `Get` and this call,
-`FlushStatus` refetches, reapplies the conditions staged during the reconcile, and retries. Conditions managed by other
-writers on the same owner are preserved because `meta.SetStatusCondition` merges by condition type. After a successful
-update, `FlushStatus` records metrics for every condition on the owner; if `Metrics` is `nil`, recording is skipped.
+`FlushStatus` performs one `Status().Update` call, wrapped in `retry.RetryOnConflict`. That call writes the **whole
+status subresource**, not only the conditions. Every status field the controller staged in memory is sent, and every
+field it did not stage is sent exactly as it stands on the in-memory object. Fetch the owner fresh at the top of each
+reconcile, so the fields nobody staged still hold current server state. An owner carried over from an earlier pass
+writes stale values back over newer ones.
+
+On a 409 Conflict, for example when another writer updated the owner between the controller's `Get` and this call,
+`FlushStatus` refetches the owner into the same variable, reapplies the conditions it staged during the reconcile with
+`meta.SetStatusCondition`, and retries. Only the conditions are reapplied. Non-condition status fields staged in memory
+before the conflict are lost for that pass, and the next reconcile stages them again. Conditions written by other
+writers on the same owner survive, because `meta.SetStatusCondition` merges by condition type.
+
+After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
+recording is skipped.
 
 This split is what lets a controller with several components stage several conditions during one reconcile and persist
 them in a single write. Persisting after each component would race the components' writes and produce 409 conflicts. See
 [Keep Controllers Thin](guidelines.md#keep-controllers-thin) and
 [One Component Per Logical Condition](guidelines.md#one-component-per-logical-condition).
+
+### One write path for the owner's status
+
+A CR's status is written once per reconcile, through `FlushStatus`. This rule also holds for a controller that builds no
+components at all. A validation-only CRD stages its condition with `meta.SetStatusCondition` and persists it with a
+`ReconcileContext` that carries only `Client` and `Owner`. `Scheme`, `EventRecorder`, and `Metrics` are used by resource
+reconciliation and metric recording, so a status-only controller can leave them unset.
+
+```go
+func (r *PolicyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+    policy := &v1alpha1.Policy{}
+    if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
+        return reconcile.Result{}, client.IgnoreNotFound(err)
+    }
+
+    cond := metav1.Condition{
+        Type: "Validated", Status: metav1.ConditionTrue, Reason: "SpecValid",
+        Message: "Spec passed validation.", ObservedGeneration: policy.Generation,
+    }
+    if err := validate(policy); err != nil {
+        cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "SpecInvalid", err.Error()
+    }
+    meta.SetStatusCondition(policy.GetStatusConditions(), cond)
+
+    return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
+        Client: r.Client,
+        Owner:  policy,
+    })
+}
+```
+
+Server-Side Apply is for managed resources, never for the owner's status subresource. An SSA status patch next to a
+`FlushStatus` call puts two field managers on one conditions list. `FlushStatus` writes the full status, so the outcome
+depends on which call runs last: the `Update` can overwrite the patched condition, or the patch can overwrite what the
+`Update` wrote. Keep every owner-status write on the `meta.SetStatusCondition` plus `FlushStatus` path.
+
+### Where the owner's observedGeneration is set
+
+The framework sets `ObservedGeneration` on every **component condition** it writes, from `owner.GetGeneration()`. It
+never writes `status.observedGeneration` on the owner itself. `OperatorCRD` requires only `GetStatusConditions` and
+`GetKind`, so the framework has no setter to call.
+
+An owner-level `status.observedGeneration` is the controller's own field. Assign it on the owner before `FlushStatus`
+runs, in the same staging step that writes the owner's own condition, and the single status write persists both. This
+applies to a status-only controller too, as in the validation-only example above.
+
+```go
+app.Status.ObservedGeneration = app.Generation
+```
 
 ## Declared Data
 

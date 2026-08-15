@@ -32,6 +32,9 @@ import (
 //
 // ObservedGeneration is the owner's generation.
 //
+// Every component in comps must be non-nil; a nil component is a programming
+// error.
+//
 // Each condition is read with [Component.GetCondition], which synthesizes an
 // Unknown condition with status False for a component that has not reconciled
 // yet. A freshly created owner therefore never reports True.

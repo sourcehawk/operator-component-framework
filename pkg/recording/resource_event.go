@@ -43,9 +43,9 @@ func applyOperationReason(op concepts.ConvergingOperation, object client.Object)
 	}
 }
 
-// applyOperationAction returns the event action verb for the operation. It is
-// only meaningful for operations that changed the object; ConvergingOperationNone
-// never reaches the recorder.
+// applyOperationAction returns the event action verb for the operation.
+// ConvergingOperationNone never reaches the recorder; any value other than
+// Created or Updated is reported as "Unchanged", mirroring applyOperationReason.
 func applyOperationAction(op concepts.ConvergingOperation) string {
 	switch op {
 	case concepts.ConvergingOperationCreated:
@@ -78,8 +78,8 @@ func applyOperationMessage(op concepts.ConvergingOperation, object client.Object
 //   - ConvergingOperationCreated: An event of type Normal with the action "Create"
 //   - ConvergingOperationUpdated: An event of type Normal with the action "Update"
 //   - Any other operation value: An event of type Normal with the action "Unchanged"
-//   - messageKeyValuePairs are strings expected in the format "myKey=myValue" and are prepended to the generated
-//     event message for additional information
+//   - messageKeyValuePairs are strings expected in the format "myKey=myValue". They are appended to the
+//     generated event message in parentheses, comma-separated, for additional information
 func RecordApplyOperationEvent(
 	recorder events.EventRecorder, op concepts.ConvergingOperation, object client.Object, owner runtime.Object,
 	messageKeyValuePairs ...string,

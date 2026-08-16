@@ -41,7 +41,12 @@ func applyResource(
 	// fields the response does not mention, which would skew the applied-state
 	// comparison below.
 	var objectExists bool
-	existing := newEmptyObjectLike(obj)
+	existing, err := newEmptyObjectLike(obj)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to prepare existence check for resource %s: %w", resource.Identity(), err,
+		)
+	}
 	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), existing); err == nil {
 		objectExists = true
 	} else if !apierrors.IsNotFound(err) {
@@ -308,11 +313,19 @@ func mutateResource(
 
 // newEmptyObjectLike returns a zero-valued object of the same Go type as obj,
 // carrying obj's GroupVersionKind so that unstructured objects remain
-// addressable through the client.
-func newEmptyObjectLike(obj client.Object) client.Object {
-	empty := reflect.New(reflect.TypeOf(obj).Elem()).Interface().(client.Object)
+// addressable through the client. It returns an error for a nil or non-pointer
+// object, which the client could not decode into anyway.
+func newEmptyObjectLike(obj client.Object) (client.Object, error) {
+	typ := reflect.TypeOf(obj)
+	if typ == nil || typ.Kind() != reflect.Pointer {
+		return nil, fmt.Errorf("object must be a non-nil pointer, got %T", obj)
+	}
+	empty, ok := reflect.New(typ.Elem()).Interface().(client.Object)
+	if !ok {
+		return nil, fmt.Errorf("zero value of %T does not implement client.Object", obj)
+	}
 	empty.GetObjectKind().SetGroupVersionKind(obj.GetObjectKind().GroupVersionKind())
-	return empty
+	return empty, nil
 }
 
 // appliedObjectChanged reports whether a Server-Side Apply changed the object,

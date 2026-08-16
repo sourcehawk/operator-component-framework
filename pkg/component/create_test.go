@@ -541,6 +541,38 @@ func TestApplyResource_ConvergingOperation(t *testing.T) {
 	})
 }
 
+func TestNewEmptyObjectLike(t *testing.T) {
+	t.Run("returns a zeroed typed object of the same type", func(t *testing.T) {
+		src := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: "ns"},
+			Data:       map[string]string{"k": "v"},
+		}
+		empty, err := newEmptyObjectLike(src)
+		require.NoError(t, err)
+		cm, ok := empty.(*corev1.ConfigMap)
+		require.True(t, ok)
+		assert.Empty(t, cm.Name)
+		assert.Nil(t, cm.Data)
+	})
+
+	t.Run("carries the GVK for unstructured objects", func(t *testing.T) {
+		src := &unstructured.Unstructured{}
+		src.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+		src.SetName("src")
+		empty, err := newEmptyObjectLike(src)
+		require.NoError(t, err)
+		u, ok := empty.(*unstructured.Unstructured)
+		require.True(t, ok)
+		assert.Equal(t, corev1.SchemeGroupVersion.WithKind("ConfigMap"), u.GroupVersionKind())
+		assert.Empty(t, u.GetName())
+	})
+
+	t.Run("rejects a nil object instead of panicking", func(t *testing.T) {
+		_, err := newEmptyObjectLike(nil)
+		require.Error(t, err)
+	})
+}
+
 func TestMutateResource(t *testing.T) {
 	var (
 		scheme    = setupScheme()

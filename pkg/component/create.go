@@ -35,7 +35,7 @@ func applyResource(
 		)
 	}
 
-	// Check if the object already exists (reads from informer cache, not the API server).
+	// Check if the object already exists (read through the client, usually the informer cache).
 	// The observed object is fetched into a zeroed instance rather than a copy of
 	// the desired object: decoding into a pre-populated struct keeps map entries and
 	// fields the response does not mention, which would skew the applied-state

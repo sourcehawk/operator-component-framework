@@ -44,9 +44,9 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	// that gets built below. FlushStatus derives the condition types it owns
 	// from these, and only those are re-applied over the server's copy after a
 	// conflict.
-	comps := make([]*component.Component, 0, 1)
+	var comps []*component.Component
 	defer func() {
-		if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
+		if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
 			err = flushErr
 		}
 	}()
@@ -55,7 +55,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	if err != nil {
 		return err
 	}
-	comps = append(comps, comp)
+	comps = []*component.Component{comp}
 
 	return comp.Reconcile(ctx, recCtx)
 }

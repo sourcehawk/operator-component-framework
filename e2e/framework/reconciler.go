@@ -130,7 +130,7 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_
 		Owner:         owner,
 	}
 	defer func() {
-		if flushErr := component.FlushStatus(ctx, recCtx, comp); flushErr != nil && err == nil {
+		if flushErr := component.FlushStatus(ctx, recCtx, []*component.Component{comp}); flushErr != nil && err == nil {
 			err = flushErr
 		}
 	}()

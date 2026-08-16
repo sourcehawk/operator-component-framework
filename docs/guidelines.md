@@ -155,7 +155,7 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     // FlushStatus derives the condition types it owns from those components.
     var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
             err = flushErr
         }
     }()

@@ -513,9 +513,19 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //
 // Pass the components whose conditions this flush is responsible for. Their
 // condition types are the types FlushStatus treats as its own on a conflict, so
-// the set can never drift from what the components actually write. A controller
-// that manages no components passes none, and every condition staged on the
-// owner is then treated as owned.
+// the set can never drift from what the components actually write.
+//
+// comps is a required parameter rather than a variadic one on purpose. A
+// variadic would let every existing call keep compiling while silently retaining
+// the old, wider ownership, which would make a correctness fix opt-in and
+// invisible. Requiring the argument forces each call site to be looked at once.
+//
+// Pass nil when the controller manages no components. nil and an empty slice
+// behave identically: every condition staged on the owner is treated as owned.
+// That is a deliberate special case, not an empty set. A controller with no
+// components stages its condition by hand, and if an empty list meant "own
+// nothing" that condition would be reverted on every conflict. Passing nil is
+// therefore a visible choice rather than an omission.
 //
 // FlushStatus issues a single Status().Update, which writes the entire status
 // subresource, not only the conditions. Fields the controller never staged are
@@ -537,7 +547,7 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //
 //	    var comps []*component.Component
 //	    defer func() {
-//	        if flushErr := component.FlushStatus(ctx, rec, comps...); flushErr != nil && err == nil {
+//	        if flushErr := component.FlushStatus(ctx, rec, comps); flushErr != nil && err == nil {
 //	            err = flushErr
 //	        }
 //	    }()
@@ -570,7 +580,7 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //
 // rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
 // recording is skipped.
-func FlushStatus(ctx context.Context, rec ReconcileContext, comps ...*Component) error {
+func FlushStatus(ctx context.Context, rec ReconcileContext, comps []*Component) error {
 	owned := ownedConditionTypes(rec.Owner, comps)
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {

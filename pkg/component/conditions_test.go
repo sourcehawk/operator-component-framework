@@ -261,7 +261,7 @@ func TestFlushStatus(t *testing.T) {
 		metrics.On("RecordConditionFor", owner.GetKind(), owner, "AppReady",
 			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}))
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, nil))
 
 		persisted := &MockOperatorCRD{}
 		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
@@ -275,7 +275,7 @@ func TestFlushStatus(t *testing.T) {
 
 		k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}))
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil))
 
 		persisted := &MockOperatorCRD{}
 		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
@@ -290,7 +290,7 @@ func TestFlushStatus(t *testing.T) {
 		k8sClient := &errorMockClient{Client: inner}
 		metrics := &MockMetrics{}
 
-		err := FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner})
+		err := FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, nil)
 		require.Error(t, err)
 		assert.Equal(t, "update failed", err.Error())
 
@@ -322,7 +322,7 @@ func TestFlushStatus(t *testing.T) {
 		metrics.On("RecordConditionFor", owner.GetKind(), owner, "InfraReady",
 			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}))
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, nil))
 
 		assert.GreaterOrEqual(t, k8sClient.gets, 1, "expected at least one Get for conflict refetch")
 		persisted := &MockOperatorCRD{}
@@ -466,7 +466,7 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		})
 
 		require.NoError(t, FlushStatus(
-			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, infraComponent(t),
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
 		))
 
 		assert.Equal(t, int64(7), persistedOf(t, k8sClient, owner).Status.ObservedGeneration,
@@ -487,7 +487,7 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		})
 
 		require.NoError(t, FlushStatus(
-			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, infraComponent(t),
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
 		))
 
 		got := conditionOf(t, persistedOf(t, k8sClient, owner), "InfraReady")
@@ -515,7 +515,7 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		})
 
 		require.NoError(t, FlushStatus(
-			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, infraComponent(t),
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
 		))
 
 		persisted := persistedOf(t, k8sClient, owner)
@@ -538,7 +538,7 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		})
 
 		require.NoError(t, FlushStatus(
-			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, infraComponent(t),
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
 		))
 
 		persisted := persistedOf(t, k8sClient, owner)
@@ -562,12 +562,44 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 			Type: "Validated", Status: metav1.ConditionTrue, Reason: "SpecValid",
 		})
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}))
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil))
 
 		persisted := persistedOf(t, k8sClient, owner)
 		assert.Equal(t, "SpecValid", conditionOf(t, persisted, "Validated").Reason,
 			"with no components every staged condition is owned")
 		assert.Equal(t, int64(3), persisted.Status.ObservedGeneration)
+	})
+
+	t.Run("treats a nil and an empty component slice identically", func(t *testing.T) {
+		// A reader will reasonably write either. Both mean "own every staged
+		// condition", so both must survive a conflict the same way.
+		for name, comps := range map[string][]*Component{
+			"nil":           nil,
+			"empty non-nil": {},
+		} {
+			t.Run(name, func(t *testing.T) {
+				serverSide := newOwner()
+				serverSide.Status.Conditions = []metav1.Condition{{
+					Type: "Validated", Status: metav1.ConditionFalse, Reason: "StaleServerValue",
+					LastTransitionTime: metav1.Now(),
+				}}
+				k8sClient := conflictingClient(serverSide)
+
+				owner := newOwner()
+				owner.Status.ObservedGeneration = 5
+				applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+					Type: "Validated", Status: metav1.ConditionTrue, Reason: "SpecValid",
+				})
+
+				require.NoError(t, FlushStatus(
+					ctx, ReconcileContext{Client: k8sClient, Owner: owner}, comps,
+				))
+
+				persisted := persistedOf(t, k8sClient, owner)
+				assert.Equal(t, "SpecValid", conditionOf(t, persisted, "Validated").Reason)
+				assert.Equal(t, int64(5), persisted.Status.ObservedGeneration)
+			})
+		}
 	})
 
 	t.Run("does not mistake staged conditions for the server's when the server has none", func(t *testing.T) {
@@ -586,7 +618,7 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		})
 
 		require.NoError(t, FlushStatus(
-			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, infraComponent(t),
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
 		))
 
 		persisted := persistedOf(t, k8sClient, owner)
@@ -605,7 +637,7 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		counting := &conflictOnceClient{Client: inner, conflicts: 1} // never conflicts
 
 		require.NoError(t, FlushStatus(
-			ctx, ReconcileContext{Client: counting, Owner: owner}, infraComponent(t),
+			ctx, ReconcileContext{Client: counting, Owner: owner}, []*Component{infraComponent(t)},
 		))
 
 		assert.Zero(t, counting.gets, "the non-conflict path must not fetch the owner")

@@ -657,7 +657,7 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     // Declared before the deferred flush so the closure sees every component built below.
     var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
             err = flushErr
         }
     }()
@@ -695,9 +695,14 @@ component.FlushStatus(ctx, recCtx, backendComp, frontendComp)
 
 Their condition types are the owned set, so it cannot drift from what the components actually write.
 
-Passing **no** components is a deliberate special case rather than an empty set: every condition staged on the owner is
-then owned. A controller that builds no components stages its condition by hand, and if an empty list meant "own
-nothing" that condition would be reverted on every conflict. See
+The parameter is required rather than variadic on purpose. A variadic would let every existing call keep compiling while
+silently retaining the old, wider ownership, which would make a correctness fix opt-in and invisible. Requiring the
+argument forces each call site to be looked at exactly once.
+
+A controller that manages no components passes `nil`. `nil` and an empty slice behave identically: every condition
+staged on the owner is then owned. That is a deliberate special case rather than an empty set. A controller with no
+components stages its condition by hand, and if an empty list meant "own nothing" that condition would be reverted on
+every conflict. Passing `nil` is a visible choice a reader can see, not an omission nobody notices. See
 [One write path for the owner's status](#one-write-path-for-the-owners-status).
 
 !!! note "An owner-level aggregate is not owned by any component"
@@ -738,11 +743,11 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     }
     meta.SetStatusCondition(policy.GetStatusConditions(), cond)
 
-    // No components, so every staged condition is owned and survives a conflict.
+    // nil: no components, so every staged condition is owned and survives a conflict.
     return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
         Client: r.Client,
         Owner:  policy,
-    })
+    }, nil)
 }
 ```
 

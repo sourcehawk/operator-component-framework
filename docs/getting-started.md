@@ -314,7 +314,7 @@ func (r *Controller) reconcile(ctx context.Context, owner *ExampleApp) (err erro
     // Declared before the deferred flush so the closure sees the component built below.
     var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
             err = flushErr
         }
     }()

@@ -217,11 +217,14 @@ them in one write, instead of racing a write per component.
 That `Status().Update` writes the **whole status subresource**, not only the conditions, so fetch the owner fresh at the
 top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones.
 
-**Pass the components whose conditions this flush owns:** `component.FlushStatus(ctx, recCtx, comps...)`. Their
-condition types are the owned set, so it cannot drift from what the components actually write. Passing **no** components
-is a deliberate special case rather than an empty set: every condition staged on the owner is then owned. A controller
-that builds no components stages its condition by hand, and if an empty list meant "own nothing" that condition would be
-reverted on every conflict.
+**Pass the components whose conditions this flush owns:** `component.FlushStatus(ctx, recCtx, comps)`. Their condition
+types are the owned set, so it cannot drift from what the components actually write.
+
+The parameter is required, not variadic: a variadic would let existing calls keep compiling while silently retaining the
+old wider ownership, making a correctness fix opt-in and invisible. A controller that manages no components passes
+`nil`. `nil` and an empty slice behave identically, and both are a deliberate special case rather than an empty set:
+every condition staged on the owner is then owned. A controller with no components stages its condition by hand, and if
+an empty list meant "own nothing" that condition would be reverted on every conflict.
 
 On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
 separate object, takes that copy's `resourceVersion`, restores from it only the conditions whose type this flush does
@@ -238,7 +241,7 @@ reconcile:
 ```go
 var comps []*component.Component
 defer func() {
-    if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
+    if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
         err = flushErr
     }
 }()
@@ -263,10 +266,9 @@ meta.SetStatusCondition(policy.GetStatusConditions(), metav1.Condition{
     Message: "Spec passed validation.", ObservedGeneration: policy.Generation,
 })
 policy.Status.ObservedGeneration = policy.Generation // owner-level field, see below
-// No components, so every staged condition is owned and survives a conflict.
 return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
     Client: r.Client, Owner: policy,
-})
+}, nil) // nil: no components, so every staged condition is owned
 ```
 
 **Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside

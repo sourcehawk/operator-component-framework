@@ -47,7 +47,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	// conflict.
 	var comps []*component.Component
 	defer func() {
-		if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
+		if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
 			err = flushErr
 		}
 	}()

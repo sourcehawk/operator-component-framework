@@ -683,8 +683,13 @@ That snapshot is **every** condition on the in-memory owner, not only the ones c
 retry as a merge by condition type rather than a guarantee about other writers. A condition type another writer adds
 after the controller's `Get` is absent from the snapshot, so the refetch brings it in and the retry leaves it alone. A
 condition type that was already on the owner at the `Get`, and that another writer updated in the meantime, is
-overwritten by the snapshotted copy, which is stale by then. Keeping one writer per condition type avoids the question
-entirely.
+overwritten by the snapshotted copy, which is stale by then.
+
+Note that the second case is not limited to condition types this controller staged. The snapshot holds every condition
+that was on the owner at the `Get`, so a conflict retry can roll another controller's condition back to the value it had
+at that moment even though this controller never touched that type. One writer per condition type does not prevent it.
+The other controller's next reconcile writes its condition again, so the effect is a transient rollback rather than
+permanent loss, but two controllers writing one owner's status will produce it under contention.
 
 After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
 recording is skipped.

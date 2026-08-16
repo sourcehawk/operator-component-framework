@@ -210,9 +210,9 @@ component). Build one per reconcile from your controller and pass it into `comp.
 `Component.Reconcile` mutates the owner's status conditions only in memory. The controller persists them by calling
 `component.FlushStatus(ctx, recCtx)` once per reconcile, typically deferred so conditions set on error paths are still
 written. `FlushStatus` performs a single `Status().Update`, wrapped in `retry.RetryOnConflict`, that writes every
-condition currently staged on the owner; conditions owned by other writers on the same object are preserved because
-`meta.SetStatusCondition` merges by condition type. This split lets a controller with several components stage several
-conditions in one reconcile and persist them in one write, instead of racing a write per component.
+condition currently staged on the owner, merging by condition type via `meta.SetStatusCondition` rather than replacing
+the list. This split lets a controller with several components stage several conditions in one reconcile and persist
+them in one write, instead of racing a write per component.
 
 That `Status().Update` writes the **whole status subresource**, not only the conditions, so fetch the owner fresh at the
 top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones. On a 409
@@ -223,7 +223,11 @@ The conditions it re-applies are a snapshot of **every** condition on the in-mem
 ones components staged. The retry is therefore a merge by condition type, not a guarantee that another writer's updates
 survive: a condition type added by someone else after the controller's `Get` is absent from the snapshot and is left
 alone, while a type already present at the `Get` and updated concurrently is overwritten by the stale snapshotted copy.
-Keep one writer per condition type and the question does not arise.
+
+That second case is not limited to types this controller staged, so one writer per condition type does not prevent it: a
+conflict retry can roll another controller's condition back to its value at the `Get`. The other controller's next
+reconcile restores it, making this a transient rollback rather than permanent loss, but expect it whenever two
+controllers write one owner's status.
 
 ## One write path for the owner's status
 

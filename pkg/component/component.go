@@ -546,7 +546,13 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // the snapshot, so the refetch brings it in and the retry leaves it alone. A
 // condition type that was already on the owner at the Get, and that another
 // writer updated in the meantime, is overwritten by the snapshotted copy, which
-// is stale by then. Keeping one writer per condition type avoids this entirely.
+// is stale by then.
+//
+// The second case is not limited to types the controller staged, so one writer
+// per condition type does not prevent it: the snapshot holds every condition
+// present at the Get, and the retry can roll another controller's condition back
+// to its value at that moment. That writer's next reconcile restores it, making
+// this a transient rollback rather than permanent loss.
 //
 // Only the conditions are re-applied after a conflict. The refetch replaces the
 // in-memory owner with the server's object, so any non-condition status field

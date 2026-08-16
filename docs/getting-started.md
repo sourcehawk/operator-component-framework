@@ -279,7 +279,8 @@ self-induced update conflicts.
     `FlushStatus` performs the status write itself: it calls `Client.Status().Update` on the owner (retrying on
     conflict). Do not also call `Status().Update` for the conditions the framework manages, or you will double-write.
     Because the call is deferred, the conditions are flushed even if `Reconcile` returns an error. Pass the components
-    you built: their condition types are the ones `FlushStatus` re-applies over the server's copy when it has to retry.
+    you built: on a conflict their condition types stay on the staged owner, while every other condition is refreshed
+    from the server.
 
 ```go
 package app

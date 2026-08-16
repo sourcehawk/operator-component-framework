@@ -209,18 +209,24 @@ between them. When convergence returns `Healthy`, grace is never called; for eve
 contradict convergence by also returning `Healthy`. The component logs a warning when it detects this inconsistency; if
 intentional, pass `component.SuppressGraceInconsistencyWarning()` to `WithResource` to silence it.
 
-**Every handler that takes the wrapped type receives the object as it stands after the apply of the current reconcile.**
-`Mutate` stores the mutated object on the resource and the SSA patch decodes the API server's response into that same
-object, so a handler reads server-populated fields, `Generation` and `Status` included, and can trust
-`status.observedGeneration` to say whether the object's own controller has seen the spec just applied. The suspension
-mutation handler is the exception: it takes the mutator, before the patch is sent.
+**The status handlers (converge, operational, grace, suspension status) receive the object as it stands after the apply
+of the current reconcile.** `Mutate` stores the mutated object on the resource and the SSA patch decodes the API
+server's response into that same object, so those handlers read server-populated fields, `Generation` and `Status`
+included, and can trust `status.observedGeneration` to say whether the object's own controller has seen the spec just
+applied.
+
+Two handlers are outside that guarantee. The suspension **mutation** handler takes the mutator, before the patch is
+sent, and like any mutation must be a pure function of the spec rather than of live cluster state. The
+**delete-on-suspend decision** is consulted twice per suspension pass and the first call is before the apply, on the
+short-circuit for an already-absent resource, so it must not read post-apply status.
 
 #### Scale-to-zero or delete-on-suspend?
 
-The scaffolded default scales to zero and keeps the object. That is right for a workload whose storage outlives its
-pods, and wrong for an external CR whose operator reclaims volumes on scale-down, because suspension then erases the
-data it exists to preserve. **One question decides it: does the external operator destroy state when it is scaled
-down?** If it does, suspend by deletion behind a safety-gated status handler.
+Scaling to zero and keeping the object is the usual suspension a consumer writes; the scaffold itself records no
+mutation, so the object is left untouched until you replace the default. Scale-to-zero is right for a workload whose
+storage outlives its pods, and wrong for an external CR whose operator reclaims volumes on scale-down, because
+suspension then erases the data it exists to preserve. **One question decides it: does the external operator destroy
+state when it is scaled down?** If it does, suspend by deletion behind a safety-gated status handler.
 
 The behavior to watch for is common among operators that manage stateful clusters: the operator reclaims a node's
 PersistentVolumeClaim when that node is scaled away. A suspension mutation that sets the replica or node count to zero

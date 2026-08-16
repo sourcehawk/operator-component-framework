@@ -715,9 +715,10 @@ every conflict. Passing `nil` is a visible choice a reader can see, not an omiss
     reverts it to the value the server already holds and the next reconcile stages it again. Passing the components
     covers their own conditions; the aggregate is recomputed from them each pass anyway.
 
-    The restore reads the server's conditions, so an unowned type the server does not yet carry is left alone. The
-    first write of such a condition survives a conflict; only a later conflict, once the server holds that type,
-    reverts it.
+    For unowned types the server is the source of truth, absence included. An unowned condition the server no longer
+    carries is dropped from the staged owner rather than written back, so a condition another writer removed is not
+    resurrected. A condition the server has never held, such as the first write of the aggregate, is dropped for the
+    same reason and staged again on the next reconcile.
 
 After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
 recording is skipped.

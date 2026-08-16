@@ -106,9 +106,10 @@ func (b *WorkloadBuilder[T, M]) WithCustomSuspendStatus(
 
 // WithCustomSuspendMutation overrides the workload suspension mutation handler.
 //
-// The handler receives the mutator for the object that is about to be applied,
-// which after the first reconcile carries the API server's response from the
-// previous apply. See BaseBuilder.WithCustomSuspendMutation.
+// The handler receives the mutator for the object that is about to be applied and
+// records the suspension intent on it. Like any mutation it must be a pure
+// function of the spec, never of live cluster state. See
+// BaseBuilder.WithCustomSuspendMutation.
 func (b *WorkloadBuilder[T, M]) WithCustomSuspendMutation(
 	handler func(M) error,
 ) *WorkloadBuilder[T, M] {

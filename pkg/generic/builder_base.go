@@ -124,11 +124,13 @@ func (b *BaseBuilder[T, M]) WithCustomSuspendStatus(
 // WithCustomSuspendMutation overrides the resource suspension mutation handler.
 //
 // The handler receives the mutator for the object that is about to be applied,
-// before the patch is sent. On every reconcile after the first, that object
-// carries the API server's response from the previous apply, so the handler
-// plans its edits against observed server state rather than against the inert
-// baseline the builder was constructed with. The handler must only record
-// intent on the mutator; the framework applies it and patches the result.
+// before the patch is sent, and records the suspension intent on it. The
+// framework then applies the recorded mutations and patches the result.
+//
+// Like any mutation, it must be a pure function of the spec and the inputs
+// available when the resource was built. Do not read live cluster state to
+// decide what to write: the object behind the mutator is desired state on its
+// way to the API server, not an observation of it.
 func (b *BaseBuilder[T, M]) WithCustomSuspendMutation(handler func(M) error) {
 	b.BaseRes.SuspendMutationHandler = handler
 }

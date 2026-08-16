@@ -34,8 +34,8 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	}
 	// Declared before the deferred flush so the closure sees every component
 	// that gets built below. FlushStatus derives the condition types it owns
-	// from these, and only those are re-applied over the server's copy after a
-	// conflict.
+	// from these: on a conflict the owned conditions stay on this staged owner
+	// while the unowned ones are refreshed from the server.
 	var comps []*component.Component
 	defer func() {
 		if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {

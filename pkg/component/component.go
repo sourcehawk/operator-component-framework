@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -578,10 +579,12 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // flush. On a conflict it reverts to the value the server already holds, and the
 // next reconcile stages it again.
 //
-// The restore reads the server's conditions, so an unowned type the server does
-// not yet carry is left alone: the first write of such a condition survives a
-// conflict, and only a later conflict, once the server holds that type, reverts
-// it.
+// For unowned types the server is the source of truth, absence included. An
+// unowned condition the server no longer carries is dropped from the staged
+// owner rather than written back, so a condition another writer removed is not
+// resurrected. A condition the server has never held, such as the first write of
+// an owner-level aggregate, is dropped for the same reason and staged again on
+// the next reconcile.
 //
 // rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
 // recording is skipped.
@@ -665,11 +668,29 @@ func refreshUnownedConditions(ctx context.Context, rec ReconcileContext, owned m
 
 	rec.Owner.SetResourceVersion(server.GetResourceVersion())
 
-	for _, cond := range *server.GetStatusConditions() {
+	serverConds := *server.GetStatusConditions()
+	onServer := make(map[string]struct{}, len(serverConds))
+	for _, cond := range serverConds {
+		onServer[cond.Type] = struct{}{}
+	}
+
+	// Absence is server state too. An unowned condition the server no longer
+	// carries has been removed by whoever owns it, so drop the local copy
+	// instead of writing it back and resurrecting it.
+	staged := rec.Owner.GetStatusConditions()
+	*staged = slices.DeleteFunc(*staged, func(cond metav1.Condition) bool {
+		if _, isOwned := owned[cond.Type]; isOwned {
+			return false
+		}
+		_, present := onServer[cond.Type]
+		return !present
+	})
+
+	for _, cond := range serverConds {
 		if _, isOwned := owned[cond.Type]; isOwned {
 			continue
 		}
-		replaceStatusCondition(rec.Owner.GetStatusConditions(), cond)
+		replaceStatusCondition(staged, cond)
 	}
 	return nil
 }

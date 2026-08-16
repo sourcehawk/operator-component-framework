@@ -332,12 +332,17 @@ at the generic layer:
 Register custom handlers only where your CRD has domain-specific behavior. The workload handlers below mirror what
 `pkg/primitives/deployment` registers by default.
 
-Every handler that takes the wrapped type receives the object as it stands **after** the apply of the current reconcile.
-`Mutate` stores the mutated object on the resource, and the Server-Side Apply patch decodes the API server's response
-into that same object. A status handler therefore reads server-populated fields, `Generation` and `Status` included, and
-can trust `status.observedGeneration` to tell it whether the object's own controller has seen the spec it just applied.
-The suspension mutation handler is the exception: it takes the mutator, not the object, and runs before the patch is
-sent.
+The **status** handlers (converge, operational, grace, and suspension status) receive the object as it stands **after**
+the apply of the current reconcile. `Mutate` stores the mutated object on the resource, and the Server-Side Apply patch
+decodes the API server's response into that same object, so those handlers read server-populated fields, `Generation`
+and `Status` included, and can trust `status.observedGeneration` to tell them whether the object's own controller has
+seen the spec just applied.
+
+Two handlers are outside that guarantee. The suspension **mutation** handler takes the mutator rather than the object
+and runs before the patch is sent. The **delete-on-suspend decision** is consulted twice in a suspension pass, and the
+first call happens before the apply, on the short-circuit that avoids recreating an already-absent resource. Do not read
+post-apply status in a deletion decision: base it on the spec and on inputs available when the resource was built, so it
+answers the same way in both calls.
 
 ```go
 package messagequeue

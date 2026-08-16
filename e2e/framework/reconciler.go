@@ -31,6 +31,9 @@ type E2EReconciler struct {
 	Scheme        *runtime.Scheme
 	EventRecorder events.EventRecorder
 	Metrics       component.MetricsRecorder
+	// APIReader serves the conflict-path refetch in FlushStatus with a direct
+	// read, so the retry sees the live owner rather than the informer cache.
+	APIReader client.Reader
 
 	mu                 sync.RWMutex
 	resourceFactories  map[string]ResourceFactory
@@ -43,12 +46,14 @@ func NewE2EReconciler(
 	scheme *runtime.Scheme,
 	recorder events.EventRecorder,
 	metrics component.MetricsRecorder,
+	apiReader client.Reader,
 ) *E2EReconciler {
 	return &E2EReconciler{
 		Client:             c,
 		Scheme:             scheme,
 		EventRecorder:      recorder,
 		Metrics:            metrics,
+		APIReader:          apiReader,
 		resourceFactories:  make(map[string]ResourceFactory),
 		componentFactories: make(map[string]ComponentFactory),
 	}
@@ -127,10 +132,11 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_
 		Scheme:        r.Scheme,
 		EventRecorder: r.EventRecorder,
 		Metrics:       r.Metrics,
+		APIReader:     r.APIReader,
 		Owner:         owner,
 	}
 	defer func() {
-		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+		if flushErr := component.FlushStatus(ctx, recCtx, []*component.Component{comp}); flushErr != nil && err == nil {
 			err = flushErr
 		}
 	}()

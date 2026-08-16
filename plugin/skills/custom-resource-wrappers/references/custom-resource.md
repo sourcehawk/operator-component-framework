@@ -60,6 +60,39 @@ health, so it is a **workload**. [Step 4](#4-implement-status-handlers) and the
 
 ---
 
+## Generated and hand-written files
+
+`ocf scaffold wrapper` owns exactly four files in a wrapper package: `builder.go`, `builder_test.go`, `mutator.go`, and
+`resource.go`. Every other file in the directory is yours. `--force` rewrites those four and leaves the rest alone, as
+[Regenerating](cli.md#regenerating) describes.
+
+This boundary is the package layout, not a workaround for one. Your real status handlers and your mutator helpers live
+in files of their own beside the generated four, so a regeneration cannot touch them.
+
+```text
+messagequeue/
+  builder.go        # generated
+  builder_test.go   # generated
+  mutator.go        # generated
+  resource.go       # generated
+  handlers.go       # hand-written: the real converge, grace and suspension handlers
+  podtemplate.go    # hand-written: mutator helpers built on editors and selectors
+```
+
+To take a newer CLI's scaffold into an existing wrapper:
+
+1. Commit or stash the working tree first, so the regeneration diff is readable.
+2. Re-run `ocf scaffold wrapper` with the same `--type`, `--variant`, and `--group` values, plus `--force`.
+3. Read the diff on the four generated files. Your own files are unchanged.
+4. Point `NewBuilder` back at your handlers. The regenerated `builder.go` registers the scaffolded `Default*Handler`
+   stubs again, because it carries both the stubs and their registration.
+5. Run `go build ./...` and the package tests.
+
+Step 4 is the only manual step, and it is the reason the real handlers belong in `handlers.go`. Regeneration replaces
+the registration in `builder.go`, never the handlers you wrote.
+
+---
+
 ## 1. Choose a resource category
 
 The framework defines four resource categories. Each maps to a generic resource type with a different set of lifecycle
@@ -205,6 +238,93 @@ func (m *Mutator) Apply() error {
       This makes feature mutations self-documenting and keeps callers on the plan-and-apply path. The built-in workload
       mutators follow the same approach, layering convenience wrappers such as `EnsureReplicas` over lower-level edits.
 
+### Extending the mutator with editors and selectors
+
+The mutator above is written by hand, so its seam is whatever you gave it: `SetReplicas`, `SetMaxConnections`. A
+scaffolded mutator is the same contract with a different surface. It exposes a general `Edit(func(*T) error)` alongside
+`EditObjectMetadata`, and the rest of this section extends that one.
+
+`Edit` and `EditObjectMetadata` are enough for flat specs. They are not enough for a CRD that carries a pod template per
+node group, which is a common shape once a CRD describes a clustered workload. Written by hand, every container mutation
+repeats the same find-the-container-or-add-it loop, and each copy of that loop is a place to get the selector semantics
+wrong.
+
+Put the hand-written helpers in their own file beside the generated `mutator.go` (see
+[Generated and hand-written files](#generated-and-hand-written-files)) and build them on `pkg/mutation/editors` and
+`pkg/mutation/selectors`. Every editor has an exported constructor that takes a pointer to the field it edits, so an
+editor works on any object that contains that field. `editors.NewContainerEditor(container *corev1.Container)` brings
+`EnsureEnvVars`, `EnsureArgs`, `SetResourceLimit`, and the rest to a container nested anywhere in your CRD, and
+`editors.NewPodSpecEditor(spec *corev1.PodSpec)` does the same for volumes, tolerations, and node selectors.
+
+Record the helper through the generated `Edit` method rather than adding a field to `featurePlan`. `Edit` appends to the
+active feature plan and the generated `Apply` runs it in registration order, so the helper lives entirely in your own
+file and survives the next `--force`. Its GoDoc asks for exactly this: wrap frequently used edits in named methods on
+the mutator.
+
+```go
+// podtemplate.go, hand-written beside the generated mutator.go.
+package messagequeue
+
+import (
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/editors"
+    "github.com/sourcehawk/operator-component-framework/pkg/mutation/selectors"
+    examplev1 "example.io/api/v1"
+)
+
+// EditNodeSetContainers records intent to edit every container in the named
+// node set's pod template that matches the selector.
+func (m *Mutator) EditNodeSetContainers(
+    nodeSet string, sel selectors.ContainerSelector, fn func(*editors.ContainerEditor) error,
+) {
+    m.Edit(func(mq *examplev1.MessageQueue) error {
+        for i := range mq.Spec.NodeSets {
+            if mq.Spec.NodeSets[i].Name != nodeSet {
+                continue
+            }
+            containers := mq.Spec.NodeSets[i].PodTemplate.Spec.Containers
+            for j := range containers {
+                if !sel(j, &containers[j]) {
+                    continue
+                }
+                if err := fn(editors.NewContainerEditor(&containers[j])); err != nil {
+                    return err
+                }
+            }
+        }
+        return nil
+    })
+}
+```
+
+A feature mutation then reads the way a built-in primitive's does:
+
+```go
+m.EditNodeSetContainers("data", selectors.ContainerNamed("broker"), func(e *editors.ContainerEditor) error {
+    e.EnsureEnvVars(app.Spec.ExtraEnv)
+    return nil
+})
+```
+
+Selector semantics come with the selector: `selectors.AllContainers()` needs no name and survives a container rename,
+and `selectors.ContainerNamed` and `selectors.ContainersNamed` match by name. Reuse them rather than comparing names in
+the loop, so the same vocabulary describes a wrapper and a built-in workload.
+
+!!! warning "Matching is not identical to the built-in workloads"
+
+    A built-in workload mutator takes one snapshot of the containers per feature, after that feature's presence
+    operations and **before** any of its edits run, then matches every selector in the feature against that snapshot. A
+    rename by one edit therefore cannot change what a later edit in the same feature selects.
+
+    A helper recorded through `Edit` cannot reproduce that. Each `Edit` closure runs in turn against the live object, so
+    a second helper call in the same feature sees the renames performed by the first. Getting true parity would mean
+    reimplementing the per-feature snapshot inside the generated `mutator.go`, which regeneration would erase.
+
+    The consequence is the one the
+    [mutation ordering guideline](guidelines.md#mutation-ordering-and-container-name-dependencies) already warns about,
+    only with a smaller blast radius: register name-specific helper calls **before** any call that renames a container,
+    or use name-independent selectors such as `selectors.AllContainers()`. Within a single helper call the question does
+    not arise, because each `ContainerEditor` is scoped to the container it was given.
+
 ---
 
 ## 4. Implement status handlers
@@ -216,16 +336,33 @@ category.
 
 The generic builder's `Build()` fails if the convergence handler is missing. For workload and task resources this is the
 converging-status handler registered with `WithCustomConvergeStatus`; for integration resources it is the
-operational-status handler registered with `WithCustomOperationalStatus`. Every other handler defaults to a safe value
-at the generic layer:
+operational-status handler registered with `WithCustomOperationalStatus`. Every other handler has a default at the
+generic layer:
 
 - Grace status defaults to `Healthy` (workload and integration only).
 - Suspension status defaults to `Suspended`.
 - The suspension mutation defaults to a no-op.
 - The delete-on-suspend decision defaults to `false`.
 
+These defaults are safe **as a set**, not individually: together they mean suspension does nothing at all. Replace one
+and the rest stop protecting you, which is why overriding only the delete-on-suspend decision deletes an object nothing
+has made safe to delete (see [Scale-to-zero or delete-on-suspend?](#scale-to-zero-or-delete-on-suspend)).
+
 Register custom handlers only where your CRD has domain-specific behavior. The workload handlers below mirror what
 `pkg/primitives/deployment` registers by default.
+
+The **status** handlers (converge, operational, grace, and suspension status) receive the object as it stands **after**
+the apply of the current reconcile. `Mutate` stores the mutated object on the resource, and the Server-Side Apply patch
+decodes the API server's response into that same object, so those handlers read server-populated fields, `Generation`
+and `Status` included, and can trust `status.observedGeneration` to tell them whether the object's own controller has
+seen the spec just applied.
+
+Three handlers are outside that guarantee. The **guard** runs before the resource is applied, which is its whole
+purpose, so it sees the desired object rather than the server's response. The suspension **mutation** handler takes the
+mutator rather than the object and runs before the patch is sent. The **delete-on-suspend decision** may be consulted
+twice in a suspension pass, and the first call happens before the apply, on the short-circuit that avoids recreating an
+already-absent resource. Do not read post-apply status in a guard or a deletion decision: base them on the spec, on
+declared data, and on inputs available when the resource was built.
 
 ```go
 package messagequeue
@@ -336,6 +473,94 @@ func DefaultDeleteOnSuspendHandler(_ *examplev1.MessageQueue) bool {
     return false
 }
 ```
+
+### Scale-to-zero or delete-on-suspend?
+
+The handlers above scale the object to zero and keep it. That is the right default for a workload whose storage outlives
+its pods. It is the wrong default for an external CR whose operator reclaims volumes when the CR scales down, because
+suspension then erases the data it exists to preserve.
+
+One question decides it: **does the external operator destroy state when it is scaled down?** If it does, suspend by
+deletion behind a safety-gated status handler. If it does not, scale to zero.
+
+The behavior to watch for is common among operators that manage stateful clusters: **the operator reclaims a node's
+PersistentVolumeClaim when that node is scaled away**. Under that behavior a suspension mutation that sets the replica
+or node count to zero destroys exactly the data suspension exists to preserve. Deleting the CR is the safe operation
+instead, provided its spec carries a policy that retains the claims when the object is removed. On resume the CR is
+recreated and the operator reattaches the claims it kept.
+
+Read the CRD's own documentation for which field expresses that policy and what its retaining value is. The shape of the
+answer is what matters here, not the spelling: a spec field the wrapper can set, whose effect is observable on the
+applied object.
+
+The pattern has four parts, and the framework's ordering guarantee is what makes it safe. `Suspendable` states it
+directly: the resource must reach `SuspensionStatusSuspended` before it is deleted.
+
+1. **The suspension mutation ensures the retaining policy.** It does not scale anything down. It writes the field that
+   makes deletion non-destructive.
+2. **The status handler reports `concepts.SuspensionStatusSuspended` only when the applied CR is safe to delete.** Check
+   that the policy is present on the object, that `status.observedGeneration` has caught up with `metadata.generation`,
+   and that no data migration is in flight. Report `concepts.SuspensionStatusPending` or
+   `concepts.SuspensionStatusSuspending` until all three hold.
+3. **`DeleteOnSuspend()` returns true.**
+4. **The framework deletes the object,** and only after the status handler has reported
+   `concepts.SuspensionStatusSuspended`.
+
+All three handlers are mandatory here, and the defaults listed under
+[Required versus optional handlers](#required-versus-optional-handlers) are what makes that worth stating. Suspension
+status defaults to `Suspended` and the suspension mutation defaults to a no-op, so a wrapper that registers only
+`WithCustomSuspendDeletionDecision` deletes the object immediately and unconditionally, without ever ensuring the
+retaining policy. `Build()` does not catch it: the only handler it hard-fails on is the convergence handler.
+
+```go
+// SuspendRetainVolumes records the retaining policy. It scales nothing down.
+func SuspendRetainVolumes(m *Mutator) error {
+    m.SetVolumeRetentionPolicy(examplev1.VolumeRetentionRetain)
+    return nil
+}
+
+// SuspensionStatusHandler gates deletion on the policy being live on the object.
+func SuspensionStatusHandler(mq *examplev1.MessageQueue) (concepts.SuspensionStatusWithReason, error) {
+    if mq.Spec.VolumeRetentionPolicy != examplev1.VolumeRetentionRetain {
+        return concepts.SuspensionStatusWithReason{
+            Status: concepts.SuspensionStatusPending,
+            Reason: "Waiting for the volume retention policy to be applied",
+        }, nil
+    }
+    if mq.Status.ObservedGeneration != mq.Generation {
+        return concepts.SuspensionStatusWithReason{
+            Status: concepts.SuspensionStatusPending,
+            Reason: "Waiting for the MessageQueue controller to observe the retention policy",
+        }, nil
+    }
+    if dataMigrationInFlight(mq) {
+        return concepts.SuspensionStatusWithReason{
+            Status: concepts.SuspensionStatusSuspending,
+            Reason: "Data migration in progress",
+        }, nil
+    }
+    return concepts.SuspensionStatusWithReason{
+        Status: concepts.SuspensionStatusSuspended,
+        Reason: "Volumes are retained, the object is safe to delete",
+    }, nil
+}
+
+// DeleteOnSuspendHandler opts the resource into deletion once it reports Suspended.
+func DeleteOnSuspendHandler(_ *examplev1.MessageQueue) bool {
+    return true
+}
+```
+
+Two behaviors round the pattern out. While the component stays suspended and the object is already absent, the framework
+short-circuits and reports `Suspended` without recreating it, so there is no create-then-delete loop. When suspension
+ends, the component applies the CR again from its desired state, and the external operator reattaches the volumes it
+kept.
+
+!!! warning
+
+    The retention policy must be observed on the object before `Suspended` is reported, not merely sent. Reporting
+    `Suspended` straight from the desired state hands the framework permission to delete an object whose own controller
+    has not yet acted on the policy, which is the destructive case the gate exists to prevent.
 
 ### Keeping convergence and grace consistent
 
@@ -799,6 +1024,109 @@ For the component reconciliation lifecycle, status aggregation, and resource opt
 `Auxiliary()`, and `BlockOnAbsence()`, see the [Component](component.md) page.
 
 ---
+
+## When Server-Side Apply Rejects a Typed Object
+
+A Go type can describe more than the CRD's schema declares. When it does, Server-Side Apply rejects the patch:
+
+```text
+failed to create typed patch object: .spec.nodeSets[0].volumeClaimTemplates[0].status:
+field not declared in schema
+```
+
+The cause is a **core Kubernetes struct used as a field type**. Say `MessageQueue` declares
+`spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, the way a CRD does whenever it reuses a
+Kubernetes type instead of restating it. Every marshalled `MessageQueue` then carries `status: {}` inside each volume
+claim template, while the CRD's OpenAPI schema declares no `status` there. An `Update` prunes the field and says
+nothing. An `Apply` is rejected, because the API server's field manager types the patch against the schema before it
+merges anything.
+
+`PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`, so the tag is not the problem and looking for a
+missing one is a dead end. `omitempty` has no effect on a struct value in `encoding/json`: it omits empty maps, slices,
+strings, and zero numbers, but never a struct, so a zero `PersistentVolumeClaimStatus` still marshals as `{}`.
+
+Any operator that moves from `Update`-based reconciliation to this framework meets the error on its first apply against
+a real CRD. Nothing about it is specific to one vendor's kind: any wrapped typed CRD that uses a core struct as a field
+type behaves the same way, whenever that struct has a struct-valued field the schema does not declare.
+
+**The framework has no hook for this.** There is no builder option that rewrites the object between `Mutate` and the
+patch. Two approaches work today.
+
+### Sanitize the object in a client decorator
+
+The framework owns the apply path. `applyResource` in `pkg/component/create.go` calls
+`rec.Client.Patch(ctx, obj, client.Apply, ...)` on the very object that `Mutate` stored as the resource's desired state,
+and the response is decoded back into that same object. Everything downstream depends on that write-back: the status,
+grace, and suspension handlers read the server's `Generation` and `Status` from it on the same pass.
+
+A sanitizer therefore cannot simply drop fields on the way out. It has to prune the request **and** put the server's
+response back into the typed object. The only place that can do both today is a `client.Client` decorator installed in
+`ReconcileContext.Client`.
+
+```go
+// applyClient prunes fields the CRD schema does not declare from Apply patches
+// and decodes the server's response back into the caller's typed object.
+type applyClient struct{ client.Client }
+
+func (c applyClient) Patch(
+    ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption,
+) error {
+    if patch.Type() != types.ApplyPatchType {
+        return c.Client.Patch(ctx, obj, patch, opts...)
+    }
+
+    content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+    if err != nil {
+        return err
+    }
+    u := &unstructured.Unstructured{Object: content}
+    // The framework sets the GVK on the typed object before it patches, so it
+    // carries over. Set it explicitly anyway: an unstructured object cannot have
+    // its GVK inferred from the Go type, and any other Apply through this
+    // decorator would otherwise fail before the request is sent.
+    if u.GroupVersionKind().Empty() {
+        gvk, err := apiutil.GVKForObject(obj, c.Client.Scheme())
+        if err != nil {
+            return err
+        }
+        u.SetGroupVersionKind(gvk)
+    }
+    pruneUndeclaredFields(u) // drop the nested status fields the schema omits
+
+    if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {
+        return err
+    }
+    // Write the server's response back into obj: the resource keeps this object
+    // as its desired state and the status handlers read it after the apply.
+    return runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, obj)
+}
+```
+
+Install it once, where the `ReconcileContext` is built:
+
+```go
+recCtx := component.ReconcileContext{
+    Client: applyClient{r.Client},
+    Scheme: r.Scheme,
+    Owner:  owner,
+}
+```
+
+`pruneUndeclaredFields` is specific to the kind and its CRD. Keep it narrow: delete the exact paths the schema omits,
+for example `status` under each `spec.nodeSets[*].volumeClaimTemplates[*]`. A blanket "strip every empty map" pass will
+eventually remove a field the operator meant to send. Confirm the paths against the object your wrapper actually
+marshals rather than assuming: `json.Marshal` on the built desired state shows precisely which fields are on the wire.
+
+### Manage the kind through the unstructured primitives
+
+The other option removes the mismatch instead of correcting it. The
+[unstructured primitives](primitives.md#unstructured-primitives) take a `*unstructured.Unstructured` as their baseline,
+so the content map holds only the fields you put in it. No Go struct is marshalled, so no zero-value `status` appears,
+and the apply carries exactly the fields the operator declares. The cost is the typed API: mutations edit the content
+map through `editors.UnstructuredContentEditor` instead of typed setters.
+
+Choose the decorator when the typed API is worth keeping and only a few paths are undeclared. Choose the unstructured
+primitives when the CRD's Go type and its schema diverge widely, or when the typed struct exists only to be marshalled.
 
 ## Cluster-Scoped Resources
 

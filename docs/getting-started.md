@@ -264,21 +264,24 @@ carries the client, scheme, recorders, and owner. A single deferred `component.F
 condition with one status update at the end of the loop, which keeps controllers with multiple components free of
 self-induced update conflicts.
 
-`ReconcileContext` has five fields:
+`ReconcileContext` has six fields:
 
-| Field           | Type                        | Notes                                                                            |
-| --------------- | --------------------------- | -------------------------------------------------------------------------------- |
-| `Client`        | `client.Client`             | The controller-runtime client.                                                   |
-| `Scheme`        | `*runtime.Scheme`           | The operator scheme.                                                             |
-| `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. `GetEventRecorder(name)` on the manager, v0.23 and later. |
-| `Metrics`       | `component.MetricsRecorder` | Optional. Pass `nil` to skip status-condition metrics.                           |
-| `Owner`         | `component.OperatorCRD`     | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`. |
+| Field           | Type                        | Notes                                                                                                                                                     |
+| --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Client`        | `client.Client`             | The controller-runtime client.                                                                                                                            |
+| `Scheme`        | `*runtime.Scheme`           | The operator scheme.                                                                                                                                      |
+| `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. `GetEventRecorder(name)` on the manager, v0.23 and later.                                                                          |
+| `Metrics`       | `component.MetricsRecorder` | Optional. Pass `nil` to skip status-condition metrics.                                                                                                    |
+| `APIReader`     | `client.Reader`             | Optional, recommended. `GetAPIReader()` on the manager; `FlushStatus` reads through it on a 409 so the retry sees the live owner, not the informer cache. |
+| `Owner`         | `component.OperatorCRD`     | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`.                                                                          |
 
 !!! note
 
     `FlushStatus` performs the status write itself: it calls `Client.Status().Update` on the owner (retrying on
     conflict). Do not also call `Status().Update` for the conditions the framework manages, or you will double-write.
-    Because the call is deferred, the conditions are flushed even if `Reconcile` returns an error.
+    Because the call is deferred, the conditions are flushed even if `Reconcile` returns an error. Pass the components
+    you built: on a conflict their condition types stay on the staged owner, while every other condition is refreshed
+    from the server.
 
 ```go
 package app
@@ -297,6 +300,7 @@ type Controller struct {
     Scheme        *runtime.Scheme
     EventRecorder events.EventRecorder
     Metrics       component.MetricsRecorder
+    APIReader     client.Reader // from mgr.GetAPIReader(); direct reads on a status conflict
 
     NewDeploymentResource func(*ExampleApp) (component.Resource, error)
     NewConfigMapResource  func(*ExampleApp) (component.Resource, error)
@@ -308,10 +312,13 @@ func (r *Controller) reconcile(ctx context.Context, owner *ExampleApp) (err erro
         Scheme:        r.Scheme,
         EventRecorder: r.EventRecorder,
         Metrics:       r.Metrics,
+        APIReader:     r.APIReader,
         Owner:         owner,
     }
+    // Declared before the deferred flush so the closure sees the component built below.
+    var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
             err = flushErr
         }
     }()
@@ -336,6 +343,7 @@ func (r *Controller) reconcile(ctx context.Context, owner *ExampleApp) (err erro
     if err != nil {
         return err
     }
+    comps = append(comps, comp)
 
     return comp.Reconcile(ctx, recCtx)
 }

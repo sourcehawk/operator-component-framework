@@ -21,6 +21,9 @@ type Controller struct {
 	Scheme        *runtime.Scheme
 	EventRecorder events.EventRecorder
 	Metrics       component.MetricsRecorder
+	// APIReader reads straight from the API server; FlushStatus uses it on a
+	// conflict so the retry sees the live owner rather than a stale cache entry.
+	APIReader client.Reader
 
 	NewConfigMapResource  func(*ExampleApp) (component.Resource, error)
 	NewDeploymentResource func(*ExampleApp) (component.Resource, error)
@@ -39,10 +42,16 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		Scheme:        r.Scheme,
 		EventRecorder: r.EventRecorder,
 		Metrics:       r.Metrics,
+		APIReader:     r.APIReader,
 		Owner:         owner,
 	}
+	// Declared before the deferred flush so the closure sees every component
+	// that gets built below. FlushStatus derives the condition types it owns
+	// from these: on a conflict the owned conditions stay on this staged owner
+	// while the unowned ones are refreshed from the server.
+	var comps []*component.Component
 	defer func() {
-		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+		if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
 			err = flushErr
 		}
 	}()
@@ -52,6 +61,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	if err != nil {
 		return err
 	}
+	comps = append(comps, infra)
 
 	if err := infra.Reconcile(ctx, recCtx); err != nil {
 		return err
@@ -62,6 +72,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	if err != nil {
 		return err
 	}
+	comps = append(comps, app)
 
 	return app.Reconcile(ctx, recCtx)
 }

@@ -90,12 +90,14 @@ var _ = BeforeSuite(func() {
 		mgr.GetScheme(),
 		recorder,
 		metrics,
+		mgr.GetAPIReader(),
 	)
 	clusterReconciler = framework.NewClusterE2EReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		recorder,
 		metrics,
+		mgr.GetAPIReader(),
 	)
 
 	By("registering cluster-scoped controller")

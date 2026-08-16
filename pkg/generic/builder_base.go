@@ -106,6 +106,15 @@ func (b *BaseBuilder[T, M]) WithOptionalData(cells ...concepts.DataCell) {
 }
 
 // WithCustomSuspendStatus overrides the resource suspension status handler.
+//
+// The handler receives BaseResource.DesiredObject as it stands after the
+// suspension apply of the current reconcile. Mutate stores the mutated object
+// in DesiredObject and the Server-Side Apply patch decodes the API server's
+// response into that same object, so the handler observes server-populated
+// fields, including Generation and Status. A handler may therefore compare
+// status.observedGeneration against Generation to decide whether the object's
+// own controller has already observed the suspension mutation, instead of
+// reading a readiness field that is still describing the pre-suspension spec.
 func (b *BaseBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),
 ) {
@@ -113,11 +122,28 @@ func (b *BaseBuilder[T, M]) WithCustomSuspendStatus(
 }
 
 // WithCustomSuspendMutation overrides the resource suspension mutation handler.
+//
+// The handler receives the mutator for the object that is about to be applied,
+// before the patch is sent, and records the suspension intent on it. The
+// framework then applies the recorded mutations and patches the result.
+//
+// Like any mutation, it must be a pure function of the spec and the inputs
+// available when the resource was built. Do not read live cluster state to
+// decide what to write: the object behind the mutator is desired state on its
+// way to the API server, not an observation of it.
 func (b *BaseBuilder[T, M]) WithCustomSuspendMutation(handler func(M) error) {
 	b.BaseRes.SuspendMutationHandler = handler
 }
 
 // WithCustomSuspendDeletionDecision overrides the resource delete-on-suspend decision handler.
+//
+// The handler receives BaseResource.DesiredObject and may be consulted twice in
+// a suspension pass: once before the suspension apply, so an already-absent
+// delete-on-suspend resource is not recreated, and once more only after the
+// resource reports concepts.SuspensionStatusSuspended, to decide whether to
+// delete it. The first call happens on every pass, so the decision must not
+// depend on post-apply status fields, and it must answer the same way in both
+// calls.
 func (b *BaseBuilder[T, M]) WithCustomSuspendDeletionDecision(handler func(T) bool) {
 	b.BaseRes.DeleteOnSuspendHandler = handler
 }

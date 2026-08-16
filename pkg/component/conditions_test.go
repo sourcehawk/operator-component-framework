@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -260,7 +261,7 @@ func TestFlushStatus(t *testing.T) {
 		metrics.On("RecordConditionFor", owner.GetKind(), owner, "AppReady",
 			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}))
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, nil))
 
 		persisted := &MockOperatorCRD{}
 		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
@@ -274,7 +275,7 @@ func TestFlushStatus(t *testing.T) {
 
 		k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}))
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil))
 
 		persisted := &MockOperatorCRD{}
 		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
@@ -289,7 +290,7 @@ func TestFlushStatus(t *testing.T) {
 		k8sClient := &errorMockClient{Client: inner}
 		metrics := &MockMetrics{}
 
-		err := FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner})
+		err := FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, nil)
 		require.Error(t, err)
 		assert.Equal(t, "update failed", err.Error())
 
@@ -315,13 +316,18 @@ func TestFlushStatus(t *testing.T) {
 
 		applyStatusCondition(ReconcileContext{Owner: owner}, cond("InfraReady", "Ready", metav1.ConditionTrue))
 
+		infra, err := NewComponentBuilder().WithName("infra").WithConditionType("InfraReady").Build()
+		require.NoError(t, err)
+
 		metrics := &MockMetrics{}
 		metrics.On("RecordConditionFor", owner.GetKind(), owner, "ExternalReady",
 			string(metav1.ConditionTrue), "ExternalReason", mock.Anything, mock.Anything).Return().Once()
 		metrics.On("RecordConditionFor", owner.GetKind(), owner, "InfraReady",
 			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}))
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, []*Component{infra},
+		))
 
 		assert.GreaterOrEqual(t, k8sClient.gets, 1, "expected at least one Get for conflict refetch")
 		persisted := &MockOperatorCRD{}
@@ -407,4 +413,370 @@ type metricsThatPanic struct{}
 
 func (metricsThatPanic) RecordConditionFor(string, ocm.ObjectLike, string, string, string, time.Time, ...string) {
 	panic("applyStatusCondition must not record metrics")
+}
+
+// TestFlushStatusConflictOwnership covers the conflict path, where FlushStatus
+// must keep the staged owner as the object being written and take the server's
+// value only for condition types the framework does not own.
+func TestFlushStatusConflictOwnership(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	require.NoError(t, AddToScheme(scheme))
+
+	newOwner := func() *MockOperatorCRD {
+		return &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "default", Generation: 1},
+		}
+	}
+
+	// infraComponent owns the "InfraReady" condition type.
+	infraComponent := func(t *testing.T) *Component {
+		t.Helper()
+		comp, err := NewComponentBuilder().WithName("infra").WithConditionType("InfraReady").Build()
+		require.NoError(t, err)
+		return comp
+	}
+
+	// conflictingClient returns a client whose first status Update conflicts,
+	// backed by a server object in the given state.
+	conflictingClient := func(serverSide *MockOperatorCRD) *conflictOnceClient {
+		inner := fake.NewClientBuilder().
+			WithScheme(scheme).WithStatusSubresource(serverSide).WithObjects(serverSide).Build()
+		return &conflictOnceClient{Client: inner}
+	}
+
+	persistedOf := func(t *testing.T, c client.Client, owner *MockOperatorCRD) *MockOperatorCRD {
+		t.Helper()
+		persisted := &MockOperatorCRD{}
+		require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
+		return persisted
+	}
+
+	conditionOf := func(t *testing.T, o *MockOperatorCRD, ctype string) metav1.Condition {
+		t.Helper()
+		found := meta.FindStatusCondition(o.Status.Conditions, ctype)
+		require.NotNil(t, found, "expected condition %q on the persisted owner", ctype)
+		return *found
+	}
+
+	t.Run("preserves a staged non-condition status field across a conflict", func(t *testing.T) {
+		serverSide := newOwner()
+		serverSide.Status.ObservedGeneration = 0
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner()
+		owner.Status.ObservedGeneration = 7 // staged by the controller, not a condition
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		assert.Equal(t, int64(7), persistedOf(t, k8sClient, owner).Status.ObservedGeneration,
+			"the staged owner must remain the object written, so its non-condition fields survive")
+	})
+
+	t.Run("keeps our staged value for a condition type we own", func(t *testing.T) {
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "InfraReady", Status: metav1.ConditionFalse, Reason: "StaleServerValue",
+			LastTransitionTime: metav1.Now(),
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		got := conditionOf(t, persistedOf(t, k8sClient, owner), "InfraReady")
+		assert.Equal(t, "Healthy", got.Reason, "an owned type must keep the value we staged")
+		assert.Equal(t, metav1.ConditionTrue, got.Status)
+	})
+
+	t.Run("keeps an owned condition removed from the staged owner removed across a conflict", func(t *testing.T) {
+		// This is what makes component retirement conflict-safe: the retired
+		// component is still passed for the pass that removes its condition, so
+		// the type is owned and the conflict refresh must not restore it from the
+		// server. Only unowned types follow the server.
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+			LastTransitionTime: metav1.Now(),
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner() // InfraReady deliberately absent: the controller removed it
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Nil(t, meta.FindStatusCondition(persisted.Status.Conditions, "InfraReady"),
+			"an owned condition removed from the staged owner must stay removed; the server copy must not be restored")
+	})
+
+	t.Run("reads the server through APIReader on conflict, not through the cached client", func(t *testing.T) {
+		// A controller's Client reads from the informer cache, which can lag the
+		// write that caused the 409 and hand back the same stale resourceVersion.
+		// The conflict path must read through APIReader when one is set. Model
+		// the lag by giving the client and the reader different views of the same
+		// object: only the reader knows the other writer's newer condition.
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "SeenOnlyByAPIReader",
+			LastTransitionTime: metav1.Now(),
+		}}
+		apiReader := fake.NewClientBuilder().
+			WithScheme(scheme).WithStatusSubresource(serverSide).WithObjects(serverSide).Build()
+
+		cachedView := newOwner() // the cache never saw ExternalReady at all
+		k8sClient := conflictingClient(cachedView)
+
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx,
+			ReconcileContext{Client: k8sClient, APIReader: apiReader, Owner: owner},
+			[]*Component{infraComponent(t)},
+		))
+
+		assert.Equal(t, 0, k8sClient.gets, "the conflict refetch must not go through the cached client")
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "SeenOnlyByAPIReader", conditionOf(t, persisted, "ExternalReady").Reason,
+			"the unowned condition must come from the direct read")
+		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason)
+	})
+
+	t.Run("takes the server's newer value for a condition type we do not own", func(t *testing.T) {
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "WrittenByOtherController",
+			LastTransitionTime: metav1.Now(),
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		// Our in-memory owner carries a stale copy of the other writer's condition,
+		// exactly as it would after fetching the owner at the top of the reconcile.
+		owner := newOwner()
+		owner.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "StaleValueFromOurGet",
+			LastTransitionTime: metav1.Now(),
+		}}
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "WrittenByOtherController", conditionOf(t, persisted, "ExternalReady").Reason,
+			"a type we do not own must take the server's value, not our stale copy")
+		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason)
+	})
+
+	t.Run("takes the server's LastTransitionTime for an unowned condition, even when status is unchanged", func(t *testing.T) {
+		// This is the case that tells replaceStatusCondition apart from
+		// meta.SetStatusCondition. SetStatusCondition keeps the existing
+		// LastTransitionTime whenever the status did not change, so it would blend
+		// the server's condition with the stale local timestamp. The refresh must
+		// take the server's condition verbatim, transition time included.
+		serverTransition := metav1.NewTime(time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC))
+		staleTransition := metav1.NewTime(serverTransition.Add(-time.Hour))
+
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "Same",
+			LastTransitionTime: serverTransition,
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner()
+		owner.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "Same", // same status and reason
+			LastTransitionTime: staleTransition,
+		}}
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		got := conditionOf(t, persistedOf(t, k8sClient, owner), "ExternalReady")
+		assert.True(t, got.LastTransitionTime.Equal(&serverTransition),
+			"an unowned condition must carry the server's LastTransitionTime, not the stale local one; got %v want %v",
+			got.LastTransitionTime, serverTransition)
+	})
+
+	t.Run("preserves a condition another writer added after our fetch", func(t *testing.T) {
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "AddedAfterOurGet", Status: metav1.ConditionTrue, Reason: "BrandNew",
+			LastTransitionTime: metav1.Now(),
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner() // never saw AddedAfterOurGet
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "BrandNew", conditionOf(t, persisted, "AddedAfterOurGet").Reason)
+		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason)
+	})
+
+	t.Run("owns nothing when no components are passed", func(t *testing.T) {
+		// You own exactly what you pass. A validation-only controller passes nil, so
+		// its hand-staged condition is unowned and follows the server on a conflict,
+		// exactly as a controller-staged aggregate does. The next reconcile stages it
+		// again. Its non-condition status fields still survive, because the staged
+		// owner is never replaced.
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "Validated", Status: metav1.ConditionFalse, Reason: "StaleServerValue",
+			LastTransitionTime: metav1.Now(),
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner()
+		owner.Status.ObservedGeneration = 3
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "Validated", Status: metav1.ConditionTrue, Reason: "SpecValid",
+		})
+
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "StaleServerValue", conditionOf(t, persisted, "Validated").Reason,
+			"nothing is owned, so the server's value wins on a conflict")
+		assert.Equal(t, int64(3), persisted.Status.ObservedGeneration,
+			"a staged non-condition status field still survives")
+	})
+
+	t.Run("treats a nil and an empty component slice identically", func(t *testing.T) {
+		// A reader will reasonably write either. Both own no condition types at
+		// all, so both must follow the server the same way on a conflict.
+		for name, comps := range map[string][]*Component{
+			"nil":           nil,
+			"empty non-nil": {},
+		} {
+			t.Run(name, func(t *testing.T) {
+				serverSide := newOwner()
+				serverSide.Status.Conditions = []metav1.Condition{{
+					Type: "Validated", Status: metav1.ConditionFalse, Reason: "StaleServerValue",
+					LastTransitionTime: metav1.Now(),
+				}}
+				k8sClient := conflictingClient(serverSide)
+
+				owner := newOwner()
+				owner.Status.ObservedGeneration = 5
+				applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+					Type: "Validated", Status: metav1.ConditionTrue, Reason: "SpecValid",
+				})
+
+				require.NoError(t, FlushStatus(
+					ctx, ReconcileContext{Client: k8sClient, Owner: owner}, comps,
+				))
+
+				persisted := persistedOf(t, k8sClient, owner)
+				assert.Equal(t, "StaleServerValue", conditionOf(t, persisted, "Validated").Reason,
+					"nothing is owned either way")
+				assert.Equal(t, int64(5), persisted.Status.ObservedGeneration)
+			})
+		}
+	})
+
+	t.Run("drops an unowned condition the server no longer carries", func(t *testing.T) {
+		// Absence is server state. Another writer removing its condition must not
+		// be undone by this controller writing its stale local copy back.
+		//
+		// This also pins the cleared server copy: the fetch decodes into a separate
+		// object whose conditions are emptied first, so a response that omits
+		// conditions cannot leave the staged ones behind looking like the server's.
+		serverSide := newOwner() // the other writer deleted its condition
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "StaleLocalCopy",
+		})
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason,
+			"an owned condition is unaffected by the drop")
+		assert.Nil(t, meta.FindStatusCondition(persisted.Status.Conditions, "ExternalReady"),
+			"an unowned condition the server does not carry must be dropped, not resurrected")
+	})
+
+	t.Run("drops a first-time unowned condition the server has never held", func(t *testing.T) {
+		// Same rule seen from the other side: an owner-level aggregate the server
+		// has never held is not written on the conflict pass. The next reconcile
+		// stages it again.
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "WrittenByOtherController",
+			LastTransitionTime: metav1.Now(),
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "Ready", Status: metav1.ConditionTrue, Reason: "Healthy", // the aggregate, owned by nobody
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason)
+		assert.Equal(t, "WrittenByOtherController", conditionOf(t, persisted, "ExternalReady").Reason)
+		assert.Nil(t, meta.FindStatusCondition(persisted.Status.Conditions, "Ready"),
+			"an unowned aggregate the server has never held is not written on the conflict pass")
+	})
+
+	t.Run("does not fetch at all when the first update succeeds", func(t *testing.T) {
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+		inner := fake.NewClientBuilder().
+			WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
+		counting := &conflictOnceClient{Client: inner, conflicts: 1} // never conflicts
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: counting, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		assert.Zero(t, counting.gets, "the non-conflict path must not fetch the owner")
+	})
 }

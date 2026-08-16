@@ -64,6 +64,7 @@ var _ = BeforeSuite(func() {
 		mgr.GetScheme(),
 		recorder,
 		metrics,
+		mgr.GetAPIReader(),
 	)
 
 	By("registering cluster-scoped controller")

@@ -135,6 +135,32 @@ fields from other managers, while fields it does not include stay with their cur
 This removes the perpetual-update problem that arises when an operator strips server defaults every cycle, and it lets
 primitives coexist with other controllers that touch the same resources.
 
+!!! warning "A Go type that overstates the CRD schema breaks Apply"
+
+    The API server's field manager types a patch against the target's OpenAPI schema before it merges anything, so a
+    field the schema does not declare fails the whole apply and the server returns:
+
+    ```text
+    failed to create typed patch object: .spec.nodeSets[0].volumeClaimTemplates[0].status:
+    field not declared in schema
+    ```
+
+    This happens when a CRD's Go type **uses a core struct as a field type**. A CRD that declares
+    `spec.nodeSets[].volumeClaimTemplates` as `[]corev1.PersistentVolumeClaim`, reusing the Kubernetes type rather than
+    restating it, marshals `status: {}` inside every template while its own schema declares no `status` there. An
+    `Update` prunes the field silently, which is why the error only appears after a move to SSA.
+
+    The struct tag is not the missing piece: `PersistentVolumeClaim.Status` does carry `json:"status,omitempty"`.
+    `omitempty` simply has no effect on a struct value in `encoding/json`, so a zero status still marshals as `{}`.
+
+    The built-in primitives are unaffected: their kinds are built-in, and the API server's schema for them matches the
+    Go types. The failure belongs to wrapped third-party CRDs. The framework offers no hook to rewrite an object
+    between mutation and apply, so the two honest options are to sanitize the object in a `client.Client` decorator
+    installed in `ReconcileContext.Client`, or to manage the kind through the
+    [unstructured primitives](#unstructured-primitives), whose content map holds only the fields you put in it. See
+    [When Server-Side Apply Rejects a Typed Object](custom-resource.md#when-server-side-apply-rejects-a-typed-object)
+    for both, including why a decorator must decode the server's response back into the typed object.
+
 ## The Mutation System
 
 Mutations let independent features contribute changes to a primitive's baseline without knowing about each other. A

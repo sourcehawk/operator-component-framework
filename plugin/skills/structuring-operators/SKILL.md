@@ -2,9 +2,10 @@
 name: structuring-operators
 description:
   Use when designing, structuring, or reviewing an operator built on the operator-component-framework - desired state in
-  the baseline, pure mutations, one component per logical condition, thin controllers, mutation ordering and layering,
-  prerequisites vs guards vs feature gates, participation modes, grace periods, naming conventions, version floors, and
-  supported version pinning.
+  the baseline, pure mutations, one component per logical condition, thin controllers, deriving the owner CR's aggregate
+  Ready condition from its component conditions, mutation ordering and layering, prerequisites vs guards vs feature
+  gates, resources whose CRD may not be installed on the cluster, participation modes, grace periods, naming
+  conventions, version floors, and supported version pinning.
 ---
 
 # Structuring Operators
@@ -30,30 +31,77 @@ component only when they have no useful readiness independent of each other.
 Every guideline from `references/guidelines.md`, verbatim, with the rule in one sentence. Use this table as a review
 checklist: a change that violates one of these rules is a candidate for rework, not just a style nit.
 
-| Guideline                                                           | Rule                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Represent Desired State in the Baseline Object                      | Put every field that is always present, regardless of version or feature flags, in the baseline; leave only conditional fields to mutations.                                                                                            |
-| Mutations Are Pure Functions of the Spec                            | A mutation is a pure function of the owner spec and build-time inputs; it must never read live cluster state.                                                                                                                           |
-| Leave Version-Dependent Fields Empty in the Baseline                | Give each field exactly one owner; when a value depends on the spec version, leave it empty in the baseline and let a single mutation set it.                                                                                           |
-| One Component Per Logical Condition                                 | Split components when users would ask about their health separately or a failure in one should not mask another; combine when resources have no independent readiness.                                                                  |
-| Keep Controllers Thin                                               | A controller fetches the owner, builds and reconciles components, and defers one `FlushStatus`; resource construction and mutation logic live in pure, testable component-building functions.                                           |
-| Reconciler Error Handling and Requeueing                            | Return an error only for a genuine fault (a failed API call, a mutation that cannot apply, a version below the supported floor); let a merely converging resource report through its condition and requeue via normal watch and resync. |
-| Resource Registration Order Is Execution Order                      | Resources reconcile in the exact order they were registered with `WithResource`; register dependencies before dependents.                                                                                                               |
-| Mutation Ordering and Container-Name Dependencies                   | Use broad, name-independent selectors for version-independent mutations, and register name-specific mutations before any compat mutation that renames the container.                                                                    |
-| Layer Mutations in a Fixed Order                                    | Order a resource's mutations into fixed layers: defaults, compat, overrides, then checksum, so the pipeline reads the same way for every workload.                                                                                      |
-| Prefer Reverting Compat Mutations Over Forward Mutations            | Keep the baseline at the latest shape and add a version-gated revert mutation per structural change, rather than holding the baseline at an old shape and patching it forward.                                                          |
-| Use Data Extraction and Guards for Intra-Component Dependencies     | When one resource depends on data from another resource in the same component, declare the flow with a data cell: `ExtractInto` on the producer, `WithDataGuard` or `WithOptionalData` on the consumer.                                 |
-| Use Prerequisites for Cross-Component Dependencies                  | When a component cannot start until another component is ready, attach a prerequisite instead of orchestrating ordering in the controller.                                                                                              |
-| Use Feature Gates for Optional Components and Conditional Resources | Gate optional pieces with a feature gate so the framework owns the full lifecycle, including deletion when the gate flips off.                                                                                                          |
-| Provide a User-Override Escape Hatch as the Last Mutation           | Apply a documented user-override mutation as the last value-producing mutation so the user's input shadows the operator's own defaults.                                                                                                 |
-| Fail Loudly Below the Supported Version Floor                       | Return an error from a compat mutation, rather than emit a silently wrong approximation, when a requested version is below the supported floor.                                                                                         |
-| Name Mutations for Golden Introspection                             | Give every mutation a descriptive `Name`; golden manifests reference those names in their `requires` and `forbids` lists.                                                                                                               |
-| Understand Participation Modes                                      | `Auxiliary` means reconciled but not required for the condition to go Ready, not skipped; a blocked guard always contributes to the condition regardless of participation mode.                                                         |
-| Grace Periods Are Convergence Time                                  | Set the grace period to how long a resource legitimately takes to converge, not as a general safety margin.                                                                                                                             |
-| Handle Cluster-Scoped Resources Explicitly                          | Clean up cluster-scoped resources explicitly with `Delete()` or `DeleteWhen()` plus a finalizer, since the framework cannot set an owner reference across a scope boundary.                                                             |
-| Name Resources to Avoid Multi-Tenant Collisions                     | Derive every managed resource's name from the owner, and fold in the owner's namespace for cluster-scoped resources, which share one global namespace.                                                                                  |
-| Name Conditions for the Audience Reading Them                       | Name condition types after the capability they represent (`BackendReady`), not the Kubernetes resource type backing them (`StatefulSetHealthy`).                                                                                        |
-| Pin Rendered Output Across Supported Versions                       | Cover every supported version's rendered output with a golden, so a baseline change can be proven to touch only the version intended.                                                                                                   |
+| Guideline                                                           | Rule                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Represent Desired State in the Baseline Object                      | Put every field that is always present, regardless of version or feature flags, in the baseline; leave only conditional fields to mutations.                                                                                                                                                                                          |
+| Mutations Are Pure Functions of the Spec                            | A mutation is a pure function of the owner spec and build-time inputs; it must never read live cluster state.                                                                                                                                                                                                                         |
+| Leave Version-Dependent Fields Empty in the Baseline                | Give each field exactly one owner; when a value depends on the spec version, leave it empty in the baseline and let a single mutation set it.                                                                                                                                                                                         |
+| One Component Per Logical Condition                                 | Split components when users would ask about their health separately or a failure in one should not mask another; combine when resources have no independent readiness.                                                                                                                                                                |
+| Keep Controllers Thin                                               | A controller fetches the owner, builds and reconciles components, and defers one `FlushStatus(ctx, rec, comps)` passing the components it built, or `nil` if it built none; resource construction and mutation logic live in pure, testable component-building functions.                                                             |
+| Derive the Owner's Aggregate Condition from Component Conditions    | Derive the owner's aggregate condition with `component.Aggregate` rather than by hand: it is `True` only when every component condition is `True` (unanimity), and its reason comes from the governing component, the highest `Status.Priority()` among the non-True conditions, or among all of them when every condition is `True`. |
+| Reconciler Error Handling and Requeueing                            | Return an error only for a genuine fault (a failed API call, a mutation that cannot apply, a version below the supported floor); let a merely converging resource report through its condition and requeue via normal watch and resync.                                                                                               |
+| Resource Registration Order Is Execution Order                      | Resources reconcile in the exact order they were registered with `WithResource`; register dependencies before dependents.                                                                                                                                                                                                             |
+| Mutation Ordering and Container-Name Dependencies                   | Use broad, name-independent selectors for version-independent mutations, and register name-specific mutations before any compat mutation that renames the container.                                                                                                                                                                  |
+| Layer Mutations in a Fixed Order                                    | Order a resource's mutations into fixed layers: defaults, compat, overrides, then checksum, so the pipeline reads the same way for every workload.                                                                                                                                                                                    |
+| Prefer Reverting Compat Mutations Over Forward Mutations            | Keep the baseline at the latest shape and add a version-gated revert mutation per structural change, rather than holding the baseline at an old shape and patching it forward.                                                                                                                                                        |
+| Use Data Extraction and Guards for Intra-Component Dependencies     | When one resource depends on data from another resource in the same component, declare the flow with a data cell: `ExtractInto` on the producer, `WithDataGuard` or `WithOptionalData` on the consumer.                                                                                                                               |
+| Use Prerequisites for Cross-Component Dependencies                  | When a component cannot start until another component is ready, attach a prerequisite instead of orchestrating ordering in the controller.                                                                                                                                                                                            |
+| Use Feature Gates for Optional Components and Conditional Resources | Gate optional pieces with a feature gate so the framework owns the full lifecycle, including deletion when the gate flips off.                                                                                                                                                                                                        |
+| Provide a User-Override Escape Hatch as the Last Mutation           | Apply a documented user-override mutation as the last value-producing mutation so the user's input shadows the operator's own defaults.                                                                                                                                                                                               |
+| Fail Loudly Below the Supported Version Floor                       | Return an error from a compat mutation, rather than emit a silently wrong approximation, when a requested version is below the supported floor.                                                                                                                                                                                       |
+| Name Mutations for Golden Introspection                             | Give every mutation a descriptive `Name`; golden manifests reference those names in their `requires` and `forbids` lists.                                                                                                                                                                                                             |
+| Understand Participation Modes                                      | `Auxiliary` means reconciled but not required for the condition to go Ready, not skipped; a blocked guard always contributes to the condition regardless of participation mode.                                                                                                                                                       |
+| Grace Periods Are Convergence Time                                  | Set the grace period to how long a resource legitimately takes to converge, not as a general safety margin.                                                                                                                                                                                                                           |
+| Handle Cluster-Scoped Resources Explicitly                          | Clean up cluster-scoped resources explicitly with `Delete()` or `DeleteWhen()` plus a finalizer, since the framework cannot set an owner reference across a scope boundary.                                                                                                                                                           |
+| Name Resources to Avoid Multi-Tenant Collisions                     | Derive every managed resource's name from the owner, and fold in the owner's namespace for cluster-scoped resources, which share one global namespace.                                                                                                                                                                                |
+| Name Conditions for the Audience Reading Them                       | Name condition types after the capability they represent (`BackendReady`), not the Kubernetes resource type backing them (`StatefulSetHealthy`).                                                                                                                                                                                      |
+| Pin Rendered Output Across Supported Versions                       | Cover every supported version's rendered output with a golden, so a baseline change can be proven to touch only the version intended.                                                                                                                                                                                                 |
+
+## Deriving the owner's aggregate condition
+
+Components report granular conditions. Users and automation gate on one signal, so a controller with several components
+stages one more condition on the owner, usually `Ready`. **Call `component.Aggregate`; do not hand-roll the
+derivation.**
+
+```go
+ready := component.Aggregate("Ready", app, backendComp, frontendComp)
+meta.SetStatusCondition(app.GetStatusConditions(), metav1.Condition(ready))
+```
+
+Stage it after the component loop and before the deferred `FlushStatus`, so one status write carries the aggregate and
+the component conditions together. The aggregate belongs to no component, so a conflict retry reverts it to the server's
+value and the next reconcile stages it again. `Aggregate` writes nothing itself and reads each component condition
+through `GetCondition`, so a component that has never reconciled contributes a synthetic `Unknown`/`False` and a fresh
+CR never reports ready.
+
+It makes **two separate decisions**, which is the part a hand-rolled version gets wrong:
+
+- **Truth by unanimity.** The status is `True` if and only if every component condition is `True`. Priority never
+  decides `True` or `False`.
+- **Reason by priority.** The reason and message come from the governing component: the highest `Status.Priority()`
+  among the conditions that are not `True`, or among all of them when every one is `True`. The first component passed
+  wins a tie.
+
+Taking the highest-priority condition and adopting its status inverts the answer for a real case: `Suspended` has
+priority 15 and maps to `True`, `AliveFailing` has priority 13 and maps to `False`, so one suspended component beside
+one failing component reports `True/Suspended`, the highest-priority reason on the wrong readiness.
+
+Consequences worth holding on to:
+
+- **A CR with some components suspended and the rest healthy reports `True`/`Suspended`, and a gate-disabled component
+  counts as ready.** Both are in their expected state, so both carry condition status `True`, and both outrank `Healthy`
+  for the reason: the priorities are `Suspended` 15, `Disabled` 14, `Healthy` 3. If owner-level suspension must be an
+  explicit state, branch on the owner's own suspend field before calling `Aggregate`.
+- **Passing no components returns `False`/`Unknown`,** so a caller that aggregates nothing never reports ready.
+- **Do not remap the reason** onto a vocabulary of your own: that loses `Degraded` and `Down`, and metrics and consumers
+  key on the reason string. Change the message instead if you want different prose.
+- **Retired components leave stale conditions.** `Aggregate` ignores them, but `FlushStatus` never prunes, so remove
+  them with `meta.RemoveStatusCondition` when a component is retired.
+- **Set the owner's `status.observedGeneration` yourself.** The framework stamps `ObservedGeneration` on component
+  conditions only.
+
+Full behavior table and reference: `ocf:building-components`, and `references/guidelines.md`, "Derive the Owner's
+Aggregate Condition from Component Conditions", for the practice framing.
 
 ## Choosing the right dependency mechanism
 
@@ -124,6 +172,44 @@ cacheComp, err := component.NewComponentBuilder().
 A resource-level `component.GatedBy` does the same for one resource the component owns, deleting it once the gate turns
 off. For an optional resource the component does not own, such as a read-only Secret reference behind an optional spec
 field, use `IncludeWhen` instead, which omits the resource without ever deleting it.
+
+`IncludeWhen` also covers the other optional case: **the cluster may not serve the kind at all**. A `ServiceMonitor`
+exists only where the Prometheus Operator is installed, and the same holds for cert-manager kinds and any other optional
+CRD. Use a RESTMapper lookup as the `include` input, and keep `GatedBy` for the spec flag:
+
+```go
+// Only a no-match error means absent; anything else is a real discovery failure.
+var served bool
+_, err := mgr.GetRESTMapper().RESTMapping(
+    schema.GroupKind{Group: "monitoring.coreos.com", Kind: "ServiceMonitor"}, "v1",
+)
+switch {
+case err == nil:
+    served = true
+case meta.IsNoMatchError(err):
+    served = false
+default:
+    return fmt.Errorf("checking whether ServiceMonitor is served: %w", err)
+}
+
+monitor, err := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
+if err != nil {
+    return err
+}
+builder.IncludeWhen(served, func() component.Resource { return monitor }, component.GatedBy(metricsGate))
+```
+
+The lookup names `v1` on purpose. `RESTMapping` takes variadic versions and matches any served version when you pass
+none, but the check should name the version the operator actually applies: a cluster serving only `v1beta1` would pass
+an any-version check and then fail at apply. Gate on the version you send.
+
+Never write `served := err == nil`. `IncludeWhen` omits rather than deletes, so a transient discovery failure read as
+"absent" drops an already-created resource out of the component and leaves it unmanaged in the cluster, silently.
+
+The two answer different questions and compose: `IncludeWhen` asks whether the cluster can hold the resource at all,
+`GatedBy` asks whether this owner wants it. Do not reach for `GatedBy` alone for a kind that may be absent. When the CRD
+is gone, a delete against that kind fails with a no-matches error on every reconcile, and removing a CRD has already
+removed every instance of its kind, so there is nothing left to delete.
 
 The three mechanisms compose: a component can have a feature gate, a prerequisite, and internal guards simultaneously,
 each answering a different question (is this component enabled, can it start, is this resource's own dependency

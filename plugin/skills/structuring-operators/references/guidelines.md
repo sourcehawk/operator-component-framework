@@ -120,10 +120,11 @@ a failure in one should not mask another. **Combine** when resources only make s
 Service that fronts it have no useful readiness independent of each other), or when separate conditions would add noise
 without actionable information.
 
-Controllers typically reconcile every component and fold the per-component conditions into one top-level aggregate, for
-example a `Ready` condition that names the components that are not ready. The component conditions stay granular for
-debugging; the aggregate gives a single signal to gate on. See [Keep Controllers Thin](#keep-controllers-thin) for the
-aggregation pattern.
+Controllers typically reconcile every component and fold the per-component conditions into one aggregate condition, for
+example a `Ready` condition that names the component that is not ready. The component conditions stay granular for
+debugging; the aggregate gives a single signal to gate on. See
+[Derive the Owner's Aggregate Condition from Component Conditions](#derive-the-owners-aggregate-condition-from-component-conditions)
+for the aggregation pattern.
 
 ## Keep Controllers Thin
 
@@ -147,19 +148,24 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
         Scheme:        r.Scheme,
         EventRecorder: r.EventRecorder,
         Metrics:       r.Metrics,
+        APIReader:     r.APIReader, // direct reads on a status conflict
         Owner:         app,
     }
-    // Persist all staged conditions exactly once, even on the error path.
+    // Persist all staged conditions exactly once, even on the error path. comps is
+    // declared first so the closure sees whatever the resolver returns, and
+    // FlushStatus derives the condition types it owns from those components.
+    var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
             err = flushErr
         }
     }()
 
-    comps, buildErr := buildComponents(app)
+    built, buildErr := buildComponents(app)
     if buildErr != nil {
         return reconcile.Result{}, buildErr
     }
+    comps = built
 
     var firstErr error
     for _, comp := range comps {
@@ -186,6 +192,64 @@ and skips metric emission.
 
 Building the component set from a pure resolver `(spec, version) -> []*component.Component` keeps the loop stable:
 enabling an optional feature changes which components the resolver returns without touching the reconcile loop.
+
+## Derive the Owner's Aggregate Condition from Component Conditions
+
+Users and automation gate on one signal, not on a list of them. A controller with several components therefore stages
+one more condition on the owner, usually `Ready`, derived from the component conditions it just reconciled.
+
+Use [`component.Aggregate`](component.md#aggregating-components-into-one-owner-condition) rather than deriving it by
+hand:
+
+```go
+ready := component.Aggregate("Ready", app, backendComp, frontendComp)
+meta.SetStatusCondition(app.GetStatusConditions(), metav1.Condition(ready))
+```
+
+Stage it after the component loop and before the deferred
+[`FlushStatus`](component.md#persisting-status-with-flushstatus) runs, so the aggregate reaches the API server in the
+same status update as the component conditions it summarizes.
+
+`Aggregate` makes two decisions separately. The status is `True` if and only if every component condition is `True`, and
+the reason comes from the governing component, the one with the highest `Status.Priority()` among the conditions that
+are not `True`.
+[Aggregating components into one owner condition](component.md#aggregating-components-into-one-owner-condition) carries
+the full rules, the behavior table, and what to expect from suspended and gate-disabled components.
+
+**Why not derive it by hand.** The rule that looks obvious is to take the highest-priority component condition and adopt
+its condition status. That inverts the answer for a case operators hit in practice. `Suspended` has priority 15 and maps
+to condition status `True`, while `AliveFailing` has priority 13 and maps to `False`. A CR with one suspended component
+and one failing component therefore reports `True/Suspended`: the highest-priority reason attached to the wrong
+readiness.
+
+Truth and reason are different questions, and one ordering cannot answer both. The framework makes the same split one
+layer down, where a component aggregates its resources into its own condition: `newConvergingStatusCondition` in
+`pkg/component/converge.go` takes truth from `results.healthy()`, which requires every resource to be healthy, and only
+then asks `convergeSummary()` for the reason.
+
+Two things remain the controller's job.
+
+**Do not remap the reason.** `Aggregate` returns a reason that is a `component.Status` value. Translating it through a
+vocabulary of your own loses the states that carry the most operational information, `Degraded` and `Down` in
+particular, and metrics, dashboards, and downstream automation key on the reason string. Adjust the message if you want
+different prose, and leave the reason alone.
+
+**Remove the conditions of components you retire.** `Aggregate` reads only the components you pass it, and
+[`FlushStatus`](component.md#persisting-status-with-flushstatus) merges conditions by type and never prunes, so a
+component the controller has stopped building leaves its last condition on the owner indefinitely. The aggregate ignores
+it, and users still see it in `kubectl describe`. Delete it explicitly when you retire a component:
+
+```go
+meta.RemoveStatusCondition(owner.GetStatusConditions(), "OldComponentReady")
+```
+
+Ownership decides whether that removal survives a conflict. `FlushStatus` owns exactly the condition types of the
+components you pass it, and on a 409 it takes the server's value for every unowned type. If the retired component is
+already absent from the slice when its condition is removed, the type is unowned, the conflict refresh puts the
+condition back, and the removal lands only on a later, conflict-free pass. To make it land on the first pass, retire in
+two steps: keep building the component and passing it to `FlushStatus` for the release that runs
+`meta.RemoveStatusCondition`, so its type stays owned and the removal is what gets written, and delete the component in
+the release after. Either way the condition disappears; the two-step form makes it deterministic.
 
 ## Reconciler Error Handling and Requeueing
 

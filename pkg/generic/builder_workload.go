@@ -93,6 +93,10 @@ func (b *WorkloadBuilder[T, M]) WithCustomGraceStatus(
 }
 
 // WithCustomSuspendStatus overrides the workload suspension status handler.
+//
+// The handler receives the object as it stands after the suspension apply of
+// the current reconcile, so it observes server-populated fields such as
+// Generation and Status. See BaseBuilder.WithCustomSuspendStatus.
 func (b *WorkloadBuilder[T, M]) WithCustomSuspendStatus(
 	handler func(T) (concepts.SuspensionStatusWithReason, error),
 ) *WorkloadBuilder[T, M] {
@@ -101,6 +105,11 @@ func (b *WorkloadBuilder[T, M]) WithCustomSuspendStatus(
 }
 
 // WithCustomSuspendMutation overrides the workload suspension mutation handler.
+//
+// The handler receives the mutator for the object that is about to be applied and
+// records the suspension intent on it. Like any mutation it must be a pure
+// function of the spec, never of live cluster state. See
+// BaseBuilder.WithCustomSuspendMutation.
 func (b *WorkloadBuilder[T, M]) WithCustomSuspendMutation(
 	handler func(M) error,
 ) *WorkloadBuilder[T, M] {
@@ -109,6 +118,10 @@ func (b *WorkloadBuilder[T, M]) WithCustomSuspendMutation(
 }
 
 // WithCustomSuspendDeletionDecision overrides the workload delete-on-suspend decision handler.
+//
+// The handler is consulted both before the suspension apply and after the
+// resource reports Suspended, so the decision must be stable across both.
+// See BaseBuilder.WithCustomSuspendDeletionDecision.
 func (b *WorkloadBuilder[T, M]) WithCustomSuspendDeletionDecision(
 	handler func(T) bool,
 ) *WorkloadBuilder[T, M] {

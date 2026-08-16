@@ -26,6 +26,10 @@ type MockOperatorCRDList struct {
 
 type MockStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// ObservedGeneration is a non-condition status field. It exists so tests can
+	// prove that FlushStatus preserves staged status fields the framework does
+	// not manage, including across a conflict retry.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 func (m *MockOperatorCRD) GetStatusConditions() *[]metav1.Condition {
@@ -78,6 +82,7 @@ var (
 								"status": {
 									Type: "object",
 									Properties: map[string]apiextensionsv1.JSONSchemaProps{
+										"observedGeneration": {Type: "integer", Format: "int64"},
 										"conditions": {
 											Type: "array",
 											Items: &apiextensionsv1.JSONSchemaPropsOrArray{

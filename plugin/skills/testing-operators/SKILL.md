@@ -1,26 +1,29 @@
 ---
 name: testing-operators
 description:
-  Use when writing or updating tests for an operator built on the operator-component-framework - the three test layers,
+  Use when writing or updating tests for an operator built on the operator-component-framework - the test layers,
   mutation unit tests, golden snapshot tests (pkg/testing/golden), version-matrix golden generation
-  (pkg/testing/goldengen), and the YAML matrix loader.
+  (pkg/testing/goldengen), the YAML matrix loader, and controller-level tests with envtest against a third-party
+  operator's CRDs.
 ---
 
 # Testing Operators
 
-## The three layers
+## The testing layers
 
-Test a component from the inside out. Each layer asserts something the layer below cannot:
+Test an operator from the inside out. Each layer asserts something the layer below cannot:
 
-| Layer         | What you assert                                                        | Tool                                                       |
-| ------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Mutation**  | one mutation makes the field changes you intend, on a baseline         | testify, against `Preview()`                               |
-| **Resource**  | the right mutations fire for a spec, and the rendered output is pinned | `golden` for a snapshot, `goldengen.Resource` for coverage |
-| **Component** | the whole component renders the resources you expect, applied together | `golden.AssertComponentYAML`, or `goldengen.Component`     |
+| Layer          | What you assert                                                        | Tool                                                       |
+| -------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Mutation**   | one mutation makes the field changes you intend, on a baseline         | testify, against `Preview()`                               |
+| **Resource**   | the right mutations fire for a spec, and the rendered output is pinned | `golden` for a snapshot, `goldengen.Resource` for coverage |
+| **Component**  | the whole component renders the resources you expect, applied together | `golden.AssertComponentYAML`, or `goldengen.Component`     |
+| **Controller** | reconciliation against a real API server writes the status you expect  | `envtest`, plus a harness you write                        |
 
-Two framework packages back this: `pkg/testing/golden` for single-build snapshot tests, and `pkg/testing/goldengen` for
-declarative coverage across versions and specs. Both are opt-in and import nothing into the reconcile path, so a
-consumer that does not test against them pays nothing.
+Two framework packages back the first three layers: `pkg/testing/golden` for single-build snapshot tests, and
+`pkg/testing/goldengen` for declarative coverage across versions and specs. Both are opt-in and import nothing into the
+reconcile path, so a consumer that does not test against them pays nothing. The controller layer has no framework
+package at all: it is the recipe below, assembled in your own suite.
 
 ## Mutation tests
 
@@ -188,6 +191,72 @@ a Go literal, for example when non-Go-writing maintainers curate fixtures, or th
 several resources with only the data changing. `LoadMatrix` returns a validated `Config[T]`; wrap it with
 `goldengen.New(cfg)` and call `Run` exactly as with a Go-declared config. It errors if a fixture sets both `spec` and
 `specFile` (or neither), if a `for` value is not in `versions`, or if a spec fails to unmarshal into `T`.
+
+## Controller layer: envtest with a third-party operator's CRDs
+
+The rendering layers prove what the operator would apply. Only a real API server proves what it writes to the owner's
+status. `sigs.k8s.io/controller-runtime/pkg/envtest` supplies one. **The framework ships no envtest helper**;
+`pkg/testing` holds `golden` and `goldengen` only, so what follows is a recipe you assemble yourself. The framework's
+own suites show the shape: `pkg/component/suite_test.go` starts an envtest environment with an in-Go CRD, and
+`e2e/framework/` holds a test owner CRD (`crd.go`) and a factory-driven reconciler (`reconciler.go`).
+
+Three steps, each with a trap.
+
+**Load the third-party CRDs from the module cache.** The CRD YAML ships inside the operator's Go module, so the version
+your `go.mod` resolves is already on disk. Ask the toolchain for it instead of vendoring a copy that drifts:
+
+```go
+out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "example.com/broker-operator").Output()
+require.NoError(t, err)
+
+testEnv = &envtest.Environment{
+    CRDDirectoryPaths: []string{
+        filepath.Join("..", "..", "config", "crd", "bases"),
+        filepath.Join(strings.TrimSpace(string(out)), "config", "crd", "bases"),
+    },
+    ErrorIfCRDPathMissing: true,
+}
+```
+
+Register the third-party scheme too, or the client cannot decode the kind. Keep `ErrorIfCRDPathMissing` true so a
+dependency bump that moves the directory fails the suite instead of testing against a missing kind.
+
+**Drive the external CR's status from the test.** envtest runs the API server and etcd and no controllers, so the
+third-party operator is not there and the CR your wrapper applies keeps an empty status forever. The test plays its
+part, through `Status().Update` because status is a subresource:
+
+```go
+require.NoError(t, k8sClient.Get(ctx, brokerKey, broker)) // fresh object, current resourceVersion
+broker.Status.ObservedGeneration = broker.Generation      // the wrapper's handlers gate on this
+broker.Status.ReadyReplicas = *broker.Spec.Replicas
+require.NoError(t, k8sClient.Status().Update(ctx, broker))
+```
+
+Stamp `observedGeneration` deliberately. A wrapper's status handler compares it against `metadata.generation` before it
+trusts any readiness field, which is what `concepts.StaleGenerationStatus` does, so a test that sets `ReadyReplicas` and
+leaves `observedGeneration` at zero pins the component in its stale-generation branch for a reason unrelated to the code
+under test.
+
+**Assert the owner's condition.** Call the reconciler directly rather than starting a manager: one `Reconcile` per state
+change keeps the assertion deterministic.
+
+```go
+_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: ownerKey})
+require.NoError(t, err)
+require.NoError(t, k8sClient.Get(ctx, ownerKey, app))
+
+ready := meta.FindStatusCondition(app.Status.Conditions, "Ready")
+require.NotNil(t, ready)
+assert.Equal(t, metav1.ConditionTrue, ready.Status)
+assert.Equal(t, string(component.Healthy), ready.Reason)
+```
+
+`"Ready"` is your own aggregate condition type here, not a framework-fixed name; a single component's condition type
+reads the same way. `meta.FindStatusCondition` is right because the test is a consumer of the persisted object; inside
+the controller, aggregation reads component conditions with `(*Component).GetCondition`. Assert the reason as well as
+the status: the reason is a `component.Status` value, so it pins which component governed the result. Two assertions
+belong at this layer and nowhere else: a not-yet-reconciled component holds the owner at `False`, and a component built
+with `Suspend(true)` reports `True` while its resource is gone from the cluster.
 
 ## Anti-patterns
 

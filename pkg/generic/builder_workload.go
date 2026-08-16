@@ -54,6 +54,13 @@ func (b *WorkloadBuilder[T, M]) WithMutation(
 	return b
 }
 
+// WithMetricsIdentifier sets the workload resource's metrics identifier. See
+// BaseBuilder.WithMetricsIdentifier.
+func (b *WorkloadBuilder[T, M]) WithMetricsIdentifier(identifier string) *WorkloadBuilder[T, M] {
+	b.BaseBuilder.WithMetricsIdentifier(identifier)
+	return b
+}
+
 // WithGuard registers a guard precondition for the workload resource.
 func (b *WorkloadBuilder[T, M]) WithGuard(
 	handler func(T) (concepts.GuardStatusWithReason, error),

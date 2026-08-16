@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,6 +27,11 @@ func isNil(i any) bool {
 type BaseBuilder[T client.Object, M FeatureMutator] struct {
 	BaseRes      *BaseResource[T, M]
 	clusterScope bool
+
+	// metricsIdentifierSet records that WithMetricsIdentifier was called, so
+	// ValidateBase can tell a blank identifier (a mistake) from an omitted one
+	// (a request for the default). Both leave BaseRes.MetricsIdent empty.
+	metricsIdentifierSet bool
 }
 
 // InitBase initializes the base resource configuration.
@@ -62,6 +68,27 @@ func (b *BaseBuilder[T, M]) InitBase(
 // a no-op.
 func (b *BaseBuilder[T, M]) WithMutation(ms ...Mutation[M]) {
 	b.BaseRes.Mutations = append(b.BaseRes.Mutations, ms...)
+}
+
+// WithMetricsIdentifier sets the resource's identifier for resource-level
+// metrics. It becomes the value of the `resource` label on
+// ocf_resource_apply_total and ocf_resource_apply_errors_total.
+//
+// This is a Prometheus label value, not the name of anything in Kubernetes. It
+// must be low-cardinality and stable across reconciles: a constant, or a value
+// drawn from a small fixed set. Deriving it from a per-owner value such as the
+// custom resource's name produces one time series per owner, and the framework
+// never removes a series once created.
+//
+// When unset, the framework labels the resource with its lowercased kind. Set
+// an identifier to tell two resources of the same kind apart within one
+// component, or when the object's name carries a generated suffix.
+//
+// The identifier must not be blank. Build rejects an empty or whitespace-only
+// value; omit the call to accept the default.
+func (b *BaseBuilder[T, M]) WithMetricsIdentifier(identifier string) {
+	b.BaseRes.MetricsIdent = identifier
+	b.metricsIdentifierSet = true
 }
 
 // WithGuard registers a guard precondition for the resource.
@@ -176,6 +203,13 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 
 	if b.BaseRes.IdentityFunc == nil {
 		return errors.New("identity function cannot be nil")
+	}
+
+	// A blank identifier is a mistake rather than a request for the default:
+	// omitting the call is how the default is requested. It would otherwise
+	// produce an empty `resource` label that reads as a framework bug.
+	if b.metricsIdentifierSet && strings.TrimSpace(b.BaseRes.MetricsIdent) == "" {
+		return errors.New("metrics identifier cannot be blank")
 	}
 
 	if b.BaseRes.NewMutator == nil {

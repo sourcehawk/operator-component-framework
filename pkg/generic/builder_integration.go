@@ -51,6 +51,13 @@ func (b *IntegrationBuilder[T, M]) WithMutation(
 	return b
 }
 
+// WithMetricsIdentifier sets the integration resource's metrics identifier. See
+// BaseBuilder.WithMetricsIdentifier.
+func (b *IntegrationBuilder[T, M]) WithMetricsIdentifier(identifier string) *IntegrationBuilder[T, M] {
+	b.BaseBuilder.WithMetricsIdentifier(identifier)
+	return b
+}
+
 // WithGuard registers a guard precondition for the integration resource.
 func (b *IntegrationBuilder[T, M]) WithGuard(
 	handler func(T) (concepts.GuardStatusWithReason, error),

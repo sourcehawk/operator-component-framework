@@ -44,6 +44,13 @@ func (b *TaskBuilder[T, M]) WithMutation(
 	return b
 }
 
+// WithMetricsIdentifier sets the task resource's metrics identifier. See
+// BaseBuilder.WithMetricsIdentifier.
+func (b *TaskBuilder[T, M]) WithMetricsIdentifier(identifier string) *TaskBuilder[T, M] {
+	b.BaseBuilder.WithMetricsIdentifier(identifier)
+	return b
+}
+
 // WithGuard registers a guard precondition for the task resource.
 func (b *TaskBuilder[T, M]) WithGuard(
 	handler func(T) (concepts.GuardStatusWithReason, error),

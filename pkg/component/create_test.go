@@ -357,31 +357,38 @@ func (r *operationRecordingResource) GraceStatus() (concepts.GraceStatusWithReas
 	return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
 }
 
-// unstructuredOperationRecordingResource is the unstructured counterpart of
-// operationRecordingResource.
-type unstructuredOperationRecordingResource struct {
+// objectOperationRecordingResource is the counterpart of
+// operationRecordingResource for any client.Object type.
+type objectOperationRecordingResource struct {
 	build      func() client.Object
 	operations []concepts.ConvergingOperation
+	// applied is the object handed to Mutate. The framework decodes the apply
+	// response into that same object, so after a reconcile it holds what the
+	// server returned.
+	applied client.Object
 }
 
-func (r *unstructuredOperationRecordingResource) Identity() string {
-	return "ConfigMap/operation-recording-unstructured"
+func (r *objectOperationRecordingResource) Identity() string {
+	return "operation-recording-object"
 }
 
-func (r *unstructuredOperationRecordingResource) Object() (client.Object, error) {
+func (r *objectOperationRecordingResource) Object() (client.Object, error) {
 	return r.build(), nil
 }
 
-func (r *unstructuredOperationRecordingResource) Mutate(client.Object) error { return nil }
+func (r *objectOperationRecordingResource) Mutate(obj client.Object) error {
+	r.applied = obj
+	return nil
+}
 
-func (r *unstructuredOperationRecordingResource) ConvergingStatus(
+func (r *objectOperationRecordingResource) ConvergingStatus(
 	op concepts.ConvergingOperation,
 ) (concepts.AliveStatusWithReason, error) {
 	r.operations = append(r.operations, op)
 	return concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusHealthy, Reason: "ok"}, nil
 }
 
-func (r *unstructuredOperationRecordingResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+func (r *objectOperationRecordingResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
 }
 
@@ -508,7 +515,7 @@ func TestApplyResource_ConvergingOperation(t *testing.T) {
 			require.NoError(t, unstructured.SetNestedField(u.Object, runtime.DeepCopyJSON(data), "data"))
 			return u
 		}
-		res := &unstructuredOperationRecordingResource{build: build}
+		res := &objectOperationRecordingResource{build: build}
 
 		apply(t, rec, res)
 		apply(t, rec, res)

@@ -37,9 +37,9 @@ func applyResource(
 
 	// Check if the object already exists (read through the client, usually the informer cache).
 	// The observed object is fetched into a zeroed instance rather than a copy of
-	// the desired object: decoding into a pre-populated struct keeps map entries and
-	// fields the response does not mention, which would skew the applied-state
-	// comparison below.
+	// the desired object, so the pre-apply snapshot used by the comparison below
+	// holds only what the client returned and does not rely on the client zeroing
+	// its target before decoding.
 	var objectExists bool
 	existing, err := newEmptyObjectLike(obj)
 	if err != nil {

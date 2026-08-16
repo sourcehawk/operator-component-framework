@@ -273,6 +273,46 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(recorder.recordedWithReason("UpdatedConfigMap")).To(HaveLen(1))
 		})
 
+		It("should classify a rebuilt typed CRD object and hand handlers exactly the server response", func() {
+			// Given: a JSON-decoded typed object (CRDs are not served as protobuf,
+			// and JSON decoding into a populated struct keeps fields the response
+			// omits). The desired object carries a status value that a main-resource
+			// apply ignores when the status subresource is enabled, so the server
+			// never echoes it.
+			value := "a"
+			res := &objectOperationRecordingResource{
+				build: func() client.Object {
+					return &MockOperatorCRD{
+						ObjectMeta: metav1.ObjectMeta{Name: "rebuilt-crd", Namespace: namespace},
+						Spec:       MockSpec{Value: value},
+						Status:     MockStatus{ObservedGeneration: 7},
+					}
+				},
+			}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}}}
+
+			// When
+			for range 3 {
+				Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+			}
+			value = "b"
+			Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+
+			// Then: steady state is None, the change is Updated, and the object the
+			// handlers see is the server's response rather than a merge with the
+			// desired object.
+			Expect(res.operations).To(Equal([]concepts.ConvergingOperation{
+				concepts.ConvergingOperationCreated,
+				concepts.ConvergingOperationNone,
+				concepts.ConvergingOperationNone,
+				concepts.ConvergingOperationUpdated,
+			}))
+			applied := res.applied.(*MockOperatorCRD)
+			Expect(applied.Spec.Value).To(Equal("b"))
+			Expect(applied.Status.ObservedGeneration).To(BeZero(), "status set on the desired object is not applied and must not linger")
+			Expect(applied.ResourceVersion).NotTo(BeEmpty())
+		})
+
 		It("should aggregate status across both create and read-only resources", func() {
 			// Given
 			cm1 := &corev1.ConfigMap{

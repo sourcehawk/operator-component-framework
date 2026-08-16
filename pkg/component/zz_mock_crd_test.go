@@ -14,7 +14,14 @@ type MockOperatorCRD struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	Spec   MockSpec   `json:"spec,omitempty"`
 	Status MockStatus `json:"status,omitempty"`
+}
+
+// MockSpec is a minimal spec so tests can apply a typed, JSON-decoded object
+// (CRDs are not served as protobuf) with a mutable desired field.
+type MockSpec struct {
+	Value string `json:"value,omitempty"`
 }
 
 type MockOperatorCRDList struct {

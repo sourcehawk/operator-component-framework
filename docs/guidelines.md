@@ -242,10 +242,13 @@ it, and users still see it in `kubectl describe`. Delete it explicitly when you 
 meta.RemoveStatusCondition(owner.GetStatusConditions(), "OldComponentReady")
 ```
 
-A retired component is no longer passed to `FlushStatus`, so its condition type is unowned, and on a 409 conflict
-`FlushStatus` takes the server's value for unowned types, which puts the condition back for that pass. The removal is
-not lost: the next reconcile removes it again and the write succeeds. Expect the retired condition to disappear within a
-reconcile of the change, not on the exact pass that first omits the component.
+Ownership decides whether that removal survives a conflict. `FlushStatus` owns exactly the condition types of the
+components you pass it, and on a 409 it takes the server's value for every unowned type. If the retired component is
+already absent from the slice when its condition is removed, the type is unowned, the conflict refresh puts the
+condition back, and the removal lands only on a later, conflict-free pass. To make it land on the first pass, retire in
+two steps: keep building the component and passing it to `FlushStatus` for the release that runs
+`meta.RemoveStatusCondition`, so its type stays owned and the removal is what gets written, and delete the component in
+the release after. Either way the condition disappears; the two-step form makes it deterministic.
 
 ## Reconciler Error Handling and Requeueing
 

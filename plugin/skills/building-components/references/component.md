@@ -690,10 +690,13 @@ back.
 Which types count as owned comes from the components passed to `FlushStatus`:
 
 ```go
-component.FlushStatus(ctx, recCtx, backendComp, frontendComp)
+component.FlushStatus(ctx, recCtx, []*component.Component{backendComp, frontendComp})
 ```
 
 Their condition types are the owned set, so it cannot drift from what the components actually write.
+
+Note that this is a slice, while [`Aggregate`](#aggregating-components-into-one-owner-condition) takes the same
+components variadically. The difference is deliberate, for the reason below.
 
 The parameter is required rather than variadic on purpose. A variadic would let every existing call keep compiling while
 silently retaining the old, wider ownership, which would make a correctness fix opt-in and invisible. Requiring the

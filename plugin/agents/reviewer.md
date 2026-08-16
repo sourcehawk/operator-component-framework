@@ -38,10 +38,11 @@ actually violated.
    when the resources have no useful readiness independent of each other, adding noise without actionable information.
 5. **Keep Controllers Thin.** Look for resource construction, feature decisions, or mutation logic living inline in the
    controller rather than in pure component-building functions. Look for `FlushStatus` called more than once per
-   reconcile, or called between component reconciles rather than deferred once at the end. Look for `FlushStatus` called
-   passed `nil` for its components when it actually built some (`FlushStatus(ctx, rec, comps)`), which silently widens
-   the owned condition set to everything staged. Look for a controller that stops reconciling remaining components after
-   the first error instead of collecting the first error and continuing.
+   reconcile, or called between component reconciles rather than deferred once at the end. Look for
+   `FlushStatus(ctx, rec, nil)` in a controller that did build components: `nil` is only correct when the controller
+   manages none, and passing it otherwise silently widens the owned condition set to every staged condition, so a
+   conflict retry can roll back another writer's condition. Look for a controller that stops reconciling remaining
+   components after the first error instead of collecting the first error and continuing.
 6. **Reconciler Error Handling and Requeueing.** Look for `Reconcile` returning an error for a resource that is merely
    converging (a rolling Deployment, a `Blocked` guard) instead of letting that state surface through its condition.
    Look for an explicit `reconcile.Result{RequeueAfter: ...}` set without a concrete reason to poll on a fixed cadence,

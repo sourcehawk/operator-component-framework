@@ -208,7 +208,7 @@ or built from client-go on v0.22.x), an optional `Metrics` recorder, and `Owner`
 component). Build one per reconcile from your controller and pass it into `comp.Reconcile(ctx, recCtx)`.
 
 `Component.Reconcile` mutates the owner's status conditions only in memory. The controller persists them by calling
-`component.FlushStatus(ctx, recCtx)` once per reconcile, typically deferred so conditions set on error paths are still
+`component.FlushStatus(ctx, recCtx, comps)` once per reconcile, typically deferred so conditions set on error paths are
 written. `FlushStatus` performs a single `Status().Update`, wrapped in `retry.RetryOnConflict`, that writes every
 condition currently staged on the owner, merging by condition type via `meta.SetStatusCondition` rather than replacing
 the list. This split lets a controller with several components stage several conditions in one reconcile and persist

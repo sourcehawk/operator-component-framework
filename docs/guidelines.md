@@ -191,103 +191,52 @@ enabling an optional feature changes which components the resolver returns witho
 ## Derive the Owner's Aggregate Condition from Component Conditions
 
 Users and automation gate on one signal, not on a list of them. A controller with several components therefore stages
-one more condition on the owner, usually `Ready`, from the component conditions it just reconciled. That derivation is
-two separate decisions. If you collapse them into one decision, the CR can report ready while a component fails.
+one more condition on the owner, usually `Ready`, derived from the component conditions it just reconciled.
 
-**Truth by unanimity.** The aggregate condition status is `True` if and only if every component condition is `True`.
-Priority never decides `True` or `False`.
-
-**Reason by priority.** The reason and the message come from the **governing component**. That is the component with the
-highest [`Status.Priority()`](component.md#condition-priority-and-aggregation) among the components whose condition is
-not `True`. If every component condition is `True`, it is the component with the highest priority among all of them.
-Registration order breaks ties.
-
-The framework makes the same split one layer down, where a component aggregates its resources into its own condition.
-`newConvergingStatusCondition` in `pkg/component/converge.go` takes truth from `results.healthy()`, which requires every
-resource to be healthy. Only then does it ask `convergeSummary()` for the reason.
-
-A single priority rule inverts the answer for a real case. `Suspended` has priority 15 and maps to condition status
-`True`. `AliveFailing` has priority 13 and maps to `False`. A CR with one suspended component and one failing component
-therefore reports `True/Suspended`. That is the highest-priority reason and the wrong readiness.
+Use [`component.Aggregate`](component.md#aggregating-components-into-one-owner-condition) rather than deriving it by
+hand:
 
 ```go
-func readyCondition(owner *v1alpha1.WebApp, comps []*component.Component) metav1.Condition {
-    status := metav1.ConditionTrue
-    var governing component.Condition
-    for _, comp := range comps {
-        cond := comp.GetCondition(owner)
-        if cond.Status != metav1.ConditionTrue {
-            status = metav1.ConditionFalse // truth by unanimity
-        }
-        if governs(cond, governing) { // reason by priority
-            governing = cond
-        }
-    }
-    return metav1.Condition{
-        Type:               "Ready",
-        Status:             status,
-        Reason:             string(governing.ComponentStatus()),
-        Message:            governing.Type + ": " + governing.Message,
-        ObservedGeneration: owner.GetGeneration(),
-    }
-}
-
-// governs reports whether cand should replace cur as the governing condition: a
-// non-True condition always outranks a True one, and between two conditions of
-// the same status the higher Priority() wins. The first component registered
-// wins a tie, because the comparison is strict.
-func governs(cand, cur component.Condition) bool {
-    if cur.Type == "" || (cand.Status != metav1.ConditionTrue && cur.Status == metav1.ConditionTrue) {
-        return true
-    }
-    return cand.Status == cur.Status &&
-        cand.ComponentStatus().Priority() > cur.ComponentStatus().Priority()
-}
+ready := component.Aggregate("Ready", app, backendComp, frontendComp)
+meta.SetStatusCondition(app.GetStatusConditions(), metav1.Condition(ready))
 ```
 
-Stage the result with `meta.SetStatusCondition(owner.GetStatusConditions(), readyCondition(owner, comps))`. Do this
-after the component loop and before the deferred [`FlushStatus`](component.md#persisting-status-with-flushstatus) runs.
-The aggregate then reaches the API server in the same status update as the component conditions.
+Stage it after the component loop and before the deferred
+[`FlushStatus`](component.md#persisting-status-with-flushstatus) runs, so the aggregate reaches the API server in the
+same status update as the component conditions it summarizes.
 
-The two rules combine as follows for a `WebApp` with a `backend` and a `frontend` component.
+`Aggregate` makes two decisions separately. The status is `True` if and only if every component condition is `True`, and
+the reason comes from the governing component, the one with the highest `Status.Priority()` among the conditions that
+are not `True`.
+[Aggregating components into one owner condition](component.md#aggregating-components-into-one-owner-condition) carries
+the full rules, the behavior table, and what to expect from suspended and gate-disabled components.
 
-| `backend`   | `frontend`     | Aggregate status | Aggregate reason |
-| ----------- | -------------- | ---------------- | ---------------- |
-| `Healthy`   | `Healthy`      | `True`           | `Healthy`        |
-| `Healthy`   | `AliveFailing` | `False`          | `Failing`        |
-| `Suspended` | `AliveFailing` | `False`          | `Failing`        |
-| `Suspended` | `Suspended`    | `True`           | `Suspended`      |
-| `Suspended` | `Healthy`      | `True`           | `Suspended`      |
-| `Healthy`   | `Disabled`     | `True`           | `Disabled`       |
-| `Healthy`   | not reconciled | `False`          | `Unknown`        |
-| `Healthy`   | `Error`        | `False`          | `Error`          |
+**Why not derive it by hand.** The rule that looks obvious is to take the highest-priority component condition and adopt
+its condition status. That inverts the answer for a case operators hit in practice. `Suspended` has priority 15 and maps
+to condition status `True`, while `AliveFailing` has priority 13 and maps to `False`. A CR with one suspended component
+and one failing component therefore reports `True/Suspended`: the highest-priority reason attached to the wrong
+readiness.
 
-Five results follow from those rows.
+Truth and reason are different questions, and one ordering cannot answer both. The framework makes the same split one
+layer down, where a component aggregates its resources into its own condition: `newConvergingStatusCondition` in
+`pkg/component/converge.go` takes truth from `results.healthy()`, which requires every resource to be healthy, and only
+then asks `convergeSummary()` for the reason.
 
-**Partial suspension reports ready.** A suspended component is in its expected state. Its condition is `True`, so it
-cannot make the aggregate `False`. Row five reports `True/Suspended` while the frontend still serves traffic. If
-CR-level suspension must be an explicit state instead of a reason on a ready condition, branch on the owner's own
-suspend field before you aggregate.
+Two things remain the controller's job.
 
-**A component that a feature gate disables counts as ready.** `Disabled` is condition status `True` for the same reason
-`Suspended` is: the component is in the state its gate asks for. `Disabled` has priority 14 and `Healthy` has priority
-3, so a CR with an optional component switched off reports `True/Disabled`.
+**Do not remap the reason.** `Aggregate` returns a reason that is a `component.Status` value. Translating it through a
+vocabulary of your own loses the states that carry the most operational information, `Degraded` and `Down` in
+particular, and metrics, dashboards, and downstream automation key on the reason string. Adjust the message if you want
+different prose, and leave the reason alone.
 
-**Read conditions through `GetCondition`, not `meta.FindStatusCondition`.**
-[`(*Component).GetCondition(owner)`](component.md#reading-a-components-condition) returns a synthetic `Unknown`
-condition with status `False` when the component has never written one. This synthetic value stops a new CR from
-reporting ready before its components reconcile. `meta.FindStatusCondition` returns a nil condition instead, and the
-absent component drops out of the aggregation without a trace.
+**Remove the conditions of components you retire.** `Aggregate` reads only the components you pass it, and
+[`FlushStatus`](component.md#persisting-status-with-flushstatus) merges conditions by type and never prunes, so a
+component the controller has stopped building leaves its last condition on the owner indefinitely. The aggregate ignores
+it, and users still see it in `kubectl describe`. Delete it explicitly when you retire a component:
 
-**Keep the aggregate reason a `component.Status` value.** Do not map component statuses onto a second vocabulary of your
-own. Such a map loses the states that carry the most operational information, in particular `Degraded` and `Down`.
-Metrics, dashboards, and downstream automation also key on the reason string.
-
-**Stale conditions remain.** [`FlushStatus`](component.md#persisting-status-with-flushstatus) merges conditions by type
-and never removes any. A condition from a component that the controller no longer builds therefore stays on the owner.
-Aggregation ignores it, because the loop reads the components the controller built and not the conditions on the object.
-Users still see the stale condition in `kubectl describe`. Remove it with
-`meta.RemoveStatusCondition(owner.GetStatusConditions(), "OldComponentReady")` when you retire a component.
+```go
+meta.RemoveStatusCondition(owner.GetStatusConditions(), "OldComponentReady")
+```
 
 ## Reconciler Error Handling and Requeueing
 

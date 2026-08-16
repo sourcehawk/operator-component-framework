@@ -227,7 +227,8 @@ alone, while a type already present at the `Get` and updated concurrently is ove
 That second case is not limited to types this controller staged, so one writer per condition type does not prevent it: a
 conflict retry can roll another controller's condition back to its value at the `Get`. The other controller's next
 reconcile restores it, making this a transient rollback rather than permanent loss, but expect it whenever two
-controllers write one owner's status.
+controllers write one owner's status. The framework offers no way to narrow the snapshot to the controller's own
+conditions, so there is no remedy beyond tolerating the rollback.
 
 ## One write path for the owner's status
 

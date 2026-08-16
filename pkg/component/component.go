@@ -552,7 +552,8 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // per condition type does not prevent it: the snapshot holds every condition
 // present at the Get, and the retry can roll another controller's condition back
 // to its value at that moment. That writer's next reconcile restores it, making
-// this a transient rollback rather than permanent loss.
+// this a transient rollback rather than permanent loss. There is currently no way
+// to narrow the snapshot to the conditions the caller's own components staged.
 //
 // Only the conditions are re-applied after a conflict. The refetch replaces the
 // in-memory owner with the server's object, so any non-condition status field

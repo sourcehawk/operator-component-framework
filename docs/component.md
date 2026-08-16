@@ -689,7 +689,9 @@ Note that the second case is not limited to condition types this controller stag
 that was on the owner at the `Get`, so a conflict retry can roll another controller's condition back to the value it had
 at that moment even though this controller never touched that type. One writer per condition type does not prevent it.
 The other controller's next reconcile writes its condition again, so the effect is a transient rollback rather than
-permanent loss, but two controllers writing one owner's status will produce it under contention.
+permanent loss, but two controllers writing one owner's status will produce it under contention. The framework offers no
+way to narrow that snapshot to the conditions the controller's own components staged, so an owner whose status a third
+party also writes has no remedy here beyond tolerating the rollback.
 
 After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
 recording is skipped.

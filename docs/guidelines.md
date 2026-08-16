@@ -150,17 +150,21 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
         Metrics:       r.Metrics,
         Owner:         app,
     }
-    // Persist all staged conditions exactly once, even on the error path.
+    // Persist all staged conditions exactly once, even on the error path. comps is
+    // declared first so the closure sees whatever the resolver returns, and
+    // FlushStatus derives the condition types it owns from those components.
+    var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
             err = flushErr
         }
     }()
 
-    comps, buildErr := buildComponents(app)
+    built, buildErr := buildComponents(app)
     if buildErr != nil {
         return reconcile.Result{}, buildErr
     }
+    comps = built
 
     var firstErr error
     for _, comp := range comps {

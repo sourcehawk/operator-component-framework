@@ -215,20 +215,37 @@ the list. This split lets a controller with several components stage several con
 them in one write, instead of racing a write per component.
 
 That `Status().Update` writes the **whole status subresource**, not only the conditions, so fetch the owner fresh at the
-top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones. On a 409
-conflict `FlushStatus` refetches the owner and re-applies only conditions, so a non-condition status field staged before
-the conflict is lost for that pass and must be staged again next reconcile.
+top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones.
 
-The conditions it re-applies are a snapshot of **every** condition on the in-memory owner taken at entry, not only the
-ones components staged. The retry is therefore a merge by condition type, not a guarantee that another writer's updates
-survive: a condition type added by someone else after the controller's `Get` is absent from the snapshot and is left
-alone, while a type already present at the `Get` and updated concurrently is overwritten by the stale snapshotted copy.
+**Pass the components whose conditions this flush owns:** `component.FlushStatus(ctx, recCtx, comps...)`. Their
+condition types are the owned set, so it cannot drift from what the components actually write.
 
-That second case is not limited to types this controller staged, so one writer per condition type does not prevent it: a
-conflict retry can roll another controller's condition back to its value at the `Get`. The other controller's next
-reconcile restores it, making this a transient rollback rather than permanent loss, but expect it whenever two
-controllers write one owner's status. The framework offers no way to narrow the snapshot to the controller's own
-conditions, so there is no remedy beyond tolerating the rollback.
+On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
+separate object, takes that copy's `resourceVersion`, restores from it only the conditions whose type this flush does
+not own, and retries. Two consequences: non-condition status fields staged during the reconcile survive, and a type this
+flush does not own keeps the server's value instead of the possibly stale copy the controller is holding, so another
+writer's concurrent update is not rolled back.
+
+A condition the controller stages that belongs to no component, such as a `Ready` from `component.Aggregate`, is not
+owned, so a conflict reverts it to the server's value and the next reconcile stages it again.
+
+Declare the component slice before the deferred call, so the closure observes every component built during the
+reconcile:
+
+```go
+var comps []*component.Component
+defer func() {
+    if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
+        err = flushErr
+    }
+}()
+
+comp, err := buildComponent(owner)
+if err != nil {
+    return err
+}
+comps = append(comps, comp)
+```
 
 ## One write path for the owner's status
 
@@ -243,6 +260,7 @@ meta.SetStatusCondition(policy.GetStatusConditions(), metav1.Condition{
     Message: "Spec passed validation.", ObservedGeneration: policy.Generation,
 })
 policy.Status.ObservedGeneration = policy.Generation // owner-level field, see below
+// No components, so every staged condition is owned and survives a conflict.
 return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
     Client: r.Client, Owner: policy,
 })

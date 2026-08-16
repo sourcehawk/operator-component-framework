@@ -654,8 +654,10 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
         Metrics:       r.Metrics,
         Owner:         owner,
     }
+    // Declared before the deferred flush so the closure sees every component built below.
+    var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
             err = flushErr
         }
     }()
@@ -664,6 +666,7 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     if err != nil {
         return reconcile.Result{}, err
     }
+    comps = append(comps, comp)
     return reconcile.Result{}, comp.Reconcile(ctx, recCtx)
 }
 ```
@@ -675,23 +678,31 @@ reconcile, so the fields nobody staged still hold current server state. An owner
 writes stale values back over newer ones.
 
 On a 409 Conflict, for example when another writer updated the owner between the controller's `Get` and this call,
-`FlushStatus` refetches the owner into the same variable, reapplies the conditions it snapshotted at entry with
-`meta.SetStatusCondition`, and retries. Only the conditions are reapplied. Non-condition status fields staged in memory
-before the conflict are lost for that pass, and the next reconcile stages them again.
+`FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a **separate** object,
+takes that copy's `resourceVersion` so the retry targets the live object, restores from it only the conditions whose
+type this flush does not own, and retries. The staged owner is never replaced.
 
-That snapshot is **every** condition on the in-memory owner, not only the ones components staged this pass. Treat the
-retry as a merge by condition type rather than a guarantee about other writers. A condition type another writer adds
-after the controller's `Get` is absent from the snapshot, so the refetch brings it in and the retry leaves it alone. A
-condition type that was already on the owner at the `Get`, and that another writer updated in the meantime, is
-overwritten by the snapshotted copy, which is stale by then.
+Two things follow from that. Non-condition status fields staged during the reconcile survive a conflict, because the
+object holding them is the object that gets written. And a condition type this flush does not own keeps the server's
+value rather than the copy the controller happens to be holding, so a concurrent update by another writer is not rolled
+back.
 
-Note that the second case is not limited to condition types this controller staged. The snapshot holds every condition
-that was on the owner at the `Get`, so a conflict retry can roll another controller's condition back to the value it had
-at that moment even though this controller never touched that type. One writer per condition type does not prevent it.
-The other controller's next reconcile writes its condition again, so the effect is a transient rollback rather than
-permanent loss, but two controllers writing one owner's status will produce it under contention. The framework offers no
-way to narrow that snapshot to the conditions the controller's own components staged, so an owner whose status a third
-party also writes has no remedy here beyond tolerating the rollback.
+Which types count as owned comes from the components passed to `FlushStatus`:
+
+```go
+component.FlushStatus(ctx, recCtx, backendComp, frontendComp)
+```
+
+Their condition types are the owned set, so it cannot drift from what the components actually write. Passing no
+components treats **every** staged condition as owned, which is what a controller with no components needs (see
+[One write path for the owner's status](#one-write-path-for-the-owners-status)).
+
+!!! note "An owner-level aggregate is not owned by any component"
+
+    A condition the controller stages itself, such as a `Ready` produced by
+    [`component.Aggregate`](#aggregating-components-into-one-owner-condition), belongs to no component, so a conflict
+    reverts it to the server's value and the next reconcile stages it again. Passing the components covers their own
+    conditions; the aggregate is recomputed from them each pass anyway.
 
 After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
 recording is skipped.
@@ -724,6 +735,7 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     }
     meta.SetStatusCondition(policy.GetStatusConditions(), cond)
 
+    // No components, so every staged condition is owned and survives a conflict.
     return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
         Client: r.Client,
         Owner:  policy,

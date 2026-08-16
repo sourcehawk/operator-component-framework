@@ -37,7 +37,7 @@ checklist: a change that violates one of these rules is a candidate for rework, 
 | Mutations Are Pure Functions of the Spec                            | A mutation is a pure function of the owner spec and build-time inputs; it must never read live cluster state.                                                                                                                                                                                                                         |
 | Leave Version-Dependent Fields Empty in the Baseline                | Give each field exactly one owner; when a value depends on the spec version, leave it empty in the baseline and let a single mutation set it.                                                                                                                                                                                         |
 | One Component Per Logical Condition                                 | Split components when users would ask about their health separately or a failure in one should not mask another; combine when resources have no independent readiness.                                                                                                                                                                |
-| Keep Controllers Thin                                               | A controller fetches the owner, builds and reconciles components, and defers one `FlushStatus`; resource construction and mutation logic live in pure, testable component-building functions.                                                                                                                                         |
+| Keep Controllers Thin                                               | A controller fetches the owner, builds and reconciles components, and defers one `FlushStatus(ctx, rec, comps...)` passing the components it built; resource construction and mutation logic live in pure, testable component-building functions.                                                                                     |
 | Derive the Owner's Aggregate Condition from Component Conditions    | Derive the owner's aggregate condition with `component.Aggregate` rather than by hand: it is `True` only when every component condition is `True` (unanimity), and its reason comes from the governing component, the highest `Status.Priority()` among the non-True conditions, or among all of them when every condition is `True`. |
 | Reconciler Error Handling and Requeueing                            | Return an error only for a genuine fault (a failed API call, a mutation that cannot apply, a version below the supported floor); let a merely converging resource report through its condition and requeue via normal watch and resync.                                                                                               |
 | Resource Registration Order Is Execution Order                      | Resources reconcile in the exact order they were registered with `WithResource`; register dependencies before dependents.                                                                                                                                                                                                             |
@@ -69,9 +69,10 @@ meta.SetStatusCondition(app.GetStatusConditions(), metav1.Condition(ready))
 ```
 
 Stage it after the component loop and before the deferred `FlushStatus`, so one status write carries the aggregate and
-the component conditions together. `Aggregate` writes nothing itself and reads each component condition through
-`GetCondition`, so a component that has never reconciled contributes a synthetic `Unknown`/`False` and a fresh CR never
-reports ready.
+the component conditions together. The aggregate belongs to no component, so a conflict retry reverts it to the server's
+value and the next reconcile stages it again. `Aggregate` writes nothing itself and reads each component condition
+through `GetCondition`, so a component that has never reconciled contributes a synthetic `Unknown`/`False` and a fresh
+CR never reports ready.
 
 It makes **two separate decisions**, which is the part a hand-rolled version gets wrong:
 

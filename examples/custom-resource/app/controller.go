@@ -31,8 +31,13 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		Metrics:       r.Metrics,
 		Owner:         owner,
 	}
+	// Declared before the deferred flush so the closure sees every component
+	// that gets built below. FlushStatus derives the condition types it owns
+	// from these, and only those are re-applied over the server's copy after a
+	// conflict.
+	comps := make([]*component.Component, 0, 1)
 	defer func() {
-		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+		if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
 			err = flushErr
 		}
 	}()
@@ -50,6 +55,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 	if err != nil {
 		return err
 	}
+	comps = append(comps, comp)
 
 	return comp.Reconcile(ctx, recCtx)
 }

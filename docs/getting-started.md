@@ -278,7 +278,8 @@ self-induced update conflicts.
 
     `FlushStatus` performs the status write itself: it calls `Client.Status().Update` on the owner (retrying on
     conflict). Do not also call `Status().Update` for the conditions the framework manages, or you will double-write.
-    Because the call is deferred, the conditions are flushed even if `Reconcile` returns an error.
+    Because the call is deferred, the conditions are flushed even if `Reconcile` returns an error. Pass the components
+    you built: their condition types are the ones `FlushStatus` re-applies over the server's copy when it has to retry.
 
 ```go
 package app
@@ -310,8 +311,10 @@ func (r *Controller) reconcile(ctx context.Context, owner *ExampleApp) (err erro
         Metrics:       r.Metrics,
         Owner:         owner,
     }
+    // Declared before the deferred flush so the closure sees the component built below.
+    var comps []*component.Component
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps...); flushErr != nil && err == nil {
             err = flushErr
         }
     }()
@@ -336,6 +339,7 @@ func (r *Controller) reconcile(ctx context.Context, owner *ExampleApp) (err erro
     if err != nil {
         return err
     }
+    comps = append(comps, comp)
 
     return comp.Reconcile(ctx, recCtx)
 }

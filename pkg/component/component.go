@@ -511,6 +511,12 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // FlushStatus persists the owner's status to the Kubernetes API and records
 // condition metrics for every condition on the owner.
 //
+// Pass the components whose conditions this flush is responsible for. Their
+// condition types are the types FlushStatus treats as its own on a conflict, so
+// the set can never drift from what the components actually write. A controller
+// that manages no components passes none, and every condition staged on the
+// owner is then treated as owned.
+//
 // FlushStatus issues a single Status().Update, which writes the entire status
 // subresource, not only the conditions. Fields the controller never staged are
 // sent exactly as they stand on the in-memory owner. The owner must therefore be
@@ -518,7 +524,9 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // earlier pass writes stale status values back over newer ones.
 //
 // Controllers must call FlushStatus exactly once per reconciliation, typically
-// via defer so that conditions set on error paths are still persisted:
+// via defer so that conditions set on error paths are still persisted. Declare
+// the component slice before the deferred call so the closure observes every
+// component built during the reconcile:
 //
 //	func (r *MyReconciler) Reconcile(ctx context.Context, req reconcile.Request) (res reconcile.Result, err error) {
 //	    owner := &v1alpha1.MyApp{}
@@ -526,44 +534,44 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //	        return reconcile.Result{}, client.IgnoreNotFound(err)
 //	    }
 //	    rec := component.ReconcileContext{ /* ... */ Owner: owner}
+//
+//	    var comps []*component.Component
 //	    defer func() {
-//	        if flushErr := component.FlushStatus(ctx, rec); flushErr != nil && err == nil {
+//	        if flushErr := component.FlushStatus(ctx, rec, comps...); flushErr != nil && err == nil {
 //	            err = flushErr
 //	        }
 //	    }()
+//
+//	    comp, err := buildComponent(owner)
+//	    if err != nil {
+//	        return reconcile.Result{}, err
+//	    }
+//	    comps = append(comps, comp)
 //	    return reconcile.Result{}, comp.Reconcile(ctx, rec)
 //	}
 //
-// On a 409 Conflict (for example if an external writer updated the owner
-// between the controller fetching it and this call) FlushStatus refetches the
-// owner into the same variable, re-applies the conditions it snapshotted at
-// entry using meta.SetStatusCondition, and retries.
+// On a 409 Conflict (for example if an external writer updated the owner between
+// the controller fetching it and this call) FlushStatus keeps the staged owner as
+// the object being written. It fetches the server's copy into a separate object,
+// takes that object's resourceVersion so the retry targets the live object, and
+// restores from it only the conditions whose type this flush does not own. It
+// then retries.
 //
-// That snapshot is every condition on the in-memory owner, not only the ones
-// components staged during this reconcile. The retry is therefore a merge by
-// condition type, not a guarantee that other writers' updates survive. A
-// condition type another writer adds after the controller's Get is absent from
-// the snapshot, so the refetch brings it in and the retry leaves it alone. A
-// condition type that was already on the owner at the Get, and that another
-// writer updated in the meantime, is overwritten by the snapshotted copy, which
-// is stale by then.
+// Two consequences follow from never replacing the staged owner. Non-condition
+// status fields staged during the reconcile survive a conflict. And a condition
+// type this flush does not own keeps the server's value rather than the possibly
+// stale copy the controller happens to be holding, so a concurrent update by
+// another writer is not rolled back.
 //
-// The second case is not limited to types the controller staged, so one writer
-// per condition type does not prevent it: the snapshot holds every condition
-// present at the Get, and the retry can roll another controller's condition back
-// to its value at that moment. That writer's next reconcile restores it, making
-// this a transient rollback rather than permanent loss. There is currently no way
-// to narrow the snapshot to the conditions the caller's own components staged.
-//
-// Only the conditions are re-applied after a conflict. The refetch replaces the
-// in-memory owner with the server's object, so any non-condition status field
-// staged before the conflict is lost for that pass and must be staged again on
-// the next reconcile.
+// A condition the controller stages that belongs to no component, such as an
+// owner-level aggregate produced by [Aggregate], is therefore not owned by this
+// flush. On a conflict it reverts to the server's value, and the next reconcile
+// stages it again.
 //
 // rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
 // recording is skipped.
-func FlushStatus(ctx context.Context, rec ReconcileContext) error {
-	desired := append([]metav1.Condition(nil), *rec.Owner.GetStatusConditions()...)
+func FlushStatus(ctx context.Context, rec ReconcileContext, comps ...*Component) error {
+	owned := ownedConditionTypes(rec.Owner, comps)
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		updateErr := rec.Client.Status().Update(ctx, rec.Owner)
@@ -573,12 +581,8 @@ func FlushStatus(ctx context.Context, rec ReconcileContext) error {
 		if !apierrors.IsConflict(updateErr) {
 			return updateErr
 		}
-		key := client.ObjectKeyFromObject(rec.Owner)
-		if getErr := rec.Client.Get(ctx, key, rec.Owner); getErr != nil {
-			return getErr
-		}
-		for _, cond := range desired {
-			meta.SetStatusCondition(rec.Owner.GetStatusConditions(), cond)
+		if refreshErr := refreshUnownedConditions(ctx, rec, owned); refreshErr != nil {
+			return refreshErr
 		}
 		return updateErr
 	})
@@ -596,4 +600,77 @@ func FlushStatus(ctx context.Context, rec ReconcileContext) error {
 		)
 	}
 	return nil
+}
+
+// ownedConditionTypes returns the condition types this flush is responsible for.
+//
+// With components, it is exactly the types those components write, so the set
+// can never drift from what the components actually report. With no components,
+// every condition currently staged on the owner is treated as owned: a
+// controller that manages no components (a validation-only CRD) stages its
+// condition by hand, and an empty component list must not mean "own nothing" or
+// that condition would be lost on every conflict.
+func ownedConditionTypes(owner OperatorCRD, comps []*Component) map[string]struct{} {
+	owned := make(map[string]struct{})
+	if len(comps) == 0 {
+		for _, cond := range *owner.GetStatusConditions() {
+			owned[cond.Type] = struct{}{}
+		}
+		return owned
+	}
+	for _, comp := range comps {
+		owned[string(comp.conditionType)] = struct{}{}
+	}
+	return owned
+}
+
+// refreshUnownedConditions prepares the staged owner for a retry after a
+// conflict, without ever replacing it.
+//
+// The staged owner remains the object that will be written, so every field the
+// controller staged during this reconcile survives, conditions and non-condition
+// status fields alike. Only two things are taken from the server: the current
+// resourceVersion, so the retry targets the live object, and the value of every
+// condition type this flush does not own, so a concurrent update by another
+// writer is not overwritten by the copy this controller happens to be holding.
+func refreshUnownedConditions(ctx context.Context, rec ReconcileContext, owned map[string]struct{}) error {
+	server, ok := rec.Owner.DeepCopyObject().(OperatorCRD)
+	if !ok {
+		return fmt.Errorf("failed to deep copy owner of type %T", rec.Owner)
+	}
+	// Clear the copy's conditions before the fetch. Decoding a response into a
+	// non-empty struct does not remove fields the response omits, so an owner
+	// with no conditions on the server would otherwise leave the staged
+	// conditions in place here and they would read as the server's.
+	*server.GetStatusConditions() = nil
+
+	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(rec.Owner), server); err != nil {
+		return err
+	}
+
+	rec.Owner.SetResourceVersion(server.GetResourceVersion())
+
+	for _, cond := range *server.GetStatusConditions() {
+		if _, isOwned := owned[cond.Type]; isOwned {
+			continue
+		}
+		replaceStatusCondition(rec.Owner.GetStatusConditions(), cond)
+	}
+	return nil
+}
+
+// replaceStatusCondition sets cond by type, taking its value verbatim.
+//
+// meta.SetStatusCondition is deliberately not used here: it preserves the
+// existing LastTransitionTime when the status is unchanged, which would blend
+// the server's condition with the stale local copy this function exists to
+// discard.
+func replaceStatusCondition(conditions *[]metav1.Condition, cond metav1.Condition) {
+	for i := range *conditions {
+		if (*conditions)[i].Type == cond.Type {
+			(*conditions)[i] = cond
+			return
+		}
+	}
+	*conditions = append(*conditions, cond)
 }

@@ -357,6 +357,15 @@ decodes the API server's response into that same object, so those handlers read 
 and `Status` included, and can trust `status.observedGeneration` to tell them whether the object's own controller has
 seen the spec just applied.
 
+The converge and operational status handlers also receive a `concepts.ConvergingOperation` that says what the apply did:
+`Created` when the object did not exist before, `Updated` when the apply changed an existing object, and `None` when it
+left the object as it was. The framework decides this by comparing the live object read before the Server-Side Apply
+with the API server's response, ignoring `status`, `managedFields`, `resourceVersion` and `generation`. It does not
+depend on how the desired object was built, so a wrapper reports `None` on a steady-state reconcile whether the operator
+keeps its resources across reconciles or rebuilds them each pass. Use the operation to distinguish `Creating` from
+`Updating` while `status.observedGeneration` lags, as the example below does; do not use it as a change detector for
+anything the apply cannot see, such as external state.
+
 Three handlers are outside that guarantee. The **guard** runs before the resource is applied, which is its whole
 purpose, so it sees the desired object rather than the server's response. The suspension **mutation** handler takes the
 mutator rather than the object and runs before the patch is sent. The **delete-on-suspend decision** may be consulted

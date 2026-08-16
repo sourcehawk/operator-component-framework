@@ -232,6 +232,47 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(fetched.OwnerReferences).To(BeEmpty(), "read-only resource should not get an owner reference")
 		})
 
+		It("should report None instead of Updated when a rebuilt desired object is unchanged", func() {
+			// Given: a resource that builds a fresh desired object on every Object() call,
+			// as operators that construct their components in Reconcile do. The owner
+			// reference and mutations are added by the framework on every pass.
+			data := map[string]string{"foo": "bar"}
+			res := &operationRecordingResource{
+				build: func() *corev1.ConfigMap {
+					cm := &corev1.ConfigMap{
+						ObjectMeta: metav1.ObjectMeta{Name: "rebuilt-cm", Namespace: namespace},
+						Data:       map[string]string{},
+					}
+					for k, v := range data {
+						cm.Data[k] = v
+					}
+					return cm
+				},
+				mutate: func(cm *corev1.ConfigMap) { cm.Data["feature"] = "enabled" },
+			}
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}}}
+
+			// When: reconciled repeatedly without a change, then once after a change
+			for range 3 {
+				Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+			}
+			data["foo"] = "baz"
+			Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+			Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+
+			// Then: only the first apply creates and only the changed apply updates
+			Expect(res.operations).To(Equal([]concepts.ConvergingOperation{
+				concepts.ConvergingOperationCreated,
+				concepts.ConvergingOperationNone,
+				concepts.ConvergingOperationNone,
+				concepts.ConvergingOperationUpdated,
+				concepts.ConvergingOperationNone,
+			}))
+			recorder := recCtx.EventRecorder.(*spyRecorder)
+			Expect(recorder.recordedWithReason("CreatedConfigMap")).To(HaveLen(1))
+			Expect(recorder.recordedWithReason("UpdatedConfigMap")).To(HaveLen(1))
+		})
+
 		It("should aggregate status across both create and read-only resources", func() {
 			// Given
 			cm1 := &corev1.ConfigMap{

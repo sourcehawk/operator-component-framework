@@ -11,8 +11,9 @@ import (
 // Completable, Operational) to help determine the converging status, and it
 // selects the Created/Updated event recorded for the resource.
 //
-// The framework derives it by comparing the live object read before the
-// Server-Side Apply with the API server's response to it, ignoring the status
+// The framework derives it by comparing the object observed before the
+// Server-Side Apply (read through the client, usually the informer cache) with
+// the API server's response to it, ignoring the status
 // subresource, managedFields, resourceVersion and generation. The classification
 // therefore reflects whether the applied desired state changed the object, not
 // how the desired object was constructed: operators that rebuild their desired
@@ -26,7 +27,7 @@ const (
 	ConvergingOperationCreated ConvergingOperation = "Created"
 	// ConvergingOperationUpdated indicates that the resource existed and the apply
 	// changed it: its labels, annotations, owner references, spec or data differ
-	// from what was live before the apply.
+	// from what was observed before the apply.
 	ConvergingOperationUpdated ConvergingOperation = "Updated"
 	// ConvergingOperationNone indicates that the apply left the existing resource
 	// unchanged, or that the resource was only read (read-only resources).

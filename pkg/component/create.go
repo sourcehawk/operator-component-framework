@@ -36,8 +36,8 @@ func applyResource(
 	}
 
 	// Check if the object already exists (reads from informer cache, not the API server).
-	// The live object is fetched into a zeroed instance rather than a copy of the
-	// desired object: decoding into a pre-populated struct keeps map entries and
+	// The observed object is fetched into a zeroed instance rather than a copy of
+	// the desired object: decoding into a pre-populated struct keeps map entries and
 	// fields the response does not mention, which would skew the applied-state
 	// comparison below.
 	var objectExists bool
@@ -80,8 +80,9 @@ func applyResource(
 		)
 	}
 
-	// Classify the apply by comparing the live object before the patch with the
-	// server's response after it. Comparing the desired object before and after
+	// Classify the apply by comparing the object observed before the patch (read
+	// through the client, usually the informer cache) with the server's response
+	// after it. Comparing the desired object before and after
 	// Mutate would misreport an update on every reconcile for operators that
 	// rebuild their desired objects each pass, because the owner reference and
 	// feature mutations are always added relative to the freshly built object.
@@ -315,8 +316,8 @@ func newEmptyObjectLike(obj client.Object) client.Object {
 }
 
 // appliedObjectChanged reports whether a Server-Side Apply changed the object,
-// by comparing the live object read before the patch with the API server's
-// response to it.
+// by comparing the object observed before the patch (read through the client,
+// usually the informer cache) with the API server's response to it.
 //
 // The comparison ignores fields that change without the desired state changing:
 // the status subresource (written by other controllers), managedFields and

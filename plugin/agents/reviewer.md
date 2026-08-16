@@ -39,9 +39,9 @@ actually violated.
 5. **Keep Controllers Thin.** Look for resource construction, feature decisions, or mutation logic living inline in the
    controller rather than in pure component-building functions. Look for `FlushStatus` called more than once per
    reconcile, or called between component reconciles rather than deferred once at the end. Look for
-   `FlushStatus(ctx, rec, nil)` in a controller that did build components: `nil` is only correct when the controller
-   manages none, and passing it otherwise silently widens the owned condition set to every staged condition, so a
-   conflict retry can roll back another writer's condition. Look for a controller that stops reconciling remaining
+   `FlushStatus(ctx, rec, nil)` in a controller that did build components: a flush owns exactly the condition types of
+   the components it is passed, so `nil` there means the controller owns none of its own component conditions and every
+   one of them reverts to the server's value on a conflict retry. Look for a controller that stops reconciling remaining
    components after the first error instead of collecting the first error and continuing.
 6. **Reconciler Error Handling and Requeueing.** Look for `Reconcile` returning an error for a resource that is merely
    converging (a rolling Deployment, a `Blocked` guard) instead of letting that state surface through its condition.

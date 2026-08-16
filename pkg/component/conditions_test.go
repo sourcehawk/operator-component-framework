@@ -316,13 +316,18 @@ func TestFlushStatus(t *testing.T) {
 
 		applyStatusCondition(ReconcileContext{Owner: owner}, cond("InfraReady", "Ready", metav1.ConditionTrue))
 
+		infra, err := NewComponentBuilder().WithName("infra").WithConditionType("InfraReady").Build()
+		require.NoError(t, err)
+
 		metrics := &MockMetrics{}
 		metrics.On("RecordConditionFor", owner.GetKind(), owner, "ExternalReady",
 			string(metav1.ConditionTrue), "ExternalReason", mock.Anything, mock.Anything).Return().Once()
 		metrics.On("RecordConditionFor", owner.GetKind(), owner, "InfraReady",
 			string(metav1.ConditionTrue), "Ready", mock.Anything, mock.Anything).Return().Once()
 
-		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, nil))
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Metrics: metrics, Owner: owner}, []*Component{infra},
+		))
 
 		assert.GreaterOrEqual(t, k8sClient.gets, 1, "expected at least one Get for conflict refetch")
 		persisted := &MockOperatorCRD{}
@@ -546,9 +551,12 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason)
 	})
 
-	t.Run("treats every staged condition as owned when no components are passed", func(t *testing.T) {
-		// A validation-only controller manages no components. Its condition must
-		// survive a conflict, so an empty component list cannot mean "own nothing".
+	t.Run("owns nothing when no components are passed", func(t *testing.T) {
+		// You own exactly what you pass. A validation-only controller passes nil, so
+		// its hand-staged condition is unowned and follows the server on a conflict,
+		// exactly as a controller-staged aggregate does. The next reconcile stages it
+		// again. Its non-condition status fields still survive, because the staged
+		// owner is never replaced.
 		serverSide := newOwner()
 		serverSide.Status.Conditions = []metav1.Condition{{
 			Type: "Validated", Status: metav1.ConditionFalse, Reason: "StaleServerValue",
@@ -565,14 +573,15 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil))
 
 		persisted := persistedOf(t, k8sClient, owner)
-		assert.Equal(t, "SpecValid", conditionOf(t, persisted, "Validated").Reason,
-			"with no components every staged condition is owned")
-		assert.Equal(t, int64(3), persisted.Status.ObservedGeneration)
+		assert.Equal(t, "StaleServerValue", conditionOf(t, persisted, "Validated").Reason,
+			"nothing is owned, so the server's value wins on a conflict")
+		assert.Equal(t, int64(3), persisted.Status.ObservedGeneration,
+			"a staged non-condition status field still survives")
 	})
 
 	t.Run("treats a nil and an empty component slice identically", func(t *testing.T) {
-		// A reader will reasonably write either. Both mean "own every staged
-		// condition", so both must survive a conflict the same way.
+		// A reader will reasonably write either. Both own no condition types at
+		// all, so both must follow the server the same way on a conflict.
 		for name, comps := range map[string][]*Component{
 			"nil":           nil,
 			"empty non-nil": {},
@@ -596,7 +605,8 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 				))
 
 				persisted := persistedOf(t, k8sClient, owner)
-				assert.Equal(t, "SpecValid", conditionOf(t, persisted, "Validated").Reason)
+				assert.Equal(t, "StaleServerValue", conditionOf(t, persisted, "Validated").Reason,
+					"nothing is owned either way")
 				assert.Equal(t, int64(5), persisted.Status.ObservedGeneration)
 			})
 		}

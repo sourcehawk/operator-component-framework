@@ -702,11 +702,11 @@ The parameter is required rather than variadic on purpose. A variadic would let 
 silently retaining the old, wider ownership, which would make a correctness fix opt-in and invisible. Requiring the
 argument forces each call site to be looked at exactly once.
 
-A controller that manages no components passes `nil`. `nil` and an empty slice behave identically: every condition
-staged on the owner is then owned. That is a deliberate special case rather than an empty set. A controller with no
-components stages its condition by hand, and if an empty list meant "own nothing" that condition would be reverted on
-every conflict. Passing `nil` is a visible choice a reader can see, not an omission nobody notices. See
-[One write path for the owner's status](#one-write-path-for-the-owners-status).
+**You own exactly what you pass, and nothing else.** A controller that manages no components passes `nil`, and `nil` and
+an empty slice behave identically: neither owns any condition type. A condition the controller stages by hand is
+therefore never owned, whether it is an owner-level aggregate or the only condition a
+[validation-only CRD](#one-write-path-for-the-owners-status) reports. On a conflict it follows the server like any other
+unowned condition, and the next reconcile stages it again.
 
 !!! note "An owner-level aggregate is not owned by any component"
 
@@ -751,7 +751,8 @@ func (r *PolicyReconciler) Reconcile(ctx context.Context, req reconcile.Request)
     }
     meta.SetStatusCondition(policy.GetStatusConditions(), cond)
 
-    // nil: no components, so every staged condition is owned and survives a conflict.
+    // nil: this controller owns no component conditions. On a conflict the staged
+    // condition follows the server and is written again on the next reconcile.
     return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
         Client: r.Client,
         Owner:  policy,

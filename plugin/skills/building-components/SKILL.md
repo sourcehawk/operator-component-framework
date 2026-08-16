@@ -220,11 +220,13 @@ top of every reconcile: an owner carried over from an earlier pass writes stale 
 **Pass the components whose conditions this flush owns:** `component.FlushStatus(ctx, recCtx, comps)`. Their condition
 types are the owned set, so it cannot drift from what the components actually write.
 
+**You own exactly what you pass, and nothing else.** A controller that manages no components passes `nil`; `nil` and an
+empty slice behave identically and own no condition types at all. A condition the controller stages by hand is therefore
+never owned, whether it is an aggregate or a validation-only CRD's single condition: on a conflict it follows the
+server, and the next reconcile stages it again.
+
 The parameter is required, not variadic: a variadic would let existing calls keep compiling while silently retaining the
-old wider ownership, making a correctness fix opt-in and invisible. A controller that manages no components passes
-`nil`. `nil` and an empty slice behave identically, and both are a deliberate special case rather than an empty set:
-every condition staged on the owner is then owned. A controller with no components stages its condition by hand, and if
-an empty list meant "own nothing" that condition would be reverted on every conflict.
+old wider ownership, making a correctness fix opt-in and invisible.
 
 On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
 separate object, takes that copy's `resourceVersion`, restores from it only the conditions whose type this flush does
@@ -271,7 +273,7 @@ meta.SetStatusCondition(policy.GetStatusConditions(), metav1.Condition{
 policy.Status.ObservedGeneration = policy.Generation // owner-level field, see below
 return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
     Client: r.Client, Owner: policy,
-}, nil) // nil: no components, so every staged condition is owned
+}, nil) // nil: owns no component conditions; on a conflict this follows the server
 ```
 
 **Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside

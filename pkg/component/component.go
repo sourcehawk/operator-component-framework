@@ -516,17 +516,19 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // condition types are the types FlushStatus treats as its own on a conflict, so
 // the set can never drift from what the components actually write.
 //
+// You own exactly what you pass, and nothing else. Pass nil when the controller
+// manages no components; nil and an empty slice behave identically and own no
+// condition types at all.
+//
 // comps is a required parameter rather than a variadic one on purpose. A
 // variadic would let every existing call keep compiling while silently retaining
 // the old, wider ownership, which would make a correctness fix opt-in and
 // invisible. Requiring the argument forces each call site to be looked at once.
 //
-// Pass nil when the controller manages no components. nil and an empty slice
-// behave identically: every condition staged on the owner is treated as owned.
-// That is a deliberate special case, not an empty set. A controller with no
-// components stages its condition by hand, and if an empty list meant "own
-// nothing" that condition would be reverted on every conflict. Passing nil is
-// therefore a visible choice rather than an omission.
+// A condition the controller stages by hand is therefore never owned, whether it
+// is an owner-level aggregate or the only condition a validation-only CRD
+// reports. On a conflict it follows the server like any other unowned condition,
+// and the next reconcile stages it again.
 //
 // FlushStatus issues a single Status().Update, which writes the entire status
 // subresource, not only the conditions. Fields the controller never staged are
@@ -574,11 +576,6 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // stale copy the controller happens to be holding, so a concurrent update by
 // another writer is not rolled back.
 //
-// A condition the controller stages that belongs to no component, such as an
-// owner-level aggregate produced by [Aggregate], is therefore not owned by this
-// flush. On a conflict it reverts to the value the server already holds, and the
-// next reconcile stages it again.
-//
 // For unowned types the server is the source of truth, absence included. An
 // unowned condition the server no longer carries is dropped from the staged
 // owner rather than written back, so a condition another writer removed is not
@@ -589,7 +586,7 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
 // recording is skipped.
 func FlushStatus(ctx context.Context, rec ReconcileContext, comps []*Component) error {
-	owned := ownedConditionTypes(rec.Owner, comps)
+	owned := ownedConditionTypes(comps)
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		updateErr := rec.Client.Status().Update(ctx, rec.Owner)
@@ -620,22 +617,11 @@ func FlushStatus(ctx context.Context, rec ReconcileContext, comps []*Component) 
 	return nil
 }
 
-// ownedConditionTypes returns the condition types this flush is responsible for.
-//
-// With components, it is exactly the types those components write, so the set
-// can never drift from what the components actually report. With no components,
-// every condition currently staged on the owner is treated as owned: a
-// controller that manages no components (a validation-only CRD) stages its
-// condition by hand, and an empty component list must not mean "own nothing" or
-// that condition would be lost on every conflict.
-func ownedConditionTypes(owner OperatorCRD, comps []*Component) map[string]struct{} {
-	owned := make(map[string]struct{})
-	if len(comps) == 0 {
-		for _, cond := range *owner.GetStatusConditions() {
-			owned[cond.Type] = struct{}{}
-		}
-		return owned
-	}
+// ownedConditionTypes returns the condition types this flush is responsible for:
+// exactly the types the given components write, so the set can never drift from
+// what those components actually report. No components means no owned types.
+func ownedConditionTypes(comps []*Component) map[string]struct{} {
+	owned := make(map[string]struct{}, len(comps))
 	for _, comp := range comps {
 		owned[string(comp.conditionType)] = struct{}{}
 	}

@@ -693,9 +693,12 @@ Which types count as owned comes from the components passed to `FlushStatus`:
 component.FlushStatus(ctx, recCtx, backendComp, frontendComp)
 ```
 
-Their condition types are the owned set, so it cannot drift from what the components actually write. Passing no
-components treats **every** staged condition as owned, which is what a controller with no components needs (see
-[One write path for the owner's status](#one-write-path-for-the-owners-status)).
+Their condition types are the owned set, so it cannot drift from what the components actually write.
+
+Passing **no** components is a deliberate special case rather than an empty set: every condition staged on the owner is
+then owned. A controller that builds no components stages its condition by hand, and if an empty list meant "own
+nothing" that condition would be reverted on every conflict. See
+[One write path for the owner's status](#one-write-path-for-the-owners-status).
 
 !!! note "An owner-level aggregate is not owned by any component"
 

@@ -218,7 +218,10 @@ That `Status().Update` writes the **whole status subresource**, not only the con
 top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones.
 
 **Pass the components whose conditions this flush owns:** `component.FlushStatus(ctx, recCtx, comps...)`. Their
-condition types are the owned set, so it cannot drift from what the components actually write.
+condition types are the owned set, so it cannot drift from what the components actually write. Passing **no** components
+is a deliberate special case rather than an empty set: every condition staged on the owner is then owned. A controller
+that builds no components stages its condition by hand, and if an empty list meant "own nothing" that condition would be
+reverted on every conflict.
 
 On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
 separate object, takes that copy's `resourceVersion`, restores from it only the conditions whose type this flush does

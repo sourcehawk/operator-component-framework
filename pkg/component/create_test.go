@@ -12,6 +12,8 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -320,6 +322,267 @@ func TestApplyResources(t *testing.T) {
 		assert.Contains(t, err.Error(), "mutation failed")
 
 		resource.AssertExpectations(t)
+	})
+}
+
+// operationRecordingResource is an Alive resource that builds its desired object
+// from scratch on every Object() call, mirroring operators that rebuild their
+// components on each reconcile. It records the converging operation passed to
+// ConvergingStatus so tests can assert how each apply was classified.
+type operationRecordingResource struct {
+	build      func() *corev1.ConfigMap
+	mutate     func(*corev1.ConfigMap)
+	operations []concepts.ConvergingOperation
+}
+
+func (r *operationRecordingResource) Identity() string { return "ConfigMap/operation-recording" }
+
+func (r *operationRecordingResource) Object() (client.Object, error) { return r.build(), nil }
+
+func (r *operationRecordingResource) Mutate(obj client.Object) error {
+	if r.mutate != nil {
+		r.mutate(obj.(*corev1.ConfigMap))
+	}
+	return nil
+}
+
+func (r *operationRecordingResource) ConvergingStatus(
+	op concepts.ConvergingOperation,
+) (concepts.AliveStatusWithReason, error) {
+	r.operations = append(r.operations, op)
+	return concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusHealthy, Reason: "ok"}, nil
+}
+
+func (r *operationRecordingResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
+}
+
+// objectOperationRecordingResource is the counterpart of
+// operationRecordingResource for any client.Object type.
+type objectOperationRecordingResource struct {
+	build      func() client.Object
+	operations []concepts.ConvergingOperation
+	// applied is the object handed to Mutate. The framework decodes the apply
+	// response into that same object, so after a reconcile it holds what the
+	// server returned.
+	applied client.Object
+}
+
+func (r *objectOperationRecordingResource) Identity() string {
+	return "operation-recording-object"
+}
+
+func (r *objectOperationRecordingResource) Object() (client.Object, error) {
+	return r.build(), nil
+}
+
+func (r *objectOperationRecordingResource) Mutate(obj client.Object) error {
+	r.applied = obj
+	return nil
+}
+
+func (r *objectOperationRecordingResource) ConvergingStatus(
+	op concepts.ConvergingOperation,
+) (concepts.AliveStatusWithReason, error) {
+	r.operations = append(r.operations, op)
+	return concepts.AliveStatusWithReason{Status: concepts.AliveConvergingStatusHealthy, Reason: "ok"}, nil
+}
+
+func (r *objectOperationRecordingResource) GraceStatus() (concepts.GraceStatusWithReason, error) {
+	return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
+}
+
+func TestApplyResource_ConvergingOperation(t *testing.T) {
+	const namespace = "test-namespace"
+
+	newEnv := func(t *testing.T) (ReconcileContext, client.Client) {
+		t.Helper()
+		scheme := setupScheme()
+		owner := &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: namespace, UID: "owner-uid"},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).WithStatusSubresource(owner).Build()
+		return setupReconcileContext(scheme, owner, fakeClient), fakeClient
+	}
+
+	buildConfigMap := func(data map[string]string) func() *corev1.ConfigMap {
+		return func() *corev1.ConfigMap {
+			cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "rebuilt-cm", Namespace: namespace}}
+			for k, v := range data {
+				if cm.Data == nil {
+					cm.Data = map[string]string{}
+				}
+				cm.Data[k] = v
+			}
+			return cm
+		}
+	}
+
+	apply := func(t *testing.T, rec ReconcileContext, res Resource) {
+		t.Helper()
+		_, err := applyResources(t.Context(), rec, []reconcileEntry{{Resource: res}}, "test-component", createTestRESTMapper())
+		require.NoError(t, err)
+	}
+
+	t.Run("reports None when a rebuilt desired object matches what is already applied", func(t *testing.T) {
+		rec, _ := newEnv(t)
+		res := &operationRecordingResource{build: buildConfigMap(map[string]string{"foo": "bar"})}
+
+		apply(t, rec, res)
+		apply(t, rec, res)
+		apply(t, rec, res)
+
+		assert.Equal(t, []concepts.ConvergingOperation{
+			concepts.ConvergingOperationCreated,
+			concepts.ConvergingOperationNone,
+			concepts.ConvergingOperationNone,
+		}, res.operations)
+		assert.Empty(t, rec.EventRecorder.(*spyRecorder).recordedWithReason("UpdatedConfigMap"))
+	})
+
+	t.Run("reports None when feature mutations are re-applied to a rebuilt desired object", func(t *testing.T) {
+		rec, _ := newEnv(t)
+		res := &operationRecordingResource{
+			build:  buildConfigMap(map[string]string{"foo": "bar"}),
+			mutate: func(cm *corev1.ConfigMap) { cm.Data["feature"] = "enabled" },
+		}
+
+		apply(t, rec, res)
+		apply(t, rec, res)
+
+		assert.Equal(t, []concepts.ConvergingOperation{
+			concepts.ConvergingOperationCreated,
+			concepts.ConvergingOperationNone,
+		}, res.operations)
+	})
+
+	t.Run("reports Updated when the rebuilt desired object changes", func(t *testing.T) {
+		rec, _ := newEnv(t)
+		res := &operationRecordingResource{build: buildConfigMap(map[string]string{"foo": "bar"})}
+		apply(t, rec, res)
+
+		res.build = buildConfigMap(map[string]string{"foo": "baz"})
+		apply(t, rec, res)
+		apply(t, rec, res)
+
+		assert.Equal(t, []concepts.ConvergingOperation{
+			concepts.ConvergingOperationCreated,
+			concepts.ConvergingOperationUpdated,
+			concepts.ConvergingOperationNone,
+		}, res.operations)
+		assert.Len(t, rec.EventRecorder.(*spyRecorder).recordedWithReason("UpdatedConfigMap"), 1)
+	})
+
+	t.Run("reports Updated when a feature mutation starts changing the applied object", func(t *testing.T) {
+		rec, _ := newEnv(t)
+		res := &operationRecordingResource{build: buildConfigMap(map[string]string{"foo": "bar"})}
+		apply(t, rec, res)
+
+		res.mutate = func(cm *corev1.ConfigMap) { cm.Data["feature"] = "enabled" }
+		apply(t, rec, res)
+		apply(t, rec, res)
+
+		assert.Equal(t, []concepts.ConvergingOperation{
+			concepts.ConvergingOperationCreated,
+			concepts.ConvergingOperationUpdated,
+			concepts.ConvergingOperationNone,
+		}, res.operations)
+	})
+
+	t.Run("reports Updated when adopting an object that already exists without the owner reference", func(t *testing.T) {
+		rec, c := newEnv(t)
+		preexisting := buildConfigMap(map[string]string{"foo": "bar"})()
+		require.NoError(t, c.Create(t.Context(), preexisting))
+
+		res := &operationRecordingResource{build: buildConfigMap(map[string]string{"foo": "bar"})}
+		apply(t, rec, res)
+		apply(t, rec, res)
+
+		assert.Equal(t, []concepts.ConvergingOperation{
+			concepts.ConvergingOperationUpdated,
+			concepts.ConvergingOperationNone,
+		}, res.operations)
+	})
+
+	t.Run("classifies unstructured objects the same way", func(t *testing.T) {
+		rec, _ := newEnv(t)
+		data := map[string]any{"foo": "bar"}
+		build := func() client.Object {
+			u := &unstructured.Unstructured{}
+			u.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+			u.SetName("rebuilt-unstructured")
+			u.SetNamespace(namespace)
+			require.NoError(t, unstructured.SetNestedField(u.Object, runtime.DeepCopyJSON(data), "data"))
+			return u
+		}
+		res := &objectOperationRecordingResource{build: build}
+
+		apply(t, rec, res)
+		apply(t, rec, res)
+		data["foo"] = "baz"
+		apply(t, rec, res)
+		apply(t, rec, res)
+
+		assert.Equal(t, []concepts.ConvergingOperation{
+			concepts.ConvergingOperationCreated,
+			concepts.ConvergingOperationNone,
+			concepts.ConvergingOperationUpdated,
+			concepts.ConvergingOperationNone,
+		}, res.operations)
+	})
+
+	t.Run("reports None when a persistent desired object is re-applied unchanged", func(t *testing.T) {
+		rec, _ := newEnv(t)
+		// Same pointer on every reconcile: the SSA response is decoded back into it,
+		// which is how BaseResource.DesiredObject behaves across reconciles.
+		persistent := buildConfigMap(map[string]string{"foo": "bar"})()
+		res := &operationRecordingResource{build: func() *corev1.ConfigMap { return persistent }}
+
+		apply(t, rec, res)
+		apply(t, rec, res)
+
+		assert.Equal(t, []concepts.ConvergingOperation{
+			concepts.ConvergingOperationCreated,
+			concepts.ConvergingOperationNone,
+		}, res.operations)
+	})
+}
+
+func TestNewEmptyObjectLike(t *testing.T) {
+	t.Run("returns a zeroed typed object of the same type", func(t *testing.T) {
+		src := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: "ns"},
+			Data:       map[string]string{"k": "v"},
+		}
+		empty, err := newEmptyObjectLike(src)
+		require.NoError(t, err)
+		cm, ok := empty.(*corev1.ConfigMap)
+		require.True(t, ok)
+		assert.Empty(t, cm.Name)
+		assert.Nil(t, cm.Data)
+	})
+
+	t.Run("carries the GVK for unstructured objects", func(t *testing.T) {
+		src := &unstructured.Unstructured{}
+		src.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+		src.SetName("src")
+		empty, err := newEmptyObjectLike(src)
+		require.NoError(t, err)
+		u, ok := empty.(*unstructured.Unstructured)
+		require.True(t, ok)
+		assert.Equal(t, corev1.SchemeGroupVersion.WithKind("ConfigMap"), u.GroupVersionKind())
+		assert.Empty(t, u.GetName())
+	})
+
+	t.Run("rejects a nil interface instead of panicking", func(t *testing.T) {
+		_, err := newEmptyObjectLike(nil)
+		require.Error(t, err)
+	})
+
+	t.Run("rejects a typed nil pointer instead of panicking", func(t *testing.T) {
+		var cm *corev1.ConfigMap
+		_, err := newEmptyObjectLike(cm)
+		require.Error(t, err)
 	})
 }
 

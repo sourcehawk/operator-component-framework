@@ -330,6 +330,14 @@ do this automatically. Managed resources are applied with Server-Side Apply and 
 except where the owner is namespace-scoped and the resource is cluster-scoped (see
 [Cluster-scoped resources](#cluster-scoped-resources)).
 
+Each apply is classified as `Created`, `Updated` or `None` by comparing the object observed before the patch (read
+through the client, usually the informer cache) with the API server's response to it, ignoring `status`,
+`managedFields`, `resourceVersion` and `generation`. The classification is passed to the resource's status handler as
+its `concepts.ConvergingOperation` and drives the `Created<Kind>` and `Updated<Kind>` events recorded on the owner;
+`None` records no event. Because it compares observed cluster state rather than the desired object before and after
+mutation, a steady-state reconcile reports `None` regardless of whether the operator rebuilds its components on every
+reconcile or keeps them across reconciles.
+
 ### Previewing desired state
 
 `Component.Preview() ([]client.Object, error)` renders the desired state of every managed resource in registration order

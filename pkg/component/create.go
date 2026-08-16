@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/sourcehawk/operator-component-framework/internal/scope"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -34,9 +35,18 @@ func applyResource(
 		)
 	}
 
-	// Check if the object already exists (reads from informer cache, not the API server).
+	// Check if the object already exists (read through the client, usually the informer cache).
+	// The observed object is fetched into a zeroed instance rather than a copy of
+	// the desired object, so the pre-apply snapshot used by the comparison below
+	// holds only what the client returned and does not rely on the client zeroing
+	// its target before decoding.
 	var objectExists bool
-	existing := obj.DeepCopyObject().(client.Object)
+	existing, err := newEmptyObjectLike(obj)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to prepare existence check for resource %s: %w", resource.Identity(), err,
+		)
+	}
 	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), existing); err == nil {
 		objectExists = true
 	} else if !apierrors.IsNotFound(err) {
@@ -45,29 +55,12 @@ func applyResource(
 		)
 	}
 
-	// Snapshot the object before mutations for operation detection.
-	// Comparing pre-Mutate vs post-Mutate detects whether the operator's desired
-	// state actually changed, without being affected by status subresource updates
-	// from other controllers (Mutate does not touch status).
-	preMutate := obj.DeepCopyObject()
-
 	// Apply mutations to desired state
 	ownerRefSkipped, err := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper, skipOwnerRef)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to mutate resource %s: %w", resource.Identity(), err,
 		)
-	}
-
-	// Determine the converging operation before clearing server fields.
-	var convergingOperation concepts.ConvergingOperation
-	switch {
-	case !objectExists:
-		convergingOperation = concepts.ConvergingOperationCreated
-	case !equality.Semantic.DeepEqual(preMutate, obj):
-		convergingOperation = concepts.ConvergingOperationUpdated
-	default:
-		convergingOperation = concepts.ConvergingOperationNone
 	}
 
 	// Prepare the object for SSA by clearing server-populated fields that must not
@@ -90,6 +83,26 @@ func applyResource(
 		return nil, fmt.Errorf(
 			"failed to apply resource %s: %w", resource.Identity(), err,
 		)
+	}
+
+	// Classify the apply by comparing the object observed before the patch (read
+	// through the client, usually the informer cache) with the server's response
+	// after it. Comparing the desired object before and after
+	// Mutate would misreport an update on every reconcile for operators that
+	// rebuild their desired objects each pass, because the owner reference and
+	// feature mutations are always added relative to the freshly built object.
+	convergingOperation := concepts.ConvergingOperationCreated
+	if objectExists {
+		changed, err := appliedObjectChanged(existing, obj)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to compare applied state of resource %s: %w", resource.Identity(), err,
+			)
+		}
+		convergingOperation = concepts.ConvergingOperationNone
+		if changed {
+			convergingOperation = concepts.ConvergingOperationUpdated
+		}
 	}
 
 	if ownerRefSkipped && convergingOperation != concepts.ConvergingOperationNone {
@@ -296,6 +309,81 @@ func mutateResource(
 	}
 
 	return false, ctrl.SetControllerReference(owner, obj, scheme)
+}
+
+// newEmptyObjectLike returns a zero-valued object of the same Go type as obj,
+// carrying obj's GroupVersionKind so that unstructured objects remain
+// addressable through the client. It returns an error for a nil or non-pointer
+// object, which the client could not decode into anyway.
+func newEmptyObjectLike(obj client.Object) (client.Object, error) {
+	val := reflect.ValueOf(obj)
+	if !val.IsValid() || val.Kind() != reflect.Pointer || val.IsNil() {
+		return nil, fmt.Errorf("object must be a non-nil pointer, got %T", obj)
+	}
+	empty, ok := reflect.New(val.Type().Elem()).Interface().(client.Object)
+	if !ok {
+		return nil, fmt.Errorf("zero value of %T does not implement client.Object", obj)
+	}
+	empty.GetObjectKind().SetGroupVersionKind(obj.GetObjectKind().GroupVersionKind())
+	return empty, nil
+}
+
+// appliedObjectChanged reports whether a Server-Side Apply changed the object,
+// by comparing the object observed before the patch (read through the client,
+// usually the informer cache) with the API server's response to it.
+//
+// The comparison ignores fields that change without the desired state changing:
+// the status subresource (written by other controllers), managedFields and
+// resourceVersion (bookkeeping the server touches on any write), generation
+// (derived from the compared content) and TypeMeta (present or absent depending
+// on how the object was decoded). Everything else, including labels,
+// annotations, owner references and the object's spec or data, counts.
+//
+// It does not rely on resourceVersion because concurrent status writes bump it
+// without touching the desired state, and because fake clients bump it on
+// every apply, even a no-op one.
+func appliedObjectChanged(before, after client.Object) (bool, error) {
+	beforeContent, err := comparableContent(before)
+	if err != nil {
+		return false, err
+	}
+	afterContent, err := comparableContent(after)
+	if err != nil {
+		return false, err
+	}
+	return !equality.Semantic.DeepEqual(beforeContent, afterContent), nil
+}
+
+// comparableContent renders an object as an unstructured map with the fields
+// appliedObjectChanged ignores removed. It copies the top-level and metadata
+// maps before deleting keys so the object itself is never mutated (for
+// *unstructured.Unstructured, ToUnstructured returns the object's own content).
+func comparableContent(obj client.Object) (map[string]any, error) {
+	converted, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+	if err != nil {
+		return nil, err
+	}
+
+	content := make(map[string]any, len(converted))
+	for k, v := range converted {
+		content[k] = v
+	}
+	delete(content, "apiVersion")
+	delete(content, "kind")
+	delete(content, "status")
+
+	if rawMetadata, ok := content["metadata"].(map[string]any); ok {
+		metadata := make(map[string]any, len(rawMetadata))
+		for k, v := range rawMetadata {
+			metadata[k] = v
+		}
+		delete(metadata, "managedFields")
+		delete(metadata, "resourceVersion")
+		delete(metadata, "generation")
+		content["metadata"] = metadata
+	}
+
+	return content, nil
 }
 
 // clearServerFields removes metadata fields that the API server populates on

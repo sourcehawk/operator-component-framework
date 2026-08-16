@@ -75,7 +75,10 @@ type MetricsRecorder interface {
 	// read-only resources.
 	RecordResourceApply(labels ResourceMetricLabels, operation concepts.ConvergingOperation)
 	// RecordResourceApplyError records one failed framework apply of a managed
-	// resource.
+	// resource, covering every failure of the attempt: mutating the desired
+	// object, the patch itself, and the classification that follows it. Exactly
+	// one of RecordResourceApply and RecordResourceApplyError is called per
+	// attempt, never both.
 	RecordResourceApplyError(labels ResourceMetricLabels)
 }
 
@@ -88,8 +91,9 @@ type ReconcileContext struct {
 	// EventRecorder is the event recorder for publishing Kubernetes events.
 	// Obtain one from the controller-runtime manager with GetEventRecorder(name).
 	EventRecorder events.EventRecorder
-	// Metrics is the recorder for status condition metrics. It is optional; if
-	// nil, [FlushStatus] will skip metric emission.
+	// Metrics is the recorder for status condition metrics and resource-level
+	// apply metrics. It is optional; if nil, [FlushStatus] and the apply path
+	// both skip metric emission.
 	Metrics MetricsRecorder
 	// APIReader reads straight from the API server, bypassing the informer
 	// cache. Obtain it from the controller-runtime manager with GetAPIReader().

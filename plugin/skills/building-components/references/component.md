@@ -862,6 +862,11 @@ collector disables that family; passing `nil` for `Metrics` itself disables both
 Both counters cover managed resources on the reconcile path and the suspension path. Read-only resources, deletions and
 orphans are not applies and record nothing.
 
+Exactly one of the two counters moves per apply attempt, never both. The error counter covers every failure of the
+attempt: mutating the desired object, the patch itself, and the classification that follows it. The one exception is a
+failure so early that the framework has not worked out what it is applying, where no kind exists to label a series with;
+those surface as an error condition on the owner instead.
+
 The reading that matters most is the `updated` rate. In steady state, a converged resource applies as `none` on every
 pass and `updated` stays flat:
 

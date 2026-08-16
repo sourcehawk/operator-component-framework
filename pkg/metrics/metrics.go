@@ -58,8 +58,8 @@ var (
 // owner kind, component, resource identifier, kind and operation. No owner name
 // or namespace appears, so the same handful of series covers three owners or
 // three thousand, and no series needs removing when an owner is deleted. That
-// holds only while every resource identifier stays low-cardinality; see
-// [generic.BaseBuilder.WithMetricsIdentifier].
+// holds only while every resource identifier stays low-cardinality, which is
+// the contract WithMetricsIdentifier documents on the resource builders.
 type Collectors struct {
 	applies *prometheus.CounterVec
 	errors  *prometheus.CounterVec

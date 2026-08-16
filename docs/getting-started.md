@@ -266,13 +266,14 @@ self-induced update conflicts.
 
 `ReconcileContext` has five fields:
 
-| Field           | Type                        | Notes                                                                            |
-| --------------- | --------------------------- | -------------------------------------------------------------------------------- |
-| `Client`        | `client.Client`             | The controller-runtime client.                                                   |
-| `Scheme`        | `*runtime.Scheme`           | The operator scheme.                                                             |
-| `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. `GetEventRecorder(name)` on the manager, v0.23 and later. |
-| `Metrics`       | `component.MetricsRecorder` | Optional. Pass `nil` to skip status-condition metrics.                           |
-| `Owner`         | `component.OperatorCRD`     | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`. |
+| Field           | Type                        | Notes                                                                                                                                                     |
+| --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Client`        | `client.Client`             | The controller-runtime client.                                                                                                                            |
+| `Scheme`        | `*runtime.Scheme`           | The operator scheme.                                                                                                                                      |
+| `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. `GetEventRecorder(name)` on the manager, v0.23 and later.                                                                          |
+| `Metrics`       | `component.MetricsRecorder` | Optional. Pass `nil` to skip status-condition metrics.                                                                                                    |
+| `APIReader`     | `client.Reader`             | Optional, recommended. `GetAPIReader()` on the manager; `FlushStatus` reads through it on a 409 so the retry sees the live owner, not the informer cache. |
+| `Owner`         | `component.OperatorCRD`     | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`.                                                                          |
 
 !!! note
 
@@ -310,6 +311,7 @@ func (r *Controller) reconcile(ctx context.Context, owner *ExampleApp) (err erro
         Scheme:        r.Scheme,
         EventRecorder: r.EventRecorder,
         Metrics:       r.Metrics,
+        APIReader:     r.APIReader,
         Owner:         owner,
     }
     // Declared before the deferred flush so the closure sees the component built below.

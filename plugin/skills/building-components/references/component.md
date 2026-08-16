@@ -639,6 +639,7 @@ recCtx := component.ReconcileContext{
     Scheme:        r.Scheme,        // *runtime.Scheme
     EventRecorder: r.EventRecorder, // events.EventRecorder, from manager.GetEventRecorder(name)
     Metrics:       r.Metrics,       // component.MetricsRecorder (condition metrics), optional
+    APIReader:     r.APIReader,     // client.Reader, from manager.GetAPIReader(); direct reads on a status conflict
     Owner:         owner,           // the CRD that owns this component
 }
 
@@ -672,6 +673,7 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
         Scheme:        r.Scheme,
         EventRecorder: r.EventRecorder,
         Metrics:       r.Metrics,
+        APIReader:     r.APIReader,
         Owner:         owner,
     }
     // Declared before the deferred flush so the closure sees every component built below.
@@ -701,6 +703,11 @@ On a 409 Conflict, for example when another writer updated the owner between the
 `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a **separate** object,
 takes that copy's `resourceVersion` so the retry targets the live object, restores from it only the conditions whose
 type this flush does not own, and retries. The staged owner is never replaced.
+
+That fetch goes through `ReconcileContext.APIReader` when it is set, and through `Client` otherwise. Set it from the
+manager's `GetAPIReader()`. The manager's default `Client` serves reads from the informer cache, which can lag the very
+write that caused the conflict and hand back the same stale `resourceVersion`, so a retry through the cache may conflict
+again until the cache catches up. A direct read sees the server as it is.
 
 Two things follow from that. Non-condition status fields staged during the reconcile survive a conflict, because the
 object holding them is the object that gets written. And a condition type this flush does not own keeps the server's

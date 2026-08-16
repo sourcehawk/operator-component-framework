@@ -148,6 +148,7 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
         Scheme:        r.Scheme,
         EventRecorder: r.EventRecorder,
         Metrics:       r.Metrics,
+        APIReader:     r.APIReader, // direct reads on a status conflict
         Owner:         app,
     }
     // Persist all staged conditions exactly once, even on the error path. comps is

@@ -19,6 +19,9 @@ type Controller struct {
 	Scheme        *runtime.Scheme
 	EventRecorder events.EventRecorder
 	Metrics       component.MetricsRecorder
+	// APIReader reads straight from the API server; FlushStatus uses it on a
+	// conflict so the retry sees the live owner rather than a stale cache entry.
+	APIReader client.Reader
 
 	// NewConfigMapResource builds the ConfigMap and declares the extraction
 	// that writes the dbHost cell.
@@ -38,6 +41,7 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 		Scheme:        r.Scheme,
 		EventRecorder: r.EventRecorder,
 		Metrics:       r.Metrics,
+		APIReader:     r.APIReader,
 		Owner:         owner,
 	}
 	// Declared before the deferred flush so the closure sees every component

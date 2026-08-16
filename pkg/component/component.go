@@ -57,6 +57,15 @@ type ReconcileContext struct {
 	// Metrics is the recorder for status condition metrics. It is optional; if
 	// nil, [FlushStatus] will skip metric emission.
 	Metrics MetricsRecorder
+	// APIReader reads straight from the API server, bypassing the informer
+	// cache. Obtain it from the controller-runtime manager with GetAPIReader().
+	// [FlushStatus] uses it on a 409 conflict to fetch the owner as the server
+	// holds it: the manager's default Client serves reads from the cache, which
+	// can lag the write that caused the conflict and hand back the same stale
+	// resourceVersion, so a retry through it may conflict again. When APIReader
+	// is nil, FlushStatus falls back to Client. It is optional but recommended
+	// for any controller whose owner has other status writers.
+	APIReader client.Reader
 	// Owner is the custom resource that owns and is updated by the components.
 	Owner OperatorCRD
 }
@@ -566,10 +575,15 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //
 // On a 409 Conflict (for example if an external writer updated the owner between
 // the controller fetching it and this call) FlushStatus keeps the staged owner as
-// the object being written. It fetches the server's copy into a separate object,
-// takes that object's resourceVersion so the retry targets the live object, and
-// restores from it only the conditions whose type this flush does not own. It
-// then retries.
+// the object being written. It fetches the server's copy into a separate object
+// through rec.APIReader when set (rec.Client otherwise), takes that object's
+// resourceVersion so the retry targets the live object, and restores from it
+// only the conditions whose type this flush does not own. It then retries.
+//
+// Set rec.APIReader from the manager's GetAPIReader. The manager's default
+// Client serves reads from the informer cache, which can lag the very write
+// that caused the conflict and return the same stale resourceVersion, so a
+// retry through it may conflict again until the cache catches up.
 //
 // Two consequences follow from never replacing the staged owner. Non-condition
 // status fields staged during the reconcile survive a conflict. And a condition
@@ -650,7 +664,14 @@ func refreshUnownedConditions(ctx context.Context, rec ReconcileContext, owned m
 	// conditions in place here and they would read as the server's.
 	*server.GetStatusConditions() = nil
 
-	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(rec.Owner), server); err != nil {
+	// Read through APIReader when one is set: the manager's Client serves reads
+	// from the informer cache, which can lag the write that caused the conflict
+	// and return the same stale resourceVersion, defeating the retry.
+	reader := client.Reader(rec.Client)
+	if rec.APIReader != nil {
+		reader = rec.APIReader
+	}
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(rec.Owner), server); err != nil {
 		return err
 	}
 

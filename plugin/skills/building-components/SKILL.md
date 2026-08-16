@@ -231,10 +231,12 @@ The parameter is required, not variadic: a variadic would let existing calls kee
 old wider ownership, making a correctness fix opt-in and invisible.
 
 On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
-separate object, takes that copy's `resourceVersion`, restores from it only the conditions whose type this flush does
-not own, and retries. Two consequences: non-condition status fields staged during the reconcile survive, and a type this
-flush does not own keeps the server's value instead of the possibly stale copy the controller is holding, so another
-writer's concurrent update is not rolled back.
+separate object through `ReconcileContext.APIReader` (set it from the manager's `GetAPIReader()`; the default `Client`
+reads from the informer cache, which can lag the conflicting write and return the same stale `resourceVersion`), takes
+that copy's `resourceVersion`, restores from it only the conditions whose type this flush does not own, and retries. Two
+consequences: non-condition status fields staged during the reconcile survive, and a type this flush does not own keeps
+the server's value instead of the possibly stale copy the controller is holding, so another writer's concurrent update
+is not rolled back.
 
 For unowned types the server is the source of truth, absence included. An unowned condition the server no longer carries
 is dropped rather than written back, so a condition another writer removed is not resurrected, and one the server has

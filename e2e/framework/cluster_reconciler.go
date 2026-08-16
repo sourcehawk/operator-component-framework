@@ -31,6 +31,9 @@ type ClusterE2EReconciler struct {
 	Scheme        *runtime.Scheme
 	EventRecorder events.EventRecorder
 	Metrics       component.MetricsRecorder
+	// APIReader serves the conflict-path refetch in FlushStatus with a direct
+	// read, so the retry sees the live owner rather than the informer cache.
+	APIReader client.Reader
 
 	mu                 sync.RWMutex
 	resourceFactories  map[string]ClusterResourceFactory
@@ -43,12 +46,14 @@ func NewClusterE2EReconciler(
 	scheme *runtime.Scheme,
 	recorder events.EventRecorder,
 	metrics component.MetricsRecorder,
+	apiReader client.Reader,
 ) *ClusterE2EReconciler {
 	return &ClusterE2EReconciler{
 		Client:             c,
 		Scheme:             scheme,
 		EventRecorder:      recorder,
 		Metrics:            metrics,
+		APIReader:          apiReader,
 		resourceFactories:  make(map[string]ClusterResourceFactory),
 		componentFactories: make(map[string]ClusterComponentFactory),
 	}
@@ -127,6 +132,7 @@ func (r *ClusterE2EReconciler) Reconcile(ctx context.Context, req reconcile.Requ
 		Scheme:        r.Scheme,
 		EventRecorder: r.EventRecorder,
 		Metrics:       r.Metrics,
+		APIReader:     r.APIReader,
 		Owner:         owner,
 	}
 	defer func() {

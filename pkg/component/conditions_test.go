@@ -523,6 +523,41 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 			"an owned condition removed from the staged owner must stay removed; the server copy must not be restored")
 	})
 
+	t.Run("reads the server through APIReader on conflict, not through the cached client", func(t *testing.T) {
+		// A controller's Client reads from the informer cache, which can lag the
+		// write that caused the 409 and hand back the same stale resourceVersion.
+		// The conflict path must read through APIReader when one is set. Model
+		// the lag by giving the client and the reader different views of the same
+		// object: only the reader knows the other writer's newer condition.
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "SeenOnlyByAPIReader",
+			LastTransitionTime: metav1.Now(),
+		}}
+		apiReader := fake.NewClientBuilder().
+			WithScheme(scheme).WithStatusSubresource(serverSide).WithObjects(serverSide).Build()
+
+		cachedView := newOwner() // the cache never saw ExternalReady at all
+		k8sClient := conflictingClient(cachedView)
+
+		owner := newOwner()
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx,
+			ReconcileContext{Client: k8sClient, APIReader: apiReader, Owner: owner},
+			[]*Component{infraComponent(t)},
+		))
+
+		assert.Equal(t, 0, k8sClient.gets, "the conflict refetch must not go through the cached client")
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "SeenOnlyByAPIReader", conditionOf(t, persisted, "ExternalReady").Reason,
+			"the unowned condition must come from the direct read")
+		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason)
+	})
+
 	t.Run("takes the server's newer value for a condition type we do not own", func(t *testing.T) {
 		serverSide := newOwner()
 		serverSide.Status.Conditions = []metav1.Condition{{

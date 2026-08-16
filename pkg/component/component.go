@@ -536,10 +536,17 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //
 // On a 409 Conflict (for example if an external writer updated the owner
 // between the controller fetching it and this call) FlushStatus refetches the
-// owner into the same variable, re-applies the conditions staged during
-// reconciliation using meta.SetStatusCondition, and retries. Conditions managed
-// by other writers on the owner are preserved because meta.SetStatusCondition
-// merges by condition type.
+// owner into the same variable, re-applies the conditions it snapshotted at
+// entry using meta.SetStatusCondition, and retries.
+//
+// That snapshot is every condition on the in-memory owner, not only the ones
+// components staged during this reconcile. The retry is therefore a merge by
+// condition type, not a guarantee that other writers' updates survive. A
+// condition type another writer adds after the controller's Get is absent from
+// the snapshot, so the refetch brings it in and the retry leaves it alone. A
+// condition type that was already on the owner at the Get, and that another
+// writer updated in the meantime, is overwritten by the snapshotted copy, which
+// is stale by then. Keeping one writer per condition type avoids this entirely.
 //
 // Only the conditions are re-applied after a conflict. The refetch replaces the
 // in-memory owner with the server's object, so any non-condition status field

@@ -252,9 +252,9 @@ wrong.
 Put the hand-written helpers in their own file beside the generated `mutator.go` (see
 [Generated and hand-written files](#generated-and-hand-written-files)) and build them on `pkg/mutation/editors` and
 `pkg/mutation/selectors`. Every editor has an exported constructor that takes a pointer to the field it edits, so an
-editor works on any object that contains that field. `editors.NewContainerEditor(*corev1.Container)` brings
+editor works on any object that contains that field. `editors.NewContainerEditor(container *corev1.Container)` brings
 `EnsureEnvVars`, `EnsureArgs`, `SetResourceLimit`, and the rest to a container nested anywhere in your CRD, and
-`editors.NewPodSpecEditor(*corev1.PodSpec)` does the same for volumes, tolerations, and node selectors.
+`editors.NewPodSpecEditor(spec *corev1.PodSpec)` does the same for volumes, tolerations, and node selectors.
 
 Record the helper through the generated `Edit` method rather than adding a field to `featurePlan`. `Edit` appends to the
 active feature plan and the generated `Apply` runs it in registration order, so the helper lives entirely in your own

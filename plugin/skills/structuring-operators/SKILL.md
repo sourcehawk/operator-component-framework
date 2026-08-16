@@ -204,6 +204,10 @@ builder.IncludeWhen(served, func() component.Resource {
 }, component.GatedBy(metricsGate))
 ```
 
+The lookup names `v1` on purpose. `RESTMapping` takes variadic versions and matches any served version when you pass
+none, but the check should name the version the operator actually applies: a cluster serving only `v1beta1` would pass
+an any-version check and then fail at apply. Gate on the version you send.
+
 The two answer different questions and compose: `IncludeWhen` asks whether the cluster can hold the resource at all,
 `GatedBy` asks whether this owner wants it. Do not reach for `GatedBy` alone for a kind that may be absent. When the CRD
 is gone, a delete against that kind fails with a no-matches error on every reconcile, and removing a CRD has already

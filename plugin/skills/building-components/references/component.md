@@ -138,6 +138,10 @@ builder.IncludeWhen(served, func() component.Resource {
 }, component.GatedBy(metricsGate))
 ```
 
+The lookup names `v1` on purpose. `RESTMapping` takes variadic versions and matches any served version when you pass
+none, but the check should name the version the operator actually applies: a cluster serving only `v1beta1` would pass
+an any-version check and then fail at apply. Gate on the version you send.
+
 The two options answer different questions here, and they compose. `IncludeWhen(served, ...)` answers "can this cluster
 hold the resource at all", and `GatedBy(metricsGate)` answers "does this owner want it". When the CRD is present and the
 gate turns off, the framework deletes the `ServiceMonitor`, which is correct. When the CRD is absent, the resource is
@@ -671,10 +675,16 @@ reconcile, so the fields nobody staged still hold current server state. An owner
 writes stale values back over newer ones.
 
 On a 409 Conflict, for example when another writer updated the owner between the controller's `Get` and this call,
-`FlushStatus` refetches the owner into the same variable, reapplies the conditions it staged during the reconcile with
+`FlushStatus` refetches the owner into the same variable, reapplies the conditions it snapshotted at entry with
 `meta.SetStatusCondition`, and retries. Only the conditions are reapplied. Non-condition status fields staged in memory
-before the conflict are lost for that pass, and the next reconcile stages them again. Conditions written by other
-writers on the same owner survive, because `meta.SetStatusCondition` merges by condition type.
+before the conflict are lost for that pass, and the next reconcile stages them again.
+
+That snapshot is **every** condition on the in-memory owner, not only the ones components staged this pass. Treat the
+retry as a merge by condition type rather than a guarantee about other writers. A condition type another writer adds
+after the controller's `Get` is absent from the snapshot, so the refetch brings it in and the retry leaves it alone. A
+condition type that was already on the owner at the `Get`, and that another writer updated in the meantime, is
+overwritten by the snapshotted copy, which is stale by then. Keeping one writer per condition type avoids the question
+entirely.
 
 After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
 recording is skipped.

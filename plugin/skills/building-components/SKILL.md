@@ -216,8 +216,14 @@ conditions in one reconcile and persist them in one write, instead of racing a w
 
 That `Status().Update` writes the **whole status subresource**, not only the conditions, so fetch the owner fresh at the
 top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones. On a 409
-conflict `FlushStatus` refetches the owner and re-applies only the staged conditions, so a non-condition status field
-staged before the conflict is lost for that pass and must be staged again next reconcile.
+conflict `FlushStatus` refetches the owner and re-applies only conditions, so a non-condition status field staged before
+the conflict is lost for that pass and must be staged again next reconcile.
+
+The conditions it re-applies are a snapshot of **every** condition on the in-memory owner taken at entry, not only the
+ones components staged. The retry is therefore a merge by condition type, not a guarantee that another writer's updates
+survive: a condition type added by someone else after the controller's `Get` is absent from the snapshot and is left
+alone, while a type already present at the `Get` and updated concurrently is overwritten by the stale snapshotted copy.
+Keep one writer per condition type and the question does not arise.
 
 ## One write path for the owner's status
 

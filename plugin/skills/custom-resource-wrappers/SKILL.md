@@ -159,10 +159,11 @@ surface: it emits a general `Edit(func(*T) error)` and `EditObjectMetadata`, and
 enough for a flat spec and not enough for a CRD that carries a pod template per node group, a common shape once a CRD
 describes a clustered workload. Written by hand, every container mutation repeats the same find-the-container-or-add-it
 loop. Every editor in `pkg/mutation/editors` has an exported constructor that takes a pointer to the field it edits, so
-it works on a container or pod spec nested anywhere in your CRD: `editors.NewContainerEditor(*corev1.Container)`,
-`editors.NewPodSpecEditor(*corev1.PodSpec)`, `editors.NewObjectMetaEditor(*metav1.ObjectMeta)`. Pair them with
-`pkg/mutation/selectors` rather than comparing container names in the loop, so the wrapper obeys the same selector
-semantics as the built-in workloads. Put the helper in its own file beside the generated `mutator.go`:
+it works on a container or pod spec nested anywhere in your CRD:
+`editors.NewContainerEditor(container *corev1.Container)`, `editors.NewPodSpecEditor(spec *corev1.PodSpec)`,
+`editors.NewObjectMetaEditor(meta *metav1.ObjectMeta)`. Pair them with `pkg/mutation/selectors` rather than comparing
+container names in the loop, so the wrapper obeys the same selector semantics as the built-in workloads. Put the helper
+in its own file beside the generated `mutator.go`:
 
 Record through the generated `Edit` method, never by adding a field to `featurePlan`. `featurePlan` lives in the
 generated `mutator.go`, so a new field there is erased by the next `--force`. `Edit` appends to the active feature plan

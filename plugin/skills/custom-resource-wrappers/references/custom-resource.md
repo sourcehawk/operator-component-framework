@@ -321,13 +321,17 @@ category.
 
 The generic builder's `Build()` fails if the convergence handler is missing. For workload and task resources this is the
 converging-status handler registered with `WithCustomConvergeStatus`; for integration resources it is the
-operational-status handler registered with `WithCustomOperationalStatus`. Every other handler defaults to a safe value
-at the generic layer:
+operational-status handler registered with `WithCustomOperationalStatus`. Every other handler has a default at the
+generic layer:
 
 - Grace status defaults to `Healthy` (workload and integration only).
 - Suspension status defaults to `Suspended`.
 - The suspension mutation defaults to a no-op.
 - The delete-on-suspend decision defaults to `false`.
+
+These defaults are safe **as a set**, not individually: together they mean suspension does nothing at all. Replace one
+and the rest stop protecting you, which is why overriding only the delete-on-suspend decision deletes an object nothing
+has made safe to delete (see [Scale-to-zero or delete-on-suspend?](#scale-to-zero-or-delete-on-suspend)).
 
 Register custom handlers only where your CRD has domain-specific behavior. The workload handlers below mirror what
 `pkg/primitives/deployment` registers by default.

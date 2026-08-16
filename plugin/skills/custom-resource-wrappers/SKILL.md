@@ -199,10 +199,14 @@ func (m *Mutator) EditNodeSetContainers(
 Status handlers translate the CRD's runtime state into framework status types. Which handlers are needed depends on
 category (see Choosing a category below). The generic builder's `Build()` fails if the convergence handler is missing:
 for workload and task resources this is the handler registered with `WithCustomConvergeStatus`; for integration
-resources it is `WithCustomOperationalStatus`. Every other handler defaults to a safe value at the generic layer: grace
-status defaults to `Healthy` (workload and integration only), suspension status defaults to `Suspended`, the suspension
+resources it is `WithCustomOperationalStatus`. Every other handler has a default at the generic layer: grace status
+defaults to `Healthy` (workload and integration only), suspension status defaults to `Suspended`, the suspension
 mutation defaults to a no-op, and the delete-on-suspend decision defaults to `false`. Register custom handlers only
 where the CRD has domain-specific behavior.
+
+Those defaults are safe **as a set**, not individually: together they mean suspension does nothing. Replace one and the
+rest no longer protect you, which is why overriding only the delete-on-suspend decision is destructive (see
+[Scale-to-zero or delete-on-suspend?](#scale-to-zero-or-delete-on-suspend)).
 
 The convergence handler and the grace handler evaluate the same object in the same reconcile loop, with no refetch
 between them. When convergence returns `Healthy`, grace is never called; for every other state, grace must not

@@ -234,11 +234,9 @@ not own, and retries. Two consequences: non-condition status fields staged durin
 flush does not own keeps the server's value instead of the possibly stale copy the controller is holding, so another
 writer's concurrent update is not rolled back.
 
-A condition the controller stages that belongs to no component, such as a `Ready` from `component.Aggregate`, is not
-owned, so a conflict reverts it to the value the server already holds and the next reconcile stages it again. The For
-unowned types the server is the source of truth, absence included: an unowned condition the server no longer carries is
-dropped rather than written back, so a condition another writer removed is not resurrected, and one the server has never
-held (a first aggregate write) is dropped for the same reason and staged again next reconcile.
+For unowned types the server is the source of truth, absence included. An unowned condition the server no longer carries
+is dropped rather than written back, so a condition another writer removed is not resurrected, and one the server has
+never held (a first aggregate write) is dropped for the same reason and staged again next reconcile.
 
 Declare the component slice before the deferred call, so the closure observes every component built during the
 reconcile:

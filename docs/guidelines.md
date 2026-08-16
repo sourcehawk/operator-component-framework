@@ -242,6 +242,11 @@ it, and users still see it in `kubectl describe`. Delete it explicitly when you 
 meta.RemoveStatusCondition(owner.GetStatusConditions(), "OldComponentReady")
 ```
 
+A retired component is no longer passed to `FlushStatus`, so its condition type is unowned, and on a 409 conflict
+`FlushStatus` takes the server's value for unowned types, which puts the condition back for that pass. The removal is
+not lost: the next reconcile removes it again and the write succeeds. Expect the retired condition to disappear within a
+reconcile of the change, not on the exact pass that first omits the component.
+
 ## Reconciler Error Handling and Requeueing
 
 The framework distinguishes between conditions and errors. A resource that is merely converging (a rolling Deployment, a

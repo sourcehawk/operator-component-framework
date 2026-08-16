@@ -306,9 +306,24 @@ m.EditNodeSetContainers("data", selectors.ContainerNamed("broker"), func(e *edit
 ```
 
 Selector semantics come with the selector: `selectors.AllContainers()` needs no name and survives a container rename,
-and `selectors.ContainerNamed` and `selectors.ContainersNamed` match by name. Reuse them instead of comparing names in
-the loop, so the wrapper obeys the same
-[mutation ordering rules](guidelines.md#mutation-ordering-and-container-name-dependencies) as the built-in workloads.
+and `selectors.ContainerNamed` and `selectors.ContainersNamed` match by name. Reuse them rather than comparing names in
+the loop, so the same vocabulary describes a wrapper and a built-in workload.
+
+!!! warning "Matching is not identical to the built-in workloads"
+
+    A built-in workload mutator takes one snapshot of the containers per feature, after that feature's presence
+    operations and **before** any of its edits run, then matches every selector in the feature against that snapshot. A
+    rename by one edit therefore cannot change what a later edit in the same feature selects.
+
+    A helper recorded through `Edit` cannot reproduce that. Each `Edit` closure runs in turn against the live object, so
+    a second helper call in the same feature sees the renames performed by the first. Getting true parity would mean
+    reimplementing the per-feature snapshot inside the generated `mutator.go`, which regeneration would erase.
+
+    The consequence is the one the
+    [mutation ordering guideline](guidelines.md#mutation-ordering-and-container-name-dependencies) already warns about,
+    only with a smaller blast radius: register name-specific helper calls **before** any call that renames a container,
+    or use name-independent selectors such as `selectors.AllContainers()`. Within a single helper call the question does
+    not arise, because each `ContainerEditor` is scoped to the container it was given.
 
 ---
 
@@ -342,11 +357,12 @@ decodes the API server's response into that same object, so those handlers read 
 and `Status` included, and can trust `status.observedGeneration` to tell them whether the object's own controller has
 seen the spec just applied.
 
-Two handlers are outside that guarantee. The suspension **mutation** handler takes the mutator rather than the object
-and runs before the patch is sent. The **delete-on-suspend decision** is consulted twice in a suspension pass, and the
-first call happens before the apply, on the short-circuit that avoids recreating an already-absent resource. Do not read
-post-apply status in a deletion decision: base it on the spec and on inputs available when the resource was built, so it
-answers the same way in both calls.
+Three handlers are outside that guarantee. The **guard** runs before the resource is applied, which is its whole
+purpose, so it sees the desired object rather than the server's response. The suspension **mutation** handler takes the
+mutator rather than the object and runs before the patch is sent. The **delete-on-suspend decision** is consulted twice
+in a suspension pass, and the first call happens before the apply, on the short-circuit that avoids recreating an
+already-absent resource. Do not read post-apply status in a guard or a deletion decision: base them on the spec, on
+declared data, and on inputs available when the resource was built.
 
 ```go
 package messagequeue

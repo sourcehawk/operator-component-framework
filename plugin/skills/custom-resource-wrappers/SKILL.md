@@ -162,8 +162,8 @@ loop. Every editor in `pkg/mutation/editors` has an exported constructor that ta
 it works on a container or pod spec nested anywhere in your CRD:
 `editors.NewContainerEditor(container *corev1.Container)`, `editors.NewPodSpecEditor(spec *corev1.PodSpec)`,
 `editors.NewObjectMetaEditor(meta *metav1.ObjectMeta)`. Pair them with `pkg/mutation/selectors` rather than comparing
-container names in the loop, so the wrapper obeys the same selector semantics as the built-in workloads. Put the helper
-in its own file beside the generated `mutator.go`:
+container names in the loop, so one vocabulary describes a wrapper and a built-in. Put the helper in its own file beside
+the generated `mutator.go`:
 
 Record through the generated `Edit` method, never by adding a field to `featurePlan`. `featurePlan` lives in the
 generated `mutator.go`, so a new field there is erased by the next `--force`. `Edit` appends to the active feature plan
@@ -194,6 +194,14 @@ func (m *Mutator) EditNodeSetContainers(
 }
 ```
 
+**Matching is not identical to the built-in workloads.** A built-in takes one container snapshot per feature, after
+presence operations and before any edit runs, and matches every selector in that feature against it, so a rename by one
+edit cannot change what a later edit in the same feature selects. A helper recorded through `Edit` runs against the live
+object, so a second call in the same feature sees the first call's renames. Reproducing the snapshot would mean editing
+the generated `mutator.go`, which regeneration erases. Register name-specific helper calls before any call that renames
+a container, or use `selectors.AllContainers()`. Within a single call it does not arise: each `ContainerEditor` is
+scoped to the container it was given.
+
 ### 4. Implement status handlers
 
 Status handlers translate the CRD's runtime state into framework status types. Which handlers are needed depends on
@@ -219,10 +227,11 @@ server's response into that same object, so those handlers read server-populated
 included, and can trust `status.observedGeneration` to say whether the object's own controller has seen the spec just
 applied.
 
-Two handlers are outside that guarantee. The suspension **mutation** handler takes the mutator, before the patch is
-sent, and like any mutation must be a pure function of the spec rather than of live cluster state. The
-**delete-on-suspend decision** is consulted twice per suspension pass and the first call is before the apply, on the
-short-circuit for an already-absent resource, so it must not read post-apply status.
+Three handlers are outside that guarantee. The **guard** runs before the apply by definition, so it sees the desired
+object, not the server's response. The suspension **mutation** handler takes the mutator, before the patch is sent, and
+like any mutation must be a pure function of the spec rather than of live cluster state. The **delete-on-suspend
+decision** is consulted twice per suspension pass and the first call is before the apply, on the short-circuit for an
+already-absent resource, so it must not read post-apply status either.
 
 #### Scale-to-zero or delete-on-suspend?
 

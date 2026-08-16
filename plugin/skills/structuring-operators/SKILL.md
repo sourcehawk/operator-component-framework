@@ -178,10 +178,19 @@ exists only where the Prometheus Operator is installed, and the same holds for c
 CRD. Use a RESTMapper lookup as the `include` input, and keep `GatedBy` for the spec flag:
 
 ```go
+// Only a no-match error means absent; anything else is a real discovery failure.
+var served bool
 _, err := mgr.GetRESTMapper().RESTMapping(
     schema.GroupKind{Group: "monitoring.coreos.com", Kind: "ServiceMonitor"}, "v1",
 )
-served := err == nil
+switch {
+case err == nil:
+    served = true
+case meta.IsNoMatchError(err):
+    served = false
+default:
+    return fmt.Errorf("checking whether ServiceMonitor is served: %w", err)
+}
 
 builder.IncludeWhen(served, func() component.Resource {
     res, _ := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
@@ -192,6 +201,9 @@ builder.IncludeWhen(served, func() component.Resource {
 The lookup names `v1` on purpose. `RESTMapping` takes variadic versions and matches any served version when you pass
 none, but the check should name the version the operator actually applies: a cluster serving only `v1beta1` would pass
 an any-version check and then fail at apply. Gate on the version you send.
+
+Never write `served := err == nil`. `IncludeWhen` omits rather than deletes, so a transient discovery failure read as
+"absent" drops an already-created resource out of the component and leaves it unmanaged in the cluster, silently.
 
 The two answer different questions and compose: `IncludeWhen` asks whether the cluster can hold the resource at all,
 `GatedBy` asks whether this owner wants it. Do not reach for `GatedBy` alone for a kind that may be absent. When the CRD

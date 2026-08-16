@@ -126,11 +126,20 @@ Operator is installed, and the same holds for cert-manager kinds and for any opt
 the `include` input, and let `GatedBy` keep owning the spec flag that says whether the user wants the resource:
 
 ```go
-// The cluster serves the kind only when the CRD is installed.
+// Only a no-match error means the kind is absent. Any other error is a real
+// discovery failure and must be propagated, never read as "not installed".
+var served bool
 _, err := mgr.GetRESTMapper().RESTMapping(
     schema.GroupKind{Group: "monitoring.coreos.com", Kind: "ServiceMonitor"}, "v1",
 )
-served := err == nil
+switch {
+case err == nil:
+    served = true
+case meta.IsNoMatchError(err):
+    served = false
+default:
+    return fmt.Errorf("checking whether ServiceMonitor is served: %w", err)
+}
 
 builder.IncludeWhen(served, func() component.Resource {
     res, _ := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
@@ -141,6 +150,11 @@ builder.IncludeWhen(served, func() component.Resource {
 The lookup names `v1` on purpose. `RESTMapping` takes variadic versions and matches any served version when you pass
 none, but the check should name the version the operator actually applies: a cluster serving only `v1beta1` would pass
 an any-version check and then fail at apply. Gate on the version you send.
+
+Distinguishing the two errors matters more here than it usually would. `IncludeWhen` omits rather than deletes, so a
+transient discovery failure read as "absent" does not remove the resource, it drops it out of the component entirely: an
+already-created `ServiceMonitor` is then left in the cluster unmanaged, and nothing reports that it happened. Fail the
+setup path instead.
 
 The two options answer different questions here, and they compose. `IncludeWhen(served, ...)` answers "can this cluster
 hold the resource at all", and `GatedBy(metricsGate)` answers "does this owner want it". When the CRD is present and the
@@ -461,8 +475,10 @@ outrank everything; the ready states (`Healthy`, `Operational`, `Completed`) are
 `Status.Priority()` is the exported way to consume this ordering. A controller that derives an owner-level condition
 from several component conditions calls it directly, as
 [Derive the Owner's Aggregate Condition from Component Conditions](guidelines.md#derive-the-owners-aggregate-condition-from-component-conditions)
-describes. A condition's `Reason` is always a `component.Status` value, never free text, so metrics and other consumers
-can key on the reason string. Convert one back with `Condition.ComponentStatus()`.
+describes. The `Reason` on a condition **the framework writes for a component** is always a `component.Status` value,
+never free text, so metrics and other consumers can key on the reason string. Convert one back with
+`Condition.ComponentStatus()`. That guarantee does not extend to conditions on the owner written by anyone else:
+`GetCondition` returns a foreign condition verbatim, and its reason is whatever that writer put there.
 
 | Priority | Reason(s)                                        | Condition status | Category                                          |
 | -------- | ------------------------------------------------ | ---------------- | ------------------------------------------------- |
@@ -719,6 +735,12 @@ unowned condition, and the next reconcile stages it again.
     carries is dropped from the staged owner rather than written back, so a condition another writer removed is not
     resurrected. A condition the server has never held, such as the first write of the aggregate, is dropped for the
     same reason and staged again on the next reconcile.
+
+    "The next reconcile" depends on one happening. With controller-runtime's defaults, every update to the owner
+    triggers a reconcile, status-only ones included, so the successful write itself re-queues the owner and the aggregate
+    is restaged promptly. A controller that filters status-only updates out of its watch, for example with a
+    generation-based predicate, does not get that re-queue and the aggregate lags until the next reconcile from another
+    source.
 
 After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
 recording is skipped.

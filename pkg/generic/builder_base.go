@@ -137,12 +137,13 @@ func (b *BaseBuilder[T, M]) WithCustomSuspendMutation(handler func(M) error) {
 
 // WithCustomSuspendDeletionDecision overrides the resource delete-on-suspend decision handler.
 //
-// The handler receives BaseResource.DesiredObject and is consulted twice in a
-// suspension pass: once before the suspension apply, so an already-absent
-// delete-on-suspend resource is not recreated, and once after the resource
-// reports concepts.SuspensionStatusSuspended, to decide whether to delete it.
-// The decision must therefore be stable across both calls and must not depend
-// on post-apply status fields.
+// The handler receives BaseResource.DesiredObject and may be consulted twice in
+// a suspension pass: once before the suspension apply, so an already-absent
+// delete-on-suspend resource is not recreated, and once more only after the
+// resource reports concepts.SuspensionStatusSuspended, to decide whether to
+// delete it. The first call happens on every pass, so the decision must not
+// depend on post-apply status fields, and it must answer the same way in both
+// calls.
 func (b *BaseBuilder[T, M]) WithCustomSuspendDeletionDecision(handler func(T) bool) {
 	b.BaseRes.DeleteOnSuspendHandler = handler
 }

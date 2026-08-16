@@ -583,8 +583,9 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // an owner-level aggregate, is dropped for the same reason and staged again on
 // the next reconcile.
 //
-// rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
-// recording is skipped.
+// rec.Client and rec.Owner must be populated, and every component in comps must
+// be non-nil; a nil component is a programming error. If rec.Metrics is nil,
+// metric recording is skipped.
 func FlushStatus(ctx context.Context, rec ReconcileContext, comps []*Component) error {
 	owned := ownedConditionTypes(comps)
 

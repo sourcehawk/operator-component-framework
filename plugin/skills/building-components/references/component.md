@@ -454,7 +454,7 @@ When the owner carries no condition of that type, it returns a synthetic one ins
 conditions this way therefore never mistakes a component that has not reconciled for a component that is ready.
 
 ```go
-cond := comp.GetCondition(owner)         // component.Condition, an alias of metav1.Condition
+cond := comp.GetCondition(owner)         // component.Condition, a defined type over metav1.Condition
 status := cond.ComponentStatus()         // component.Status, the reason as a typed value
 priority := status.Priority()            // the aggregation priority of that status
 ```

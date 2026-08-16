@@ -230,8 +230,8 @@ applied.
 Three handlers are outside that guarantee. The **guard** runs before the apply by definition, so it sees the desired
 object, not the server's response. The suspension **mutation** handler takes the mutator, before the patch is sent, and
 like any mutation must be a pure function of the spec rather than of live cluster state. The **delete-on-suspend
-decision** is consulted twice per suspension pass and the first call is before the apply, on the short-circuit for an
-already-absent resource, so it must not read post-apply status either.
+decision** may be consulted twice per suspension pass, and the first call is always before the apply, on the
+short-circuit for an already-absent resource, so it must not read post-apply status either.
 
 #### Scale-to-zero or delete-on-suspend?
 

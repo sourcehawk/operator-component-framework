@@ -359,8 +359,8 @@ seen the spec just applied.
 
 Three handlers are outside that guarantee. The **guard** runs before the resource is applied, which is its whole
 purpose, so it sees the desired object rather than the server's response. The suspension **mutation** handler takes the
-mutator rather than the object and runs before the patch is sent. The **delete-on-suspend decision** is consulted twice
-in a suspension pass, and the first call happens before the apply, on the short-circuit that avoids recreating an
+mutator rather than the object and runs before the patch is sent. The **delete-on-suspend decision** may be consulted
+twice in a suspension pass, and the first call happens before the apply, on the short-circuit that avoids recreating an
 already-absent resource. Do not read post-apply status in a guard or a deletion decision: base them on the spec, on
 declared data, and on inputs available when the resource was built.
 

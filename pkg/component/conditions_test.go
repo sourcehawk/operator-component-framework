@@ -587,6 +587,41 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		assert.Equal(t, "Healthy", conditionOf(t, persisted, "InfraReady").Reason)
 	})
 
+	t.Run("takes the server's LastTransitionTime for an unowned condition, even when status is unchanged", func(t *testing.T) {
+		// This is the case that tells replaceStatusCondition apart from
+		// meta.SetStatusCondition. SetStatusCondition keeps the existing
+		// LastTransitionTime whenever the status did not change, so it would blend
+		// the server's condition with the stale local timestamp. The refresh must
+		// take the server's condition verbatim, transition time included.
+		serverTransition := metav1.NewTime(time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC))
+		staleTransition := metav1.NewTime(serverTransition.Add(-time.Hour))
+
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "Same",
+			LastTransitionTime: serverTransition,
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner()
+		owner.Status.Conditions = []metav1.Condition{{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "Same", // same status and reason
+			LastTransitionTime: staleTransition,
+		}}
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		got := conditionOf(t, persistedOf(t, k8sClient, owner), "ExternalReady")
+		assert.True(t, got.LastTransitionTime.Equal(&serverTransition),
+			"an unowned condition must carry the server's LastTransitionTime, not the stale local one; got %v want %v",
+			got.LastTransitionTime, serverTransition)
+	})
+
 	t.Run("preserves a condition another writer added after our fetch", func(t *testing.T) {
 		serverSide := newOwner()
 		serverSide.Status.Conditions = []metav1.Condition{{

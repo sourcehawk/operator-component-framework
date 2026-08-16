@@ -264,7 +264,7 @@ carries the client, scheme, recorders, and owner. A single deferred `component.F
 condition with one status update at the end of the loop, which keeps controllers with multiple components free of
 self-induced update conflicts.
 
-`ReconcileContext` has five fields:
+`ReconcileContext` has six fields:
 
 | Field           | Type                        | Notes                                                                                                                                                     |
 | --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -300,6 +300,7 @@ type Controller struct {
     Scheme        *runtime.Scheme
     EventRecorder events.EventRecorder
     Metrics       component.MetricsRecorder
+    APIReader     client.Reader // from mgr.GetAPIReader(); direct reads on a status conflict
 
     NewDeploymentResource func(*ExampleApp) (component.Resource, error)
     NewConfigMapResource  func(*ExampleApp) (component.Resource, error)

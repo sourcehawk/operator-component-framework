@@ -192,10 +192,11 @@ default:
     return fmt.Errorf("checking whether ServiceMonitor is served: %w", err)
 }
 
-builder.IncludeWhen(served, func() component.Resource {
-    res, _ := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
-    return res
-}, component.GatedBy(metricsGate))
+monitor, err := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
+if err != nil {
+    return err
+}
+builder.IncludeWhen(served, func() component.Resource { return monitor }, component.GatedBy(metricsGate))
 ```
 
 The lookup names `v1` on purpose. `RESTMapping` takes variadic versions and matches any served version when you pass

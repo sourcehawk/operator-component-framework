@@ -646,7 +646,7 @@ recCtx := component.ReconcileContext{
     Client:        r.Client,        // sigs.k8s.io/controller-runtime/pkg/client
     Scheme:        r.Scheme,        // *runtime.Scheme
     EventRecorder: r.EventRecorder, // events.EventRecorder, from manager.GetEventRecorder(name)
-    Metrics:       r.Metrics,       // component.MetricsRecorder (condition metrics), optional
+    Metrics:       r.Metrics,       // component.MetricsRecorder, optional; see Metrics
     APIReader:     r.APIReader,     // client.Reader, from manager.GetAPIReader(); direct reads on a status conflict
     Owner:         owner,           // the CRD that owns this component
 }
@@ -655,9 +655,9 @@ err = comp.Reconcile(ctx, recCtx)
 ```
 
 Dependencies are passed explicitly so components stay testable and decoupled from global state. The `Metrics` field is
-optional; when set, the framework records Prometheus metrics for every condition reported during a reconcile, using the
-recorder from [go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics). Leave it `nil` to opt
-out.
+optional; when set, the framework records Prometheus metrics for every condition reported during a reconcile and for
+every resource it applies. Use the recorder from `pkg/metrics`, or implement `component.MetricsRecorder` to record
+elsewhere. Leave it `nil` to opt out. See [Metrics](#metrics).
 
 `EventRecorder` takes a `k8s.io/client-go/tools/events.EventRecorder`. The manager accessor that returns one,
 `GetEventRecorder(name)`, was added in controller-runtime v0.23; on v0.22.x, build the recorder from client-go instead,
@@ -763,7 +763,7 @@ follows the server, and the next reconcile stages it again.
     source.
 
 After a successful update, `FlushStatus` records metrics for every condition on the owner. If `Metrics` is `nil`,
-recording is skipped.
+recording is skipped. See [Metrics](#metrics).
 
 This split is what lets a controller with several components stage several conditions during one reconcile and persist
 them in a single write. Persisting after each component would race the components' writes and produce 409 conflicts. See
@@ -820,6 +820,86 @@ applies to a status-only controller too, as in the validation-only example above
 ```go
 app.Status.ObservedGeneration = app.Generation
 ```
+
+## Metrics
+
+The framework records two families of Prometheus metrics through the single `ReconcileContext.Metrics` recorder:
+**condition metrics**, one gauge per owner and condition type, and **resource metrics**, counters describing what the
+framework did to each managed resource.
+
+`pkg/metrics` implements both. Build the collectors once per process and register them with controller-runtime's
+registry, then give each controller its own recorder:
+
+```go
+var (
+    conditions = ocm.NewOperatorConditionsGauge("myoperator")
+    collectors = metrics.NewCollectors()
+)
+
+func init() {
+    ctrlmetrics.Registry.MustRegister(conditions, collectors)
+}
+
+recCtx := component.ReconcileContext{
+    // ...
+    Metrics: metrics.NewRecorder("webapp-controller", conditions, collectors),
+}
+```
+
+The controller name becomes the `controller` label on every series the recorder emits. Passing `nil` for either
+collector disables that family; passing `nil` for `Metrics` itself disables both.
+
+### Resource metrics
+
+| Series                            | Type    | Labels                                                                   |
+| --------------------------------- | ------- | ------------------------------------------------------------------------ |
+| `ocf_resource_apply_total`        | counter | `controller`, `owner_kind`, `component`, `resource`, `kind`, `operation` |
+| `ocf_resource_apply_errors_total` | counter | `controller`, `owner_kind`, `component`, `resource`, `kind`              |
+
+`operation` is `created`, `updated` or `none`, the same classification the framework reports through
+[`ConvergingOperation`](#status-model) and the apply event.
+
+Both counters cover managed resources on the reconcile path and the suspension path. Read-only resources, deletions and
+orphans are not applies and record nothing.
+
+The reading that matters most is the `updated` rate. In steady state, a converged resource applies as `none` on every
+pass and `updated` stays flat:
+
+```promql
+rate(ocf_resource_apply_total{operation="updated"}[5m])
+```
+
+A resource whose `updated` rate never settles to zero is being rewritten on every reconcile even though nothing changed.
+Events report the same thing, but client-go's spam filter truncates them within seconds under exactly those conditions,
+which is why the counter exists.
+
+### The resource identifier
+
+The `resource` label comes from `WithMetricsIdentifier` on the resource's builder:
+
+```go
+secret.NewBuilder(tlsSecret).
+    WithMetricsIdentifier("tls").
+    Build()
+```
+
+It is a Prometheus label value, not a name of anything in Kubernetes. When unset, the framework labels the resource with
+its lowercased kind, so metrics work without any configuration. Set an identifier to tell two resources of the same kind
+apart within one component, or when the object's name carries a generated suffix. `Build` rejects a blank identifier;
+omit the call to accept the default.
+
+**The identifier must be low-cardinality and stable across reconciles**: a constant, or a value drawn from a small fixed
+set. Deriving it from a per-owner value such as the owning custom resource's name creates one time series per owner, and
+the framework never removes a series once created.
+
+Kept to that rule, the series set is bounded by the operator's static topology. No owner name or namespace appears in
+these labels, so the same handful of series covers three owners or three thousand, and deleting a resource or an owner
+leaves nothing behind that needs reaping. This is why there is no resource-metric counterpart to `RemoveConditionsFor`:
+a resource that goes away simply stops incrementing, and deleting a counter series mid-flight would read downstream as a
+counter reset and corrupt `rate()` and `increase()`.
+
+Per-owner detail lives in the condition metrics instead, which are keyed by owner name and namespace and are cleaned up
+with `RemoveConditionsFor` when the owner is deleted.
 
 ## Declared Data
 

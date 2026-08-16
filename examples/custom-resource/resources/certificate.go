@@ -37,6 +37,12 @@ func BaseCertificateRequest(owner *app.ExampleApp) *uns.Unstructured {
 func NewCertificateResource(owner *app.ExampleApp) (component.Resource, error) {
 	builder := static.NewBuilder(BaseCertificateRequest(owner))
 
+	// The object's name embeds the owner's name, so it is the wrong thing to key
+	// a metric by: one time series per ExampleApp, and the framework never
+	// removes a series. The identifier is a constant instead, which keeps the
+	// series count fixed no matter how many owners exist.
+	builder.WithMetricsIdentifier("certificate")
+
 	builder.WithMutation(unstruct.Mutation{
 		Name: "certificate-spec",
 		Mutate: func(m *unstruct.Mutator) error {

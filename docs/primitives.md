@@ -357,6 +357,26 @@ The interface deliberately omits operations that are not common to all three kin
 replica field), and the StatefulSet-only VolumeClaimTemplate methods. Reach for the concrete mutator type when you need
 those.
 
+## Metrics Identifier
+
+Every primitive builder exposes `WithMetricsIdentifier`, which sets the value of the `resource` label on the framework's
+per-resource apply counters:
+
+```go
+res, err := secret.NewBuilder(tlsSecret).
+    WithMetricsIdentifier("tls").
+    Build()
+```
+
+When unset, the framework labels the resource with its lowercased kind (`secret`, `deployment`), so the counters work
+without configuration. Set an identifier to tell two resources of the same kind apart within one component, or when the
+object's name carries a generated suffix.
+
+The identifier is a Prometheus label value, not a Kubernetes name, so it must be low-cardinality and stable across
+reconciles. Never derive it from a per-owner value such as the owning custom resource's name. `Build` rejects a blank
+identifier; omit the call to accept the default. See [Metrics](component.md#metrics) for the series, their labels, and
+the cardinality contract.
+
 ## Built-in Primitives
 
 | Primitive                           | Category    | Documentation                                             |

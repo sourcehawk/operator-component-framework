@@ -271,7 +271,7 @@ self-induced update conflicts.
 | `Client`        | `client.Client`             | The controller-runtime client.                                                                                                                            |
 | `Scheme`        | `*runtime.Scheme`           | The operator scheme.                                                                                                                                      |
 | `EventRecorder` | `events.EventRecorder`      | For Kubernetes events. `GetEventRecorder(name)` on the manager, v0.23 and later.                                                                          |
-| `Metrics`       | `component.MetricsRecorder` | Optional. Pass `nil` to skip status-condition metrics.                                                                                                    |
+| `Metrics`       | `component.MetricsRecorder` | Optional. `metrics.NewRecorder(...)` records condition and resource metrics; pass `nil` to skip both. See [Metrics](component.md#metrics).                |
 | `APIReader`     | `client.Reader`             | Optional, recommended. `GetAPIReader()` on the manager; `FlushStatus` reads through it on a 409 so the retry sees the live owner, not the informer cache. |
 | `Owner`         | `component.OperatorCRD`     | The owner object you fetched. Your CRD satisfies this via `GetStatusConditions`.                                                                          |
 

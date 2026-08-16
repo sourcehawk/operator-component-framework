@@ -715,6 +715,14 @@ func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
     return b
 }
 
+// WithMetricsIdentifier sets the resource's identifier for resource-level metrics,
+// used as the value of the `resource` label. It must be low-cardinality and stable
+// across reconciles; when unset the framework labels the resource by kind.
+func (b *Builder) WithMetricsIdentifier(identifier string) *Builder {
+    b.base.WithMetricsIdentifier(identifier)
+    return b
+}
+
 // WithCustomConvergeStatus overrides the default convergence status handler.
 func (b *Builder) WithCustomConvergeStatus(
     handler func(concepts.ConvergingOperation, *examplev1.MessageQueue) (concepts.AliveStatusWithReason, error),
@@ -890,6 +898,7 @@ func (r *Resource) FiringSet() ([]string, error) {
 var _ concepts.MutationInspector = (*Resource)(nil)
 var _ concepts.DataProducer = (*Resource)(nil)
 var _ concepts.DataConsumer = (*Resource)(nil)
+var _ concepts.MetricsIdentifiable = (*Resource)(nil)
 ```
 
 !!! warning "Do not omit `Preview`"
@@ -906,6 +915,11 @@ always if your builder exposes `ExtractInto`, `WithDataGuard`, or `WithOptionalD
 `concepts.DataProducer` and `concepts.DataConsumer`. Without them the component sees no declarations, so
 [build-time topology validation](component.md#build-time-validation) silently passes, `DataTopology()` omits the
 resource, and its cells are never cleared at the start of a reconcile.
+
+Forward `MetricsIdentifier` whenever your builder exposes `WithMetricsIdentifier`. It satisfies
+`concepts.MetricsIdentifiable`, which is how the framework reads the identifier at apply time. Without it the builder
+accepts an identifier and the framework silently labels the resource by kind instead. See
+[Metrics](component.md#metrics).
 
 Forward `RecordObservation` whenever the resource may be registered read-only and declares an extraction. The framework
 feeds the fetched cluster object back to the resource before extraction runs; without it, the extraction would see the
@@ -1162,10 +1176,11 @@ implications.
 ### Static resources
 
 Static resources have the simplest implementation. They do not participate in convergence, grace, or suspension
-reporting. The builder uses `generic.NewStaticBuilder`, which supports `WithMutation`, `WithGuard`, `WithDataGuard`, and
-`WithOptionalData`, plus a package-level `ExtractInto`. The resource wrapper needs only `Identity`, `Object`, `Mutate`,
-`GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, and
-`FiringSet`. `pkg/primitives/configmap` is a complete reference.
+reporting. The builder uses `generic.NewStaticBuilder`, which supports `WithMutation`, `WithGuard`, `WithDataGuard`,
+`WithOptionalData`, and `WithMetricsIdentifier`, plus a package-level `ExtractInto`. The resource wrapper needs only
+`Identity`, `Object`, `Mutate`, `MetricsIdentifier`, `GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`,
+`RecordObservation`, `Preview`, `RegisteredMutations`, and `FiringSet`. `pkg/primitives/configmap` is a complete
+reference.
 
 ### Task resources
 

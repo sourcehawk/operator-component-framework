@@ -37,8 +37,8 @@ func applyResource(
 	}
 
 	// Set GVK on the object (required for SSA — builders often omit TypeMeta).
-	// It runs here, before anything can fail, so the object's kind is known for
-	// the metric labels on every later path, success and failure alike.
+	// It runs this early so the object's kind is known for the metric labels on
+	// every later path, success and failure alike.
 	if err := ensureGVK(obj, rec.Scheme); err != nil {
 		return nil, fmt.Errorf(
 			"failed to determine GVK for resource %s: %w", resource.Identity(), err,
@@ -83,6 +83,15 @@ func applyResource(
 	// server response (including these fields) because Mutate updates the internal
 	// pointer and Patch writes back into the same object.
 	clearServerFields(obj)
+
+	// Re-assert the GVK. A Mutate implementation that assigns the whole struct
+	// (*current = *desired) drops the TypeMeta set above, and SSA requires it.
+	// The call is a no-op whenever the kind is still present.
+	if err := ensureGVK(obj, rec.Scheme); err != nil {
+		return nil, applyFailed(rec, labels, fmt.Errorf(
+			"failed to determine GVK for resource %s: %w", resource.Identity(), err,
+		))
+	}
 
 	// Server-Side Apply with forced ownership.
 	// client.Apply is deprecated in favor of client.Client.Apply() which requires generated

@@ -14,6 +14,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/examples/mutations-and-gating/app"
 	"github.com/sourcehawk/operator-component-framework/examples/mutations-and-gating/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
+	"github.com/sourcehawk/operator-component-framework/pkg/metrics"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -51,13 +52,10 @@ func main() {
 
 	gauge := ocm.NewOperatorConditionsGauge("example")
 	controller := &app.Controller{
-		Client:        fakeClient,
-		Scheme:        scheme,
-		EventRecorder: events.NewFakeRecorder(100),
-		Metrics: &ocm.ConditionMetricRecorder{
-			Controller:              "example",
-			OperatorConditionsGauge: gauge,
-		},
+		Client:                fakeClient,
+		Scheme:                scheme,
+		EventRecorder:         events.NewFakeRecorder(100),
+		Metrics:               metrics.NewRecorder("example", gauge, metrics.NewCollectors()),
 		NewDeploymentResource: resources.NewDeploymentResource,
 		NewConfigMapResource:  resources.NewConfigMapResource,
 	}

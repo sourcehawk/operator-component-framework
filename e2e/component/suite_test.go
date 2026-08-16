@@ -9,6 +9,7 @@ import (
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
 
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
+	"github.com/sourcehawk/operator-component-framework/pkg/metrics"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,15 +56,14 @@ var _ = BeforeSuite(func() {
 
 	By("creating E2E reconciler")
 	recorder := events.NewFakeRecorder(1000)
-	metrics := &ocm.ConditionMetricRecorder{
-		Controller:              "e2e-component",
-		OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("e2e_component"),
-	}
+	metricsRecorder := metrics.NewRecorder(
+		"e2e-component", ocm.NewOperatorConditionsGauge("e2e_component"), metrics.NewCollectors(),
+	)
 	clusterReconciler = framework.NewClusterE2EReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		recorder,
-		metrics,
+		metricsRecorder,
 		mgr.GetAPIReader(),
 	)
 

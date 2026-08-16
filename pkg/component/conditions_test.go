@@ -34,6 +34,14 @@ func (m *MockMetrics) RecordConditionFor(
 	m.Called(kind, object, conditionType, conditionStatus, conditionReason, lastTransitionTime, extraLabelValues)
 }
 
+func (m *MockMetrics) RecordResourceApply(labels ResourceMetricLabels, operation concepts.ConvergingOperation) {
+	m.Called(labels, operation)
+}
+
+func (m *MockMetrics) RecordResourceApplyError(labels ResourceMetricLabels) {
+	m.Called(labels)
+}
+
 func TestConvergingCondition(t *testing.T) {
 	componentType := ConditionType("TestComponent")
 	observedGen := int64(1)
@@ -412,6 +420,14 @@ func (failingClient) Get(context.Context, client.ObjectKey, client.Object, ...cl
 type metricsThatPanic struct{}
 
 func (metricsThatPanic) RecordConditionFor(string, ocm.ObjectLike, string, string, string, time.Time, ...string) {
+	panic("applyStatusCondition must not record metrics")
+}
+
+func (metricsThatPanic) RecordResourceApply(ResourceMetricLabels, concepts.ConvergingOperation) {
+	panic("applyStatusCondition must not record metrics")
+}
+
+func (metricsThatPanic) RecordResourceApplyError(ResourceMetricLabels) {
 	panic("applyStatusCondition must not record metrics")
 }
 

@@ -33,9 +33,35 @@ type OperatorCRD interface {
 	GetKind() string
 }
 
-// MetricsRecorder is an interface for recording status condition changes as metrics.
+// ResourceMetricLabels is the label set the framework attaches to
+// resource-level metrics for a single managed resource.
+//
+// The recorder supplies the remaining `controller` label; the framework does
+// not know which controller it is running inside.
+type ResourceMetricLabels struct {
+	// OwnerKind is the kind of the custom resource that owns the component,
+	// recorded as the `owner_kind` label.
+	OwnerKind string
+	// Component is the name of the component that manages the resource,
+	// recorded as the `component` label.
+	Component string
+	// Identifier is the resource's stable metrics identifier, recorded as the
+	// `resource` label. It is the value set with WithMetricsIdentifier on the
+	// resource's builder, or the resource's lowercased kind when unset.
+	Identifier string
+	// Kind is the kind of the applied Kubernetes object, recorded as the
+	// `kind` label.
+	Kind string
+}
+
+// MetricsRecorder records framework metrics: status condition changes and
+// resource-level applies.
+//
 // It is optional: a [ReconcileContext] may leave [ReconcileContext.Metrics]
-// nil, in which case [FlushStatus] skips metric emission.
+// nil, in which case [FlushStatus] and the apply path both skip emission.
+//
+// The metrics package ships an implementation backed by Prometheus. Implement
+// the interface directly only to record somewhere else.
 type MetricsRecorder interface {
 	// RecordConditionFor records a condition change for a specific object and kind.
 	RecordConditionFor(
@@ -43,6 +69,14 @@ type MetricsRecorder interface {
 		conditionType, conditionStatus, conditionReason string, lastTransitionTime time.Time,
 		extraLabelValues ...string,
 	)
+	// RecordResourceApply records one framework apply of a managed resource,
+	// classified by the operation the apply performed. It is called once per
+	// apply, on the reconcile path and the suspension path alike, and never for
+	// read-only resources.
+	RecordResourceApply(labels ResourceMetricLabels, operation concepts.ConvergingOperation)
+	// RecordResourceApplyError records one failed framework apply of a managed
+	// resource.
+	RecordResourceApplyError(labels ResourceMetricLabels)
 }
 
 // ReconcileContext carries the dependencies and target object for a reconciliation loop.

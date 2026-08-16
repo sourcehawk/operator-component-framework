@@ -3,6 +3,7 @@ package component
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -11,6 +12,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
+
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 )
 
 // recordedEvent captures every argument handed to [events.EventRecorder.Eventf].
@@ -78,10 +81,54 @@ func setupReconcileContext(scheme *runtime.Scheme, owner *MockOperatorCRD, clien
 		Client:        client,
 		Scheme:        scheme,
 		EventRecorder: &spyRecorder{},
-		Metrics: &ocm.ConditionMetricRecorder{
-			Controller:              "test-controller",
-			OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("test_namespace"),
-		},
-		Owner: owner,
+		Metrics:       &spyMetrics{},
+		Owner:         owner,
 	}
+}
+
+// recordedApply captures one call to [MetricsRecorder.RecordResourceApply].
+type recordedApply struct {
+	labels    ResourceMetricLabels
+	operation concepts.ConvergingOperation
+}
+
+// spyMetrics is a [MetricsRecorder] that captures resource-level emissions in
+// memory. Condition recording is exercised separately through MockMetrics.
+type spyMetrics struct {
+	mu      sync.Mutex
+	applies []recordedApply
+	errors  []ResourceMetricLabels
+}
+
+var _ MetricsRecorder = &spyMetrics{}
+
+func (s *spyMetrics) RecordConditionFor(
+	string, ocm.ObjectLike, string, string, string, time.Time, ...string,
+) {
+}
+
+func (s *spyMetrics) RecordResourceApply(labels ResourceMetricLabels, operation concepts.ConvergingOperation) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.applies = append(s.applies, recordedApply{labels: labels, operation: operation})
+}
+
+func (s *spyMetrics) RecordResourceApplyError(labels ResourceMetricLabels) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.errors = append(s.errors, labels)
+}
+
+// recordedApplies returns a copy of the applies captured so far.
+func (s *spyMetrics) recordedApplies() []recordedApply {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]recordedApply(nil), s.applies...)
+}
+
+// recordedErrors returns a copy of the apply errors captured so far.
+func (s *spyMetrics) recordedErrors() []ResourceMetricLabels {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]ResourceMetricLabels(nil), s.errors...)
 }

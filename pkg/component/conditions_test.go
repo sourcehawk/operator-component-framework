@@ -500,6 +500,29 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 		assert.Equal(t, metav1.ConditionTrue, got.Status)
 	})
 
+	t.Run("keeps an owned condition removed from the staged owner removed across a conflict", func(t *testing.T) {
+		// This is what makes component retirement conflict-safe: the retired
+		// component is still passed for the pass that removes its condition, so
+		// the type is owned and the conflict refresh must not restore it from the
+		// server. Only unowned types follow the server.
+		serverSide := newOwner()
+		serverSide.Status.Conditions = []metav1.Condition{{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+			LastTransitionTime: metav1.Now(),
+		}}
+		k8sClient := conflictingClient(serverSide)
+
+		owner := newOwner() // InfraReady deliberately absent: the controller removed it
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Nil(t, meta.FindStatusCondition(persisted.Status.Conditions, "InfraReady"),
+			"an owned condition removed from the staged owner must stay removed; the server copy must not be restored")
+	})
+
 	t.Run("takes the server's newer value for a condition type we do not own", func(t *testing.T) {
 		serverSide := newOwner()
 		serverSide.Status.Conditions = []metav1.Condition{{

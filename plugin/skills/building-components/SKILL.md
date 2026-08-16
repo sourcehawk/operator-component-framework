@@ -115,7 +115,8 @@ they exist. When a component aggregates several resources into one condition, `S
 highest-priority reason: `Error` and `FeatureGateError` outrank everything, then grace-expired states (`Down`,
 `Degraded`), then suspension states (`PendingSuspension`, `Suspending`, `Suspended`), then `Disabled`, then the various
 failing/converging/pending states, then the ready states (`Healthy`, `Operational`, `Completed`) at the bottom.
-`Unknown` and any unrecognized reason are priority `0` and never influence aggregation. A resource registered with
+`Unknown` and any unrecognized reason are priority `0`, so they never win a priority comparison; an `Unknown` condition
+still has status `False`, so under `Aggregate` it breaks unanimity and can govern the reason. A resource registered with
 `component.Auxiliary()` does not contribute its converging health to this aggregation, but a blocked guard on it still
 does.
 

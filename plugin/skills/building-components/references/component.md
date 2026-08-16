@@ -471,7 +471,10 @@ When several resources are aggregated into one condition, the framework selects 
 `Status.Priority()` defines the order: a higher number wins. The table below lists every reason in descending priority,
 so a reader can determine exactly how a failing or mixed-state component aggregates. `Error` and `FeatureGateError`
 outrank everything; the ready states (`Healthy`, `Operational`, `Completed`) are the lowest non-zero priorities;
-`Unknown` and any unrecognized reason are priority `0` and never influence aggregation.
+`Unknown` and any unrecognized reason are priority `0`, so they never win a priority comparison. Priority is only half
+of owner-level aggregation, though: [`Aggregate`](#aggregating-components-into-one-owner-condition) decides truth by
+unanimity first, and an `Unknown` condition has status `False`, so it does make the aggregate not ready and governs the
+reason when no non-True condition outranks it.
 
 `Status.Priority()` is the exported way to consume this ordering. A controller that derives an owner-level condition
 from several component conditions calls it directly, as
@@ -481,30 +484,30 @@ never free text, so metrics and other consumers can key on the reason string. Co
 `Condition.ComponentStatus()`. That guarantee does not extend to conditions on the owner written by anyone else:
 `GetCondition` returns a foreign condition verbatim, and its reason is whatever that writer put there.
 
-| Priority | Reason(s)                                        | Condition status | Category                                          |
-| -------- | ------------------------------------------------ | ---------------- | ------------------------------------------------- |
-| 20       | `Error`, `FeatureGateError`                      | `False`          | Reconcile or gate failure                         |
-| 19       | `Down`                                           | `False`          | Grace expired, non-functional                     |
-| 18       | `Degraded`                                       | `False`          | Grace expired, partially functional               |
-| 17       | `PendingSuspension`                              | `True`           | Suspension acknowledged, not started              |
-| 16       | `Suspending`                                     | `True`           | Converging towards suspended                      |
-| 15       | `Suspended`                                      | `True`           | Fully suspended                                   |
-| 14       | `Disabled`                                       | `True`           | Feature gate disabled                             |
-| 13       | `AliveFailing` (`Failing`)                       | `False`          | Workload cannot converge                          |
-| 12       | `OperationFailing`                               | `False`          | Integration cannot become operational             |
-| 11       | `CompletionFailing` (`TaskFailing`)              | `False`          | Task finished with an error                       |
-| 10       | `GuardBlocked` (`Blocked`), `PrerequisiteNotMet` | `False`          | Precondition not met                              |
-| 9        | `AliveScaling` (`Scaling`)                       | `False`          | Workload converging                               |
-| 8        | `CompletionRunning` (`TaskRunning`)              | `False`          | Task running                                      |
-| 7        | `AliveUpdating` (`Updating`)                     | `False`          | Workload converging                               |
-| 6        | `AliveCreating` (`Creating`)                     | `False`          | Workload converging                               |
-| 5        | `OperationPending`                               | `False`          | Integration waiting on a dependency               |
-| 4        | `CompletionPending` (`TaskPending`)              | `False`          | Task waiting to start                             |
-| 3        | `Healthy`                                        | `True`           | Workload ready                                    |
-| 2        | `Operational`                                    | `True`           | Integration ready                                 |
-| 1        | `Completed`                                      | `True`           | Task finished successfully                        |
-| 0        | `Unknown`                                        | `False`          | Not yet reconciled; ignored in aggregation        |
-| 0        | Any unrecognized reason                          | not set here     | Written by another writer; ignored in aggregation |
+| Priority | Reason(s)                                        | Condition status | Category                                            |
+| -------- | ------------------------------------------------ | ---------------- | --------------------------------------------------- |
+| 20       | `Error`, `FeatureGateError`                      | `False`          | Reconcile or gate failure                           |
+| 19       | `Down`                                           | `False`          | Grace expired, non-functional                       |
+| 18       | `Degraded`                                       | `False`          | Grace expired, partially functional                 |
+| 17       | `PendingSuspension`                              | `True`           | Suspension acknowledged, not started                |
+| 16       | `Suspending`                                     | `True`           | Converging towards suspended                        |
+| 15       | `Suspended`                                      | `True`           | Fully suspended                                     |
+| 14       | `Disabled`                                       | `True`           | Feature gate disabled                               |
+| 13       | `AliveFailing` (`Failing`)                       | `False`          | Workload cannot converge                            |
+| 12       | `OperationFailing`                               | `False`          | Integration cannot become operational               |
+| 11       | `CompletionFailing` (`TaskFailing`)              | `False`          | Task finished with an error                         |
+| 10       | `GuardBlocked` (`Blocked`), `PrerequisiteNotMet` | `False`          | Precondition not met                                |
+| 9        | `AliveScaling` (`Scaling`)                       | `False`          | Workload converging                                 |
+| 8        | `CompletionRunning` (`TaskRunning`)              | `False`          | Task running                                        |
+| 7        | `AliveUpdating` (`Updating`)                     | `False`          | Workload converging                                 |
+| 6        | `AliveCreating` (`Creating`)                     | `False`          | Workload converging                                 |
+| 5        | `OperationPending`                               | `False`          | Integration waiting on a dependency                 |
+| 4        | `CompletionPending` (`TaskPending`)              | `False`          | Task waiting to start                               |
+| 3        | `Healthy`                                        | `True`           | Workload ready                                      |
+| 2        | `Operational`                                    | `True`           | Integration ready                                   |
+| 1        | `Completed`                                      | `True`           | Task finished successfully                          |
+| 0        | `Unknown`                                        | `False`          | Not yet reconciled; loses every priority tie        |
+| 0        | Any unrecognized reason                          | not set here     | Written by another writer; loses every priority tie |
 
 !!! note
 

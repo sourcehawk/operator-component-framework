@@ -316,11 +316,11 @@ func mutateResource(
 // addressable through the client. It returns an error for a nil or non-pointer
 // object, which the client could not decode into anyway.
 func newEmptyObjectLike(obj client.Object) (client.Object, error) {
-	typ := reflect.TypeOf(obj)
-	if typ == nil || typ.Kind() != reflect.Pointer {
+	val := reflect.ValueOf(obj)
+	if !val.IsValid() || val.Kind() != reflect.Pointer || val.IsNil() {
 		return nil, fmt.Errorf("object must be a non-nil pointer, got %T", obj)
 	}
-	empty, ok := reflect.New(typ.Elem()).Interface().(client.Object)
+	empty, ok := reflect.New(val.Type().Elem()).Interface().(client.Object)
 	if !ok {
 		return nil, fmt.Errorf("zero value of %T does not implement client.Object", obj)
 	}

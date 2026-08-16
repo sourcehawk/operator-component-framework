@@ -567,8 +567,14 @@ func TestNewEmptyObjectLike(t *testing.T) {
 		assert.Empty(t, u.GetName())
 	})
 
-	t.Run("rejects a nil object instead of panicking", func(t *testing.T) {
+	t.Run("rejects a nil interface instead of panicking", func(t *testing.T) {
 		_, err := newEmptyObjectLike(nil)
+		require.Error(t, err)
+	})
+
+	t.Run("rejects a typed nil pointer instead of panicking", func(t *testing.T) {
+		var cm *corev1.ConfigMap
+		_, err := newEmptyObjectLike(cm)
 		require.Error(t, err)
 	})
 }

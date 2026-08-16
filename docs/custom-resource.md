@@ -1080,6 +1080,17 @@ func (c applyClient) Patch(
         return err
     }
     u := &unstructured.Unstructured{Object: content}
+    // The framework sets the GVK on the typed object before it patches, so it
+    // carries over. Set it explicitly anyway: an unstructured object cannot have
+    // its GVK inferred from the Go type, and any other Apply through this
+    // decorator would otherwise fail before the request is sent.
+    if u.GroupVersionKind().Empty() {
+        gvk, err := apiutil.GVKForObject(obj, c.Client.Scheme())
+        if err != nil {
+            return err
+        }
+        u.SetGroupVersionKind(gvk)
+    }
     pruneUndeclaredFields(u) // drop the nested status fields the schema omits
 
     if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {

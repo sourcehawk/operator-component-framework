@@ -525,10 +525,11 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 // the old, wider ownership, which would make a correctness fix opt-in and
 // invisible. Requiring the argument forces each call site to be looked at once.
 //
-// A condition the controller stages by hand is therefore never owned, whether it
-// is an owner-level aggregate or the only condition a validation-only CRD
-// reports. On a conflict it follows the server like any other unowned condition,
-// and the next reconcile stages it again.
+// Ownership is by condition type, not by who staged the condition. A condition
+// the controller stages by hand is owned only if its type belongs to a passed
+// component; otherwise, as with an owner-level aggregate or the only condition a
+// validation-only CRD reports, it is unowned. On a conflict an unowned condition
+// follows the server, and the next reconcile stages it again.
 //
 // FlushStatus issues a single Status().Update, which writes the entire status
 // subresource, not only the conditions. Fields the controller never staged are

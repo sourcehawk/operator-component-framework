@@ -426,6 +426,13 @@ func (c applyClient) Patch(
         return err
     }
     u := &unstructured.Unstructured{Object: content}
+    if u.GroupVersionKind().Empty() { // an unstructured object cannot infer its GVK from the Go type
+        gvk, err := apiutil.GVKForObject(obj, c.Client.Scheme())
+        if err != nil {
+            return err
+        }
+        u.SetGroupVersionKind(gvk)
+    }
     pruneUndeclaredFields(u) // delete the exact undeclared paths, here the nested status
     if err := c.Client.Patch(ctx, u, patch, opts...); err != nil {
         return err

@@ -221,9 +221,10 @@ top of every reconcile: an owner carried over from an earlier pass writes stale 
 types are the owned set, so it cannot drift from what the components actually write.
 
 **You own exactly what you pass, and nothing else.** A controller that manages no components passes `nil`; `nil` and an
-empty slice behave identically and own no condition types at all. A condition the controller stages by hand is therefore
-never owned, whether it is an aggregate or a validation-only CRD's single condition: on a conflict it follows the
-server, and the next reconcile stages it again.
+empty slice behave identically and own no condition types at all. Ownership is by condition type, not by who staged the
+condition, so a hand-staged condition is owned only if its type belongs to a passed component; an aggregate or a
+validation-only CRD's single condition is not, and on a conflict it follows the server and the next reconcile stages it
+again.
 
 The parameter is required, not variadic: a variadic would let existing calls keep compiling while silently retaining the
 old wider ownership, making a correctness fix opt-in and invisible.

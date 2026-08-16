@@ -141,10 +141,11 @@ default:
     return fmt.Errorf("checking whether ServiceMonitor is served: %w", err)
 }
 
-builder.IncludeWhen(served, func() component.Resource {
-    res, _ := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
-    return res
-}, component.GatedBy(metricsGate))
+monitor, err := servicemonitor.NewBuilder(serviceMonitor(app)).Build()
+if err != nil {
+    return err
+}
+builder.IncludeWhen(served, func() component.Resource { return monitor }, component.GatedBy(metricsGate))
 ```
 
 The lookup names `v1` on purpose. `RESTMapping` takes variadic versions and matches any served version when you pass
@@ -719,10 +720,11 @@ silently retaining the old, wider ownership, which would make a correctness fix 
 argument forces each call site to be looked at exactly once.
 
 **You own exactly what you pass, and nothing else.** A controller that manages no components passes `nil`, and `nil` and
-an empty slice behave identically: neither owns any condition type. A condition the controller stages by hand is
-therefore never owned, whether it is an owner-level aggregate or the only condition a
-[validation-only CRD](#one-write-path-for-the-owners-status) reports. On a conflict it follows the server like any other
-unowned condition, and the next reconcile stages it again.
+an empty slice behave identically: neither owns any condition type. Ownership is by condition type, not by who staged
+the condition. A condition the controller stages by hand is owned only if its type belongs to a passed component;
+otherwise, as with an owner-level aggregate or the only condition a
+[validation-only CRD](#one-write-path-for-the-owners-status) reports, it is unowned. On a conflict an unowned condition
+follows the server, and the next reconcile stages it again.
 
 !!! note "An owner-level aggregate is not owned by any component"
 

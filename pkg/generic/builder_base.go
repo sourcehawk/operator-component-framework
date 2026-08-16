@@ -30,7 +30,7 @@ type BaseBuilder[T client.Object, M FeatureMutator] struct {
 
 	// metricsIdentifierSet records that WithMetricsIdentifier was called, so
 	// ValidateBase can tell a blank identifier (a mistake) from an omitted one
-	// (a request for the default). Both leave BaseRes.MetricsIdent empty.
+	// (a request for the default). Both leave the resource's identifier empty.
 	metricsIdentifierSet bool
 }
 
@@ -87,7 +87,7 @@ func (b *BaseBuilder[T, M]) WithMutation(ms ...Mutation[M]) {
 // The identifier must not be blank. Build rejects an empty or whitespace-only
 // value; omit the call to accept the default.
 func (b *BaseBuilder[T, M]) WithMetricsIdentifier(identifier string) {
-	b.BaseRes.MetricsIdent = identifier
+	b.BaseRes.metricsIdentifier = identifier
 	b.metricsIdentifierSet = true
 }
 
@@ -208,7 +208,7 @@ func (b *BaseBuilder[T, M]) ValidateBase() error {
 	// A blank identifier is a mistake rather than a request for the default:
 	// omitting the call is how the default is requested. It would otherwise
 	// produce an empty `resource` label that reads as a framework bug.
-	if b.metricsIdentifierSet && strings.TrimSpace(b.BaseRes.MetricsIdent) == "" {
+	if b.metricsIdentifierSet && strings.TrimSpace(b.BaseRes.metricsIdentifier) == "" {
 		return errors.New("metrics identifier cannot be blank")
 	}
 

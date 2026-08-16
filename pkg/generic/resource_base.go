@@ -15,10 +15,11 @@ type BaseResource[T client.Object, M FeatureMutator] struct {
 
 	IdentityFunc func(T) string
 
-	// MetricsIdent is the value the framework uses for the `resource` label on
-	// resource-level metrics. An empty value means the framework's default
-	// applies. Set it with BaseBuilder.WithMetricsIdentifier.
-	MetricsIdent string
+	// metricsIdentifier is the value the framework uses for the `resource` label
+	// on resource-level metrics. An empty value means the framework's default
+	// applies. It is set through BaseBuilder.WithMetricsIdentifier, which is the
+	// only supported way to configure it, and read back with MetricsIdentifier.
+	metricsIdentifier string
 
 	// DataExtractions holds the declared data extractions recorded by
 	// ExtractInto, run by ExtractData after the resource is applied or fetched.
@@ -49,7 +50,7 @@ func (r *BaseResource[T, M]) Identity() string {
 // empty string when none was set, in which case the framework labels the
 // resource with its lowercased kind. It satisfies concepts.MetricsIdentifiable.
 func (r *BaseResource[T, M]) MetricsIdentifier() string {
-	return r.MetricsIdent
+	return r.metricsIdentifier
 }
 
 // RegisteredMutations returns the deduplicated Names of every mutation registered

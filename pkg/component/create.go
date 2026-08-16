@@ -165,7 +165,12 @@ func resourceMetricLabels(
 	kind := obj.GetObjectKind().GroupVersionKind().Kind
 	identifier := strings.ToLower(kind)
 	if identifiable, ok := resource.(concepts.MetricsIdentifiable); ok {
-		if configured := identifiable.MetricsIdentifier(); configured != "" {
+		// A blank identifier is treated as unset, matching what the builders
+		// reject at build time. A hand-written implementation is not held to
+		// that check, and " " is not a label value anyone meant to key a series
+		// by. Anything else is taken verbatim: rewriting a caller's identifier
+		// would silently split or merge series.
+		if configured := identifiable.MetricsIdentifier(); strings.TrimSpace(configured) != "" {
 			identifier = configured
 		}
 	}

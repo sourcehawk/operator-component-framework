@@ -124,6 +124,23 @@ func TestApplyResourceMetrics(t *testing.T) {
 		assert.Equal(t, "configmap", applies[0].labels.Identifier)
 	})
 
+	t.Run("falls back to the kind when the resource declares a whitespace-only identifier", func(t *testing.T) {
+		// The builders reject a blank identifier, but a hand-written
+		// concepts.MetricsIdentifiable can return one, and " " is not a label
+		// value anyone meant to key a series by.
+		rec := newEnv(t)
+		res := &identifiedResource{
+			operationRecordingResource: operationRecordingResource{build: buildConfigMap},
+			identifier:                 "  \t ",
+		}
+
+		require.NoError(t, apply(t, rec, res))
+
+		applies := rec.Metrics.(*spyMetrics).recordedApplies()
+		require.Len(t, applies, 1)
+		assert.Equal(t, "configmap", applies[0].labels.Identifier)
+	})
+
 	t.Run("records an error and no apply when the patch fails", func(t *testing.T) {
 		rec := newEnv(t)
 		rec.Client = failingPatchClient{Client: rec.Client}

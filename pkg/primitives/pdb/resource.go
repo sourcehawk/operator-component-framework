@@ -30,6 +30,14 @@ func (r *Resource) Identity() string {
 	return r.base.Identity()
 }
 
+// MetricsIdentifier returns the identifier set with
+// Builder.WithMetricsIdentifier, or an empty string when none was set, in which
+// case the framework labels the resource with its lowercased kind. It satisfies
+// concepts.MetricsIdentifiable.
+func (r *Resource) MetricsIdentifier() string {
+	return r.base.MetricsIdentifier()
+}
+
 // Object returns a deep copy of the underlying Kubernetes PodDisruptionBudget object.
 //
 // The returned object implements client.Object, making it compatible with
@@ -111,3 +119,4 @@ func (r *Resource) FiringSet() ([]string, error) {
 var _ concepts.MutationInspector = (*Resource)(nil)
 var _ concepts.DataProducer = (*Resource)(nil)
 var _ concepts.DataConsumer = (*Resource)(nil)
+var _ concepts.MetricsIdentifiable = (*Resource)(nil)

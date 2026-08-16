@@ -575,8 +575,13 @@ func fail(rec ReconcileContext, conditionType ConditionType, err error) error {
 //
 // A condition the controller stages that belongs to no component, such as an
 // owner-level aggregate produced by [Aggregate], is therefore not owned by this
-// flush. On a conflict it reverts to the server's value, and the next reconcile
-// stages it again.
+// flush. On a conflict it reverts to the value the server already holds, and the
+// next reconcile stages it again.
+//
+// The restore reads the server's conditions, so an unowned type the server does
+// not yet carry is left alone: the first write of such a condition survives a
+// conflict, and only a later conflict, once the server holds that type, reverts
+// it.
 //
 // rec.Client and rec.Owner must be populated. If rec.Metrics is nil, metric
 // recording is skipped.

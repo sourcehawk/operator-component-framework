@@ -233,7 +233,9 @@ flush does not own keeps the server's value instead of the possibly stale copy t
 writer's concurrent update is not rolled back.
 
 A condition the controller stages that belongs to no component, such as a `Ready` from `component.Aggregate`, is not
-owned, so a conflict reverts it to the server's value and the next reconcile stages it again.
+owned, so a conflict reverts it to the value the server already holds and the next reconcile stages it again. The
+restore reads the server's conditions, so an unowned type the server does not yet carry is left alone: the first write
+of such a condition survives a conflict, and only a later one reverts it.
 
 Declare the component slice before the deferred call, so the closure observes every component built during the
 reconcile:

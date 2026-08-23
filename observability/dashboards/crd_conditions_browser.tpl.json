@@ -1,0 +1,769 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Dashboard to monitor operator custom resource conditions",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "ocf"
+      ],
+      "targetBlank": false,
+      "title": "OCF dashboards",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 10,
+      "panels": [],
+      "title": "Operator Conditions",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Conditions matching the given filter criteria ",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "semi-dark-blue",
+            "mode": "fixed"
+          },
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "same_as_value",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+          "legendFormat": "Total",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total Conditions Matching",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Table of $kind conditions of type $condition",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "transparent",
+            "mode": "fixed"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "applyToRow": false,
+              "mode": "basic",
+              "type": "color-background",
+              "wrapText": true
+            },
+            "filterable": true,
+            "inspect": true
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 397
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Since"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "False": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "False"
+                      },
+                      "True": {
+                        "color": "semi-dark-green",
+                        "index": 0,
+                        "text": "True"
+                      },
+                      "Unknown": {
+                        "color": "semi-dark-yellow",
+                        "index": 2,
+                        "text": "Unknown"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": []
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(\n  {{operator_namespace}}controller_condition{\n    kind=\"$kind\",\n    condition=~\"$condition\",\n    status=~\"$status\",\n    reason=~\"$reason\",\n    id=~\"$resource_id\",\n    {{namespace_label}}=~\"$namespace\"\n  }\n  and\n  topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n) by (name, {{namespace_label}}, condition, status, reason)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "$kind Conditions",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "value_ms",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Value"
+                }
+              },
+              "operator": "*",
+              "right": {
+                "fixed": "1000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "time",
+                "targetField": "value_ms"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true
+            },
+            "includeByName": {},
+            "indexByName": {
+              "Time": 0,
+              "{{namespace_label}}": 1,
+              "name": 2,
+              "condition": 3,
+              "status": 4,
+              "reason": 5,
+              "value_ms": 6,
+              "Value": 7
+            },
+            "renameByName": {
+              "Value": "",
+              "condition": "Condition",
+              "{{namespace_label}}": "Namespace",
+              "name": "Name",
+              "reason": "Reason",
+              "status": "Status",
+              "value_ms": "Since"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 9,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Number of $kind $condition Conditions with status False",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "semi-dark-red",
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "semi-dark-red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 19
+          },
+          "id": 7,
+          "options": {
+            "colorMode": "background_solid",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "same_as_value",
+            "reduceOptions": {
+              "calcs": [
+                "last"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showPercentChange": false,
+            "textMode": "value",
+            "wideLayout": true
+          },
+          "pluginVersion": "12.1.1",
+          "repeat": "condition",
+          "repeatDirection": "h",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"False\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+              "legendFormat": "Total",
+              "range": false,
+              "refId": "A",
+              "exemplar": false,
+              "instant": true
+            }
+          ],
+          "title": "$condition=False",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Number of $kind $condition Conditions with status Unknown",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "semi-dark-red",
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "semi-dark-yellow",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 24
+          },
+          "id": 11,
+          "options": {
+            "colorMode": "background_solid",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "same_as_value",
+            "reduceOptions": {
+              "calcs": [
+                "last"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showPercentChange": false,
+            "textMode": "value",
+            "wideLayout": true
+          },
+          "pluginVersion": "12.1.1",
+          "repeat": "condition",
+          "repeatDirection": "h",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"Unknown\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+              "legendFormat": "Total",
+              "range": false,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "exemplar": false,
+              "instant": true
+            }
+          ],
+          "title": "$condition=Unknown",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Number of $kind $condition Conditions with status True",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "semi-dark-red",
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 29
+          },
+          "id": 8,
+          "options": {
+            "colorMode": "background_solid",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "percentChangeColorMode": "same_as_value",
+            "reduceOptions": {
+              "calcs": [
+                "last"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showPercentChange": false,
+            "textMode": "value",
+            "wideLayout": true
+          },
+          "pluginVersion": "12.1.1",
+          "repeat": "condition",
+          "repeatDirection": "h",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"True\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+              "legendFormat": "Total",
+              "range": false,
+              "refId": "A",
+              "exemplar": false,
+              "instant": true
+            }
+          ],
+          "title": "$condition=True",
+          "type": "stat"
+        }
+      ],
+      "title": "Status Counts Per Condition",
+      "type": "row"
+    }
+  ],
+  "preload": false,
+  "refresh": "",
+  "schemaVersion": 41,
+  "tags": [
+    "ocf"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "The data source to get the metrics from",
+        "label": "Datasource",
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values({{operator_namespace}}controller_condition,kind)",
+        "description": "The resource kind to view",
+        "label": "Kind",
+        "name": "kind",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values({{operator_namespace}}controller_condition,kind)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\"},condition)",
+        "description": "The condition type to display",
+        "includeAll": true,
+        "label": "Condition",
+        "multi": true,
+        "name": "condition",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\"},condition)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "type": "query",
+        "allValue": ".*"
+      },
+      {
+        "allowCustomValue": true,
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"},status)",
+        "description": "Filter for a specific status",
+        "includeAll": true,
+        "label": "Status",
+        "multi": true,
+        "name": "status",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"},status)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query",
+        "allValue": ".*"
+      },
+      {
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},reason)",
+        "description": "Filter for condition reason",
+        "includeAll": true,
+        "label": "Reason",
+        "multi": true,
+        "name": "reason",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},reason)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query",
+        "allValue": ".*"
+      },
+      {
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "query_result(sum ({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"} > 0) by ({{namespace_label}}))",
+        "description": "The namespaces in which to list the resources",
+        "includeAll": true,
+        "label": "Namespace",
+        "multi": true,
+        "name": "namespace",
+        "options": [],
+        "query": {
+          "qryType": 3,
+          "query": "query_result(sum ({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"} > 0) by ({{namespace_label}}))",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "^.*{{namespace_label}}=\"([^\"]+)\".*$",
+        "sort": 1,
+        "type": "query",
+        "allValue": ".*"
+      },
+      {
+        "allowCustomValue": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
+        "description": "Namespace and resource name combination",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "resource_id",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query",
+        "allValue": ".*",
+        "label": "Resource"
+      },
+      {
+        "baseFilters": [],
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "filters": [],
+        "name": "Filters",
+        "type": "adhoc"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-5m",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "timezone": "browser",
+  "title": "CRD Conditions Browser",
+  "uid": "{{operator_namespace}}crd_conditions_browser",
+  "version": 1
+}

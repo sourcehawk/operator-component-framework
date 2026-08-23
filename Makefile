@@ -327,6 +327,10 @@ test-alerts: ## Lint and unit test the alert rules with promtool.
 	echo "Running unit tests..."; \
 	promtool test rules --diff "$$tmpdir"/tests/*.yaml
 
+.PHONY: lint-dashboards
+lint-dashboards: ## Check the dashboard and alert templates render to valid files that reference real metrics.
+	go test ./$(OBS_DIR)/
+
 OBS_DEV_NAMESPACE := demo
 OBS_DEV_OUT := $(OBS_DIR)/generated/dev
 # Extra flags for the simulator, e.g. SIMULATOR_ARGS="-leader=false".

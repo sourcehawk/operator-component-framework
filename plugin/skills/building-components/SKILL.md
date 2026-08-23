@@ -6,7 +6,9 @@ description:
   gates, prerequisites, the reconciliation lifecycle, conditions and the status model, reading a component's condition
   with GetCondition, aggregating component conditions into an owner-level condition, grace periods, suspension,
   ReconcileContext, how a controller writes the owner CR's status (including a status-only controller that manages no
-  resources) and where observedGeneration is set, FlushStatus, guards, and declared data cells.
+  resources) and where observedGeneration is set, FlushStatus, guards, declared data cells, wiring metrics.NewRecorder
+  (its controller name must match the controller-runtime controller name), the shipped Grafana dashboards and Prometheus
+  alert rules, and what an alert such as ManagedResourceNotConverging means.
 ---
 
 # Building Components

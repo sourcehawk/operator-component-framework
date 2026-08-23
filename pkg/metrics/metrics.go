@@ -21,8 +21,9 @@
 //	}
 //
 // The controller name must match the controller-runtime controller name (the
-// lower-cased kind by default) so the dashboards and alerts shipped under
-// observability/ correlate the framework's series with controller-runtime's.
+// lower-cased kind passed to For, unless Named overrides it) so the dashboards
+// and alerts shipped under observability/ correlate the framework's series
+// with controller-runtime's.
 //
 // [go-crd-condition-metrics]: https://github.com/sourcehawk/go-crd-condition-metrics
 package metrics

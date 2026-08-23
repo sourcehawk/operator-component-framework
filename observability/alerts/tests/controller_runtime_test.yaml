@@ -1,0 +1,174 @@
+# Unit tests for the controller-runtime alerting rules. Run with `make test-alerts`.
+rule_files:
+  - ../controller_runtime.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - name: TestControllerReconcileErrors
+    interval: 1m
+    input_series:
+      # database: 3 of 10 reconciles a minute fail
+      - series: 'controller_runtime_reconcile_total{controller="database",result="error"}'
+        values: '0+3x60'
+      - series: 'controller_runtime_reconcile_total{controller="database",result="success"}'
+        values: '0+7x60'
+      # webapp: 1 of 10 fails, under the threshold
+      - series: 'controller_runtime_reconcile_total{controller="webapp",result="error"}'
+        values: '0+1x60'
+      - series: 'controller_runtime_reconcile_total{controller="webapp",result="success"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ControllerReconcileErrors
+        exp_alerts: []
+      - eval_time: 26m
+        alertname: ControllerReconcileErrors
+        exp_alerts:
+          - exp_labels:
+              controller: database
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Controller `database` fails 30% of its reconciles
+              description: |
+                Over the last 10 minutes, 30% of the reconciles of controller `database` returned an error. Errors are requeued with backoff, so a sustained ratio this high means the controller is stuck on something rather than riding out a blip.
+
+                Quick check with:
+                ```
+                kubectl logs -l control-plane=controller-manager --all-containers | grep -i "error" | grep database
+                ```
+
+  - name: TestControllerReconcilePanics
+    interval: 1m
+    input_series:
+      - series: 'controller_runtime_reconcile_panics_total{controller="database"}'
+        values: '0 0 0 1+0x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ControllerReconcilePanics
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ControllerReconcilePanics
+        exp_alerts:
+          - exp_labels:
+              controller: database
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Controller `database` panicked during reconcile
+              description: |
+                Controller `database` recovered from 1 panic(s) in the last 10 minutes. The reconcile that panicked was requeued, so the same owner will likely panic again on its next turn.
+
+                Quick check with:
+                ```
+                kubectl logs -l control-plane=controller-manager --all-containers | grep -A 20 "Observed a panic"
+                ```
+      # Out of the 10m window again
+      - eval_time: 20m
+        alertname: ControllerReconcilePanics
+        exp_alerts: []
+
+  - name: TestControllerWorkqueueBacklog
+    interval: 1m
+    input_series:
+      # database: items wait between 100s and 1000s before being picked up
+      - series: 'workqueue_queue_duration_seconds_bucket{controller="database",name="database",le="100"}'
+        values: '0+0x60'
+      - series: 'workqueue_queue_duration_seconds_bucket{controller="database",name="database",le="1000"}'
+        values: '0+10x60'
+      - series: 'workqueue_queue_duration_seconds_bucket{controller="database",name="database",le="+Inf"}'
+        values: '0+10x60'
+      # webapp: everything under 100s
+      - series: 'workqueue_queue_duration_seconds_bucket{controller="webapp",name="webapp",le="100"}'
+        values: '0+10x60'
+      - series: 'workqueue_queue_duration_seconds_bucket{controller="webapp",name="webapp",le="1000"}'
+        values: '0+10x60'
+      - series: 'workqueue_queue_duration_seconds_bucket{controller="webapp",name="webapp",le="+Inf"}'
+        values: '0+10x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ControllerWorkqueueBacklog
+        exp_alerts: []
+      - eval_time: 26m
+        alertname: ControllerWorkqueueBacklog
+        exp_alerts:
+          - exp_labels:
+              controller: database
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Controller `database` cannot keep up with its workqueue
+              description: |
+                Items in the workqueue of controller `database` waited 16m 31s (p99 over 10 minutes) before a worker picked them up. The queue grows faster than the workers drain it: too few concurrent reconciles, reconciles that take too long, or a burst of events the controller cannot absorb.
+
+                Quick check with:
+                ```
+                kubectl top pod -l control-plane=controller-manager
+                ```
+
+  - name: TestControllerReconcileLatencyHigh
+    interval: 1m
+    input_series:
+      - series: 'controller_runtime_reconcile_time_seconds_bucket{controller="database",le="60"}'
+        values: '0+0x60'
+      - series: 'controller_runtime_reconcile_time_seconds_bucket{controller="database",le="120"}'
+        values: '0+10x60'
+      - series: 'controller_runtime_reconcile_time_seconds_bucket{controller="database",le="+Inf"}'
+        values: '0+10x60'
+      - series: 'controller_runtime_reconcile_time_seconds_bucket{controller="webapp",le="60"}'
+        values: '0+10x60'
+      - series: 'controller_runtime_reconcile_time_seconds_bucket{controller="webapp",le="120"}'
+        values: '0+10x60'
+      - series: 'controller_runtime_reconcile_time_seconds_bucket{controller="webapp",le="+Inf"}'
+        values: '0+10x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ControllerReconcileLatencyHigh
+        exp_alerts: []
+      - eval_time: 26m
+        alertname: ControllerReconcileLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              controller: database
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Controller `database` reconciles are slow
+              description: |
+                The p99 reconcile time of controller `database` over the last 10 minutes is 1m 59s. Every slow reconcile holds a worker, so sustained latency this high turns into a workqueue backlog.
+
+                Quick check with:
+                ```
+                kubectl logs -l control-plane=controller-manager --all-containers | grep database | tail -50
+                ```
+
+  - name: TestOperatorLeaderMissing
+    interval: 1m
+    input_series:
+      # the leader steps down at 10m and nobody takes over
+      - series: 'leader_election_master_status{name="demo-operator"}'
+        values: '1+0x10 0+0x50'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: OperatorLeaderMissing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: OperatorLeaderMissing
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: OperatorLeaderMissing
+        exp_alerts:
+          - exp_labels:
+              name: demo-operator
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Operator `demo-operator` has no leader
+              description: |
+                No replica of operator `demo-operator` has held the leader election lease for 5 minutes, so none of its controllers is reconciling.
+
+                Quick check with:
+                ```
+                kubectl get lease demo-operator -A
+                ```

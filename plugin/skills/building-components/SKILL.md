@@ -316,3 +316,7 @@ with `go doc`, `go doc` wins.
 
 - `references/component.md`: full component documentation. Read when you need exact builder signatures, status
   constants, lifecycle phase details, or guard semantics.
+- `references/observability.md`: the Grafana dashboards and Prometheus alert rules shipped for the metrics a
+  `ReconcileContext.Metrics` recorder emits. Read when wiring `metrics.NewRecorder` (its controller name must match
+  controller-runtime's controller name), rendering the dashboards and alerts for an operator, or explaining what an
+  alert such as `ManagedResourceNotConverging` means.

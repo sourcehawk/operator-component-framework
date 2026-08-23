@@ -284,7 +284,7 @@ alerts: ## Render the Prometheus alert rules for METRIC_NAMESPACE into observabi
 	        if [ -n "$(PROMETHEUSRULE_LABELS)" ]; then \
 	          echo "  labels:"; \
 	          for kv in $$(echo "$(PROMETHEUSRULE_LABELS)" | tr ',' ' '); do \
-	            echo "    $${kv%%=*}: $${kv#*=}"; \
+	            echo "    $${kv%%=*}: \"$${kv#*=}\""; \
 	          done; \
 	        fi; \
 	        echo "spec:"; \

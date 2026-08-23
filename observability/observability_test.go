@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -72,6 +73,40 @@ func knownMetrics(t *testing.T) map[string]bool {
 // `_bucket`/`_sum`/`_count` suffixes of histograms.
 var metricNameRe = regexp.MustCompile(`\b((?:ocf|controller_runtime|workqueue|rest_client|leader_election|process|go)_[a-z0-9_]+|` + lintNamespace + `_controller_condition)\b`)
 
+// selectorRe pulls the metric name out of every selector-shaped token
+// (`name{...}`). It catches typos and unknown metric families that the prefix
+// whitelist of metricNameRe skips over.
+var selectorRe = regexp.MustCompile(`([a-zA-Z_:][a-zA-Z0-9_:]*)\s*\{`)
+
+// promqlKeywords are identifiers that may legally precede `{` in PromQL
+// without naming a metric.
+var promqlKeywords = map[string]bool{
+	"by": true, "on": true, "ignoring": true,
+	"group_left": true, "group_right": true, "without": true,
+}
+
+// placeholderRe matches a `{{name}}` template placeholder. After rendering,
+// any hit in a PromQL expression is a mis-spelled placeholder the render left
+// behind.
+var placeholderRe = regexp.MustCompile(`\{\{ *[a-zA-Z_]+ *\}\}`)
+
+// assertExprClean checks a rendered PromQL expression: every metric-family
+// token and every selector names a known metric, and no template placeholder
+// survived rendering.
+func assertExprClean(t *testing.T, known map[string]bool, expr, context string) {
+	t.Helper()
+	for _, m := range metricNameRe.FindAllString(expr, -1) {
+		assert.True(t, known[baseName(m)], "unknown metric %q in %s", m, context)
+	}
+	for _, m := range selectorRe.FindAllStringSubmatch(expr, -1) {
+		if promqlKeywords[m[1]] {
+			continue
+		}
+		assert.True(t, known[baseName(m[1])], "unknown selector metric %q in %s", m[1], context)
+	}
+	assert.NotRegexp(t, placeholderRe, expr, "unrendered placeholder in %s", context)
+}
+
 // baseName strips the histogram sample suffixes off a series name so that it
 // can be looked up as a metric family.
 func baseName(n string) string {
@@ -120,9 +155,7 @@ func TestDashboards(t *testing.T) {
 			exprsFromJSON(d, &exprs)
 			require.NotEmpty(t, exprs)
 			for _, e := range exprs {
-				for _, m := range metricNameRe.FindAllString(e, -1) {
-					assert.True(t, known[baseName(m)], "unknown metric %q in %q", m, e)
-				}
+				assertExprClean(t, known, e, strconv.Quote(e))
 			}
 		})
 	}
@@ -154,10 +187,9 @@ func TestAlerts(t *testing.T) {
 			require.NotEmpty(t, doc.Groups)
 			for _, g := range doc.Groups {
 				for _, r := range g.Rules {
-					assert.Equal(t, map[string]string{"severity": "warning"}, r.Labels, "%s labels", r.Alert)
-					for _, m := range metricNameRe.FindAllString(r.Expr, -1) {
-						assert.True(t, known[baseName(m)], "unknown metric %q in %s", m, r.Alert)
-					}
+					assert.Len(t, r.Labels, 1, "%s carries only the severity label", r.Alert)
+					assert.Contains(t, []string{"warning", "critical"}, r.Labels["severity"], "%s severity", r.Alert)
+					assertExprClean(t, known, r.Expr, r.Alert)
 				}
 			}
 			// Every alert in the file has a promtool unit test.
@@ -166,7 +198,7 @@ func TestAlerts(t *testing.T) {
 			require.NoError(t, err, "every rule file has a promtool test file")
 			for _, g := range doc.Groups {
 				for _, r := range g.Rules {
-					assert.Contains(t, string(tests), "alertname: "+r.Alert, "%s has a unit test", r.Alert)
+					assert.Contains(t, string(tests), "alertname: "+r.Alert+"\n", "%s has a unit test", r.Alert)
 				}
 			}
 		})

@@ -1,6 +1,10 @@
 # Alerting rules for the controller-runtime metrics every operator exposes:
 # reconcile results and latency, the workqueue, leader election.
 #
+# These rules carry no metric namespace placeholder: they are shared by every
+# operator in the cluster and installed once, as the PrometheusRule
+# `ocf-controller-runtime`.
+#
 # Thresholds are deliberately conservative and expressed as ratios or
 # quantiles, so that they hold whether the operator manages three owners or
 # three thousand. See docs/observability.md for the thresholds to tune.

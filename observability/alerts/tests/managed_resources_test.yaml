@@ -4,7 +4,7 @@
 # series below is one resource *type* of one component, aggregated over all of
 # its owners. Time series values are cumulative counter samples one minute apart.
 rule_files:
-  - ../ocf_resources.yaml
+  - ../managed_resources.yaml
 
 evaluation_interval: 1m
 

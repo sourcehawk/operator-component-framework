@@ -1,6 +1,10 @@
 # Alerting rules for the resource apply counters recorded by
 # github.com/sourcehawk/operator-component-framework/pkg/metrics.
 #
+# These rules carry no metric namespace placeholder: they are shared by every
+# operator in the cluster and installed once, as the PrometheusRule
+# `ocf-managed-resources`.
+#
 # Neither counter carries an owner name or namespace, only the operator's static
 # topology (controller, owner kind, component, resource identifier, kind), so
 # these rules fire per resource *type* rather than per owner. Per-owner signal
@@ -16,7 +20,7 @@
 # (absent when scraping outside a cluster, which is harmless), so two installs
 # of one operator in a cluster are alerted on separately.
 groups:
-  - name: ocf-resources
+  - name: managed-resources
     rules:
       # A managed resource rewritten on every reconcile. A converged resource
       # applies as `none`; one whose applies keep coming back `updated` is in a

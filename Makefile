@@ -218,8 +218,13 @@ METRIC_NAMESPACE ?= unset
 # `exported_namespace`; override with NAMESPACE_LABEL=namespace if yours does not.
 NAMESPACE_LABEL ?= exported_namespace
 # Shape of the rendered alert files: prometheusrule (one PrometheusRule object
-# per template) or rules (plain files for prometheus' rule_files).
+# per rule file) or rules (plain files for prometheus' rule_files).
 ALERT_FORMAT ?= prometheusrule
+# Optional metadata for the PrometheusRule objects: the namespace to create them
+# in, and comma-separated key=value labels, for example the release label a
+# kube-prometheus-stack ruleSelector matches on (PROMETHEUSRULE_LABELS=release=kps).
+PROMETHEUSRULE_NAMESPACE ?=
+PROMETHEUSRULE_LABELS ?=
 # Metric namespace the alert unit tests are written against.
 ALERT_TEST_NAMESPACE := test_operator
 
@@ -254,19 +259,34 @@ alerts: ## Render the Prometheus alert rules for METRIC_NAMESPACE into observabi
 	$(call require_metric_namespace,alerts)
 	@echo "Rendering alerts for $(METRIC_NAMESPACE) (namespace label: $(NAMESPACE_LABEL), format: $(ALERT_FORMAT))..."
 	@mkdir -p $(OBS_OUT)/alerts
-	@for file in $(OBS_DIR)/alerts/*.tpl.yaml; do \
-	  name=$$(basename "$$file" .tpl.yaml); \
+	@for file in $(OBS_DIR)/alerts/*.yaml; do \
+	  [ -e "$$file" ] || continue; \
+	  case "$$file" in \
+	    *.tpl.yaml) \
+	      name=$$(basename "$$file" .tpl.yaml); \
+	      rule_name="$(METRIC_NAMESPACE)-$$name" ;; \
+	    *) \
+	      name=$$(basename "$$file" .yaml); \
+	      rule_name="ocf-$$name" ;; \
+	  esac; \
+	  rule_name=$$(echo "$$rule_name" | tr '[:upper:]' '[:lower:]' | tr '_:' '--'); \
 	  out="$(OBS_OUT)/alerts/$$name.yaml"; \
 	  case "$(ALERT_FORMAT)" in \
 	    rules) \
 	      $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) > "$$out" ;; \
 	    prometheusrule) \
-	      rule_name=$$(echo "$(METRIC_NAMESPACE)-$$name" | tr '[:upper:]' '[:lower:]' | tr '_:' '--'); \
 	      { \
 	        echo "apiVersion: monitoring.coreos.com/v1"; \
 	        echo "kind: PrometheusRule"; \
 	        echo "metadata:"; \
 	        echo "  name: $$rule_name"; \
+	        [ -z "$(PROMETHEUSRULE_NAMESPACE)" ] || echo "  namespace: $(PROMETHEUSRULE_NAMESPACE)"; \
+	        if [ -n "$(PROMETHEUSRULE_LABELS)" ]; then \
+	          echo "  labels:"; \
+	          for kv in $$(echo "$(PROMETHEUSRULE_LABELS)" | tr ',' ' '); do \
+	            echo "    $${kv%%=*}: $${kv#*=}"; \
+	          done; \
+	        fi; \
 	        echo "spec:"; \
 	        $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) \
 	          | sed -e 's/^/  /' -e 's/[[:space:]]*$$//'; \
@@ -277,7 +297,7 @@ alerts: ## Render the Prometheus alert rules for METRIC_NAMESPACE into observabi
 	done
 
 .PHONY: test-alerts
-test-alerts: ## Lint and unit test the alert rule templates with promtool.
+test-alerts: ## Lint and unit test the alert rules with promtool.
 	@command -v promtool >/dev/null 2>&1 || { \
 		echo "Error: promtool is required to test the alert rules."; \
 		echo "It ships with prometheus: https://prometheus.io/download/"; \
@@ -287,10 +307,17 @@ test-alerts: ## Lint and unit test the alert rule templates with promtool.
 	tmpdir=$$(mktemp -d "$${TMPDIR:-/tmp}/ocf-alerts.XXXXXX"); \
 	trap 'rm -rf "$$tmpdir"' EXIT; \
 	mkdir -p "$$tmpdir/tests" "$$tmpdir/namespace-label"; \
-	for file in $(OBS_DIR)/alerts/*.tpl.yaml; do \
-	  name=$$(basename "$$file" .tpl.yaml); \
-	  $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),exported_namespace) > "$$tmpdir/$$name.yaml"; \
-	  $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),namespace) > "$$tmpdir/namespace-label/$$name.yaml"; \
+	for file in $(OBS_DIR)/alerts/*.yaml; do \
+	  [ -e "$$file" ] || continue; \
+	  case "$$file" in \
+	    *.tpl.yaml) \
+	      name=$$(basename "$$file" .tpl.yaml); \
+	      $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),exported_namespace) > "$$tmpdir/$$name.yaml"; \
+	      $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),namespace) > "$$tmpdir/namespace-label/$$name.yaml" ;; \
+	    *) \
+	      cp "$$file" "$$tmpdir/"; \
+	      cp "$$file" "$$tmpdir/namespace-label/" ;; \
+	  esac; \
 	done; \
 	cp $(OBS_DIR)/alerts/tests/*.yaml "$$tmpdir/tests/"; \
 	echo "Linting rules..."; \

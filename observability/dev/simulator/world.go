@@ -152,9 +152,11 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-// healthyWebApps: fifty owners, each reconciled every 5 to 10 minutes, all
-// resources converged, Ready=True since the simulator started. The hot-loop
-// owner (webapp-01) is among them and is also healthy by its conditions.
+// healthyWebApps: fifty owners; one random owner reconciles every six to
+// eleven seconds, so each of the fifty is reconciled roughly every five to ten
+// minutes on average. All resources converged, Ready=True since the simulator
+// started. The hot-loop owner (webapp-01) is among them and is also healthy by
+// its conditions.
 func (w *world) healthyWebApps(ctx context.Context) {
 	c := w.webapp
 	owners := make([]owner, 50)
@@ -246,10 +248,10 @@ func (w *world) databases(ctx context.Context) {
 			}
 
 			if i%60 == 0 { // every three minutes
-				if flipReason == "Failing" {
-					flipReason = "Creating"
+				if flipReason == reasonFailing {
+					flipReason = reasonCreating
 				} else {
-					flipReason = "Failing"
+					flipReason = reasonFailing
 				}
 				flipSince = time.Now()
 			}

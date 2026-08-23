@@ -4,6 +4,10 @@
 # Thresholds are deliberately conservative and expressed as ratios or
 # quantiles, so that they hold whether the operator manages three owners or
 # three thousand. See docs/observability.md for the thresholds to tune.
+#
+# `namespace` is the operator's own namespace as stamped by the scrape job
+# (absent when scraping outside a cluster, which is harmless), so two installs
+# of one operator in a cluster are alerted on separately.
 groups:
   - name: controller-runtime
     rules:
@@ -11,9 +15,9 @@ groups:
         for: 15m
         expr: >
           (
-            sum by (controller) (rate(controller_runtime_reconcile_total{result="error"}[10m]))
+            sum by (namespace, controller) (rate(controller_runtime_reconcile_total{result="error"}[10m]))
             /
-            sum by (controller) (rate(controller_runtime_reconcile_total[10m]))
+            sum by (namespace, controller) (rate(controller_runtime_reconcile_total[10m]))
           ) > 0.25
         labels:
           severity: warning
@@ -30,7 +34,7 @@ groups:
 
       - alert: ControllerReconcilePanics
         expr: >
-          sum by (controller) (increase(controller_runtime_reconcile_panics_total[10m])) > 0
+          sum by (namespace, controller) (increase(controller_runtime_reconcile_panics_total[10m])) > 0
         labels:
           severity: warning
         annotations:
@@ -50,21 +54,24 @@ groups:
       # with both `name` and `controller` (same value) in every version the
       # framework supports (v0.22 and later), so aggregating by `controller`
       # keeps one label across the reconcile rules, the workqueue rules and the
-      # dashboards.
+      # dashboards. The workqueue histogram has one bucket per decade, so the
+      # threshold sits on a bucket bound: a p99 above 100 seconds means more
+      # than one percent of items waited longer than 100 seconds. The value in
+      # the description is interpolated within that bucket.
       - alert: ControllerWorkqueueBacklog
         for: 15m
         expr: >
           histogram_quantile(
             0.99,
-            sum by (controller, le) (rate(workqueue_queue_duration_seconds_bucket[10m]))
-          ) > 300
+            sum by (namespace, controller, le) (rate(workqueue_queue_duration_seconds_bucket[10m]))
+          ) > 100
         labels:
           severity: warning
         annotations:
           summary: >-
             Controller `{{ $labels.controller }}` cannot keep up with its workqueue
           description: |
-            Items in the workqueue of controller `{{ $labels.controller }}` waited {{ $value | humanizeDuration }} (p99 over 10 minutes) before a worker picked them up. The queue grows faster than the workers drain it: too few concurrent reconciles, reconciles that take too long, or a burst of events the controller cannot absorb.
+            More than one percent of the items in the workqueue of controller `{{ $labels.controller }}` waited longer than 100 seconds before a worker picked them up (p99 wait {{ $value | humanizeDuration }}, interpolated within the histogram bucket). The queue grows faster than the workers drain it: too few concurrent reconciles, reconciles that take too long, or a burst of events the controller cannot absorb.
 
             Quick check with:
             ```
@@ -76,15 +83,15 @@ groups:
         expr: >
           histogram_quantile(
             0.99,
-            sum by (controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket[10m]))
-          ) > 60
+            sum by (namespace, controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket[10m]))
+          ) > 30
         labels:
           severity: warning
         annotations:
           summary: >-
-            Controller `{{ $labels.controller }}` reconciles are slow
+            Controller `{{ $labels.controller }}` reconciles are slow, p99 above 30 seconds
           description: |
-            The p99 reconcile time of controller `{{ $labels.controller }}` over the last 10 minutes is {{ $value | humanizeDuration }}. Every slow reconcile holds a worker, so sustained latency this high turns into a workqueue backlog.
+            The p99 reconcile time of controller `{{ $labels.controller }}` over the last 10 minutes is {{ $value | humanizeDuration }}, above the 30 second threshold. Every slow reconcile holds a worker, so sustained latency this high turns into a workqueue backlog.
 
             Quick check with:
             ```
@@ -95,7 +102,7 @@ groups:
       - alert: OperatorLeaderMissing
         for: 5m
         expr: >
-          max by (name) (leader_election_master_status) == 0
+          max by (namespace, name) (leader_election_master_status) == 0
         labels:
           severity: warning
         annotations:

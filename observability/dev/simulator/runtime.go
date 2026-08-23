@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 // runtimeMetrics defines the controller-runtime, workqueue, REST client and
@@ -28,13 +29,12 @@ type runtimeMetrics struct {
 	leader              *prometheus.GaugeVec
 }
 
-// Label names, the workqueue subsystem and the reconcile result value the
-// lookalike series share with controller-runtime.
+// Label names and the reconcile result value the lookalike series share with
+// controller-runtime.
 const (
-	labelController    = "controller"
-	labelName          = "name"
-	subsystemWorkqueue = "workqueue"
-	resultError        = "error"
+	labelController = "controller"
+	labelName       = "name"
+	resultError     = "error"
 )
 
 // reconcileTimeBuckets mirrors controller-runtime's ReconcileTime histogram.
@@ -69,37 +69,37 @@ func newRuntimeMetrics(reg prometheus.Registerer) *runtimeMetrics {
 			Help: "Number of currently used workers per controller",
 		}, []string{labelController}),
 		queueDepth: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Subsystem: subsystemWorkqueue, Name: "depth",
+			Subsystem: ctrlmetrics.WorkQueueSubsystem, Name: ctrlmetrics.DepthKey,
 			Help: "Current depth of workqueue by workqueue and priority",
 		}, []string{labelName, labelController, "priority"}),
 		queueAdds: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Subsystem: subsystemWorkqueue, Name: "adds_total",
+			Subsystem: ctrlmetrics.WorkQueueSubsystem, Name: ctrlmetrics.AddsKey,
 			Help: "Total number of adds handled by workqueue",
 		}, []string{labelName, labelController}),
 		queueDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Subsystem: subsystemWorkqueue, Name: "queue_duration_seconds",
+			Subsystem: ctrlmetrics.WorkQueueSubsystem, Name: ctrlmetrics.QueueLatencyKey,
 			Help:    "How long in seconds an item stays in workqueue before being requested",
 			Buckets: prometheus.ExponentialBuckets(10e-9, 10, 12),
 		}, []string{labelName, labelController}),
 		workDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Subsystem: subsystemWorkqueue, Name: "work_duration_seconds",
+			Subsystem: ctrlmetrics.WorkQueueSubsystem, Name: ctrlmetrics.WorkDurationKey,
 			Help:    "How long in seconds processing an item from workqueue takes.",
 			Buckets: prometheus.ExponentialBuckets(10e-9, 10, 12),
 		}, []string{labelName, labelController}),
 		queueUnfinished: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Subsystem: subsystemWorkqueue, Name: "unfinished_work_seconds",
+			Subsystem: ctrlmetrics.WorkQueueSubsystem, Name: ctrlmetrics.UnfinishedWorkKey,
 			Help: "How many seconds of work has been done that " +
 				"is in progress and hasn't been observed by work_duration. Large " +
 				"values indicate stuck threads. One can deduce the number of stuck " +
 				"threads by observing the rate at which this increases.",
 		}, []string{labelName, labelController}),
 		queueLongestRunning: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Subsystem: subsystemWorkqueue, Name: "longest_running_processor_seconds",
+			Subsystem: ctrlmetrics.WorkQueueSubsystem, Name: ctrlmetrics.LongestRunningProcessorKey,
 			Help: "How many seconds has the longest running " +
 				"processor for workqueue been running.",
 		}, []string{labelName, labelController}),
 		queueRetries: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Subsystem: subsystemWorkqueue, Name: "retries_total",
+			Subsystem: ctrlmetrics.WorkQueueSubsystem, Name: ctrlmetrics.RetriesKey,
 			Help: "Total number of items added to the workqueue with a non-zero delay (rate-limited requeues, explicit RequeueAfter or AddAfter calls)",
 		}, []string{labelName, labelController}),
 		restRequests: prometheus.NewCounterVec(prometheus.CounterOpts{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"sync"
 	"time"
 
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
@@ -27,20 +26,6 @@ type resource struct {
 	component, identifier, kind string
 }
 
-// lockedRand serialises access to a rand.Rand, which is not safe for
-// concurrent use; several scenario goroutines share one controller's stream.
-type lockedRand struct {
-	mu sync.Mutex
-	r  *rand.Rand
-}
-
-// IntN returns a uniform random int in [0, n).
-func (l *lockedRand) IntN(n int) int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.r.IntN(n)
-}
-
 // controllerSim drives one controller's worth of series: a framework recorder
 // for conditions and applies, and the controller-runtime lookalikes.
 type controllerSim struct {
@@ -48,7 +33,6 @@ type controllerSim struct {
 	ownerKind string
 	rec       *metrics.Recorder
 	rt        *runtimeMetrics
-	rng       *lockedRand
 }
 
 func (c *controllerSim) labels(r resource) component.ResourceMetricLabels {
@@ -70,9 +54,9 @@ func (c *controllerSim) reconcile(result string, queueWait, duration time.Durati
 		c.rt.reconcileErrors.WithLabelValues(c.name).Inc()
 		c.rt.queueRetries.WithLabelValues(c.name, c.name).Inc()
 	}
-	c.rt.restRequests.WithLabelValues("200", "GET", "10.96.0.1:443").Add(float64(2 + c.rng.IntN(3)))
-	c.rt.restRequests.WithLabelValues("200", "PATCH", "10.96.0.1:443").Add(float64(1 + c.rng.IntN(4)))
-	if c.rng.IntN(20) == 0 {
+	c.rt.restRequests.WithLabelValues("200", "GET", "10.96.0.1:443").Add(float64(2 + rand.IntN(3)))
+	c.rt.restRequests.WithLabelValues("200", "PATCH", "10.96.0.1:443").Add(float64(1 + rand.IntN(4)))
+	if rand.IntN(20) == 0 {
 		c.rt.restRequests.WithLabelValues("409", "PATCH", "10.96.0.1:443").Inc()
 	}
 }
@@ -100,11 +84,11 @@ type world struct {
 func newWorld(conditions *ocm.OperatorConditionsGauge, collectors *metrics.Collectors, rt *runtimeMetrics, leader bool) *world {
 	w := &world{rt: rt, leader: leader, start: time.Now()}
 	w.webapp = &controllerSim{
-		name: "webapp", ownerKind: "WebApp", rt: rt, rng: &lockedRand{r: rand.New(rand.NewPCG(1, 2))},
+		name: "webapp", ownerKind: "WebApp", rt: rt,
 		rec: metrics.NewRecorder("webapp", conditions, collectors),
 	}
 	w.database = &controllerSim{
-		name: "database", ownerKind: "Database", rt: rt, rng: &lockedRand{r: rand.New(rand.NewPCG(3, 4))},
+		name: "database", ownerKind: "Database", rt: rt,
 		rec: metrics.NewRecorder("database", conditions, collectors),
 	}
 	rt.initController("webapp", 4)
@@ -168,7 +152,7 @@ func (w *world) healthyWebApps(ctx context.Context) {
 		owners[i] = owner{namespace: fmt.Sprintf("team-%c", 'a'+rune(i%5)), name: fmt.Sprintf("webapp-%02d", i+1)}
 	}
 	tick := func(o owner) {
-		c.reconcile("success", time.Duration(c.rng.IntN(50))*time.Millisecond, time.Duration(50+c.rng.IntN(250))*time.Millisecond)
+		c.reconcile("success", time.Duration(rand.IntN(50))*time.Millisecond, time.Duration(50+rand.IntN(250))*time.Millisecond)
 		for _, r := range []resource{webappDeployment, webappService, webappConfigMap, webappIngress} {
 			c.apply(r, concepts.ConvergingOperationNone)
 		}
@@ -183,8 +167,8 @@ func (w *world) healthyWebApps(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Duration(6+c.rng.IntN(6)) * time.Second):
-			tick(owners[c.rng.IntN(len(owners))])
+		case <-time.After(time.Duration(6+rand.IntN(6)) * time.Second):
+			tick(owners[rand.IntN(len(owners))])
 		}
 	}
 }
@@ -201,7 +185,7 @@ func (w *world) hotLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			c.reconcile("success", 5*time.Millisecond, time.Duration(30+c.rng.IntN(40))*time.Millisecond)
+			c.reconcile("success", 5*time.Millisecond, time.Duration(30+rand.IntN(40))*time.Millisecond)
 			c.apply(webappConfigMap, concepts.ConvergingOperationUpdated)
 			c.apply(webappDeployment, concepts.ConvergingOperationNone)
 			c.apply(webappService, concepts.ConvergingOperationNone)
@@ -229,17 +213,17 @@ func (w *world) databases(ctx context.Context) {
 	tick := func() {
 		i++
 		result := "success"
-		if c.rng.IntN(10) < 3 {
+		if rand.IntN(10) < 3 {
 			result = resultError
 		}
-		duration := time.Duration(5+c.rng.IntN(60)) * time.Second
-		if c.rng.IntN(10) < 2 {
-			duration = time.Duration(70+c.rng.IntN(50)) * time.Second
+		duration := time.Duration(5+rand.IntN(60)) * time.Second
+		if rand.IntN(10) < 2 {
+			duration = time.Duration(70+rand.IntN(50)) * time.Second
 		}
-		c.reconcile(result, time.Duration(c.rng.IntN(400))*time.Millisecond, duration)
+		c.reconcile(result, time.Duration(rand.IntN(400))*time.Millisecond, duration)
 		c.apply(dbStatefulSet, concepts.ConvergingOperationNone)
 		c.apply(dbCronJob, concepts.ConvergingOperationNone)
-		if c.rng.IntN(4) == 0 {
+		if rand.IntN(4) == 0 {
 			c.apply(dbPVC, concepts.ConvergingOperationNone)
 		} else {
 			c.applyError(dbPVC)
@@ -295,14 +279,14 @@ func (w *world) workqueueBacklog(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			depth := 30 + c.rng.IntN(20)
+			depth := 30 + rand.IntN(20)
 			c.rt.queueDepth.WithLabelValues(c.name, c.name, "0").Set(float64(depth))
-			c.rt.queueDuration.WithLabelValues(c.name, c.name).Observe(float64(200 + c.rng.IntN(400)))
-			c.rt.queueUnfinished.WithLabelValues(c.name, c.name).Set(float64(60 + c.rng.IntN(120)))
-			c.rt.queueLongestRunning.WithLabelValues(c.name, c.name).Set(float64(30 + c.rng.IntN(90)))
-			c.rt.queueDepth.WithLabelValues(w.webapp.name, w.webapp.name, "0").Set(float64(w.webapp.rng.IntN(3)))
+			c.rt.queueDuration.WithLabelValues(c.name, c.name).Observe(float64(200 + rand.IntN(400)))
+			c.rt.queueUnfinished.WithLabelValues(c.name, c.name).Set(float64(60 + rand.IntN(120)))
+			c.rt.queueLongestRunning.WithLabelValues(c.name, c.name).Set(float64(30 + rand.IntN(90)))
+			c.rt.queueDepth.WithLabelValues(w.webapp.name, w.webapp.name, "0").Set(float64(rand.IntN(3)))
 			c.rt.activeWorkers.WithLabelValues(c.name).Set(2)
-			c.rt.activeWorkers.WithLabelValues(w.webapp.name).Set(float64(w.webapp.rng.IntN(3)))
+			c.rt.activeWorkers.WithLabelValues(w.webapp.name).Set(float64(rand.IntN(3)))
 		}
 	}
 }

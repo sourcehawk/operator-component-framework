@@ -327,6 +327,36 @@ test-alerts: ## Lint and unit test the alert rules with promtool.
 	echo "Running unit tests..."; \
 	promtool test rules --diff "$$tmpdir"/tests/*.yaml
 
+OBS_DEV_NAMESPACE := demo
+OBS_DEV_OUT := $(OBS_DIR)/generated/dev
+# Extra flags for the simulator, e.g. SIMULATOR_ARGS="-leader=false".
+SIMULATOR_ARGS ?=
+
+.PHONY: observability-render-dev
+observability-render-dev: ## Render dashboards and plain rules for the dev stack, with every `for:` shortened to 2m.
+	@rm -rf $(OBS_DEV_OUT)/alerts/* $(OBS_DEV_OUT)/dashboards/*
+	@$(MAKE) --no-print-directory dashboards METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT)
+	@$(MAKE) --no-print-directory alerts METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT) ALERT_FORMAT=rules
+	@for file in $(OBS_DEV_OUT)/alerts/*.yaml; do \
+	  sed -E 's/^( *for: ).*/\12m/' "$$file" > "$$file.tmp" && mv "$$file.tmp" "$$file"; \
+	done
+
+.PHONY: observability-up
+observability-up: observability-render-dev ## Start Prometheus (:9090) and Grafana (:3000) and run the simulator on the host.
+	docker compose -f $(OBS_DIR)/dev/docker-compose.yaml up -d
+	@ready=0; for i in $$(seq 1 30); do \
+	  curl -fsS 127.0.0.1:9090/-/ready >/dev/null 2>&1 && { ready=1; break; }; \
+	  sleep 1; \
+	done; \
+	[ "$$ready" = "1" ] || { echo "Error: prometheus did not become ready"; exit 1; }; \
+	curl -fsS -X POST 127.0.0.1:9090/-/reload
+	@echo "Grafana: http://localhost:3000  Prometheus: http://localhost:9090/alerts"
+	go run ./$(OBS_DIR)/dev/simulator -metric-namespace=$(OBS_DEV_NAMESPACE) $(SIMULATOR_ARGS)
+
+.PHONY: observability-down
+observability-down: ## Stop the local Prometheus and Grafana.
+	docker compose -f $(OBS_DIR)/dev/docker-compose.yaml down
+
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

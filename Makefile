@@ -105,6 +105,7 @@ sync-plugin: ## Sync framework docs into the Claude plugin skill references.
 		$(PLUGIN_SKILLS)/structuring-operators/references \
 		$(PLUGIN_SKILLS)/testing-operators/references
 	cp docs/component.md $(PLUGIN_SKILLS)/building-components/references/component.md
+	cp docs/observability.md $(PLUGIN_SKILLS)/building-components/references/observability.md
 	cp docs/primitives.md $(PLUGIN_SKILLS)/using-primitives/references/primitives.md
 	cp docs/primitives/*.md $(PLUGIN_SKILLS)/using-primitives/references/primitives/
 	cp docs/custom-resource.md $(PLUGIN_SKILLS)/custom-resource-wrappers/references/custom-resource.md

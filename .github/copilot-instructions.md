@@ -27,6 +27,7 @@ Understand the intended design first:
 - `docs/cli.md` — the `ocf` scaffolding CLI, its flags, and what the generated code contains
 - `docs/guidelines.md` — best practices for structuring operators (desired state, one component per condition, etc.)
 - `docs/compatibility.md` — supported version combinations and compatibility policy
+- `docs/observability.md` — Grafana dashboards, Prometheus alert rules, the render pipeline and the local stack
 
 ### Source to read
 
@@ -47,6 +48,7 @@ Verify the real API before using or documenting it. Key packages:
 - `pkg/metrics/` — Prometheus implementation of `component.MetricsRecorder`: condition metrics plus the per-resource
   apply counters
 - `pkg/testing/` — testing utilities (`golden/` for snapshot tests, `integration/` for integration helpers)
+- `observability/` — dashboard and alert templates, the dev stack and simulator, and the template lint test
 
 When changing a public API, also check `examples/` for real usage patterns and to identify what else needs updating.
 
@@ -96,17 +98,18 @@ semantics. GoDoc is part of the public API surface.
 
 Update documentation in the **same response** as the code change — never leave them out of sync.
 
-| Code area changed                                 | Documentation to update                    |
-| ------------------------------------------------- | ------------------------------------------ |
-| Component builder, reconciliation, status model   | `docs/component.md`                        |
-| Primitives, field application, editors, selectors | `docs/primitives.md`                       |
-| Primitive implementations                         | `docs/primitives/*.md`                     |
-| Generic building blocks, custom resource wrappers | `docs/custom-resource.md`                  |
-| Wrapper templates, CLI flags                      | `docs/cli.md`                              |
-| Operator structuring patterns, best practices     | `docs/guidelines.md`                       |
-| Any `pkg/` export visible in the quick start      | `README.md`                                |
-| Examples                                          | `examples/*/README.md`                     |
-| Any file under `docs/` synced into the plugin     | Run `make sync-plugin` (CI fails on drift) |
+| Code area changed                                   | Documentation to update                    |
+| --------------------------------------------------- | ------------------------------------------ |
+| Component builder, reconciliation, status model     | `docs/component.md`                        |
+| Primitives, field application, editors, selectors   | `docs/primitives.md`                       |
+| Primitive implementations                           | `docs/primitives/*.md`                     |
+| Generic building blocks, custom resource wrappers   | `docs/custom-resource.md`                  |
+| Wrapper templates, CLI flags                        | `docs/cli.md`                              |
+| Operator structuring patterns, best practices       | `docs/guidelines.md`                       |
+| Dashboards, alert rules, render pipeline, dev stack | `docs/observability.md`                    |
+| Any `pkg/` export visible in the quick start        | `README.md`                                |
+| Examples                                            | `examples/*/README.md`                     |
+| Any file under `docs/` synced into the plugin       | Run `make sync-plugin` (CI fails on drift) |
 
 When updating documentation in markdown files, make sure to run `make fmt-md` for consistent formatting.
 

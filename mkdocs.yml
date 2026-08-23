@@ -112,6 +112,7 @@ nav:
       - CLI: cli.md
       - Guidelines: guidelines.md
       - Testing: testing.md
+      - Observability: observability.md
   - Reference:
       - Compatibility: compatibility.md
       - Go API ↗: https://pkg.go.dev/github.com/sourcehawk/operator-component-framework

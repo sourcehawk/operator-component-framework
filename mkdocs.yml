@@ -78,7 +78,6 @@ nav:
       - Component: component.md
       - Primitives Overview: primitives.md
       - Custom Resources: custom-resource.md
-      - Observability: observability.md
   - Primitives:
       - Workloads:
           - Pod: primitives/pod.md
@@ -113,6 +112,7 @@ nav:
       - CLI: cli.md
       - Guidelines: guidelines.md
       - Testing: testing.md
+      - Observability: observability.md
   - Reference:
       - Compatibility: compatibility.md
       - Go API ↗: https://pkg.go.dev/github.com/sourcehawk/operator-component-framework

@@ -151,10 +151,8 @@ scrape namespace. They fire per resource type, not per owner, because the counte
 | `ManagedResourceApplyFailing`  | most apply attempts of one resource type fail        | `errors / (errors + applies)` over 15m `> 0.5`, and more than 5 errors in 15m | 15m   |
 
 `ManagedResourceNotConverging` is the alert the apply counters were built for: a managed resource rewritten on every
-reconcile. A converged resource applies as `none` on every pass. One whose applies keep coming back `updated` is in a
-hot loop (the apply updates the object, the watch event requeues the owner, the next apply updates it again) or in a
-fight with a defaulting webhook or another controller. Events report the same thing, but client-go's spam filter
-truncates them within seconds under exactly these conditions.
+reconcile. [Resource metrics](component.md#resource-metrics) explains what an `updated` apply on every reconcile means
+and why events do not catch it.
 
 The rule measures the share of a resource's own applies that rewrote it, not the absolute `updated` rate. A bare
 `rate(updated) > 0` is wrong at scale: legitimate spec changes across many owners keep the aggregate `updated` rate
@@ -253,7 +251,7 @@ Variables: `job` (from `controller_runtime_reconcile_total`) and `controller` (m
 
 | Row               | What it answers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview          | Is the operator healthy right now? Stat tiles for reconciles per second, reconcile error ratio, p99 reconcile time, p99 queue wait, active against max workers, leader status, and owner counts: Ready, not Ready for more than two minutes (debounced on `lastTransitionTime`, so a rollout in progress does not count), and Unknown.                                                                                                                                                                                                 |
+| Overview          | Is the operator healthy right now? Stat tiles for reconciles per second, reconcile error ratio, p99 reconcile time, p99 queue wait, active against max workers, leader status, and owner counts: Ready, not Ready for more than two minutes (debounced on `lastTransitionTime`, so a rollout in progress does not count), and Unknown. All three owner counts are scoped to the `Ready` condition; unlike `CustomResourceConditionUnknown`, the Unknown tile does not cover other conditions.                                          |
 | Reconciliation    | Where does reconcile time go? Reconcile rate by result, error ratio over time, latency at p50, p90 and p99, panics, the age of the longest in-progress reconcile (`workqueue_longest_running_processor_seconds`), and workers.                                                                                                                                                                                                                                                                                                         |
 | Workqueue         | Is the operator keeping up? Depth, adds per second, queue wait p99, work duration p99, retries per second, unfinished work.                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Managed resources | Is anything being rewritten or failing? Apply rate by operation with the error rate on the same panel, a table of the `updated` rate per resource sorted descending, the not-converging ratio per resource, and the apply error ratio per resource. The not-converging panel plots the `ManagedResourceNotConverging` expression without its floor, so a resource heading for the alert is visible before it fires; the error ratio's denominator falls back to the error rate alone when no success series exists, as the alert does. |
@@ -347,7 +345,8 @@ Within a few minutes of starting, every alert named in the table is visible as f
 
 ## Testing
 
-Three checks guard the artifacts, and CI runs all of them in the "Alerts and dashboards" job.
+Three checks guard the artifacts. CI runs `make test-alerts` and `make lint-dashboards` in the "Alerts and dashboards"
+job; the simulator parity test is an ordinary Go test and runs under `make test` in the unit-test job.
 
 `make test-alerts` needs `promtool`, which ships with Prometheus and is deliberately left out of `make all` so
 contributors without it are unaffected. It renders `crd_conditions.tpl.yaml` with the metric namespace `test_operator`

@@ -51,3 +51,6 @@ jobs:
 
       - name: Test alerts
         run: make test-alerts
+
+      - name: Lint dashboards
+        run: make lint-dashboards

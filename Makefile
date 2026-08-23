@@ -205,6 +205,128 @@ e2e-component: ginkgo kind-create kind-set-context ## Run component E2E tests on
 .PHONY: e2e-full
 e2e-full: kind-create kind-set-context e2e kind-delete ## Full E2E lifecycle: create cluster, test, teardown.
 
+##@ Observability
+
+OBS_DIR := observability
+# Render output directory. The dev stack overrides it to keep its render apart.
+OBS_OUT ?= $(OBS_DIR)/generated
+# Prometheus metric namespace the condition gauge was created with
+# (ocm.NewOperatorConditionsGauge("<namespace>")). Required for rendering.
+METRIC_NAMESPACE ?= unset
+# Label carrying the namespace of the custom resource. The pod scraping the
+# operator usually owns `namespace`, so the exported label arrives as
+# `exported_namespace`; override with NAMESPACE_LABEL=namespace if yours does not.
+NAMESPACE_LABEL ?= exported_namespace
+# Shape of the rendered alert files: prometheusrule (one PrometheusRule object
+# per rule file) or rules (plain files for prometheus' rule_files).
+ALERT_FORMAT ?= prometheusrule
+# Optional metadata for the PrometheusRule objects: the namespace to create them
+# in, and comma-separated key=value labels, for example the release label a
+# kube-prometheus-stack ruleSelector matches on (PROMETHEUSRULE_LABELS=release=kps).
+PROMETHEUSRULE_NAMESPACE ?=
+PROMETHEUSRULE_LABELS ?=
+# Metric namespace the alert unit tests are written against.
+ALERT_TEST_NAMESPACE := test_operator
+
+# Fail unless METRIC_NAMESPACE was given. $(1) is the target name for the hint.
+define require_metric_namespace
+@[ "$(METRIC_NAMESPACE)" != "unset" ] && [ -n "$(METRIC_NAMESPACE)" ] || { \
+	echo "Error: METRIC_NAMESPACE is required."; \
+	echo "Usage: make $(1) METRIC_NAMESPACE=my_operator"; \
+	exit 1; \
+}
+endef
+
+# Render a template to stdout. $(1) template path, $(2) metric namespace,
+# $(3) namespace label.
+define render_template
+sed -e 's/{{operator_namespace}}/$(2)_/g' -e 's/{{namespace_label}}/$(3)/g' $(1)
+endef
+
+.PHONY: dashboards
+dashboards: ## Render the Grafana dashboards for METRIC_NAMESPACE into observability/generated/dashboards.
+	$(call require_metric_namespace,dashboards)
+	@echo "Rendering dashboards for $(METRIC_NAMESPACE) (namespace label: $(NAMESPACE_LABEL))..."
+	@mkdir -p $(OBS_OUT)/dashboards
+	@for file in $(OBS_DIR)/dashboards/*.tpl.json; do \
+	  [ -e "$$file" ] || continue; \
+	  name=$$(basename "$$file" .tpl.json); \
+	  $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) > "$(OBS_OUT)/dashboards/$$name.json"; \
+	done
+
+.PHONY: alerts
+alerts: ## Render the Prometheus alert rules for METRIC_NAMESPACE into observability/generated/alerts.
+	$(call require_metric_namespace,alerts)
+	@echo "Rendering alerts for $(METRIC_NAMESPACE) (namespace label: $(NAMESPACE_LABEL), format: $(ALERT_FORMAT))..."
+	@mkdir -p $(OBS_OUT)/alerts
+	@for file in $(OBS_DIR)/alerts/*.yaml; do \
+	  [ -e "$$file" ] || continue; \
+	  case "$$file" in \
+	    *.tpl.yaml) \
+	      name=$$(basename "$$file" .tpl.yaml); \
+	      rule_name="$(METRIC_NAMESPACE)-$$name" ;; \
+	    *) \
+	      name=$$(basename "$$file" .yaml); \
+	      rule_name="ocf-$$name" ;; \
+	  esac; \
+	  rule_name=$$(echo "$$rule_name" | tr '[:upper:]' '[:lower:]' | tr '_:' '--'); \
+	  out="$(OBS_OUT)/alerts/$$name.yaml"; \
+	  case "$(ALERT_FORMAT)" in \
+	    rules) \
+	      $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) > "$$out" ;; \
+	    prometheusrule) \
+	      { \
+	        echo "apiVersion: monitoring.coreos.com/v1"; \
+	        echo "kind: PrometheusRule"; \
+	        echo "metadata:"; \
+	        echo "  name: $$rule_name"; \
+	        [ -z "$(PROMETHEUSRULE_NAMESPACE)" ] || echo "  namespace: $(PROMETHEUSRULE_NAMESPACE)"; \
+	        if [ -n "$(PROMETHEUSRULE_LABELS)" ]; then \
+	          echo "  labels:"; \
+	          for kv in $$(echo "$(PROMETHEUSRULE_LABELS)" | tr ',' ' '); do \
+	            echo "    $${kv%%=*}: \"$${kv#*=}\""; \
+	          done; \
+	        fi; \
+	        echo "spec:"; \
+	        $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) \
+	          | sed -e 's/^/  /' -e 's/[[:space:]]*$$//'; \
+	      } > "$$out" ;; \
+	    *) \
+	      echo "Error: ALERT_FORMAT must be prometheusrule or rules, got '$(ALERT_FORMAT)'."; exit 1 ;; \
+	  esac; \
+	done
+
+.PHONY: test-alerts
+test-alerts: ## Lint and unit test the alert rules with promtool.
+	@command -v promtool >/dev/null 2>&1 || { \
+		echo "Error: promtool is required to test the alert rules."; \
+		echo "It ships with prometheus: https://prometheus.io/download/"; \
+		exit 1; \
+	}
+	@set -e; \
+	tmpdir=$$(mktemp -d "$${TMPDIR:-/tmp}/ocf-alerts.XXXXXX"); \
+	trap 'rm -rf "$$tmpdir"' EXIT; \
+	mkdir -p "$$tmpdir/tests" "$$tmpdir/namespace-label"; \
+	for file in $(OBS_DIR)/alerts/*.yaml; do \
+	  [ -e "$$file" ] || continue; \
+	  case "$$file" in \
+	    *.tpl.yaml) \
+	      name=$$(basename "$$file" .tpl.yaml); \
+	      $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),exported_namespace) > "$$tmpdir/$$name.yaml"; \
+	      $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),namespace) > "$$tmpdir/namespace-label/$$name.yaml" ;; \
+	    *) \
+	      cp "$$file" "$$tmpdir/"; \
+	      cp "$$file" "$$tmpdir/namespace-label/" ;; \
+	  esac; \
+	done; \
+	cp $(OBS_DIR)/alerts/tests/*.yaml "$$tmpdir/tests/"; \
+	echo "Linting rules..."; \
+	promtool check rules --lint=all --lint-fatal "$$tmpdir"/*.yaml; \
+	echo "Linting rules with NAMESPACE_LABEL=namespace..."; \
+	promtool check rules --lint=all --lint-fatal "$$tmpdir"/namespace-label/*.yaml; \
+	echo "Running unit tests..."; \
+	promtool test rules --diff "$$tmpdir"/tests/*.yaml
+
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

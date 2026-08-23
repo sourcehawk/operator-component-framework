@@ -1,0 +1,250 @@
+# Unit tests for the generic CRD condition alerting rules.
+#
+# Run with `make test-alerts`, which renders ../crd_conditions.tpl.yaml with the
+# metric namespace pinned to `test_operator` and the namespace label left at its
+# default before handing both files to promtool.
+rule_files:
+  - ../crd_conditions.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # A reason change while a resource stays not ready must not restart the 30m
+  # clock, and a resource with no namespace label (cluster scoped) must produce
+  # the alternate wording.
+  - name: TestCustomResourceNotReady
+    interval: 1m
+    input_series:
+      # Backup Ready=False reason=Error1 [0m-19m]
+      - series: 'test_operator_controller_condition{controller="backup",kind="Backup",name="nightly-abc123",exported_namespace="backups",condition="Ready",status="False",reason="Error1",id="backups/nightly-abc123"}'
+        values: '1760534009+0x19'
+      # Backup Ready=False reason=Error2 [20m-44m]. The Error1 series is still
+      # within the 5m lookback window until 24m, so both are present for a while
+      # and max() has to pick the freshest lastTransitionTime.
+      - series: 'test_operator_controller_condition{controller="backup",kind="Backup",name="nightly-abc123",exported_namespace="backups",condition="Ready",status="False",reason="Error2",id="backups/nightly-abc123"}'
+        values: '_x20 1760534348+0x24'
+      # Backup Ready=True [45m-60m]
+      - series: 'test_operator_controller_condition{controller="backup",kind="Backup",name="nightly-abc123",exported_namespace="backups",condition="Ready",status="True",reason="Ready",id="backups/nightly-abc123"}'
+        values: '_x45 1760534420+0x15'
+      # RemoteStorage Ready=False [15m-60m], cluster scoped so no namespace label
+      - series: 'test_operator_controller_condition{controller="remotestorage",kind="RemoteStorage",name="document-store",condition="Ready",status="False",reason="Error",id="/document-store"}'
+        values: '_x15 1760582000+0x45'
+
+    alert_rule_test:
+      # Nothing fires immediately (for: 30m)
+      - eval_time: 0m
+        alertname: CustomResourceNotReady
+        exp_alerts: []
+
+      # Still pending at 25m: under the threshold, and the Error1 -> Error2
+      # change at 20m must not have restarted the clock.
+      - eval_time: 25m
+        alertname: CustomResourceNotReady
+        exp_alerts: []
+
+      # Backup has been not ready for 30m. RemoteStorage only started at 15m so
+      # it is still pending.
+      - eval_time: 30m
+        alertname: CustomResourceNotReady
+        exp_alerts:
+          - exp_labels:
+              controller: backup
+              kind: Backup
+              name: nightly-abc123
+              exported_namespace: backups
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Backup CR `backups/nightly-abc123` has not been ready for 30 minutes
+              description: |
+                Custom Resource of kind `Backup` named `nightly-abc123` in namespace
+                `backups` has not been ready for more than 30 minutes.
+
+                The Ready condition last transitioned at 2025-10-15 13:19:08 +0000 UTC.
+
+                Quick check with:
+                ```
+                kubectl describe Backup/nightly-abc123 -n backups
+                ```
+              dashboard_url: >-
+                /d/crd_conditions_browser/crd-conditions-browser?var-kind=Backup&var-condition=Ready&var-status=False&var-resource_id=backups%2Fnightly-abc123
+
+      # Backup recovered at 45m, so it has resolved. RemoteStorage has now been
+      # not ready for 30m and is the only alert left.
+      - eval_time: 50m
+        alertname: CustomResourceNotReady
+        exp_alerts:
+          - exp_labels:
+              controller: remotestorage
+              kind: RemoteStorage
+              name: document-store
+              severity: warning
+            exp_annotations:
+              summary: >-
+                RemoteStorage CR `document-store` has not been ready for 30 minutes
+              description: |
+                Custom Resource of kind `RemoteStorage` named `document-store` (cluster scoped
+                resource) has not been ready for more than 30 minutes.
+
+                The Ready condition last transitioned at 2025-10-16 02:33:20 +0000 UTC.
+
+                Quick check with:
+                ```
+                kubectl describe RemoteStorage/document-store
+                ```
+              dashboard_url: >-
+                /d/crd_conditions_browser/crd-conditions-browser?var-kind=RemoteStorage&var-condition=Ready&var-status=False&var-resource_id=%2Fdocument-store
+
+  # Unknown is bad whatever the condition's polarity is, so this rule is not
+  # scoped to a single condition: both fixtures below must fire.
+  - name: TestCustomResourceConditionUnknown
+    interval: 1m
+    input_series:
+      - series: 'test_operator_controller_condition{controller="app",kind="App",name="checkout",exported_namespace="shop",condition="Synced",status="Unknown",reason="ProbeFailed",id="shop/checkout"}'
+        values: '1760600000+0x60'
+      - series: 'test_operator_controller_condition{controller="app",kind="App",name="checkout",exported_namespace="shop",condition="Ready",status="Unknown",reason="ProbeFailed",id="shop/checkout"}'
+        values: '1760600000+0x60'
+
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: CustomResourceConditionUnknown
+        exp_alerts: []
+
+      - eval_time: 30m
+        alertname: CustomResourceConditionUnknown
+        exp_alerts:
+          - exp_labels:
+              controller: app
+              kind: App
+              name: checkout
+              condition: Ready
+              exported_namespace: shop
+              severity: warning
+            exp_annotations:
+              summary: >-
+                App CR `shop/checkout` has had an unknown Ready condition for 30 minutes
+              description: |
+                The `Ready` condition of `App` `checkout` in
+                namespace `shop` has had status Unknown for more than 30 minutes.
+
+                The controller is failing to determine the state of this resource, so neither a healthy
+                nor an unhealthy signal can be trusted for it. The condition last transitioned at
+                2025-10-16 07:33:20 +0000 UTC.
+
+                Quick check with:
+                ```
+                kubectl describe App/checkout -n shop
+                ```
+              dashboard_url: >-
+                /d/crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Ready&var-status=Unknown&var-resource_id=shop%2Fcheckout
+          - exp_labels:
+              controller: app
+              kind: App
+              name: checkout
+              condition: Synced
+              exported_namespace: shop
+              severity: warning
+            exp_annotations:
+              summary: >-
+                App CR `shop/checkout` has had an unknown Synced condition for 30 minutes
+              description: |
+                The `Synced` condition of `App` `checkout` in
+                namespace `shop` has had status Unknown for more than 30 minutes.
+
+                The controller is failing to determine the state of this resource, so neither a healthy
+                nor an unhealthy signal can be trusted for it. The condition last transitioned at
+                2025-10-16 07:33:20 +0000 UTC.
+
+                Quick check with:
+                ```
+                kubectl describe App/checkout -n shop
+                ```
+              dashboard_url: >-
+                /d/crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Synced&var-status=Unknown&var-resource_id=shop%2Fcheckout
+
+  # The stuck rule compares against the metric value, so the fixture timestamps
+  # have to live on promtool's clock, which starts at the unix epoch. A Ready
+  # condition that transitioned at t=60s is 6h59m old at an eval_time of 7h.
+  - name: TestCustomResourceConditionStuck
+    interval: 1m
+    input_series:
+      - series: 'test_operator_controller_condition{controller="cluster",kind="Cluster",name="prod",exported_namespace="clusters",condition="Ready",status="False",reason="Provisioning",id="clusters/prod"}'
+        values: '60+0x480'
+
+    alert_rule_test:
+      # 5h since the transition, under the 6h threshold
+      - eval_time: 5h
+        alertname: CustomResourceConditionStuck
+        exp_alerts: []
+
+      - eval_time: 7h
+        alertname: CustomResourceConditionStuck
+        exp_alerts:
+          - exp_labels:
+              controller: cluster
+              kind: Cluster
+              name: prod
+              condition: Ready
+              exported_namespace: clusters
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Cluster CR `clusters/prod` has been stuck not ready for 6h 59m 0s
+              description: |
+                The `Ready` condition of `Cluster` `prod` in
+                namespace `clusters` has not been True for
+                6h 59m 0s.
+
+                Nothing has moved for hours, so the controller is either wedged or waiting on something
+                that is never going to arrive. Reconciliation retries alone will not clear this.
+
+                Quick check with:
+                ```
+                kubectl describe Cluster/prod -n clusters
+                ```
+              dashboard_url: >-
+                /d/crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fprod
+
+  # Why CustomResourceConditionStuck exists alongside CustomResourceNotReady:
+  # the series disappears between 1h and 6h (operator down, scrape gap), which
+  # restarts the `for: 30m` clock on its return. 20m after it comes back the
+  # `for:` based rule is still pending, while the value based rule correctly
+  # reports the resource as stuck for 6h19m.
+  - name: TestConditionStuckSurvivesSeriesGaps
+    interval: 1m
+    input_series:
+      - series: 'test_operator_controller_condition{controller="cluster",kind="Cluster",name="staging",exported_namespace="clusters",condition="Ready",status="False",reason="Provisioning",id="clusters/staging"}'
+        values: '60+0x60 _x300 60+0x60'
+
+    alert_rule_test:
+      - eval_time: 6h20m
+        alertname: CustomResourceNotReady
+        exp_alerts: []
+
+      - eval_time: 6h20m
+        alertname: CustomResourceConditionStuck
+        exp_alerts:
+          - exp_labels:
+              controller: cluster
+              kind: Cluster
+              name: staging
+              condition: Ready
+              exported_namespace: clusters
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Cluster CR `clusters/staging` has been stuck not ready for 6h 19m 0s
+              description: |
+                The `Ready` condition of `Cluster` `staging` in
+                namespace `clusters` has not been True for
+                6h 19m 0s.
+
+                Nothing has moved for hours, so the controller is either wedged or waiting on something
+                that is never going to arrive. Reconciliation retries alone will not clear this.
+
+                Quick check with:
+                ```
+                kubectl describe Cluster/staging -n clusters
+                ```
+              dashboard_url: >-
+                /d/crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fstaging

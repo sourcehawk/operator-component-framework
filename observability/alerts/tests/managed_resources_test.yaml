@@ -1,0 +1,158 @@
+# Unit tests for the managed resource alerting rules.
+#
+# Run with `make test-alerts`. The counters carry no owner identity, so every
+# series below is one resource *type* of one component, aggregated over all of
+# its owners. Time series values are cumulative counter samples one minute apart.
+rule_files:
+  - ../managed_resources.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # A hot loop: every apply of the configmap rewrites it, 4 updates a second.
+  # The other resources of the component converge with `none`, which must not
+  # mask the configmap's ratio.
+  - name: TestManagedResourceNotConvergingHotLoop
+    interval: 1m
+    input_series:
+      - series: 'ocf_resource_apply_total{controller="webapp",owner_kind="WebApp",component="server",resource="configmap",kind="ConfigMap",operation="updated"}'
+        values: '0+240x60'
+      - series: 'ocf_resource_apply_total{controller="webapp",owner_kind="WebApp",component="server",resource="configmap",kind="ConfigMap",operation="none"}'
+        values: '0+1x60'
+      - series: 'ocf_resource_apply_total{controller="webapp",owner_kind="WebApp",component="server",resource="deployment",kind="Deployment",operation="none"}'
+        values: '0+240x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ManagedResourceNotConverging
+        exp_alerts: []
+      # ratio 240/241 over the window, floor satisfied, for: 15m elapsed
+      - eval_time: 31m
+        alertname: ManagedResourceNotConverging
+        exp_alerts:
+          - exp_labels:
+              controller: webapp
+              owner_kind: WebApp
+              component: server
+              resource: configmap
+              kind: ConfigMap
+              severity: warning
+            exp_annotations:
+              summary: >-
+                ConfigMap `configmap` of component `server` (WebApp) is rewritten on every reconcile
+              description: |
+                Over the last 15 minutes, 99.59% of the applies of the `ConfigMap` resource `configmap` in component `server` of owner kind `WebApp` (controller `webapp`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose every apply is an update is being rewritten on every reconcile even though nothing changed.
+
+                Usual causes: a mutation that is not idempotent (a timestamp, a random value, an unsorted list), a defaulting webhook or another controller fighting the operator, or a field the API server normalises. Events report the same thing, but client-go's spam filter truncates them within seconds under exactly these conditions.
+
+                Quick check with:
+                ```
+                kubectl get events -A --field-selector reason=UpdatedConfigMap
+                ```
+
+  # Legitimate churn at scale: many owners change spec, every `updated` apply is
+  # followed by a `none` apply on the reconcile the status update triggers. The
+  # absolute rate is high (2 updates a minute, well over the floor) but the ratio
+  # sits at 0.5, so the rule must stay silent.
+  - name: TestManagedResourceNotConvergingChurnDoesNotFire
+    interval: 1m
+    input_series:
+      - series: 'ocf_resource_apply_total{controller="webapp",owner_kind="WebApp",component="server",resource="configmap",kind="ConfigMap",operation="updated"}'
+        values: '0+2x60'
+      - series: 'ocf_resource_apply_total{controller="webapp",owner_kind="WebApp",component="server",resource="configmap",kind="ConfigMap",operation="none"}'
+        values: '0+2x60'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: ManagedResourceNotConverging
+        exp_alerts: []
+
+  # One edit on an otherwise idle resource: ratio is 1 but only one update in
+  # the window, under the floor.
+  - name: TestManagedResourceNotConvergingSingleEditDoesNotFire
+    interval: 1m
+    input_series:
+      - series: 'ocf_resource_apply_total{controller="webapp",owner_kind="WebApp",component="server",resource="configmap",kind="ConfigMap",operation="updated"}'
+        values: '0 0 0 1+0x57'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: ManagedResourceNotConverging
+        exp_alerts: []
+
+  # A PVC whose applies fail three times out of four, on a resource that also
+  # has the occasional successful apply.
+  - name: TestManagedResourceApplyFailing
+    interval: 1m
+    input_series:
+      - series: 'ocf_resource_apply_errors_total{controller="database",owner_kind="Database",component="storage",resource="pvc",kind="PersistentVolumeClaim"}'
+        values: '0+3x60'
+      - series: 'ocf_resource_apply_total{controller="database",owner_kind="Database",component="storage",resource="pvc",kind="PersistentVolumeClaim",operation="none"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ManagedResourceApplyFailing
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: ManagedResourceApplyFailing
+        exp_alerts:
+          - exp_labels:
+              controller: database
+              owner_kind: Database
+              component: storage
+              resource: pvc
+              kind: PersistentVolumeClaim
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Applies of PersistentVolumeClaim `pvc` of component `storage` (Database) are failing
+              description: |
+                Over the last 15 minutes, 75% of the apply attempts of the `PersistentVolumeClaim` resource `pvc` in component `storage` of owner kind `Database` (controller `database`) failed.
+
+                The counter covers every failure of an attempt: mutating the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition, which is where the failure message lives; this rule says the failure is systematic for the resource type rather than one owner's bad day.
+
+                Quick check with:
+                ```
+                kubectl get Database -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REASON:.status.conditions[?(@.type=="Ready")].reason,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
+                ```
+
+  # A resource that has only ever failed: no success series exists at all. The
+  # ratio must still evaluate (to 1) rather than vanish on a missing vector.
+  - name: TestManagedResourceApplyFailingWithoutSuccesses
+    interval: 1m
+    input_series:
+      - series: 'ocf_resource_apply_errors_total{controller="database",owner_kind="Database",component="storage",resource="pvc",kind="PersistentVolumeClaim"}'
+        values: '0+2x60'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: ManagedResourceApplyFailing
+        exp_alerts:
+          - exp_labels:
+              controller: database
+              owner_kind: Database
+              component: storage
+              resource: pvc
+              kind: PersistentVolumeClaim
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Applies of PersistentVolumeClaim `pvc` of component `storage` (Database) are failing
+              description: |
+                Over the last 15 minutes, 100% of the apply attempts of the `PersistentVolumeClaim` resource `pvc` in component `storage` of owner kind `Database` (controller `database`) failed.
+
+                The counter covers every failure of an attempt: mutating the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition, which is where the failure message lives; this rule says the failure is systematic for the resource type rather than one owner's bad day.
+
+                Quick check with:
+                ```
+                kubectl get Database -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REASON:.status.conditions[?(@.type=="Ready")].reason,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
+                ```
+
+  # Sporadic conflicts among many successful applies must not fire.
+  - name: TestManagedResourceApplyFailingSporadicDoesNotFire
+    interval: 1m
+    input_series:
+      - series: 'ocf_resource_apply_errors_total{controller="database",owner_kind="Database",component="storage",resource="pvc",kind="PersistentVolumeClaim"}'
+        values: '0+1x60'
+      - series: 'ocf_resource_apply_total{controller="database",owner_kind="Database",component="storage",resource="pvc",kind="PersistentVolumeClaim",operation="none"}'
+        values: '0+9x60'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: ManagedResourceApplyFailing
+        exp_alerts: []

@@ -26,3 +26,28 @@ jobs:
 
       - name: Running Scaffold Gate
         run: make test-scaffold
+  observability:
+    name: Alerts and dashboards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # promtool is not part of `make all` so that contributors without it can
+      # still run everything else. Bump PROMETHEUS_VERSION by hand.
+      - name: Install promtool
+        env:
+          PROMETHEUS_VERSION: "3.14.0"
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL "https://github.com/prometheus/prometheus/releases/download/v$PROMETHEUS_VERSION/prometheus-$PROMETHEUS_VERSION.linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C "$HOME/.local/bin" "prometheus-$PROMETHEUS_VERSION.linux-amd64/promtool"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Test alerts
+        run: make test-alerts

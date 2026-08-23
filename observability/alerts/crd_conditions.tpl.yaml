@@ -1,0 +1,166 @@
+# Alerting rules for the status condition metrics the framework records through
+# pkg/metrics (github.com/sourcehawk/go-crd-condition-metrics under the hood).
+#
+# See docs/observability.md for how these rules are rendered and which
+# thresholds to tune.
+#
+# Every rule aggregates the metric instead of matching series directly. That is
+# deliberate and load bearing:
+#
+#   * it drops the reason, status and id labels, so a controller that keeps
+#     changing the reason while a resource stays unhealthy does not restart the
+#     `for:` clock every time,
+#   * max() keeps the value a lastTransitionTime, the freshest one, so a former
+#     leader pod still exporting a stale series cannot skew it the way sum()
+#     would.
+groups:
+  - name: crd-conditions
+    rules:
+      # A resource whose Ready condition has been False for too long.
+      #
+      # Scoped to Ready on purpose. Matching `status="False"` across every
+      # condition would fire forever on negative polarity conditions such as
+      # Degraded or FailedToProvision, where False is the healthy state. Add
+      # your own positive polarity conditions to the matcher below.
+      - alert: CustomResourceNotReady
+        for: 30m
+        expr: >
+          max (
+            {{operator_namespace}}controller_condition{condition="Ready", status="False"}
+          ) by (controller, kind, name, {{namespace_label}})
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            {{- if $labels.{{namespace_label}} -}}
+            {{ $labels.kind }} CR `{{ $labels.{{namespace_label}} }}/{{ $labels.name }}` has not been ready for 30 minutes
+            {{- else -}}
+            {{ $labels.kind }} CR `{{ $labels.name }}` has not been ready for 30 minutes
+            {{- end -}}
+          description: |
+            {{- if $labels.{{namespace_label}} -}}
+            Custom Resource of kind `{{ $labels.kind }}` named `{{ $labels.name }}` in namespace
+            `{{ $labels.{{namespace_label}} }}` has not been ready for more than 30 minutes.
+            {{- else -}}
+            Custom Resource of kind `{{ $labels.kind }}` named `{{ $labels.name }}` (cluster scoped
+            resource) has not been ready for more than 30 minutes.
+            {{- end }}
+
+            The Ready condition last transitioned at {{ $value | humanizeTimestamp }}.
+
+            Quick check with:
+            ```
+            {{- if $labels.{{namespace_label}} }}
+            kubectl describe {{ $labels.kind }}/{{ $labels.name }} -n {{ $labels.{{namespace_label}} }}
+            {{- else }}
+            kubectl describe {{ $labels.kind }}/{{ $labels.name }}
+            {{- end }}
+            ```
+          # Deep link into the CRD Conditions Browser dashboard shipped in this
+          # repository. The id label is "<namespace>/<name>", which for a cluster
+          # scoped resource is "/<name>", so the empty namespace renders correctly
+          # here without a conditional.
+          dashboard_url: >-
+            /d/crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind
+            }}&var-condition=Ready&var-status=False&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}
+
+      # A condition the controller cannot determine the state of. Unlike the two
+      # rules around it this one is not scoped to a single condition: Unknown is
+      # bad whatever the condition's polarity is.
+      - alert: CustomResourceConditionUnknown
+        for: 30m
+        expr: >
+          max (
+            {{operator_namespace}}controller_condition{status="Unknown"}
+          ) by (controller, kind, name, condition, {{namespace_label}})
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            {{- if $labels.{{namespace_label}} -}}
+            {{ $labels.kind }} CR `{{ $labels.{{namespace_label}} }}/{{ $labels.name }}` has had an unknown {{ $labels.condition }} condition for 30 minutes
+            {{- else -}}
+            {{ $labels.kind }} CR `{{ $labels.name }}` has had an unknown {{ $labels.condition }} condition for 30 minutes
+            {{- end -}}
+          description: |
+            {{- if $labels.{{namespace_label}} -}}
+            The `{{ $labels.condition }}` condition of `{{ $labels.kind }}` `{{ $labels.name }}` in
+            namespace `{{ $labels.{{namespace_label}} }}` has had status Unknown for more than 30 minutes.
+            {{- else -}}
+            The `{{ $labels.condition }}` condition of `{{ $labels.kind }}` `{{ $labels.name }}`
+            (cluster scoped resource) has had status Unknown for more than 30 minutes.
+            {{- end }}
+
+            The controller is failing to determine the state of this resource, so neither a healthy
+            nor an unhealthy signal can be trusted for it. The condition last transitioned at
+            {{ $value | humanizeTimestamp }}.
+
+            Quick check with:
+            ```
+            {{- if $labels.{{namespace_label}} }}
+            kubectl describe {{ $labels.kind }}/{{ $labels.name }} -n {{ $labels.{{namespace_label}} }}
+            {{- else }}
+            kubectl describe {{ $labels.kind }}/{{ $labels.name }}
+            {{- end }}
+            ```
+          dashboard_url: >-
+            /d/crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
+            $labels.condition }}&var-status=Unknown&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}
+
+      # A resource that has sat in a non-ready state for hours.
+      #
+      # This rule is the reason the metric value is a lastTransitionTime. It needs
+      # no `for:` clause because the expression is itself a duration comparison,
+      # and that difference is the point: a `for:` clause measures how long the
+      # *alert* has been true, which is bounded by how long the series has been
+      # continuously present, whereas this measures how long the *resource* has
+      # actually been in this state according to its own status. It therefore
+      # survives scrape gaps, operator restarts and ruler restarts, any of which
+      # silently restart a `for:` clock, and reports the real age of the state.
+      # It also covers status Unknown, which CustomResourceNotReady does not.
+      #
+      # Scoped to Ready for the same polarity reason as CustomResourceNotReady.
+      # The condition label is kept in the aggregation so widening the matcher to
+      # your own conditions stays a one line change.
+      - alert: CustomResourceConditionStuck
+        expr: >
+          (
+            time()
+            -
+            max (
+              {{operator_namespace}}controller_condition{condition="Ready", status!="True"}
+            ) by (controller, kind, name, condition, {{namespace_label}})
+          ) > 21600
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            {{- if $labels.{{namespace_label}} -}}
+            {{ $labels.kind }} CR `{{ $labels.{{namespace_label}} }}/{{ $labels.name }}` has been stuck not ready for {{ $value | humanizeDuration }}
+            {{- else -}}
+            {{ $labels.kind }} CR `{{ $labels.name }}` has been stuck not ready for {{ $value | humanizeDuration }}
+            {{- end -}}
+          description: |
+            {{- if $labels.{{namespace_label}} -}}
+            The `{{ $labels.condition }}` condition of `{{ $labels.kind }}` `{{ $labels.name }}` in
+            namespace `{{ $labels.{{namespace_label}} }}` has not been True for
+            {{ $value | humanizeDuration }}.
+            {{- else -}}
+            The `{{ $labels.condition }}` condition of `{{ $labels.kind }}` `{{ $labels.name }}`
+            (cluster scoped resource) has not been True for {{ $value | humanizeDuration }}.
+            {{- end }}
+
+            Nothing has moved for hours, so the controller is either wedged or waiting on something
+            that is never going to arrive. Reconciliation retries alone will not clear this.
+
+            Quick check with:
+            ```
+            {{- if $labels.{{namespace_label}} }}
+            kubectl describe {{ $labels.kind }}/{{ $labels.name }} -n {{ $labels.{{namespace_label}} }}
+            {{- else }}
+            kubectl describe {{ $labels.kind }}/{{ $labels.name }}
+            {{- end }}
+            ```
+          dashboard_url: >-
+            /d/crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
+            $labels.condition }}&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}

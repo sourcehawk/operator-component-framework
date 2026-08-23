@@ -49,3 +49,6 @@ docs/superpowers/
 
 # MkDocs build output
 site/
+
+# Rendered observability artifacts
+observability/generated/

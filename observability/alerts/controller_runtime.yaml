@@ -1,0 +1,124 @@
+# Alerting rules for the controller-runtime metrics every operator exposes:
+# reconcile results and latency, the workqueue, leader election.
+#
+# These rules carry no metric namespace placeholder: they are shared by every
+# operator in the cluster and installed once, as the PrometheusRule
+# `ocf-controller-runtime`.
+#
+# Thresholds are deliberately conservative and expressed as ratios or
+# quantiles, so that they hold whether the operator manages three owners or
+# three thousand. See docs/observability.md for the thresholds to tune.
+#
+# `namespace` is the operator's own namespace as stamped by the scrape job
+# (absent when scraping outside a cluster, which is harmless), so two installs
+# of one operator in a cluster are alerted on separately.
+groups:
+  - name: controller-runtime
+    rules:
+      - alert: ControllerReconcileErrors
+        for: 15m
+        expr: >
+          (
+            sum by (namespace, controller) (rate(controller_runtime_reconcile_total{result="error"}[10m]))
+            /
+            sum by (namespace, controller) (rate(controller_runtime_reconcile_total[10m]))
+          ) > 0.25
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Controller `{{ $labels.controller }}` fails {{ $value | humanizePercentage }} of its reconciles
+          description: |
+            Over the last 10 minutes, {{ $value | humanizePercentage }} of the reconciles of controller `{{ $labels.controller }}` returned an error. Errors are requeued with backoff, so a sustained ratio this high means the controller is stuck on something rather than riding out a blip.
+
+            Quick check with:
+            ```
+            kubectl logs -l control-plane=controller-manager --all-containers | grep -i "error" | grep {{ $labels.controller }}
+            ```
+
+      - alert: ControllerReconcilePanics
+        expr: >
+          sum by (namespace, controller) (increase(controller_runtime_reconcile_panics_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Controller `{{ $labels.controller }}` panicked during reconcile
+          description: |
+            Controller `{{ $labels.controller }}` recovered from {{ $value | printf "%.0f" }} panic(s) in the last 10 minutes. The reconcile that panicked was requeued, so the same owner will likely panic again on its next turn.
+
+            Quick check with:
+            ```
+            kubectl logs -l control-plane=controller-manager --all-containers | grep -A 20 "Observed a panic"
+            ```
+
+      # Queue wait time rather than queue depth: depth has no threshold that is
+      # right for every operator, whereas items waiting minutes for a worker is
+      # wrong at any scale. controller-runtime labels every workqueue series
+      # with both `name` and `controller` (same value) in every version the
+      # framework supports (v0.22 and later), so aggregating by `controller`
+      # keeps one label across the reconcile rules, the workqueue rules and the
+      # dashboards. The workqueue histogram has one bucket per decade, so the
+      # threshold sits on a bucket bound: a p99 above 100 seconds means more
+      # than one percent of items waited longer than 100 seconds. The value in
+      # the description is interpolated within that bucket.
+      - alert: ControllerWorkqueueBacklog
+        for: 15m
+        expr: >
+          histogram_quantile(
+            0.99,
+            sum by (namespace, controller, le) (rate(workqueue_queue_duration_seconds_bucket[10m]))
+          ) > 100
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Controller `{{ $labels.controller }}` cannot keep up with its workqueue
+          description: |
+            More than one percent of the items in the workqueue of controller `{{ $labels.controller }}` waited longer than 100 seconds before a worker picked them up (p99 wait {{ $value | humanizeDuration }}, interpolated within the histogram bucket). The queue grows faster than the workers drain it: too few concurrent reconciles, reconciles that take too long, or a burst of events the controller cannot absorb.
+
+            Quick check with:
+            ```
+            kubectl top pod -l control-plane=controller-manager
+            ```
+
+      - alert: ControllerReconcileLatencyHigh
+        for: 15m
+        expr: >
+          histogram_quantile(
+            0.99,
+            sum by (namespace, controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket[10m]))
+          ) > 30
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Controller `{{ $labels.controller }}` reconciles are slow, p99 above 30 seconds
+          description: |
+            The p99 reconcile time of controller `{{ $labels.controller }}` over the last 10 minutes is {{ $value | humanizeDuration }}, above the 30 second threshold. Every slow reconcile holds a worker, so sustained latency this high turns into a workqueue backlog.
+
+            Quick check with:
+            ```
+            kubectl logs -l control-plane=controller-manager --all-containers | grep {{ $labels.controller }} | tail -50
+            ```
+
+      # Silent when leader election is off (the gauge is not exported) and when
+      # no replica is alive to export it, for example a crash loop before the
+      # elector starts; pair it with your platform's target-down alert for the
+      # operator job.
+      - alert: OperatorLeaderMissing
+        for: 5m
+        expr: >
+          max by (namespace, name) (leader_election_master_status) == 0
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Operator `{{ $labels.name }}` has no leader
+          description: |
+            No replica of operator `{{ $labels.name }}` has held the leader election lease for 5 minutes, so none of its controllers is reconciling.
+
+            Quick check with:
+            ```
+            kubectl get lease -A --field-selector metadata.name={{ $labels.name }}
+            ```

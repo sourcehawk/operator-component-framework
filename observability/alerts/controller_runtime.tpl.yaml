@@ -98,7 +98,10 @@ groups:
             kubectl logs -l control-plane=controller-manager --all-containers | grep {{ $labels.controller }} | tail -50
             ```
 
-      # Silent when leader election is off: the gauge is not exported then.
+      # Silent when leader election is off (the gauge is not exported) and when
+      # no replica is alive to export it, for example a crash loop before the
+      # elector starts; pair it with your platform's target-down alert for the
+      # operator job.
       - alert: OperatorLeaderMissing
         for: 5m
         expr: >
@@ -113,5 +116,5 @@ groups:
 
             Quick check with:
             ```
-            kubectl get lease {{ $labels.name }} -A
+            kubectl get lease -A --field-selector metadata.name={{ $labels.name }}
             ```

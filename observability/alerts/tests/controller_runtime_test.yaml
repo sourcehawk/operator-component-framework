@@ -203,5 +203,5 @@ tests:
 
                 Quick check with:
                 ```
-                kubectl get lease demo-operator -A
+                kubectl get lease -A --field-selector metadata.name=demo-operator
                 ```

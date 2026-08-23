@@ -106,11 +106,11 @@ tests:
               description: |
                 Over the last 15 minutes, 75% of the apply attempts of the `PersistentVolumeClaim` resource `pvc` in component `storage` of owner kind `Database` (controller `database`) failed.
 
-                The counter covers every failure of an attempt: building the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition; this rule says the failure is systematic for the resource type rather than one owner's bad day.
+                The counter covers every failure of an attempt: mutating the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition, which is where the failure message lives; this rule says the failure is systematic for the resource type rather than one owner's bad day.
 
                 Quick check with:
                 ```
-                kubectl get events -A --field-selector type=Warning | grep PersistentVolumeClaim
+                kubectl get Database -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REASON:.status.conditions[?(@.type=="Ready")].reason,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
                 ```
 
   # A resource that has only ever failed: no success series exists at all. The
@@ -137,11 +137,11 @@ tests:
               description: |
                 Over the last 15 minutes, 100% of the apply attempts of the `PersistentVolumeClaim` resource `pvc` in component `storage` of owner kind `Database` (controller `database`) failed.
 
-                The counter covers every failure of an attempt: building the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition; this rule says the failure is systematic for the resource type rather than one owner's bad day.
+                The counter covers every failure of an attempt: mutating the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition, which is where the failure message lives; this rule says the failure is systematic for the resource type rather than one owner's bad day.
 
                 Quick check with:
                 ```
-                kubectl get events -A --field-selector type=Warning | grep PersistentVolumeClaim
+                kubectl get Database -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REASON:.status.conditions[?(@.type=="Ready")].reason,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
                 ```
 
   # Sporadic conflicts among many successful applies must not fire.

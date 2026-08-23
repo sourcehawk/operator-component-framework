@@ -59,9 +59,9 @@ groups:
 
       # Applies of one resource type mostly failing. Transient conflicts among
       # successful applies stay under the threshold, and a resource failing for
-      # a single owner among many is the condition rules' job. The `or … * 0`
-      # keeps the ratio defined for a resource that has never applied
-      # successfully, where no success series exists to add.
+      # a single owner among many is the condition rules' job. The `or` keeps
+      # the ratio defined for a resource that has never applied successfully,
+      # where no success series exists to add.
       - alert: ManagedResourceApplyFailing
         for: 15m
         expr: >
@@ -71,18 +71,18 @@ groups:
             )
             /
             (
-              sum by (namespace, controller, owner_kind, component, resource, kind) (
-                rate(ocf_resource_apply_errors_total[15m])
-              )
-              +
               (
+                sum by (namespace, controller, owner_kind, component, resource, kind) (
+                  rate(ocf_resource_apply_errors_total[15m])
+                )
+                +
                 sum by (namespace, controller, owner_kind, component, resource, kind) (
                   rate(ocf_resource_apply_total[15m])
                 )
-                or
-                sum by (namespace, controller, owner_kind, component, resource, kind) (
-                  rate(ocf_resource_apply_errors_total[15m])
-                ) * 0
+              )
+              or
+              sum by (namespace, controller, owner_kind, component, resource, kind) (
+                rate(ocf_resource_apply_errors_total[15m])
               )
             )
           ) > 0.5
@@ -98,9 +98,9 @@ groups:
           description: |
             Over the last 15 minutes, {{ $value | humanizePercentage }} of the apply attempts of the `{{ $labels.kind }}` resource `{{ $labels.resource }}` in component `{{ $labels.component }}` of owner kind `{{ $labels.owner_kind }}` (controller `{{ $labels.controller }}`) failed.
 
-            The counter covers every failure of an attempt: building the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition; this rule says the failure is systematic for the resource type rather than one owner's bad day.
+            The counter covers every failure of an attempt: mutating the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition, which is where the failure message lives; this rule says the failure is systematic for the resource type rather than one owner's bad day.
 
             Quick check with:
             ```
-            kubectl get events -A --field-selector type=Warning | grep {{ $labels.kind }}
+            kubectl get {{ $labels.owner_kind }} -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REASON:.status.conditions[?(@.type=="Ready")].reason,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
             ```

@@ -1,0 +1,102 @@
+# Alerting rules for the resource apply counters recorded by
+# github.com/sourcehawk/operator-component-framework/pkg/metrics.
+#
+# Neither counter carries an owner name or namespace, only the operator's static
+# topology (controller, owner kind, component, resource identifier, kind), so
+# these rules fire per resource *type* rather than per owner. Per-owner signal
+# comes from the condition rules in crd_conditions.tpl.yaml.
+#
+# Both rules are ratios of the resource's own applies rather than absolute
+# rates. At scale, legitimate spec changes across many owners keep the absolute
+# `updated` rate above zero indefinitely; what distinguishes a resource that
+# never converges is that more than half of its applies rewrite it, at a rate
+# no human produces. See docs/observability.md for the thresholds to tune.
+groups:
+  - name: ocf-resources
+    rules:
+      # A managed resource rewritten on every reconcile. A converged resource
+      # applies as `none`; one whose applies keep coming back `updated` is in a
+      # hot loop (apply updates the object, the watch event requeues the owner,
+      # the next apply updates it again) or in a fight with a webhook or another
+      # controller. Legitimate churn is followed by a `none` apply on the next
+      # reconcile, which keeps its ratio at or below one half. The floor keeps a
+      # single edit on an idle resource from producing a ratio of one over a
+      # handful of samples.
+      - alert: ManagedResourceNotConverging
+        for: 15m
+        expr: >
+          (
+            sum by (controller, owner_kind, component, resource, kind) (
+              rate(ocf_resource_apply_total{operation="updated"}[15m])
+            )
+            /
+            sum by (controller, owner_kind, component, resource, kind) (
+              rate(ocf_resource_apply_total[15m])
+            )
+          ) > 0.5
+          and
+          sum by (controller, owner_kind, component, resource, kind) (
+            increase(ocf_resource_apply_total{operation="updated"}[15m])
+          ) > 15
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            {{ $labels.kind }} `{{ $labels.resource }}` of component `{{ $labels.component }}` ({{ $labels.owner_kind }}) is rewritten on every reconcile
+          description: |
+            Over the last 15 minutes, {{ $value | humanizePercentage }} of the applies of the `{{ $labels.kind }}` resource `{{ $labels.resource }}` in component `{{ $labels.component }}` of owner kind `{{ $labels.owner_kind }}` (controller `{{ $labels.controller }}`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose every apply is an update is being rewritten on every reconcile even though nothing changed.
+
+            Usual causes: a mutation that is not idempotent (a timestamp, a random value, an unsorted list), a defaulting webhook or another controller fighting the operator, or a field the API server normalises. Events report the same thing, but client-go's spam filter truncates them within seconds under exactly these conditions.
+
+            Quick check with:
+            ```
+            kubectl get events -A --field-selector reason=Updated{{ $labels.kind }}
+            ```
+
+      # Applies of one resource type mostly failing. Transient conflicts among
+      # successful applies stay under the threshold, and a resource failing for
+      # a single owner among many is the condition rules' job. The `or … * 0`
+      # keeps the ratio defined for a resource that has never applied
+      # successfully, where no success series exists to add.
+      - alert: ManagedResourceApplyFailing
+        for: 15m
+        expr: >
+          (
+            sum by (controller, owner_kind, component, resource, kind) (
+              rate(ocf_resource_apply_errors_total[15m])
+            )
+            /
+            (
+              sum by (controller, owner_kind, component, resource, kind) (
+                rate(ocf_resource_apply_errors_total[15m])
+              )
+              +
+              (
+                sum by (controller, owner_kind, component, resource, kind) (
+                  rate(ocf_resource_apply_total[15m])
+                )
+                or
+                sum by (controller, owner_kind, component, resource, kind) (
+                  rate(ocf_resource_apply_errors_total[15m])
+                ) * 0
+              )
+            )
+          ) > 0.5
+          and
+          sum by (controller, owner_kind, component, resource, kind) (
+            increase(ocf_resource_apply_errors_total[15m])
+          ) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Applies of {{ $labels.kind }} `{{ $labels.resource }}` of component `{{ $labels.component }}` ({{ $labels.owner_kind }}) are failing
+          description: |
+            Over the last 15 minutes, {{ $value | humanizePercentage }} of the apply attempts of the `{{ $labels.kind }}` resource `{{ $labels.resource }}` in component `{{ $labels.component }}` of owner kind `{{ $labels.owner_kind }}` (controller `{{ $labels.controller }}`) failed.
+
+            The counter covers every failure of an attempt: building the desired object, the server-side apply patch, and the classification that follows it. The owners whose resource fails report the error on their Ready condition; this rule says the failure is systematic for the resource type rather than one owner's bad day.
+
+            Quick check with:
+            ```
+            kubectl get events -A --field-selector type=Warning | grep {{ $labels.kind }}
+            ```

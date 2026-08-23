@@ -104,7 +104,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", id=~\"$resource_id\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"})\n)",
+          "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
           "legendFormat": "Total",
           "range": true,
           "refId": "A"
@@ -386,7 +386,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"False\", reason=~\"$reason\", id=~\"$resource_id\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"})\n)",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"False\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
               "range": true,
               "refId": "A"
@@ -455,7 +455,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"Unknown\", reason=~\"$reason\", id=~\"$resource_id\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"})\n)",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"Unknown\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
               "range": true,
               "refId": "A",
@@ -528,7 +528,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"True\", reason=~\"$reason\", id=~\"$resource_id\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"})\n)",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"True\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
               "range": true,
               "refId": "A"
@@ -707,7 +707,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},id)",
+        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
         "description": "Namespace and resource name combination",
         "hide": 0,
         "includeAll": true,
@@ -716,7 +716,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},id)",
+          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

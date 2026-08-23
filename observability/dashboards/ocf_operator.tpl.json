@@ -536,7 +536,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
           "range": true
         }
@@ -603,7 +603,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  ({{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  ({{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "A",
           "range": true
         }
@@ -671,7 +671,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "A",
           "range": true
         }
@@ -2295,9 +2295,9 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller, component, resource) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[15m]))\n/\nsum by (controller, component, resource) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\"}[15m]))",
+          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[15m]))\n/\nsum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\"}[15m]))",
           "refId": "A",
-          "legendFormat": "{{controller}}/{{component}}/{{resource}}",
+          "legendFormat": "{{controller}}/{{component}}/{{resource}} ({{kind}})",
           "range": true
         }
       ],
@@ -2389,9 +2389,9 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller, component, resource) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n/\n(\n  sum by (controller, component, resource) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n  +\n  (sum by (controller, component, resource) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) or sum by (controller, component, resource) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) * 0)\n)",
+          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n/\n(\n  sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n  +\n  (sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) or sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) * 0)\n)",
           "refId": "A",
-          "legendFormat": "{{controller}}/{{component}}/{{resource}}",
+          "legendFormat": "{{controller}}/{{component}}/{{resource}} ({{kind}})",
           "range": true
         }
       ],
@@ -2521,7 +2521,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (condition, status) (\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\"}\n  and\n  topk by (id, condition) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\"})\n)",
+          "expr": "count by (condition, status) (\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\"}\n  and\n  topk by (kind, id, condition) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\"})\n)",
           "refId": "A",
           "legendFormat": "{{condition}} {{status}}",
           "exemplar": false,
@@ -2672,7 +2672,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (kind, {{namespace_label}}, name, reason, status, id) (\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status!=\"True\"}\n  and\n  topk by (id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
+          "expr": "sum by (kind, {{namespace_label}}, name, reason, status, id) (\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status!=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
           "exemplar": false,
           "instant": true,

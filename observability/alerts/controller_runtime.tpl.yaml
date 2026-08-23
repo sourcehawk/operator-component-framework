@@ -46,7 +46,11 @@ groups:
 
       # Queue wait time rather than queue depth: depth has no threshold that is
       # right for every operator, whereas items waiting minutes for a worker is
-      # wrong at any scale.
+      # wrong at any scale. controller-runtime labels every workqueue series
+      # with both `name` and `controller` (same value) in every version the
+      # framework supports (v0.22 and later), so aggregating by `controller`
+      # keeps one label across the reconcile rules, the workqueue rules and the
+      # dashboards.
       - alert: ControllerWorkqueueBacklog
         for: 15m
         expr: >

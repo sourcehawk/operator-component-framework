@@ -273,6 +273,56 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(recorder.recordedWithReason("UpdatedConfigMap")).To(HaveLen(1))
 		})
 
+		It("should stop counting updated applies once a rebuilt resource has converged", func() {
+			// Given: the same rebuilt-desired-object shape as above, which used to
+			// report Updated on every pass. Events were the only trace of that, and
+			// client-go's spam filter truncates them within seconds, so the metric
+			// is what makes it visible in a running cluster.
+			data := map[string]string{"foo": "bar"}
+			res := &operationRecordingResource{
+				build: func() *corev1.ConfigMap {
+					cm := &corev1.ConfigMap{
+						ObjectMeta: metav1.ObjectMeta{Name: "metered-cm", Namespace: namespace},
+						Data:       map[string]string{},
+					}
+					for k, v := range data {
+						cm.Data[k] = v
+					}
+					return cm
+				},
+			}
+			comp.reconcileResources = []reconcileEntry{
+				{Resource: res, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}},
+			}
+
+			// When: reconciled repeatedly without a change, then once after a change
+			for range 3 {
+				Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+			}
+			data["foo"] = "baz"
+			Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+			Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+
+			// Then: none keeps growing while updated stays at its post-change value
+			spy := recCtx.Metrics.(*spyMetrics)
+			counts := map[concepts.ConvergingOperation]int{}
+			for _, apply := range spy.recordedApplies() {
+				counts[apply.operation]++
+			}
+			Expect(counts[concepts.ConvergingOperationCreated]).To(Equal(1))
+			Expect(counts[concepts.ConvergingOperationUpdated]).To(Equal(1))
+			Expect(counts[concepts.ConvergingOperationNone]).To(Equal(3))
+			Expect(spy.recordedErrors()).To(BeEmpty())
+
+			// And: every series carries the component, owner kind and kind default
+			Expect(spy.recordedApplies()[0].labels).To(Equal(ResourceMetricLabels{
+				OwnerKind:  owner.GetKind(),
+				Component:  "test-component",
+				Identifier: "configmap",
+				Kind:       "ConfigMap",
+			}))
+		})
+
 		It("should classify a rebuilt typed CRD object and hand handlers exactly the server response", func() {
 			// Given: a JSON-decoded typed object (CRDs are not served as protobuf,
 			// and JSON decoding into a populated struct keeps fields the response

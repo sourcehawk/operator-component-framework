@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/sourcehawk/operator-component-framework/internal/scope"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -25,7 +26,7 @@ import (
 // reconcileResources (normal path) to avoid duplicating the Object/Mutate/SSA/
 // status-collection sequence.
 func applyResource(
-	ctx context.Context, rec ReconcileContext, resource Resource,
+	ctx context.Context, rec ReconcileContext, resource Resource, componentName string,
 	fieldOwner client.FieldOwner, mapper meta.RESTMapper, skipOwnerRef bool,
 ) (*reconcileResult, error) {
 	obj, err := resource.Object()
@@ -35,6 +36,20 @@ func applyResource(
 		)
 	}
 
+	// Set GVK on the object (required for SSA — builders often omit TypeMeta).
+	// It runs this early so the object's kind is known for the metric labels on
+	// every later path, success and failure alike.
+	if err := ensureGVK(obj, rec.Scheme); err != nil {
+		return nil, fmt.Errorf(
+			"failed to determine GVK for resource %s: %w", resource.Identity(), err,
+		)
+	}
+
+	// Errors before this point leave no kind to label a metric with, and mean
+	// the framework never worked out what to apply. They surface as a returned
+	// error and an error condition instead.
+	labels := resourceMetricLabels(rec, componentName, resource, obj)
+
 	// Check if the object already exists (read through the client, usually the informer cache).
 	// The observed object is fetched into a zeroed instance rather than a copy of
 	// the desired object, so the pre-apply snapshot used by the comparison below
@@ -43,24 +58,24 @@ func applyResource(
 	var objectExists bool
 	existing, err := newEmptyObjectLike(obj)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, applyFailed(rec, labels, fmt.Errorf(
 			"failed to prepare existence check for resource %s: %w", resource.Identity(), err,
-		)
+		))
 	}
 	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), existing); err == nil {
 		objectExists = true
 	} else if !apierrors.IsNotFound(err) {
-		return nil, fmt.Errorf(
+		return nil, applyFailed(rec, labels, fmt.Errorf(
 			"failed to check existence of resource %s: %w", resource.Identity(), err,
-		)
+		))
 	}
 
 	// Apply mutations to desired state
 	ownerRefSkipped, err := mutateResource(resource, obj, rec.Owner, rec.Scheme, mapper, skipOwnerRef)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, applyFailed(rec, labels, fmt.Errorf(
 			"failed to mutate resource %s: %w", resource.Identity(), err,
-		)
+		))
 	}
 
 	// Prepare the object for SSA by clearing server-populated fields that must not
@@ -69,20 +84,22 @@ func applyResource(
 	// pointer and Patch writes back into the same object.
 	clearServerFields(obj)
 
-	// Set GVK on the object (required for SSA — builders often omit TypeMeta)
+	// Re-assert the GVK. A Mutate implementation that assigns the whole struct
+	// (*current = *desired) drops the TypeMeta set above, and SSA requires it.
+	// The call is a no-op whenever the kind is still present.
 	if err := ensureGVK(obj, rec.Scheme); err != nil {
-		return nil, fmt.Errorf(
+		return nil, applyFailed(rec, labels, fmt.Errorf(
 			"failed to determine GVK for resource %s: %w", resource.Identity(), err,
-		)
+		))
 	}
 
 	// Server-Side Apply with forced ownership.
 	// client.Apply is deprecated in favor of client.Client.Apply() which requires generated
 	// ApplyConfiguration types. Using Patch with Apply is the pragmatic approach for untyped objects.
 	if err := rec.Client.Patch(ctx, obj, client.Apply, client.ForceOwnership, fieldOwner); err != nil { //nolint:staticcheck
-		return nil, fmt.Errorf(
+		return nil, applyFailed(rec, labels, fmt.Errorf(
 			"failed to apply resource %s: %w", resource.Identity(), err,
-		)
+		))
 	}
 
 	// Classify the apply by comparing the object observed before the patch (read
@@ -95,9 +112,9 @@ func applyResource(
 	if objectExists {
 		changed, err := appliedObjectChanged(existing, obj)
 		if err != nil {
-			return nil, fmt.Errorf(
+			return nil, applyFailed(rec, labels, fmt.Errorf(
 				"failed to compare applied state of resource %s: %w", resource.Identity(), err,
-			)
+			))
 		}
 		convergingOperation = concepts.ConvergingOperationNone
 		if changed {
@@ -116,17 +133,62 @@ func applyResource(
 	// Gather converging status of resources
 	status, err := getConvergingStatus(resource, convergingOperation)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, applyFailed(rec, labels, fmt.Errorf(
 			"failed to determine converging status of resource %s: %w", resource.Identity(), err,
-		)
+		))
 	}
 
 	recording.RecordApplyOperationEvent(rec.EventRecorder, convergingOperation, obj, rec.Owner)
+	if rec.Metrics != nil {
+		rec.Metrics.RecordResourceApply(labels, convergingOperation)
+	}
 
 	if status != nil {
 		return &reconcileResult{Status: *status}, nil
 	}
 	return nil, nil
+}
+
+// resourceMetricLabels builds the label set for a resource's metrics.
+//
+// The identifier comes from the resource when it implements
+// concepts.MetricsIdentifiable and returns a non-empty value, and defaults to
+// the lowercased kind otherwise. The default is always bounded and needs no
+// configuration, at the cost of collapsing two resources of the same kind in
+// one component into a single series until one of them is given an identifier.
+//
+// The default is resolved here rather than in the resource, so that every
+// Resource implementation is labelled the same way, hand-written ones included.
+func resourceMetricLabels(
+	rec ReconcileContext, componentName string, resource Resource, obj client.Object,
+) ResourceMetricLabels {
+	kind := obj.GetObjectKind().GroupVersionKind().Kind
+	identifier := strings.ToLower(kind)
+	if identifiable, ok := resource.(concepts.MetricsIdentifiable); ok {
+		// A blank identifier is treated as unset, matching what the builders
+		// reject at build time. A hand-written implementation is not held to
+		// that check, and " " is not a label value anyone meant to key a series
+		// by. Anything else is taken verbatim: rewriting a caller's identifier
+		// would silently split or merge series.
+		if configured := identifiable.MetricsIdentifier(); strings.TrimSpace(configured) != "" {
+			identifier = configured
+		}
+	}
+	return ResourceMetricLabels{
+		OwnerKind:  rec.Owner.GetKind(),
+		Component:  componentName,
+		Identifier: identifier,
+		Kind:       kind,
+	}
+}
+
+// applyFailed records an apply error and returns the error unchanged, so that
+// every error return after the object's kind is known stays a single statement.
+func applyFailed(rec ReconcileContext, labels ResourceMetricLabels, err error) error {
+	if rec.Metrics != nil {
+		rec.Metrics.RecordResourceApplyError(labels)
+	}
+	return err
 }
 
 // applyResources ensures that all registered "creation" resources exist and match
@@ -161,7 +223,9 @@ func applyResources(
 	var results []reconcileResult
 
 	for _, entry := range entries {
-		result, err := applyResource(ctx, rec, entry.Resource, fieldOwner, mapper, entry.Options.Unowned)
+		result, err := applyResource(
+			ctx, rec, entry.Resource, componentName, fieldOwner, mapper, entry.Options.Unowned,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -230,7 +294,9 @@ func reconcileResources(
 		if entry.Options.ReadOnly {
 			result, err = readResource(ctx, rec, resource)
 		} else {
-			result, err = applyResource(ctx, rec, resource, fieldOwner, mapper, entry.Options.Unowned)
+			result, err = applyResource(
+				ctx, rec, resource, componentName, fieldOwner, mapper, entry.Options.Unowned,
+			)
 		}
 		if err != nil {
 			if entry.Options.ReadOnly && apierrors.IsNotFound(err) {

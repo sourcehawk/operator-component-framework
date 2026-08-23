@@ -44,6 +44,8 @@ Verify the real API before using or documenting it. Key packages:
 - `pkg/mutation/selectors/` — available container selectors
 - `pkg/feature/feature.go` — `NewVersionGate`, `Mutation[T]`
 - `pkg/recording/` — resource event recording
+- `pkg/metrics/` — Prometheus implementation of `component.MetricsRecorder`: condition metrics plus the per-resource
+  apply counters
 - `pkg/testing/` — testing utilities (`golden/` for snapshot tests, `integration/` for integration helpers)
 
 When changing a public API, also check `examples/` for real usage patterns and to identify what else needs updating.

@@ -42,6 +42,13 @@ func (b *StaticBuilder[T, M]) WithMutation(ms ...Mutation[M]) *StaticBuilder[T, 
 	return b
 }
 
+// WithMetricsIdentifier sets the static resource's metrics identifier. See
+// BaseBuilder.WithMetricsIdentifier.
+func (b *StaticBuilder[T, M]) WithMetricsIdentifier(identifier string) *StaticBuilder[T, M] {
+	b.BaseBuilder.WithMetricsIdentifier(identifier)
+	return b
+}
+
 // WithGuard registers a guard precondition for the static resource.
 func (b *StaticBuilder[T, M]) WithGuard(
 	handler func(T) (concepts.GuardStatusWithReason, error),

@@ -1,6 +1,9 @@
 package scaffold
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // TemplateData is the fully resolved input to the wrapper templates. Every field
 // is validated or derived by Options.Resolve.
@@ -38,6 +41,13 @@ func (d TemplateData) QualifiedType() string {
 // PointerType returns a pointer to the wrapped type qualified by its import alias.
 func (d TemplateData) PointerType() string {
 	return "*" + d.QualifiedType()
+}
+
+// LowercaseKind returns the kind in lower case, which is the value the
+// framework uses for a resource's `resource` metric label when the wrapper's
+// builder is not given an explicit metrics identifier.
+func (d TemplateData) LowercaseKind() string {
+	return strings.ToLower(d.Kind)
 }
 
 // APIVersion returns "<group>/<version>", or bare "<version>" for core types.

@@ -90,15 +90,15 @@ package defaults to `certificate` (the lowercased kind), and the version default
 segment, which matches the API-version pattern). The four generated files:
 
 - `builder.go` registers the scaffolded default handlers, exposes the fluent configuration API (`WithMutation`,
-  `WithGuard`, `WithDataGuard`, `WithOptionalData`, the `WithCustom*` status setters), and `Build()` returns the
-  `Resource`.
+  `WithGuard`, `WithDataGuard`, `WithOptionalData`, `WithMetricsIdentifier`, the `WithCustom*` status setters), and
+  `Build()` returns the `Resource`.
 - `builder_test.go` tests `Build()` validation, that a registered mutation applies through the mutator, declared data
   extraction with `ExtractInto`, and `WithDataGuard`/`WithOptionalData` gating.
 - `mutator.go` defines `Mutator`, which records metadata and object edits and applies them in a single pass when
   `Apply()` runs.
 - `resource.go` defines `Resource`, which delegates every lifecycle method to the generic base: `Identity`, `Object`,
-  `Mutate`, the variant's status and suspension methods, `GuardStatus`, `ExtractData`, `ProducedData`, `ConsumedData`,
-  `RecordObservation`, `Preview`, `RegisteredMutations`, and `FiringSet`.
+  `Mutate`, `MetricsIdentifier`, the variant's status and suspension methods, `GuardStatus`, `ExtractData`,
+  `ProducedData`, `ConsumedData`, `RecordObservation`, `Preview`, `RegisteredMutations`, and `FiringSet`.
 
 Follow the printed next steps: run `go mod tidy` so `github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1`
 resolves in your module, then `go test ./certificate/...` to verify the generated package builds and passes before you

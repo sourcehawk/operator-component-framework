@@ -10,11 +10,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/prometheus/client_golang/prometheus"
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
 	"github.com/sourcehawk/operator-component-framework/examples/custom-resource/app"
 	"github.com/sourcehawk/operator-component-framework/examples/custom-resource/resources"
 	sharedapp "github.com/sourcehawk/operator-component-framework/examples/shared/app"
+	"github.com/sourcehawk/operator-component-framework/pkg/metrics"
 	"k8s.io/apimachinery/pkg/api/meta"
 	uns "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -57,15 +60,21 @@ func main() {
 		exit("failed to create owner: %v", err)
 	}
 
+	// Condition metrics and resource-level apply metrics are both recorded
+	// through one component.MetricsRecorder. Register the collectors once per
+	// process; a real operator would use controller-runtime's registry:
+	//
+	//	ctrlmetrics.Registry.MustRegister(gauge, collectors)
 	gauge := ocm.NewOperatorConditionsGauge("example")
+	collectors := metrics.NewCollectors()
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(gauge, collectors)
+
 	controller := &app.Controller{
-		Client:        fakeClient,
-		Scheme:        scheme,
-		EventRecorder: events.NewFakeRecorder(100),
-		Metrics: &ocm.ConditionMetricRecorder{
-			Controller:              "example",
-			OperatorConditionsGauge: gauge,
-		},
+		Client:                 fakeClient,
+		Scheme:                 scheme,
+		EventRecorder:          events.NewFakeRecorder(100),
+		Metrics:                metrics.NewRecorder("example", gauge, collectors),
 		NewCertificateResource: resources.NewCertificateResource,
 	}
 
@@ -83,12 +92,40 @@ func main() {
 	}
 	printConditions(owner)
 
+	// The apply counters record what each reconcile did to the resource: one
+	// created, then none. A resource whose "updated" count keeps climbing in
+	// steady state is being rewritten on every pass for no reason.
+	fmt.Println("\n--- Resource apply metrics ---")
+	printApplyMetrics(registry)
+
 	fmt.Println("\nDone.")
 }
 
 func printConditions(owner *app.ExampleApp) {
 	for _, c := range owner.Status.Conditions {
 		fmt.Printf("  Condition: %s  Status: %s  Reason: %s\n", c.Type, c.Status, c.Reason)
+	}
+}
+
+func printApplyMetrics(registry *prometheus.Registry) {
+	families, err := registry.Gather()
+	if err != nil {
+		exit("failed to gather metrics: %v", err)
+	}
+	for _, family := range families {
+		if family.GetName() != "ocf_resource_apply_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			labels := make([]string, 0, len(metric.GetLabel()))
+			for _, label := range metric.GetLabel() {
+				labels = append(labels, fmt.Sprintf("%s=%q", label.GetName(), label.GetValue()))
+			}
+			fmt.Printf(
+				"  %s{%s} %g\n",
+				family.GetName(), strings.Join(labels, ","), metric.GetCounter().GetValue(),
+			)
+		}
 	}
 }
 

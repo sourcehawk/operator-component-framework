@@ -548,6 +548,55 @@ func TestApplyResource_ConvergingOperation(t *testing.T) {
 	})
 }
 
+// typeMetaClearingResource models a Mutate that assigns the whole struct, a
+// realistic way to copy desired state onto the current object. That drops the
+// TypeMeta the framework set, and Server-Side Apply requires it.
+type typeMetaClearingResource struct {
+	namespace string
+}
+
+func (r *typeMetaClearingResource) Identity() string {
+	return "v1/ConfigMap/" + r.namespace + "/typemeta-cm"
+}
+
+func (r *typeMetaClearingResource) Object() (client.Object, error) {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "typemeta-cm", Namespace: r.namespace},
+	}, nil
+}
+
+func (r *typeMetaClearingResource) Mutate(obj client.Object) error {
+	cm, ok := obj.(*corev1.ConfigMap)
+	if !ok {
+		return fmt.Errorf("expected *corev1.ConfigMap, got %T", obj)
+	}
+	*cm = corev1.ConfigMap{ObjectMeta: cm.ObjectMeta, Data: map[string]string{"foo": "bar"}}
+	return nil
+}
+
+func TestApplyResource_ReassertsGVKAfterMutate(t *testing.T) {
+	const namespace = "test-namespace"
+	scheme := setupScheme()
+	owner := &MockOperatorCRD{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: namespace, UID: "owner-uid"},
+	}
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).WithObjects(owner).WithStatusSubresource(owner).Build()
+	rec := setupReconcileContext(scheme, owner, fakeClient)
+
+	res := &typeMetaClearingResource{namespace: namespace}
+	_, err := applyResources(
+		t.Context(), rec, []reconcileEntry{{Resource: res}}, "test-component", createTestRESTMapper(),
+	)
+	require.NoError(t, err)
+
+	applied := &corev1.ConfigMap{}
+	require.NoError(t, fakeClient.Get(
+		t.Context(), client.ObjectKey{Name: "typemeta-cm", Namespace: namespace}, applied,
+	))
+	assert.Equal(t, map[string]string{"foo": "bar"}, applied.Data)
+}
+
 func TestNewEmptyObjectLike(t *testing.T) {
 	t.Run("returns a zeroed typed object of the same type", func(t *testing.T) {
 		src := &corev1.ConfigMap{

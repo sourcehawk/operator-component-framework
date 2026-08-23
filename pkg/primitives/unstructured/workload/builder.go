@@ -126,6 +126,19 @@ func (b *Builder) WithOptionalData(cells ...concepts.DataCell) *Builder {
 	return b
 }
 
+// WithMetricsIdentifier sets the object's identifier for resource-level
+// metrics, used as the value of the `resource` label on ocf_resource_apply_total
+// and ocf_resource_apply_errors_total.
+//
+// It is a Prometheus label value, not a Kubernetes name: it must be
+// low-cardinality and stable across reconciles, never derived from a per-owner
+// value such as the owning custom resource's name. When unset, the resource is
+// labelled with its lowercased kind. Build rejects a blank identifier.
+func (b *Builder) WithMetricsIdentifier(identifier string) *Builder {
+	b.base.WithMetricsIdentifier(identifier)
+	return b
+}
+
 // Build validates the configuration and returns the initialized Resource.
 //
 // It returns an error if the converging status handler has not been set.

@@ -98,6 +98,35 @@ func TestExtractIntoDeclaredExtraction(t *testing.T) {
 	assert.Equal(t, "postgres.default.svc", v)
 }
 
+func TestWithMetricsIdentifier(t *testing.T) {
+	t.Parallel()
+	newBuilder := func() *Builder {
+		return NewBuilder(&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "web-tls", Namespace: "default"},
+		})
+	}
+
+	t.Run("defaults to empty so the framework labels by kind", func(t *testing.T) {
+		t.Parallel()
+		res, err := newBuilder().Build()
+		require.NoError(t, err)
+		assert.Empty(t, res.MetricsIdentifier())
+	})
+
+	t.Run("returns the configured identifier", func(t *testing.T) {
+		t.Parallel()
+		res, err := newBuilder().WithMetricsIdentifier("tls").Build()
+		require.NoError(t, err)
+		assert.Equal(t, "tls", res.MetricsIdentifier())
+	})
+
+	t.Run("rejects a blank identifier", func(t *testing.T) {
+		t.Parallel()
+		_, err := newBuilder().WithMetricsIdentifier(" ").Build()
+		assert.EqualError(t, err, "metrics identifier cannot be blank")
+	})
+}
+
 func TestWithDataGuardAndOptionalDataDeclarations(t *testing.T) {
 	t.Parallel()
 	guarded := concepts.NewData[string]("db-host")

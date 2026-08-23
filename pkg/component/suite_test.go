@@ -16,8 +16,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -94,10 +92,7 @@ func newTestReconcileContext(owner OperatorCRD) ReconcileContext {
 		Client:        k8sClient,
 		Scheme:        scheme.Scheme,
 		EventRecorder: &spyRecorder{},
-		Metrics: &ocm.ConditionMetricRecorder{
-			Controller:              "test-controller",
-			OperatorConditionsGauge: ocm.NewOperatorConditionsGauge("test_namespace"),
-		},
-		Owner: owner,
+		Metrics:       &spyMetrics{},
+		Owner:         owner,
 	}
 }

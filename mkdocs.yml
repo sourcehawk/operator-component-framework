@@ -78,6 +78,7 @@ nav:
       - Component: component.md
       - Primitives Overview: primitives.md
       - Custom Resources: custom-resource.md
+      - Observability: observability.md
   - Primitives:
       - Workloads:
           - Pod: primitives/pod.md

@@ -115,6 +115,7 @@ Full documentation, including a step-by-step tutorial, is at
 | [CLI](https://sourcehawk.github.io/operator-component-framework/cli/)                          | Scaffold wrapper packages with `ocf scaffold wrapper`        |
 | [Guidelines](https://sourcehawk.github.io/operator-component-framework/guidelines/)            | Patterns for structuring operators well                      |
 | [Testing](https://sourcehawk.github.io/operator-component-framework/testing/)                  | Golden snapshots and version-matrix coverage                 |
+| [Observability](https://sourcehawk.github.io/operator-component-framework/observability/)      | Grafana dashboards and Prometheus alerts for your operator   |
 | [Compatibility](https://sourcehawk.github.io/operator-component-framework/compatibility/)      | Supported Kubernetes and controller-runtime versions         |
 
 The full Go API reference is on [pkg.go.dev](https://pkg.go.dev/github.com/sourcehawk/operator-component-framework).

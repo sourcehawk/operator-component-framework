@@ -67,7 +67,7 @@ func (c *controllerSim) reconcile(result string, queueWait, duration time.Durati
 	c.rt.workDuration.WithLabelValues(c.name, c.name).Observe(duration.Seconds())
 	c.rt.reconcileTime.WithLabelValues(c.name).Observe(duration.Seconds())
 	c.rt.reconcileTotal.WithLabelValues(c.name, result).Inc()
-	if result == "error" {
+	if result == resultError {
 		c.rt.reconcileErrors.WithLabelValues(c.name).Inc()
 		c.rt.queueRetries.WithLabelValues(c.name, c.name).Inc()
 	}
@@ -114,6 +114,12 @@ func newWorld(conditions *ocm.OperatorConditionsGauge, collectors *metrics.Colle
 	return w
 }
 
+// Component and namespace names reused across the scripted world.
+const (
+	componentServer = "server"
+	namespaceShop   = "shop"
+)
+
 // Condition reasons the simulated owners report.
 const (
 	reasonHealthy  = "Healthy"
@@ -123,9 +129,9 @@ const (
 )
 
 var (
-	webappDeployment = resource{"server", "deployment", "Deployment"}
-	webappService    = resource{"server", "service", "Service"}
-	webappConfigMap  = resource{"server", "configmap", "ConfigMap"}
+	webappDeployment = resource{componentServer, "deployment", "Deployment"}
+	webappService    = resource{componentServer, "service", "Service"}
+	webappConfigMap  = resource{componentServer, "configmap", "ConfigMap"}
 	webappIngress    = resource{"ingress", "ingress", "Ingress"}
 
 	dbStatefulSet = resource{"storage", "statefulset", "StatefulSet"}
@@ -212,8 +218,8 @@ func (w *world) hotLoop(ctx context.Context) {
 // reconcile durations are slow enough for the p99 to cross a minute.
 func (w *world) databases(ctx context.Context) {
 	c := w.database
-	orders := owner{"shop", "orders-db"}
-	users := owner{"shop", "users-db"}
+	orders := owner{namespaceShop, "orders-db"}
+	users := owner{namespaceShop, "users-db"}
 	reports := owner{"analytics", "reports-db"}
 	healthy := []owner{{"shop", "carts-db"}, {"analytics", "events-db"}}
 	stuckSince := w.start.Add(-8 * time.Hour)
@@ -232,7 +238,7 @@ func (w *world) databases(ctx context.Context) {
 			i++
 			result := "success"
 			if c.rng.IntN(10) < 3 {
-				result = "error"
+				result = resultError
 			}
 			duration := time.Duration(5+c.rng.IntN(60)) * time.Second
 			if c.rng.IntN(10) < 2 {

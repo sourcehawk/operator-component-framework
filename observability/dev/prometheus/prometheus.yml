@@ -1,0 +1,18 @@
+# Scrapes the simulator running on the host. The static `namespace` and `pod`
+# target labels collide with the namespace label the condition gauge exports,
+# which Prometheus resolves by renaming the exported one to
+# `exported_namespace`, exactly as a ServiceMonitor scrape does in a cluster.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 10s
+
+rule_files:
+  - /etc/prometheus/rules/*.yaml
+
+scrape_configs:
+  - job_name: demo-operator
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          namespace: operators
+          pod: demo-operator-0

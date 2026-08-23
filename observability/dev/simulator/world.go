@@ -223,7 +223,7 @@ func (w *world) databases(ctx context.Context) {
 		c.reconcile(result, time.Duration(rand.IntN(400))*time.Millisecond, duration)
 		c.apply(dbStatefulSet, concepts.ConvergingOperationNone)
 		c.apply(dbCronJob, concepts.ConvergingOperationNone)
-		if rand.IntN(4) == 0 {
+		if i%4 == 0 {
 			c.apply(dbPVC, concepts.ConvergingOperationNone)
 		} else {
 			c.applyError(dbPVC)

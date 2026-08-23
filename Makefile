@@ -334,7 +334,7 @@ SIMULATOR_ARGS ?=
 
 .PHONY: observability-render-dev
 observability-render-dev: ## Render dashboards and plain rules for the dev stack, with every `for:` shortened to 2m.
-	@rm -rf $(OBS_DEV_OUT)
+	@rm -rf $(OBS_DEV_OUT)/alerts/* $(OBS_DEV_OUT)/dashboards/*
 	@$(MAKE) --no-print-directory dashboards METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT)
 	@$(MAKE) --no-print-directory alerts METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT) ALERT_FORMAT=rules
 	@for file in $(OBS_DEV_OUT)/alerts/*.yaml; do \
@@ -344,8 +344,12 @@ observability-render-dev: ## Render dashboards and plain rules for the dev stack
 .PHONY: observability-up
 observability-up: observability-render-dev ## Start Prometheus (:9090) and Grafana (:3000) and run the simulator on the host.
 	docker compose -f $(OBS_DIR)/dev/docker-compose.yaml up -d
-	@for i in $$(seq 1 30); do curl -fsS 127.0.0.1:9090/-/ready >/dev/null 2>&1 && break; sleep 1; done; \
-	curl -fsS -X POST 127.0.0.1:9090/-/reload || true
+	@ready=0; for i in $$(seq 1 30); do \
+	  curl -fsS 127.0.0.1:9090/-/ready >/dev/null 2>&1 && { ready=1; break; }; \
+	  sleep 1; \
+	done; \
+	[ "$$ready" = "1" ] || { echo "Error: prometheus did not become ready"; exit 1; }; \
+	curl -fsS -X POST 127.0.0.1:9090/-/reload
 	@echo "Grafana: http://localhost:3000  Prometheus: http://localhost:9090/alerts"
 	go run ./$(OBS_DIR)/dev/simulator -metric-namespace=$(OBS_DEV_NAMESPACE) $(SIMULATOR_ARGS)
 

@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -26,6 +27,16 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run wires the registry the way an operator would, serves /metrics and plays
+// the world until the process is signalled. It returns an error when the
+// metrics endpoint failed to serve, so main exits non-zero and
+// `make observability-up` fails visibly instead of idling without metrics.
+func run() error {
 	listen := flag.String("listen", ":8080", "address to serve /metrics on")
 	metricNamespace := flag.String("metric-namespace", "demo", "metric namespace of the condition gauge")
 	leader := flag.Bool("leader", true, "report this replica as the leader; false shows OperatorLeaderMissing")
@@ -43,10 +54,11 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	serveErr := make(chan error, 1)
 	go func() {
 		log.Printf("serving metrics on %s/metrics", *listen)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("serve: %v", err)
+			serveErr <- err
 			stop()
 		}
 	}()
@@ -56,4 +68,10 @@ func main() {
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdown)
+	select {
+	case err := <-serveErr:
+		return fmt.Errorf("serving metrics: %w", err)
+	default:
+		return nil
+	}
 }

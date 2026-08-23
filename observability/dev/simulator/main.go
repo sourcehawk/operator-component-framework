@@ -46,7 +46,8 @@ func main() {
 	go func() {
 		log.Printf("serving metrics on %s/metrics", *listen)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal(err)
+			log.Printf("serve: %v", err)
+			stop()
 		}
 	}()
 

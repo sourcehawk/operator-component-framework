@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/types"
+	clientmetrics "k8s.io/client-go/tools/metrics"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -108,6 +109,11 @@ func TestRuntimeMetricsMatchControllerRuntime(t *testing.T) {
 	cancel()
 	require.NoError(t, <-done)
 
+	// client-go creates rest_client_requests_total lazily on the first request;
+	// controller-runtime's pkg/metrics init installed the adapter, so one
+	// recorded result materialises the real family in the registry.
+	clientmetrics.RequestResult.Increment(context.Background(), "200", "GET", "10.96.0.1:443")
+
 	want := families(t, ctrlmetrics.Registry, "controller_runtime_", "workqueue_", "rest_client_", "leader_election_")
 
 	reg := prometheus.NewRegistry()
@@ -120,11 +126,10 @@ func TestRuntimeMetricsMatchControllerRuntime(t *testing.T) {
 	require.NotEmpty(t, got)
 	for name, g := range got {
 		w, ok := want[name]
-		if !ok && (strings.HasPrefix(name, "rest_client_") || strings.HasPrefix(name, "leader_election_")) {
-			// client-go creates rest_client_requests_total lazily and the
-			// leader elector creates leader_election_master_status; neither
-			// exists without an API server. Their definitions are kept in
-			// step with client_go_adapter.go and leaderelection.go by hand.
+		if !ok && strings.HasPrefix(name, "leader_election_") {
+			// The leader elector creates leader_election_master_status only
+			// when it runs against an API server. Its definition is kept in
+			// step with controller-runtime's leaderelection.go by hand.
 			continue
 		}
 		if !assert.True(t, ok, "simulator metric %s does not exist in controller-runtime", name) {

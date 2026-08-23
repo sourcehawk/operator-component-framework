@@ -70,10 +70,10 @@ func (c *controllerSim) reconcile(result string, queueWait, duration time.Durati
 		c.rt.reconcileErrors.WithLabelValues(c.name).Inc()
 		c.rt.queueRetries.WithLabelValues(c.name, c.name).Inc()
 	}
-	c.rt.restRequests.WithLabelValues("200", "GET", "https://10.96.0.1:443").Add(float64(2 + c.rng.IntN(3)))
-	c.rt.restRequests.WithLabelValues("200", "PATCH", "https://10.96.0.1:443").Add(float64(1 + c.rng.IntN(4)))
+	c.rt.restRequests.WithLabelValues("200", "GET", "10.96.0.1:443").Add(float64(2 + c.rng.IntN(3)))
+	c.rt.restRequests.WithLabelValues("200", "PATCH", "10.96.0.1:443").Add(float64(1 + c.rng.IntN(4)))
 	if c.rng.IntN(20) == 0 {
-		c.rt.restRequests.WithLabelValues("409", "PATCH", "https://10.96.0.1:443").Inc()
+		c.rt.restRequests.WithLabelValues("409", "PATCH", "10.96.0.1:443").Inc()
 	}
 }
 

@@ -193,17 +193,20 @@ func (w *world) hotLoop(ctx context.Context) {
 	}
 }
 
-// databases: five owners. orders-db has been Ready=False (Failing) for eight
+// databases: six owners. orders-db has been Ready=False (Failing) for eight
 // hours; users-db is Ready=Unknown; reports-db stays Ready=False while its
-// reason flips between Failing and Creating; the rest are healthy. PVC applies
-// fail three times out of four, thirty percent of reconciles error, and
-// reconcile durations are slow enough for the p99 to cross a minute.
+// reason flips between Failing and Creating; the rest are healthy, among them
+// the cluster-scoped shared-gateway, whose empty namespace makes the condition
+// gauge export series without a namespace label. PVC applies fail three times
+// out of four, thirty percent of reconciles error, and reconcile durations are
+// slow enough for the p99 to cross a minute.
 func (w *world) databases(ctx context.Context) {
 	c := w.database
 	orders := owner{namespaceShop, "orders-db"}
 	users := owner{namespaceShop, "users-db"}
 	reports := owner{"analytics", "reports-db"}
 	healthy := []owner{{namespaceShop, "carts-db"}, {"analytics", "events-db"}}
+	clusterOwner := owner{namespace: "", name: "shared-gateway"}
 	stuckSince := w.start.Add(-8 * time.Hour)
 	unknownSince := w.start.Add(-1 * time.Hour)
 	flipSince := w.start
@@ -251,6 +254,8 @@ func (w *world) databases(ctx context.Context) {
 			c.condition(o, "BackupReady", "True", reasonHealthy, w.start)
 			c.condition(o, "Ready", "True", reasonHealthy, w.start)
 		}
+		c.condition(clusterOwner, "StorageReady", "True", reasonHealthy, w.start)
+		c.condition(clusterOwner, "Ready", "True", reasonHealthy, w.start)
 	}
 	tick()
 	ticker := time.NewTicker(3 * time.Second)

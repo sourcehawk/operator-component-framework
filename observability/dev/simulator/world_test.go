@@ -51,8 +51,9 @@ func seriesValue(mfs []*dto.MetricFamily, name string, want map[string]string) (
 // world and checks that every scenario's series appear with the shapes the
 // dev stack's alerts key on: the stuck Ready condition with its eight hour
 // old transition, the failing PVC applies, the hot loop's rising updated
-// counter, both controllers reconciling and the leader gauge at one. It then
-// cancels the context and requires run to return.
+// counter, the cluster-scoped owner without a namespace label, both
+// controllers reconciling and the leader gauge at one. It then cancels the
+// context and requires run to return.
 func TestWorldScriptedScenarios(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	conditions := ocm.NewOperatorConditionsGauge("demo")
@@ -95,6 +96,15 @@ func TestWorldScriptedScenarios(t *testing.T) {
 			return false // seen once; wait until it has risen
 		}
 		if updated <= firstUpdated {
+			return false
+		}
+		// The cluster-scoped owner: client_golang exports the declared
+		// namespace label with an empty value, which Prometheus ingests as no
+		// namespace label at all, and the id keeps its "<ns>/<name>" shape.
+		if _, ok := seriesValue(mfs, "demo_controller_condition", map[string]string{
+			"kind": "Database", "name": "shared-gateway", "namespace": "",
+			"id": "/shared-gateway", "condition": "Ready", "status": "True",
+		}); !ok {
 			return false
 		}
 		for _, controller := range []string{"webapp", "database"} {

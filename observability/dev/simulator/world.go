@@ -63,7 +63,6 @@ func (c *controllerSim) labels(r resource) component.ResourceMetricLabels {
 func (c *controllerSim) reconcile(result string, queueWait, duration time.Duration) {
 	c.rt.queueAdds.WithLabelValues(c.name, c.name).Inc()
 	c.rt.queueDuration.WithLabelValues(c.name, c.name).Observe(queueWait.Seconds())
-	c.rt.activeWorkers.WithLabelValues(c.name).Set(1)
 	c.rt.workDuration.WithLabelValues(c.name, c.name).Observe(duration.Seconds())
 	c.rt.reconcileTime.WithLabelValues(c.name).Observe(duration.Seconds())
 	c.rt.reconcileTotal.WithLabelValues(c.name, result).Inc()
@@ -71,7 +70,6 @@ func (c *controllerSim) reconcile(result string, queueWait, duration time.Durati
 		c.rt.reconcileErrors.WithLabelValues(c.name).Inc()
 		c.rt.queueRetries.WithLabelValues(c.name, c.name).Inc()
 	}
-	c.rt.activeWorkers.WithLabelValues(c.name).Set(0)
 	c.rt.restRequests.WithLabelValues("200", "GET", "https://10.96.0.1:443").Add(float64(2 + c.rng.IntN(3)))
 	c.rt.restRequests.WithLabelValues("200", "PATCH", "https://10.96.0.1:443").Add(float64(1 + c.rng.IntN(4)))
 	if c.rng.IntN(20) == 0 {
@@ -221,65 +219,73 @@ func (w *world) databases(ctx context.Context) {
 	orders := owner{namespaceShop, "orders-db"}
 	users := owner{namespaceShop, "users-db"}
 	reports := owner{"analytics", "reports-db"}
-	healthy := []owner{{"shop", "carts-db"}, {"analytics", "events-db"}}
+	healthy := []owner{{namespaceShop, "carts-db"}, {"analytics", "events-db"}}
 	stuckSince := w.start.Add(-8 * time.Hour)
 	unknownSince := w.start.Add(-1 * time.Hour)
 	flipSince := w.start
 	flipReason := reasonFailing
 
+	i := 0
+	tick := func() {
+		i++
+		result := "success"
+		if c.rng.IntN(10) < 3 {
+			result = resultError
+		}
+		duration := time.Duration(5+c.rng.IntN(60)) * time.Second
+		if c.rng.IntN(10) < 2 {
+			duration = time.Duration(70+c.rng.IntN(50)) * time.Second
+		}
+		c.reconcile(result, time.Duration(c.rng.IntN(400))*time.Millisecond, duration)
+		c.apply(dbStatefulSet, concepts.ConvergingOperationNone)
+		c.apply(dbCronJob, concepts.ConvergingOperationNone)
+		if c.rng.IntN(4) == 0 {
+			c.apply(dbPVC, concepts.ConvergingOperationNone)
+		} else {
+			c.applyError(dbPVC)
+		}
+
+		if i%60 == 0 { // every three minutes
+			if flipReason == reasonFailing {
+				flipReason = reasonCreating
+			} else {
+				flipReason = reasonFailing
+			}
+			flipSince = time.Now()
+		}
+		c.condition(orders, "StorageReady", "False", reasonFailing, stuckSince)
+		c.condition(orders, "BackupReady", "True", reasonHealthy, stuckSince)
+		c.condition(orders, "Ready", "False", reasonFailing, stuckSince)
+		c.condition(users, "StorageReady", "Unknown", reasonUnknown, unknownSince)
+		c.condition(users, "BackupReady", "True", reasonHealthy, unknownSince)
+		c.condition(users, "Ready", "Unknown", reasonUnknown, unknownSince)
+		c.condition(reports, "StorageReady", "False", flipReason, flipSince)
+		c.condition(reports, "BackupReady", "True", reasonHealthy, w.start)
+		c.condition(reports, "Ready", "False", flipReason, flipSince)
+		for _, o := range healthy {
+			c.condition(o, "StorageReady", "True", reasonHealthy, w.start)
+			c.condition(o, "BackupReady", "True", reasonHealthy, w.start)
+			c.condition(o, "Ready", "True", reasonHealthy, w.start)
+		}
+	}
+	tick()
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
-	i := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			i++
-			result := "success"
-			if c.rng.IntN(10) < 3 {
-				result = resultError
-			}
-			duration := time.Duration(5+c.rng.IntN(60)) * time.Second
-			if c.rng.IntN(10) < 2 {
-				duration = time.Duration(70+c.rng.IntN(50)) * time.Second
-			}
-			c.reconcile(result, time.Duration(c.rng.IntN(400))*time.Millisecond, duration)
-			c.apply(dbStatefulSet, concepts.ConvergingOperationNone)
-			c.apply(dbCronJob, concepts.ConvergingOperationNone)
-			if c.rng.IntN(4) == 0 {
-				c.apply(dbPVC, concepts.ConvergingOperationNone)
-			} else {
-				c.applyError(dbPVC)
-			}
-
-			if i%60 == 0 { // every three minutes
-				if flipReason == reasonFailing {
-					flipReason = reasonCreating
-				} else {
-					flipReason = reasonFailing
-				}
-				flipSince = time.Now()
-			}
-			c.condition(orders, "StorageReady", "False", reasonFailing, stuckSince)
-			c.condition(orders, "BackupReady", "True", reasonHealthy, stuckSince)
-			c.condition(orders, "Ready", "False", reasonFailing, stuckSince)
-			c.condition(users, "StorageReady", "Unknown", reasonUnknown, unknownSince)
-			c.condition(users, "BackupReady", "True", reasonHealthy, unknownSince)
-			c.condition(users, "Ready", "Unknown", reasonUnknown, unknownSince)
-			c.condition(reports, "StorageReady", "False", flipReason, flipSince)
-			c.condition(reports, "BackupReady", "True", reasonHealthy, w.start)
-			c.condition(reports, "Ready", "False", flipReason, flipSince)
-			for _, o := range healthy {
-				c.condition(o, "StorageReady", "True", reasonHealthy, w.start)
-				c.condition(o, "BackupReady", "True", reasonHealthy, w.start)
-				c.condition(o, "Ready", "True", reasonHealthy, w.start)
-			}
+			tick()
 		}
 	}
 }
 
-// workqueueBacklog: the database queue is deep and items wait minutes.
+// workqueueBacklog: the database queue is deep, items wait minutes, and both
+// of the database controller's workers stay busy chewing through it, while
+// webapp's workers idle between zero and two. A reconcile-scoped flip of
+// active_workers would almost never be caught by a 5s scrape, so the gauges
+// are modelled as persistent levels instead.
 func (w *world) workqueueBacklog(ctx context.Context) {
 	c := w.database
 	ticker := time.NewTicker(5 * time.Second)
@@ -295,6 +301,8 @@ func (w *world) workqueueBacklog(ctx context.Context) {
 			c.rt.queueUnfinished.WithLabelValues(c.name, c.name).Set(float64(60 + c.rng.IntN(120)))
 			c.rt.queueLongestRunning.WithLabelValues(c.name, c.name).Set(float64(30 + c.rng.IntN(90)))
 			c.rt.queueDepth.WithLabelValues(w.webapp.name, w.webapp.name, "0").Set(float64(w.webapp.rng.IntN(3)))
+			c.rt.activeWorkers.WithLabelValues(c.name).Set(2)
+			c.rt.activeWorkers.WithLabelValues(w.webapp.name).Set(float64(w.webapp.rng.IntN(3)))
 		}
 	}
 }

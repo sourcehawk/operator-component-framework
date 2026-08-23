@@ -20,10 +20,18 @@
   "graphTooltip": 1,
   "links": [
     {
-      "title": "CRD Conditions Browser",
-      "type": "link",
-      "url": "/d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser",
-      "keepTime": true
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "ocf"
+      ],
+      "targetBlank": false,
+      "title": "OCF dashboards",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
     }
   ],
   "panels": [
@@ -97,7 +105,9 @@
           "editorMode": "code",
           "expr": "sum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "Reconciles/s",
@@ -168,7 +178,9 @@
           "editorMode": "code",
           "expr": "sum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\", result=\"error\"}[$__rate_interval]))\n/\nsum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "Reconcile error ratio",
@@ -239,7 +251,9 @@
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(controller_runtime_reconcile_time_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "p99 reconcile time",
@@ -310,7 +324,9 @@
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(workqueue_queue_duration_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "p99 queue wait",
@@ -374,7 +390,9 @@
           "expr": "sum(controller_runtime_active_workers{job=\"$job\", controller=~\"$controller\"})",
           "refId": "A",
           "legendFormat": "active",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         },
         {
           "datasource": {
@@ -385,7 +403,9 @@
           "expr": "sum(controller_runtime_max_concurrent_reconciles{job=\"$job\", controller=~\"$controller\"})",
           "refId": "B",
           "legendFormat": "max",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "Active / max workers",
@@ -474,7 +494,9 @@
           "editorMode": "code",
           "expr": "max(leader_election_master_status{job=\"$job\"})",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "Leader",
@@ -538,7 +560,9 @@
           "editorMode": "code",
           "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "Owners Ready",
@@ -605,7 +629,9 @@
           "editorMode": "code",
           "expr": "count(\n  ({{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "Owners not Ready > 2m",
@@ -673,7 +699,9 @@
           "editorMode": "code",
           "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "A",
-          "range": true
+          "range": false,
+          "exemplar": false,
+          "instant": true
         }
       ],
       "title": "Owners Unknown",

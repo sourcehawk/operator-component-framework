@@ -21,10 +21,18 @@
   "graphTooltip": 0,
   "links": [
     {
-      "title": "Operator overview",
-      "type": "link",
-      "url": "/d/{{operator_namespace}}ocf_operator/ocf-operator",
-      "keepTime": true
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "ocf"
+      ],
+      "targetBlank": false,
+      "title": "OCF dashboards",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
     }
   ],
   "liveNow": true,
@@ -388,8 +396,10 @@
               "editorMode": "code",
               "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"False\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
-              "range": true,
-              "refId": "A"
+              "range": false,
+              "refId": "A",
+              "exemplar": false,
+              "instant": true
             }
           ],
           "title": "$condition=False",
@@ -457,12 +467,14 @@
               "editorMode": "code",
               "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"Unknown\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
-              "range": true,
+              "range": false,
               "refId": "A",
               "datasource": {
                 "type": "prometheus",
                 "uid": "${datasource}"
-              }
+              },
+              "exemplar": false,
+              "instant": true
             }
           ],
           "title": "$condition=Unknown",
@@ -530,8 +542,10 @@
               "editorMode": "code",
               "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"True\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
-              "range": true,
-              "refId": "A"
+              "range": false,
+              "refId": "A",
+              "exemplar": false,
+              "instant": true
             }
           ],
           "title": "$condition=True",
@@ -612,7 +626,8 @@
         },
         "refresh": 2,
         "regex": "",
-        "type": "query"
+        "type": "query",
+        "allValue": ".*"
       },
       {
         "allowCustomValue": true,
@@ -640,7 +655,8 @@
         },
         "refresh": 1,
         "regex": "",
-        "type": "query"
+        "type": "query",
+        "allValue": ".*"
       },
       {
         "current": {
@@ -667,7 +683,8 @@
         },
         "refresh": 1,
         "regex": "",
-        "type": "query"
+        "type": "query",
+        "allValue": ".*"
       },
       {
         "current": {
@@ -695,7 +712,8 @@
         "refresh": 2,
         "regex": "^.*{{namespace_label}}=\"([^\"]+)\".*$",
         "sort": 1,
-        "type": "query"
+        "type": "query",
+        "allValue": ".*"
       },
       {
         "allowCustomValue": false,
@@ -722,6 +740,7 @@
         "refresh": 1,
         "regex": "",
         "type": "query",
+        "allValue": ".*",
         "label": "Resource"
       },
       {

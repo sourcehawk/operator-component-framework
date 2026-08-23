@@ -17,8 +17,12 @@
 //
 //	rec := component.ReconcileContext{
 //	    // ...
-//	    Metrics: metrics.NewRecorder("webapp-controller", conditions, collectors),
+//	    Metrics: metrics.NewRecorder("webapp", conditions, collectors),
 //	}
+//
+// The controller name must match the controller-runtime controller name (the
+// lower-cased kind by default) so the dashboards and alerts shipped under
+// observability/ correlate the framework's series with controller-runtime's.
 //
 // [go-crd-condition-metrics]: https://github.com/sourcehawk/go-crd-condition-metrics
 package metrics
@@ -112,10 +116,12 @@ var _ component.MetricsRecorder = (*Recorder)(nil)
 // NewRecorder creates a Recorder for the named controller.
 //
 // controller is the value of the `controller` label on every series the
-// recorder emits, condition metrics included, so it must match the name used
-// for that controller elsewhere. conditions and collectors are the shared,
-// registered collectors; passing nil for either disables that half of the
-// recording rather than panicking at reconcile time.
+// recorder emits, condition metrics included, so it must match the name
+// controller-runtime uses for that controller (the lower-cased kind passed to
+// For, unless Named overrides it); the shipped dashboards and alerts filter
+// both families with one controller label. conditions and collectors are the
+// shared, registered collectors; passing nil for either disables that half of
+// the recording rather than panicking at reconcile time.
 func NewRecorder(
 	controller string, conditions *ocm.OperatorConditionsGauge, collectors *Collectors,
 ) *Recorder {

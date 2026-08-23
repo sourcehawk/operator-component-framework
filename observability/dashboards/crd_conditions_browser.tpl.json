@@ -23,7 +23,7 @@
     {
       "title": "Operator overview",
       "type": "link",
-      "url": "/d/ocf_operator/ocf-operator",
+      "url": "/d/{{operator_namespace}}ocf_operator/ocf-operator",
       "keepTime": true
     }
   ],
@@ -745,6 +745,6 @@
   },
   "timezone": "browser",
   "title": "CRD Conditions Browser",
-  "uid": "crd_conditions_browser",
+  "uid": "{{operator_namespace}}crd_conditions_browser",
   "version": 1
 }

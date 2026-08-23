@@ -114,7 +114,7 @@ func TestDashboards(t *testing.T) {
 			var d map[string]any
 			require.NoError(t, json.Unmarshal([]byte(rendered), &d), "valid JSON")
 			want := strings.TrimSuffix(filepath.Base(f), ".tpl.json")
-			assert.Equal(t, want, d["uid"], "uid matches the file name")
+			assert.Equal(t, lintNamespace+"_"+want, d["uid"], "uid is the file name prefixed with the metric namespace")
 			assert.Equal(t, "", d["refresh"], "auto refresh is off by default")
 			var exprs []string
 			exprsFromJSON(d, &exprs)

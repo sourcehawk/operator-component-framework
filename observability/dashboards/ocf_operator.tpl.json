@@ -22,7 +22,7 @@
     {
       "title": "CRD Conditions Browser",
       "type": "link",
-      "url": "/d/crd_conditions_browser/crd-conditions-browser",
+      "url": "/d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser",
       "keepTime": true
     }
   ],
@@ -2625,7 +2625,7 @@
                 "value": [
                   {
                     "title": "Open in the conditions browser",
-                    "url": "/d/crd_conditions_browser/crd-conditions-browser?var-kind=${__data.fields.Kind}&var-condition=Ready&var-resource_id=${__data.fields.id:percentencode}&${__url_time_range}"
+                    "url": "/d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-kind=${__data.fields.Kind}&var-condition=Ready&var-resource_id=${__data.fields.id:percentencode}&${__url_time_range}"
                   }
                 ]
               }
@@ -3327,6 +3327,6 @@
   },
   "timezone": "browser",
   "title": "OCF Operator",
-  "uid": "ocf_operator",
+  "uid": "{{operator_namespace}}ocf_operator",
   "version": 1
 }

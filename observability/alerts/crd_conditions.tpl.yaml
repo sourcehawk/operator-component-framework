@@ -61,7 +61,7 @@ groups:
           # scoped resource is "/<name>", so the empty namespace renders correctly
           # here without a conditional.
           dashboard_url: >-
-            /d/crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind
+            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind
             }}&var-condition=Ready&var-status=False&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}
 
       # A condition the controller cannot determine the state of. Unlike the two
@@ -104,7 +104,7 @@ groups:
             {{- end }}
             ```
           dashboard_url: >-
-            /d/crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
+            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
             $labels.condition }}&var-status=Unknown&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}
 
       # A resource that has sat in a non-ready state for hours.
@@ -162,5 +162,5 @@ groups:
             {{- end }}
             ```
           dashboard_url: >-
-            /d/crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
+            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
             $labels.condition }}&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}

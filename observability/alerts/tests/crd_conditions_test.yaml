@@ -67,7 +67,7 @@ tests:
                 kubectl describe Backup/nightly-abc123 -n backups
                 ```
               dashboard_url: >-
-                /d/crd_conditions_browser/crd-conditions-browser?var-kind=Backup&var-condition=Ready&var-status=False&var-resource_id=backups%2Fnightly-abc123
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Backup&var-condition=Ready&var-status=False&var-resource_id=backups%2Fnightly-abc123
 
       # Backup recovered at 45m, so it has resolved. RemoteStorage has now been
       # not ready for 30m and is the only alert left.
@@ -93,7 +93,7 @@ tests:
                 kubectl describe RemoteStorage/document-store
                 ```
               dashboard_url: >-
-                /d/crd_conditions_browser/crd-conditions-browser?var-kind=RemoteStorage&var-condition=Ready&var-status=False&var-resource_id=%2Fdocument-store
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=RemoteStorage&var-condition=Ready&var-status=False&var-resource_id=%2Fdocument-store
 
   # Unknown is bad whatever the condition's polarity is, so this rule is not
   # scoped to a single condition: both fixtures below must fire.
@@ -136,7 +136,7 @@ tests:
                 kubectl describe App/checkout -n shop
                 ```
               dashboard_url: >-
-                /d/crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Ready&var-status=Unknown&var-resource_id=shop%2Fcheckout
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Ready&var-status=Unknown&var-resource_id=shop%2Fcheckout
           - exp_labels:
               controller: app
               kind: App
@@ -160,7 +160,7 @@ tests:
                 kubectl describe App/checkout -n shop
                 ```
               dashboard_url: >-
-                /d/crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Synced&var-status=Unknown&var-resource_id=shop%2Fcheckout
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Synced&var-status=Unknown&var-resource_id=shop%2Fcheckout
 
   # The stuck rule compares against the metric value, so the fixture timestamps
   # have to live on promtool's clock, which starts at the unix epoch. A Ready
@@ -203,7 +203,7 @@ tests:
                 kubectl describe Cluster/prod -n clusters
                 ```
               dashboard_url: >-
-                /d/crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fprod
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fprod
 
   # Why CustomResourceConditionStuck exists alongside CustomResourceNotReady:
   # the series disappears between 1h and 6h (operator down, scrape gap), which
@@ -247,4 +247,4 @@ tests:
                 kubectl describe Cluster/staging -n clusters
                 ```
               dashboard_url: >-
-                /d/crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fstaging
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fstaging

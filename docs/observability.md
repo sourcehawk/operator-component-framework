@@ -38,7 +38,9 @@ make dashboards METRIC_NAMESPACE=myoperator
 make alerts METRIC_NAMESPACE=myoperator
 ```
 
-Output lands in `observability/generated/`, which is gitignored:
+Output lands in `observability/generated/`, which is gitignored. Each target removes the files it previously rendered
+before writing, so a dashboard or rule file that a framework upgrade renamed or dropped does not linger and get
+installed again:
 
 ```
 observability/generated/
@@ -61,7 +63,7 @@ repository's artifacts needs no change.
 | Variable                   | Default                   | Effect                                                                                                                                                                                                                                                                                                                                |
 | -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `METRIC_NAMESPACE`         | required                  | The argument to `ocm.NewOperatorConditionsGauge`. Names the condition gauge, the dashboard uids and the condition `PrometheusRule`. Metric name characters only (`[A-Za-z0-9_]`, not starting with a digit) and at most 17 characters, so that the longest rendered uid fits Grafana's 40 character limit; rendering fails otherwise. |
-| `NAMESPACE_LABEL`          | `exported_namespace`      | The label carrying the owner's namespace on condition series, see below.                                                                                                                                                                                                                                                              |
+| `NAMESPACE_LABEL`          | `exported_namespace`      | The label carrying the owner's namespace on condition series, see below. Must be a Prometheus label name (`[A-Za-z0-9_]`, not starting with a digit); rendering fails otherwise.                                                                                                                                                      |
 | `ALERT_FORMAT`             | `prometheusrule`          | `prometheusrule` wraps each rule file in a `monitoring.coreos.com/v1` `PrometheusRule` for the Prometheus Operator; `rules` writes the plain `groups:` file that Prometheus loads through `rule_files`.                                                                                                                               |
 | `PROMETHEUSRULE_NAMESPACE` | unset                     | `metadata.namespace` of the `PrometheusRule` objects. Unset leaves it to `kubectl apply -n`.                                                                                                                                                                                                                                          |
 | `PROMETHEUSRULE_LABELS`    | unset                     | Comma-separated `key=value` pairs written to `metadata.labels`. A kube-prometheus-stack install selects rules by its release label, so pass `PROMETHEUSRULE_LABELS=release=<release name>`.                                                                                                                                           |

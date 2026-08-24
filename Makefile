@@ -213,7 +213,7 @@ OBS_DIR := observability
 OBS_OUT ?= $(OBS_DIR)/generated
 # Prometheus metric namespace the condition gauge was created with
 # (ocm.NewOperatorConditionsGauge("<namespace>")). Required for rendering.
-METRIC_NAMESPACE ?= unset
+METRIC_NAMESPACE ?=
 # Label carrying the namespace of the custom resource. The pod scraping the
 # operator usually owns `namespace`, so the exported label arrives as
 # `exported_namespace`; override with NAMESPACE_LABEL=namespace if yours does not.
@@ -229,14 +229,16 @@ PROMETHEUSRULE_LABELS ?=
 # Metric namespace the alert unit tests are written against.
 ALERT_TEST_NAMESPACE := test_operator
 
-# Fail unless METRIC_NAMESPACE was given and renders to valid output. $(1) is
-# the target name for the hint. The namespace prefixes a metric name, so it is
-# restricted to metric name characters, and it prefixes the dashboard uids,
-# which Grafana limits to 40 characters of [A-Za-z0-9_-]: the longest suffix,
-# `_crd_conditions_browser`, is 23 characters, leaving 17 for the namespace
-# (observability_test.go pins that arithmetic to the dashboard file names).
+# Fail unless METRIC_NAMESPACE was given and both variables render to valid
+# output. $(1) is the target name for the hint. The namespace prefixes a metric
+# name, so it is restricted to metric name characters, and it prefixes the
+# dashboard uids, which Grafana limits to 40 characters of [A-Za-z0-9_-]: the
+# longest suffix, `_crd_conditions_browser`, is 23 characters, leaving 17 for
+# the namespace (observability_test.go pins that arithmetic to the dashboard
+# file names). NAMESPACE_LABEL is substituted into PromQL as a label name, so
+# it must match the Prometheus label name grammar.
 define require_metric_namespace
-@[ "$(METRIC_NAMESPACE)" != "unset" ] && [ -n "$(METRIC_NAMESPACE)" ] || { \
+@[ -n "$(METRIC_NAMESPACE)" ] || { \
 	echo "Error: METRIC_NAMESPACE is required."; \
 	echo "Usage: make $(1) METRIC_NAMESPACE=my_operator"; \
 	exit 1; \
@@ -245,6 +247,11 @@ define require_metric_namespace
 	echo "Error: METRIC_NAMESPACE '$(METRIC_NAMESPACE)' is not renderable."; \
 	echo "It must match ^[A-Za-z_][A-Za-z0-9_]*$$ and be at most 17 characters, so that the"; \
 	echo "dashboard uid <namespace>_crd_conditions_browser fits Grafana's 40 character limit."; \
+	exit 1; \
+}
+@echo "$(NAMESPACE_LABEL)" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$$' || { \
+	echo "Error: NAMESPACE_LABEL '$(NAMESPACE_LABEL)' is not a Prometheus label name."; \
+	echo "It must match ^[A-Za-z_][A-Za-z0-9_]*$$, for example exported_namespace or namespace."; \
 	exit 1; \
 }
 endef
@@ -260,6 +267,7 @@ dashboards: ## Render the Grafana dashboards for METRIC_NAMESPACE into observabi
 	$(call require_metric_namespace,dashboards)
 	@echo "Rendering dashboards for $(METRIC_NAMESPACE) (namespace label: $(NAMESPACE_LABEL))..."
 	@mkdir -p $(OBS_OUT)/dashboards
+	@rm -f $(OBS_OUT)/dashboards/*.json
 	@for file in $(OBS_DIR)/dashboards/*.tpl.json; do \
 	  [ -e "$$file" ] || continue; \
 	  name=$$(basename "$$file" .tpl.json); \
@@ -271,6 +279,7 @@ alerts: ## Render the Prometheus alert rules for METRIC_NAMESPACE into observabi
 	$(call require_metric_namespace,alerts)
 	@echo "Rendering alerts for $(METRIC_NAMESPACE) (namespace label: $(NAMESPACE_LABEL), format: $(ALERT_FORMAT))..."
 	@mkdir -p $(OBS_OUT)/alerts
+	@rm -f $(OBS_OUT)/alerts/*.yaml
 	@for file in $(OBS_DIR)/alerts/*.yaml; do \
 	  [ -e "$$file" ] || continue; \
 	  case "$$file" in \
@@ -350,7 +359,6 @@ SIMULATOR_ARGS ?=
 
 .PHONY: observability-render-dev
 observability-render-dev: ## Render dashboards and plain rules for the dev stack, with every `for:` shortened to 2m.
-	@rm -rf $(OBS_DEV_OUT)/alerts/* $(OBS_DEV_OUT)/dashboards/*
 	@$(MAKE) --no-print-directory dashboards METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT)
 	@$(MAKE) --no-print-directory alerts METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT) ALERT_FORMAT=rules
 	@for file in $(OBS_DEV_OUT)/alerts/*.yaml; do \

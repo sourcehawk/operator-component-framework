@@ -10,9 +10,17 @@
 #   * it drops the reason, status and id labels, so a controller that keeps
 #     changing the reason while a resource stays unhealthy does not restart the
 #     `for:` clock every time,
-#   * max() keeps the value a lastTransitionTime, the freshest one, so a former
-#     leader pod still exporting a stale series cannot skew it the way sum()
-#     would.
+#   * max() keeps the value a lastTransitionTime, the freshest one, so two
+#     series for one owner (a reason change still inside the lookback window)
+#     collapse to the freshest rather than adding up the way sum() would.
+#
+# The status matcher alone is not enough against a former leader pod that keeps
+# exporting its last values until it restarts: its stale `False` series would
+# fire even though the current leader reports `True`. So every rule first joins
+# on the freshest series per owner across every status, the same
+# `and topk by (...) (1, ...)` join the dashboards use, and only then applies
+# its status matcher. A stale series loses the join because the current leader's
+# series, whatever its status, carries the later lastTransitionTime.
 groups:
   - name: crd-conditions
     rules:
@@ -27,6 +35,10 @@ groups:
         expr: >
           max (
             {{operator_namespace}}controller_condition{condition="Ready", status="False"}
+            and
+            topk by (controller, kind, name, {{namespace_label}}) (
+              1, {{operator_namespace}}controller_condition{condition="Ready"}
+            )
           ) by (controller, kind, name, {{namespace_label}})
         labels:
           severity: warning
@@ -72,6 +84,10 @@ groups:
         expr: >
           max (
             {{operator_namespace}}controller_condition{status="Unknown"}
+            and
+            topk by (controller, kind, name, condition, {{namespace_label}}) (
+              1, {{operator_namespace}}controller_condition
+            )
           ) by (controller, kind, name, condition, {{namespace_label}})
         labels:
           severity: warning
@@ -129,6 +145,10 @@ groups:
             -
             max (
               {{operator_namespace}}controller_condition{condition="Ready", status!="True"}
+              and
+              topk by (controller, kind, name, condition, {{namespace_label}}) (
+                1, {{operator_namespace}}controller_condition{condition="Ready"}
+              )
             ) by (controller, kind, name, condition, {{namespace_label}})
           ) > 21600
         labels:

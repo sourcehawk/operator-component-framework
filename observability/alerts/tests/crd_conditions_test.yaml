@@ -248,3 +248,69 @@ tests:
                 ```
               dashboard_url: >-
                 /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fstaging
+
+  # A former leader pod keeps exporting its last values until it restarts, so
+  # for a while two pods describe one owner. The stale series from the old pod
+  # must not fire while the current leader reports the owner as Ready, but a
+  # current leader that also reports it not ready must still fire, on the
+  # current leader's value.
+  - name: TestStaleFormerLeaderSeriesDoNotFire
+    interval: 1m
+    input_series:
+      # Old pod: Backup Ready=False, transitioned at 13:13:29, scraped throughout.
+      - series: 'test_operator_controller_condition{pod="operator-old",controller="backup",kind="Backup",name="weekly",exported_namespace="backups",condition="Ready",status="False",reason="Error",id="backups/weekly"}'
+        values: '1760534009+0x60'
+      # Current pod: Backup Ready=True, transitioned later at 13:20:20.
+      - series: 'test_operator_controller_condition{pod="operator-new",controller="backup",kind="Backup",name="weekly",exported_namespace="backups",condition="Ready",status="True",reason="Ready",id="backups/weekly"}'
+        values: '1760534420+0x60'
+      # Old pod: App Synced=Unknown, scraped throughout.
+      - series: 'test_operator_controller_condition{pod="operator-old",controller="app",kind="App",name="checkout",exported_namespace="shop",condition="Synced",status="Unknown",reason="ProbeFailed",id="shop/checkout"}'
+        values: '1760534009+0x60'
+      # Current pod: App Synced=True, transitioned later.
+      - series: 'test_operator_controller_condition{pod="operator-new",controller="app",kind="App",name="checkout",exported_namespace="shop",condition="Synced",status="True",reason="Synced",id="shop/checkout"}'
+        values: '1760534420+0x60'
+      # Old pod: Cluster Ready=False since t=60s, which would read as stuck at 7h.
+      - series: 'test_operator_controller_condition{pod="operator-old",controller="cluster",kind="Cluster",name="prod",exported_namespace="clusters",condition="Ready",status="False",reason="Provisioning",id="clusters/prod"}'
+        values: '60+0x420'
+      # Current pod: Cluster Ready=True since t=120s.
+      - series: 'test_operator_controller_condition{pod="operator-new",controller="cluster",kind="Cluster",name="prod",exported_namespace="clusters",condition="Ready",status="True",reason="Ready",id="clusters/prod"}'
+        values: '120+0x420'
+      # Both pods report Database not ready; the current pod transitioned later.
+      - series: 'test_operator_controller_condition{pod="operator-old",controller="database",kind="Database",name="main",exported_namespace="db",condition="Ready",status="False",reason="Error",id="db/main"}'
+        values: '1760534009+0x60'
+      - series: 'test_operator_controller_condition{pod="operator-new",controller="database",kind="Database",name="main",exported_namespace="db",condition="Ready",status="False",reason="Error",id="db/main"}'
+        values: '1760534348+0x60'
+
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: CustomResourceNotReady
+        exp_alerts:
+          - exp_labels:
+              controller: database
+              kind: Database
+              name: main
+              exported_namespace: db
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Database CR `db/main` has not been ready for 30 minutes
+              description: |
+                Custom Resource of kind `Database` named `main` in namespace
+                `db` has not been ready for more than 30 minutes.
+
+                The Ready condition last transitioned at 2025-10-15 13:19:08 +0000 UTC.
+
+                Quick check with:
+                ```
+                kubectl describe Database/main -n db
+                ```
+              dashboard_url: >-
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Database&var-condition=Ready&var-status=False&var-resource_id=db%2Fmain
+
+      - eval_time: 40m
+        alertname: CustomResourceConditionUnknown
+        exp_alerts: []
+
+      - eval_time: 7h
+        alertname: CustomResourceConditionStuck
+        exp_alerts: []

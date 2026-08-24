@@ -23,7 +23,13 @@ import (
 
 const (
 	lintNamespace = "lint_operator"
-	nsLabel       = "exported_namespace"
+	// maxMetricNamespaceLen is the cap the Makefile's require_metric_namespace
+	// enforces on METRIC_NAMESPACE, derived from maxGrafanaUIDLen and the
+	// longest dashboard file name.
+	maxMetricNamespaceLen = 17
+	// maxGrafanaUIDLen is Grafana's limit on a dashboard uid.
+	maxGrafanaUIDLen = 40
+	nsLabel          = "exported_namespace"
 )
 
 // render mirrors the Makefile's render_template.
@@ -150,6 +156,12 @@ func TestDashboards(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(rendered), &d), "valid JSON")
 			want := strings.TrimSuffix(filepath.Base(f), ".tpl.json")
 			assert.Equal(t, lintNamespace+"_"+want, d["uid"], "uid is the file name prefixed with the metric namespace")
+			// Grafana limits a uid to 40 characters of [A-Za-z0-9_-]. The Makefile
+			// caps METRIC_NAMESPACE at maxMetricNamespaceLen on that basis, so a
+			// dashboard file name that no longer leaves room for it must fail here.
+			assert.Regexp(t, `^[A-Za-z0-9_-]+$`, want, "dashboard file name is made of Grafana uid characters")
+			assert.LessOrEqual(t, maxMetricNamespaceLen+1+len(want), maxGrafanaUIDLen,
+				"a METRIC_NAMESPACE of %d characters must still render a uid within Grafana's %d character limit; shorten the file name or lower the cap in the Makefile", maxMetricNamespaceLen, maxGrafanaUIDLen)
 			assert.Equal(t, "", d["refresh"], "auto refresh is off by default")
 			var exprs []string
 			exprsFromJSON(d, &exprs)

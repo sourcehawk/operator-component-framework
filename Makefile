@@ -229,11 +229,22 @@ PROMETHEUSRULE_LABELS ?=
 # Metric namespace the alert unit tests are written against.
 ALERT_TEST_NAMESPACE := test_operator
 
-# Fail unless METRIC_NAMESPACE was given. $(1) is the target name for the hint.
+# Fail unless METRIC_NAMESPACE was given and renders to valid output. $(1) is
+# the target name for the hint. The namespace prefixes a metric name, so it is
+# restricted to metric name characters, and it prefixes the dashboard uids,
+# which Grafana limits to 40 characters of [A-Za-z0-9_-]: the longest suffix,
+# `_crd_conditions_browser`, is 23 characters, leaving 17 for the namespace
+# (observability_test.go pins that arithmetic to the dashboard file names).
 define require_metric_namespace
 @[ "$(METRIC_NAMESPACE)" != "unset" ] && [ -n "$(METRIC_NAMESPACE)" ] || { \
 	echo "Error: METRIC_NAMESPACE is required."; \
 	echo "Usage: make $(1) METRIC_NAMESPACE=my_operator"; \
+	exit 1; \
+}
+@echo "$(METRIC_NAMESPACE)" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]{0,16}$$' || { \
+	echo "Error: METRIC_NAMESPACE '$(METRIC_NAMESPACE)' is not renderable."; \
+	echo "It must match ^[A-Za-z_][A-Za-z0-9_]*$$ and be at most 17 characters, so that the"; \
+	echo "dashboard uid <namespace>_crd_conditions_browser fits Grafana's 40 character limit."; \
 	exit 1; \
 }
 endef

@@ -58,14 +58,14 @@ Kubernetes one), and `{{namespace_label}}` becomes the value of `NAMESPACE_LABEL
 [go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics), so a build that already renders that
 repository's artifacts needs no change.
 
-| Variable                   | Default                   | Effect                                                                                                                                                                                                  |
-| -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `METRIC_NAMESPACE`         | required                  | The argument to `ocm.NewOperatorConditionsGauge`. Names the condition gauge, the dashboard uids and the condition `PrometheusRule`.                                                                     |
-| `NAMESPACE_LABEL`          | `exported_namespace`      | The label carrying the owner's namespace on condition series, see below.                                                                                                                                |
-| `ALERT_FORMAT`             | `prometheusrule`          | `prometheusrule` wraps each rule file in a `monitoring.coreos.com/v1` `PrometheusRule` for the Prometheus Operator; `rules` writes the plain `groups:` file that Prometheus loads through `rule_files`. |
-| `PROMETHEUSRULE_NAMESPACE` | unset                     | `metadata.namespace` of the `PrometheusRule` objects. Unset leaves it to `kubectl apply -n`.                                                                                                            |
-| `PROMETHEUSRULE_LABELS`    | unset                     | Comma-separated `key=value` pairs written to `metadata.labels`. A kube-prometheus-stack install selects rules by its release label, so pass `PROMETHEUSRULE_LABELS=release=<release name>`.             |
-| `OBS_OUT`                  | `observability/generated` | Render output directory.                                                                                                                                                                                |
+| Variable                   | Default                   | Effect                                                                                                                                                                                                                                                                                                                                |
+| -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `METRIC_NAMESPACE`         | required                  | The argument to `ocm.NewOperatorConditionsGauge`. Names the condition gauge, the dashboard uids and the condition `PrometheusRule`. Metric name characters only (`[A-Za-z0-9_]`, not starting with a digit) and at most 17 characters, so that the longest rendered uid fits Grafana's 40 character limit; rendering fails otherwise. |
+| `NAMESPACE_LABEL`          | `exported_namespace`      | The label carrying the owner's namespace on condition series, see below.                                                                                                                                                                                                                                                              |
+| `ALERT_FORMAT`             | `prometheusrule`          | `prometheusrule` wraps each rule file in a `monitoring.coreos.com/v1` `PrometheusRule` for the Prometheus Operator; `rules` writes the plain `groups:` file that Prometheus loads through `rule_files`.                                                                                                                               |
+| `PROMETHEUSRULE_NAMESPACE` | unset                     | `metadata.namespace` of the `PrometheusRule` objects. Unset leaves it to `kubectl apply -n`.                                                                                                                                                                                                                                          |
+| `PROMETHEUSRULE_LABELS`    | unset                     | Comma-separated `key=value` pairs written to `metadata.labels`. A kube-prometheus-stack install selects rules by its release label, so pass `PROMETHEUSRULE_LABELS=release=<release name>`.                                                                                                                                           |
+| `OBS_OUT`                  | `observability/generated` | Render output directory.                                                                                                                                                                                                                                                                                                              |
 
 `PrometheusRule` names are the metric namespace or `ocf` prefix joined to the file name, lower-cased, with `_` and `:`
 folded to `-`, so a namespace of `My_Operator` renders as `my-operator-crd-conditions`.
@@ -79,9 +79,11 @@ label to `exported_namespace`, which is why that is the default. Pass `NAMESPACE
 `honorLabels: true`, or does not stamp a `namespace` target label at all, so the exported label arrives unchanged.
 
 The setting affects the condition rules and both dashboards. Nothing else is namespace-scoped by owner: the apply
-counters carry no owner namespace by design, and the `namespace` the controller-runtime and managed-resource rules
-aggregate by is the operator's own, stamped by the scrape job, which is what lets two installs of one operator in a
-cluster alert separately. Outside a cluster that label is simply absent, which is harmless.
+counters carry no owner namespace by design, and the `namespace` and `job` the controller-runtime and managed-resource
+rules aggregate by are the operator's own namespace and scrape job, stamped by Prometheus. Together they let two
+installs of one operator in a cluster alert separately, and keep two operators in one namespace that happen to share a
+controller name from merging into one ratio, where a healthy operator would dilute a failing one below the threshold.
+Outside a cluster both labels are simply absent, which is harmless.
 
 ### Installing
 
@@ -142,8 +144,8 @@ per-owner signal comes from the condition rules.
 ### Managed resources
 
 Shared, installed once as `ocf-managed-resources`. Both rules key on
-`(namespace, controller, owner_kind, component, resource, kind)`: the labels of `ocf_resource_apply_total` plus the
-scrape namespace. They fire per resource type, not per owner, because the counters carry no owner identity.
+`(namespace, job, controller, owner_kind, component, resource, kind)`: the labels of `ocf_resource_apply_total` plus the
+scrape namespace and job. They fire per resource type, not per owner, because the counters carry no owner identity.
 
 | Alert                          | Fires when                                           | Threshold                                                                     | `for` |
 | ------------------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------- | ----- |
@@ -172,7 +174,8 @@ failure lives.
 
 ### Controller-runtime
 
-Shared, installed once as `ocf-controller-runtime`. All but the last rule aggregate by `(namespace, controller)`.
+Shared, installed once as `ocf-controller-runtime`. All but the last rule aggregate by `(namespace, job, controller)`;
+`OperatorLeaderMissing` keys on the lease name, which is unique within a namespace.
 
 | Alert                            | Fires when                                     | Threshold                                                                        | `for` |
 | -------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------- | ----- |
@@ -212,8 +215,14 @@ Per operator, rendered as `<metric-namespace>-crd-conditions`. The metric value 
 
 Every rule aggregates with `max()` instead of matching series directly, and that is load bearing twice over. The
 aggregation drops the `reason`, `status` and `id` labels, so a controller that keeps changing the reason while an owner
-stays unhealthy does not restart the `for:` clock every time. And `max()` keeps the freshest `lastTransitionTime`, so a
-former leader pod still exporting a stale series cannot skew the value the way `sum()` would.
+stays unhealthy does not restart the `for:` clock every time. And `max()` keeps the freshest `lastTransitionTime`, so
+two series for one owner, such as a reason change still inside the lookback window, collapse to the freshest rather than
+adding up the way `sum()` would.
+
+The status matcher on its own would still fire on a former leader pod's stale series (see [Stale series](#stale-series)
+below), so before applying it every rule joins on the freshest series per owner across every status, with the same
+`and topk by (...) (1, ...)` join the dashboards use. A stale `False` or `Unknown` series loses that join as soon as the
+current leader exports a later `lastTransitionTime` for the owner, whatever its status.
 
 `CustomResourceNotReady` and `CustomResourceConditionStuck` are scoped to `Ready` on purpose. Matching `status="False"`
 across every condition type would fire forever on negative-polarity conditions such as `Degraded`, where `False` is the
@@ -293,7 +302,8 @@ drops the stale duplicate. The join carries `kind` because `id` is only `<namesp
 different kinds can share it. Queries that span more than one condition type, such as the Owners by condition and status
 panel, join on `topk by (kind, id, condition)` instead, so each owner keeps one freshest series per condition rather
 than one overall. The browser pins `kind` through its variable, so its queries join on `topk by (id, condition)`. The
-alerts get the same protection from `max()`.
+condition alerts apply the same join before their status matcher, keyed on `(controller, kind, name, <namespace label>)`
+and, for the rules that keep `condition` in their `by` clause, `condition`.
 
 ## Previewing locally
 

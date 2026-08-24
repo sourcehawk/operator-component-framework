@@ -9,9 +9,12 @@
 # quantiles, so that they hold whether the operator manages three owners or
 # three thousand. See docs/observability.md for the thresholds to tune.
 #
-# `namespace` is the operator's own namespace as stamped by the scrape job
-# (absent when scraping outside a cluster, which is harmless), so two installs
-# of one operator in a cluster are alerted on separately.
+# `namespace` is the operator's own namespace and `job` its scrape job, both
+# stamped by Prometheus (absent when scraping outside a cluster, which is
+# harmless). Keeping both in every aggregation alerts on two installs of one
+# operator separately, and stops two operators in one namespace that share a
+# controller name from diluting each other's ratios. OperatorLeaderMissing
+# keys on the lease name instead, which is unique within a namespace.
 groups:
   - name: controller-runtime
     rules:
@@ -19,9 +22,9 @@ groups:
         for: 15m
         expr: >
           (
-            sum by (namespace, controller) (rate(controller_runtime_reconcile_total{result="error"}[10m]))
+            sum by (namespace, job, controller) (rate(controller_runtime_reconcile_total{result="error"}[10m]))
             /
-            sum by (namespace, controller) (rate(controller_runtime_reconcile_total[10m]))
+            sum by (namespace, job, controller) (rate(controller_runtime_reconcile_total[10m]))
           ) > 0.25
         labels:
           severity: warning
@@ -38,7 +41,7 @@ groups:
 
       - alert: ControllerReconcilePanics
         expr: >
-          sum by (namespace, controller) (increase(controller_runtime_reconcile_panics_total[10m])) > 0
+          sum by (namespace, job, controller) (increase(controller_runtime_reconcile_panics_total[10m])) > 0
         labels:
           severity: warning
         annotations:
@@ -67,7 +70,7 @@ groups:
         expr: >
           histogram_quantile(
             0.99,
-            sum by (namespace, controller, le) (rate(workqueue_queue_duration_seconds_bucket[10m]))
+            sum by (namespace, job, controller, le) (rate(workqueue_queue_duration_seconds_bucket[10m]))
           ) > 100
         labels:
           severity: warning
@@ -87,7 +90,7 @@ groups:
         expr: >
           histogram_quantile(
             0.99,
-            sum by (namespace, controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket[10m]))
+            sum by (namespace, job, controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket[10m]))
           ) > 30
         labels:
           severity: warning

@@ -16,9 +16,11 @@
 # never converges is that more than half of its applies rewrite it, at a rate
 # no human produces. See docs/observability.md for the thresholds to tune.
 #
-# `namespace` is the operator's own namespace as stamped by the scrape job
-# (absent when scraping outside a cluster, which is harmless), so two installs
-# of one operator in a cluster are alerted on separately.
+# `namespace` is the operator's own namespace and `job` its scrape job, both
+# stamped by Prometheus (absent when scraping outside a cluster, which is
+# harmless). Keeping both in every aggregation alerts on two installs of one
+# operator separately, and stops two operators in one namespace whose
+# controller and topology labels coincide from diluting each other's ratios.
 groups:
   - name: managed-resources
     rules:
@@ -34,16 +36,16 @@ groups:
         for: 15m
         expr: >
           (
-            sum by (namespace, controller, owner_kind, component, resource, kind) (
+            sum by (namespace, job, controller, owner_kind, component, resource, kind) (
               rate(ocf_resource_apply_total{operation="updated"}[15m])
             )
             /
-            sum by (namespace, controller, owner_kind, component, resource, kind) (
+            sum by (namespace, job, controller, owner_kind, component, resource, kind) (
               rate(ocf_resource_apply_total[15m])
             )
           ) > 0.5
           and
-          sum by (namespace, controller, owner_kind, component, resource, kind) (
+          sum by (namespace, job, controller, owner_kind, component, resource, kind) (
             increase(ocf_resource_apply_total{operation="updated"}[15m])
           ) > 15
         labels:
@@ -70,28 +72,28 @@ groups:
         for: 15m
         expr: >
           (
-            sum by (namespace, controller, owner_kind, component, resource, kind) (
+            sum by (namespace, job, controller, owner_kind, component, resource, kind) (
               rate(ocf_resource_apply_errors_total[15m])
             )
             /
             (
               (
-                sum by (namespace, controller, owner_kind, component, resource, kind) (
+                sum by (namespace, job, controller, owner_kind, component, resource, kind) (
                   rate(ocf_resource_apply_errors_total[15m])
                 )
                 +
-                sum by (namespace, controller, owner_kind, component, resource, kind) (
+                sum by (namespace, job, controller, owner_kind, component, resource, kind) (
                   rate(ocf_resource_apply_total[15m])
                 )
               )
               or
-              sum by (namespace, controller, owner_kind, component, resource, kind) (
+              sum by (namespace, job, controller, owner_kind, component, resource, kind) (
                 rate(ocf_resource_apply_errors_total[15m])
               )
             )
           ) > 0.5
           and
-          sum by (namespace, controller, owner_kind, component, resource, kind) (
+          sum by (namespace, job, controller, owner_kind, component, resource, kind) (
             increase(ocf_resource_apply_errors_total[15m])
           ) > 5
         labels:

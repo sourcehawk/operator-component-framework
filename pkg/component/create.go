@@ -198,8 +198,9 @@ func applyFailed(rec ReconcileContext, labels ResourceMetricLabels, err error) e
 // render the same object are distinct managers to the API server. With a manager
 // shared across owners, each owner's forced apply would relinquish the other's
 // fields wholesale and neither would ever see a conflict. The UID rather than
-// the owner's name keeps the manager well under the API server's 128-character
-// limit and identical for cluster-scoped and namespaced owners.
+// the owner's name adds a fixed 36 characters, which leaves most of the API
+// server's 128-character manager limit to the kind and the component name, and
+// reads the same for cluster-scoped and namespaced owners.
 func applyFieldOwner(owner OperatorCRD, componentName string) client.FieldOwner {
 	return client.FieldOwner(
 		fmt.Sprintf("%s/%s/%s", owner.GetKind(), componentName, owner.GetUID()),

@@ -18,11 +18,13 @@ tests:
       # Backup Ready=False reason=Error1 [0m-19m]
       - series: 'test_operator_controller_condition{controller="backup",kind="Backup",name="nightly-abc123",exported_namespace="backups",condition="Ready",status="False",reason="Error1",id="backups/nightly-abc123"}'
         values: '1760534009+0x19'
-      # Backup Ready=False reason=Error2 [20m-44m]. The Error1 series is still
-      # within the 5m lookback window until 24m, so both are present for a while
-      # and max() has to pick the freshest lastTransitionTime.
+      # Backup Ready=False reason=Error2 [20m-44m]. A reason-only change keeps
+      # lastTransitionTime (meta.SetStatusCondition preserves it while the
+      # status stays False), so the value is the same as Error1's. The Error1
+      # series is still within the 5m lookback window until 24m, so both are
+      # present for a while and the aggregation must collapse them to one.
       - series: 'test_operator_controller_condition{controller="backup",kind="Backup",name="nightly-abc123",exported_namespace="backups",condition="Ready",status="False",reason="Error2",id="backups/nightly-abc123"}'
-        values: '_x20 1760534348+0x24'
+        values: '_x20 1760534009+0x24'
       # Backup Ready=True [45m-60m]
       - series: 'test_operator_controller_condition{controller="backup",kind="Backup",name="nightly-abc123",exported_namespace="backups",condition="Ready",status="True",reason="Ready",id="backups/nightly-abc123"}'
         values: '_x45 1760534420+0x15'
@@ -60,14 +62,14 @@ tests:
                 Custom Resource of kind `Backup` named `nightly-abc123` in namespace
                 `backups` has not been ready for more than 30 minutes.
 
-                The Ready condition last transitioned at 2025-10-15 13:19:08 +0000 UTC.
+                The Ready condition last transitioned at 2025-10-15 13:13:29 +0000 UTC.
 
                 Quick check with:
                 ```
                 kubectl describe Backup/nightly-abc123 -n backups
                 ```
               dashboard_url: >-
-                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Backup&var-condition=Ready&var-status=False&var-resource_id=backups%2Fnightly-abc123
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=&var-kind=Backup&var-condition=Ready&var-status=False&var-resource_id=backups%2Fnightly-abc123
 
       # Backup recovered at 45m, so it has resolved. RemoteStorage has now been
       # not ready for 30m and is the only alert left.
@@ -93,7 +95,7 @@ tests:
                 kubectl describe RemoteStorage/document-store
                 ```
               dashboard_url: >-
-                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=RemoteStorage&var-condition=Ready&var-status=False&var-resource_id=%2Fdocument-store
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=&var-kind=RemoteStorage&var-condition=Ready&var-status=False&var-resource_id=%2Fdocument-store
 
   # Unknown is bad whatever the condition's polarity is, so this rule is not
   # scoped to a single condition: both fixtures below must fire.
@@ -136,7 +138,7 @@ tests:
                 kubectl describe App/checkout -n shop
                 ```
               dashboard_url: >-
-                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Ready&var-status=Unknown&var-resource_id=shop%2Fcheckout
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=&var-kind=App&var-condition=Ready&var-status=Unknown&var-resource_id=shop%2Fcheckout
           - exp_labels:
               controller: app
               kind: App
@@ -160,7 +162,7 @@ tests:
                 kubectl describe App/checkout -n shop
                 ```
               dashboard_url: >-
-                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=App&var-condition=Synced&var-status=Unknown&var-resource_id=shop%2Fcheckout
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=&var-kind=App&var-condition=Synced&var-status=Unknown&var-resource_id=shop%2Fcheckout
 
   # The stuck rule compares against the metric value, so the fixture timestamps
   # have to live on promtool's clock, which starts at the unix epoch. A Ready
@@ -203,7 +205,7 @@ tests:
                 kubectl describe Cluster/prod -n clusters
                 ```
               dashboard_url: >-
-                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fprod
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=&var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fprod
 
   # Why CustomResourceConditionStuck exists alongside CustomResourceNotReady:
   # the series disappears between 1h and 6h (operator down, scrape gap), which
@@ -247,7 +249,7 @@ tests:
                 kubectl describe Cluster/staging -n clusters
                 ```
               dashboard_url: >-
-                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fstaging
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=&var-kind=Cluster&var-condition=Ready&var-resource_id=clusters%2Fstaging
 
   # A former leader pod keeps exporting its last values until it restarts, so
   # for a while two pods describe one owner. The stale series from the old pod
@@ -305,7 +307,7 @@ tests:
                 kubectl describe Database/main -n db
                 ```
               dashboard_url: >-
-                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-kind=Database&var-condition=Ready&var-status=False&var-resource_id=db%2Fmain
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=&var-kind=Database&var-condition=Ready&var-status=False&var-resource_id=db%2Fmain
 
       - eval_time: 40m
         alertname: CustomResourceConditionUnknown
@@ -314,3 +316,42 @@ tests:
       - eval_time: 7h
         alertname: CustomResourceConditionStuck
         exp_alerts: []
+
+  # Two installs of the operator export the same metric namespace and, by
+  # misconfiguration or a split watch, the same owner identity. The freshest
+  # series join and the aggregation both keep job, so install alpha's older
+  # False series is not deduped away by install beta's newer True series, and
+  # alpha fires with its job label.
+  - name: TestCrossJobSeriesStayApart
+    interval: 1m
+    input_series:
+      - series: 'test_operator_controller_condition{job="alpha",controller="backup",kind="Backup",name="shared",exported_namespace="backups",condition="Ready",status="False",reason="Error",id="backups/shared"}'
+        values: '1760534009+0x60'
+      - series: 'test_operator_controller_condition{job="beta",controller="backup",kind="Backup",name="shared",exported_namespace="backups",condition="Ready",status="True",reason="Ready",id="backups/shared"}'
+        values: '1760534420+0x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: CustomResourceNotReady
+        exp_alerts:
+          - exp_labels:
+              job: alpha
+              controller: backup
+              kind: Backup
+              name: shared
+              exported_namespace: backups
+              severity: warning
+            exp_annotations:
+              summary: >-
+                Backup CR `backups/shared` has not been ready for 30 minutes
+              description: |
+                Custom Resource of kind `Backup` named `shared` in namespace
+                `backups` has not been ready for more than 30 minutes.
+
+                The Ready condition last transitioned at 2025-10-15 13:13:29 +0000 UTC.
+
+                Quick check with:
+                ```
+                kubectl describe Backup/shared -n backups
+                ```
+              dashboard_url: >-
+                /d/test_operator_crd_conditions_browser/crd-conditions-browser?var-job=alpha&var-kind=Backup&var-condition=Ready&var-status=False&var-resource_id=backups%2Fshared

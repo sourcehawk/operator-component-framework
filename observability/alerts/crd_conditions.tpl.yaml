@@ -21,6 +21,11 @@
 # `and topk by (...) (1, ...)` join the dashboards use, and only then applies
 # its status matcher. A stale series loses the join because the current leader's
 # series, whatever its status, carries the later lastTransitionTime.
+#
+# Every grouping also keeps `job`, the scrape job Prometheus stamps on the
+# series, so two installs of the operator that export the same metric namespace
+# never dedupe or merge across each other, and the browser link opens on the
+# install that fired.
 groups:
   - name: crd-conditions
     rules:
@@ -36,10 +41,10 @@ groups:
           max (
             {{operator_namespace}}controller_condition{condition="Ready", status="False"}
             and
-            topk by (controller, kind, name, {{namespace_label}}) (
+            topk by (job, controller, kind, name, {{namespace_label}}) (
               1, {{operator_namespace}}controller_condition{condition="Ready"}
             )
-          ) by (controller, kind, name, {{namespace_label}})
+          ) by (job, controller, kind, name, {{namespace_label}})
         labels:
           severity: warning
         annotations:
@@ -73,7 +78,7 @@ groups:
           # scoped resource is "/<name>", so the empty namespace renders correctly
           # here without a conditional.
           dashboard_url: >-
-            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind
+            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-job={{ $labels.job }}&var-kind={{ $labels.kind
             }}&var-condition=Ready&var-status=False&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}
 
       # A condition the controller cannot determine the state of. Unlike the two
@@ -85,10 +90,10 @@ groups:
           max (
             {{operator_namespace}}controller_condition{status="Unknown"}
             and
-            topk by (controller, kind, name, condition, {{namespace_label}}) (
+            topk by (job, controller, kind, name, condition, {{namespace_label}}) (
               1, {{operator_namespace}}controller_condition
             )
-          ) by (controller, kind, name, condition, {{namespace_label}})
+          ) by (job, controller, kind, name, condition, {{namespace_label}})
         labels:
           severity: warning
         annotations:
@@ -120,7 +125,7 @@ groups:
             {{- end }}
             ```
           dashboard_url: >-
-            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
+            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-job={{ $labels.job }}&var-kind={{ $labels.kind }}&var-condition={{
             $labels.condition }}&var-status=Unknown&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}
 
       # A resource that has sat in a non-ready state for hours.
@@ -146,10 +151,10 @@ groups:
             max (
               {{operator_namespace}}controller_condition{condition="Ready", status!="True"}
               and
-              topk by (controller, kind, name, condition, {{namespace_label}}) (
+              topk by (job, controller, kind, name, condition, {{namespace_label}}) (
                 1, {{operator_namespace}}controller_condition{condition="Ready"}
               )
-            ) by (controller, kind, name, condition, {{namespace_label}})
+            ) by (job, controller, kind, name, condition, {{namespace_label}})
           ) > 21600
         labels:
           severity: warning
@@ -182,5 +187,5 @@ groups:
             {{- end }}
             ```
           dashboard_url: >-
-            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-kind={{ $labels.kind }}&var-condition={{
+            /d/{{operator_namespace}}crd_conditions_browser/crd-conditions-browser?var-job={{ $labels.job }}&var-kind={{ $labels.kind }}&var-condition={{
             $labels.condition }}&var-resource_id={{ $labels.{{namespace_label}} }}%2F{{ $labels.name }}

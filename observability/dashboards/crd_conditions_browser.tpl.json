@@ -112,7 +112,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+          "expr": "count(\n    {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
           "legendFormat": "Total",
           "range": true,
           "refId": "A"
@@ -244,7 +244,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(\n  {{operator_namespace}}controller_condition{\n    kind=\"$kind\",\n    condition=~\"$condition\",\n    status=~\"$status\",\n    reason=~\"$reason\",\n    id=~\"$resource_id\",\n    {{namespace_label}}=~\"$namespace\"\n  }\n  and\n  topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n) by (name, {{namespace_label}}, condition, status, reason)",
+          "expr": "sum(\n  {{operator_namespace}}controller_condition{job=~\"$job\", \n    kind=\"$kind\",\n    condition=~\"$condition\",\n    status=~\"$status\",\n    reason=~\"$reason\",\n    id=~\"$resource_id\",\n    {{namespace_label}}=~\"$namespace\"\n  }\n  and\n  topk by (id, condition) (1, {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n) by (name, {{namespace_label}}, condition, status, reason)",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -394,7 +394,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"False\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=\"False\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
               "range": false,
               "refId": "A",
@@ -465,7 +465,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"Unknown\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=\"Unknown\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
               "range": false,
               "refId": "A",
@@ -540,7 +540,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "count(\n    {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=\"True\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
+              "expr": "count(\n    {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=\"True\", reason=~\"$reason\", id=~\"$resource_id\", {{namespace_label}}=~\"$namespace\"} > 0\n  and\n    topk by (id, condition) (1, {{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", {{namespace_label}}=~\"$namespace\"})\n)",
               "legendFormat": "Total",
               "range": false,
               "refId": "A",
@@ -580,6 +580,33 @@
       },
       {
         "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values({{operator_namespace}}controller_condition,job)",
+        "description": "The Prometheus scrape job of the operator install, usually the name of its metrics Service or ServiceMonitor. Narrows every panel to one install when two installs export the same metric namespace; the operator dashboard and the condition alerts link here with it set.",
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Operator (scrape job)",
+        "multi": false,
+        "name": "job",
+        "options": [],
+        "query": {
+          "query": "label_values({{operator_namespace}}controller_condition,job)",
+          "refId": "job"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
           "text": "",
           "value": ""
         },
@@ -587,14 +614,14 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({{operator_namespace}}controller_condition,kind)",
+        "definition": "label_values({{operator_namespace}}controller_condition{job=~\"$job\"},kind)",
         "description": "The resource kind to view",
         "label": "Kind",
         "name": "kind",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({{operator_namespace}}controller_condition,kind)",
+          "query": "label_values({{operator_namespace}}controller_condition{job=~\"$job\"},kind)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -612,7 +639,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\"},condition)",
+        "definition": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\"},condition)",
         "description": "The condition type to display",
         "includeAll": true,
         "label": "Condition",
@@ -621,7 +648,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\"},condition)",
+          "query": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\"},condition)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -641,7 +668,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"},status)",
+        "definition": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\"},status)",
         "description": "Filter for a specific status",
         "includeAll": true,
         "label": "Status",
@@ -650,7 +677,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"},status)",
+          "query": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\"},status)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -669,7 +696,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},reason)",
+        "definition": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},reason)",
         "description": "Filter for condition reason",
         "includeAll": true,
         "label": "Reason",
@@ -678,7 +705,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},reason)",
+          "query": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=~\"$status\"},reason)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -697,7 +724,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "query_result(sum ({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"} > 0) by ({{namespace_label}}))",
+        "definition": "query_result(sum ({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\"} > 0) by ({{namespace_label}}))",
         "description": "The namespaces in which to list the resources",
         "includeAll": true,
         "label": "Namespace",
@@ -706,7 +733,7 @@
         "options": [],
         "query": {
           "qryType": 3,
-          "query": "query_result(sum ({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\"} > 0) by ({{namespace_label}}))",
+          "query": "query_result(sum ({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\"} > 0) by ({{namespace_label}}))",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -725,7 +752,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
+        "definition": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
         "description": "Namespace and resource name combination",
         "hide": 0,
         "includeAll": true,
@@ -734,7 +761,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({{operator_namespace}}controller_condition{kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
+          "query": "label_values({{operator_namespace}}controller_condition{job=~\"$job\", kind=\"$kind\", condition=~\"$condition\", status=~\"$status\", reason=~\"$reason\", {{namespace_label}}=~\"$namespace\"},id)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

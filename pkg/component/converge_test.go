@@ -654,3 +654,76 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 		assert.Equal(t, string(Healthy), cond.Reason)
 	})
 }
+
+// A condition whose reason was produced outside the converge state machine
+// (feature gate, prerequisite barrier, suspension) carries a status that says
+// nothing about convergence. Re-entering convergence from such a condition must
+// derive the new condition from scratch, exactly as from Unknown, rather than
+// copying the previous status forward.
+func TestNewConvergingStatusCondition_ReenteringConvergence(t *testing.T) {
+	var (
+		owner = &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "test-ns", Generation: 1},
+		}
+		ctx = t.Context()
+	)
+
+	previousReasons := []struct {
+		reason Status
+		status metav1.ConditionStatus
+	}{
+		{Disabled, metav1.ConditionTrue},
+		{Suspended, metav1.ConditionTrue},
+		{Suspending, metav1.ConditionFalse},
+		{PendingSuspension, metav1.ConditionFalse},
+		{PrerequisiteNotMet, metav1.ConditionFalse},
+		{FeatureGateError, metav1.ConditionFalse},
+	}
+
+	for _, prev := range previousReasons {
+		previous := Condition{
+			Type:               "Test",
+			Status:             prev.status,
+			Reason:             string(prev.reason),
+			Message:            "stale message",
+			LastTransitionTime: metav1.NewTime(time.Now().Add(-time.Hour)),
+		}
+
+		t.Run("should report False/Blocked when re-entering from "+string(prev.reason), func(t *testing.T) {
+			results := reconcileResults{
+				{Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked, Reason: "Waiting for base backup"}},
+			}
+
+			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+
+			assert.Equal(t, metav1.ConditionFalse, cond.Status)
+			assert.Equal(t, string(GuardBlocked), cond.Reason)
+			assert.Equal(t, "Waiting for base backup", cond.Message)
+		})
+
+		t.Run("should report False/Creating when re-entering from "+string(prev.reason), func(t *testing.T) {
+			results := reconcileResults{
+				{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating pods"}},
+			}
+
+			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+
+			assert.Equal(t, metav1.ConditionFalse, cond.Status)
+			assert.Equal(t, string(AliveCreating), cond.Reason)
+			assert.Equal(t, "Creating pods", cond.Message)
+		})
+
+		t.Run("should not evaluate grace against the stale transition time when re-entering from "+string(prev.reason), func(t *testing.T) {
+			results := reconcileResults{
+				{
+					Status:      convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating pods"},
+					GraceStatus: &concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "no pods"},
+				},
+			}
+
+			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+
+			assert.Equal(t, string(AliveCreating), cond.Reason)
+		})
+	}
+}

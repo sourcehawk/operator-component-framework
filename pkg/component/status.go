@@ -269,6 +269,20 @@ func (s Status) Healthy() bool {
 	return convergingStatus(s).healthy()
 }
 
+// converging reports whether the status was produced by the converge state
+// machine. Statuses set outside of it (the initial Unknown, the feature gate,
+// the prerequisite barrier, and suspension) carry a condition status that says
+// nothing about convergence, so a component entering convergence from one of
+// them must derive its condition from scratch rather than build on it.
+func (s Status) converging() bool {
+	switch s {
+	case Unknown, Disabled, FeatureGateError, PrerequisiteNotMet, PendingSuspension, Suspending, Suspended:
+		return false
+	default:
+		return true
+	}
+}
+
 func (s Status) sticky() bool {
 	switch s {
 	case AliveCreating, AliveUpdating, AliveScaling:

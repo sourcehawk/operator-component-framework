@@ -166,8 +166,12 @@ func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 //
 //  1. Immediate Ready: If all resources are Ready, the component becomes Ready immediately.
 //
-//  2. Initialization: If no prior condition exists (Status=Unknown), it is initialized
-//     from the current aggregate status (Creating, Updating, etc.).
+//  2. Initialization: If no prior condition exists (Reason=Unknown), or the previous
+//     condition was produced outside this state machine (Disabled, FeatureGateError,
+//     PrerequisiteNotMet, or a suspension reason), it is initialized from the current
+//     aggregate status (Creating, Updating, etc.). The previous condition's Status and
+//     LastTransitionTime are not carried forward, so a component that was disabled
+//     or suspended does not inherit a True status or an expired grace period.
 //
 //  3. Recovery from Ready: If the previous status was Ready but resources are now unready,
 //     the status transitions to the current aggregate status.
@@ -204,14 +208,17 @@ func newConvergingStatusCondition(
 		return conditionReady(conditionType, generation)
 	}
 
-	// No condition is set, we create the initial condition from the converge summary
-	if previousCondition.Reason == string(Unknown) {
+	// Convert the previous condition reason to a component status
+	status := Status(previousCondition.Reason)
+
+	// The previous condition was not produced by this state machine (no condition
+	// yet, feature gate disabled, prerequisite barrier, suspension): its status and
+	// transition time say nothing about convergence, so derive the initial
+	// condition from the converge summary instead of building on it.
+	if !status.converging() {
 		summary := results.convergeSummary()
 		return convergingCondition(conditionType, summary, generation)
 	}
-
-	// Convert the previous condition reason to a component status
-	status := Status(previousCondition.Reason)
 
 	// Get the summary for an updated description of why we're here
 	convergeSummary := results.convergeSummary()

@@ -1,5 +1,6 @@
 // Command simulator exposes a synthetic operator's metrics on /metrics for the
-// local observability stack under observability/dev.
+// local observability stack under observability/dev, and the kube-state-metrics
+// series the dashboards join against on /ksm/metrics.
 //
 // The framework's own series (resource applies, conditions) are recorded
 // through the real pkg/metrics recorder; controller-runtime, workqueue, REST
@@ -53,6 +54,7 @@ func run() error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	mux.Handle("/ksm/metrics", promhttp.HandlerFor(newKubeStateMetrics(), promhttp.HandlerOpts{}))
 	srv := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() {

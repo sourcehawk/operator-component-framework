@@ -68,6 +68,7 @@ func knownMetrics(t *testing.T) map[string]bool {
 		"workqueue_longest_running_processor_seconds", "workqueue_retries_total",
 		"rest_client_requests_total", "leader_election_master_status",
 		"process_cpu_seconds_total", "process_resident_memory_bytes", "go_goroutines",
+		"kube_pod_container_resource_requests", "kube_pod_container_resource_limits", "up",
 	} {
 		known[n] = true
 	}
@@ -77,7 +78,7 @@ func knownMetrics(t *testing.T) map[string]bool {
 // metricNameRe pulls every identifier that looks like one of the metric
 // families we care about out of a PromQL expression, including the
 // `_bucket`/`_sum`/`_count` suffixes of histograms.
-var metricNameRe = regexp.MustCompile(`\b((?:ocf|controller_runtime|workqueue|rest_client|leader_election|process|go)_[a-z0-9_]+|` + lintNamespace + `_controller_condition)\b`)
+var metricNameRe = regexp.MustCompile(`\b((?:ocf|controller_runtime|workqueue|rest_client|leader_election|process|go|kube)_[a-z0-9_]+|up|` + lintNamespace + `_controller_condition)\b`)
 
 // selectorRe pulls the metric name out of every selector-shaped token
 // (`name{...}`). It catches typos and unknown metric families that the prefix

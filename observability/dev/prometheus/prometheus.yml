@@ -16,3 +16,12 @@ scrape_configs:
         labels:
           namespace: operators
           pod: demo-operator-0
+  # The simulator's kube-state-metrics lookalikes (container requests and
+  # limits) on their own job, with honor_labels so the namespace and pod labels
+  # the series carry survive, as they do under kube-state-metrics' own
+  # ServiceMonitor.
+  - job_name: kube-state-metrics
+    honor_labels: true
+    metrics_path: /ksm/metrics
+    static_configs:
+      - targets: ["host.docker.internal:8080"]

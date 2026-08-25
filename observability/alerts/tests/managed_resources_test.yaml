@@ -38,9 +38,9 @@ tests:
               severity: warning
             exp_annotations:
               summary: >-
-                ConfigMap `configmap` of component `server` (WebApp) is rewritten on every reconcile
+                ConfigMap `configmap` of component `server` (WebApp) is rewritten on most reconciles
               description: |
-                Over the last 15 minutes, 99.59% of the applies of the `ConfigMap` resource `configmap` in component `server` of owner kind `WebApp` (controller `webapp`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose every apply is an update is being rewritten on every reconcile even though nothing changed.
+                Over the last 15 minutes, 99.59% of the applies of the `ConfigMap` resource `configmap` in component `server` of owner kind `WebApp` (controller `webapp`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose applies are mostly updates is being rewritten on reconciles where nothing should have changed.
 
                 Usual causes: a mutation that is not idempotent (a timestamp, a random value, an unsorted list), a defaulting webhook or another controller fighting the operator, or a field the API server normalises. Events report the same thing, but client-go's spam filter truncates them within seconds under exactly these conditions.
 
@@ -185,9 +185,9 @@ tests:
               severity: warning
             exp_annotations:
               summary: >-
-                ConfigMap `configmap` of component `server` (WebApp) is rewritten on every reconcile
+                ConfigMap `configmap` of component `server` (WebApp) is rewritten on most reconciles
               description: |
-                Over the last 15 minutes, 99.59% of the applies of the `ConfigMap` resource `configmap` in component `server` of owner kind `WebApp` (controller `webapp`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose every apply is an update is being rewritten on every reconcile even though nothing changed.
+                Over the last 15 minutes, 99.59% of the applies of the `ConfigMap` resource `configmap` in component `server` of owner kind `WebApp` (controller `webapp`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose applies are mostly updates is being rewritten on reconciles where nothing should have changed.
 
                 Usual causes: a mutation that is not idempotent (a timestamp, a random value, an unsorted list), a defaulting webhook or another controller fighting the operator, or a field the API server normalises. Events report the same thing, but client-go's spam filter truncates them within seconds under exactly these conditions.
 

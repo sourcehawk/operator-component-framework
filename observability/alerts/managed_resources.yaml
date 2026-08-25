@@ -52,9 +52,9 @@ groups:
           severity: warning
         annotations:
           summary: >-
-            {{ $labels.kind }} `{{ $labels.resource }}` of component `{{ $labels.component }}` ({{ $labels.owner_kind }}) is rewritten on every reconcile
+            {{ $labels.kind }} `{{ $labels.resource }}` of component `{{ $labels.component }}` ({{ $labels.owner_kind }}) is rewritten on most reconciles
           description: |
-            Over the last 15 minutes, {{ $value | humanizePercentage }} of the applies of the `{{ $labels.kind }}` resource `{{ $labels.resource }}` in component `{{ $labels.component }}` of owner kind `{{ $labels.owner_kind }}` (controller `{{ $labels.controller }}`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose every apply is an update is being rewritten on every reconcile even though nothing changed.
+            Over the last 15 minutes, {{ $value | humanizePercentage }} of the applies of the `{{ $labels.kind }}` resource `{{ $labels.resource }}` in component `{{ $labels.component }}` of owner kind `{{ $labels.owner_kind }}` (controller `{{ $labels.controller }}`) updated the object. In steady state a converged resource applies as `none` on every pass, so a resource whose applies are mostly updates is being rewritten on reconciles where nothing should have changed.
 
             Usual causes: a mutation that is not idempotent (a timestamp, a random value, an unsorted list), a defaulting webhook or another controller fighting the operator, or a field the API server normalises. Events report the same thing, but client-go's spam filter truncates them within seconds under exactly these conditions.
 

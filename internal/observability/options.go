@@ -43,7 +43,9 @@ var (
 	// characters, starting with a letter because it also names the
 	// PrometheusRule objects (with _ mapped to -), and to MaxMetricNamespaceLen
 	// characters.
-	metricNamespacePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,16}$`)
+	metricNamespacePattern = regexp.MustCompile(
+		fmt.Sprintf(`^[A-Za-z][A-Za-z0-9_]{0,%d}$`, MaxMetricNamespaceLen-1),
+	)
 	// labelNamePattern is the Prometheus label name grammar.
 	labelNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )

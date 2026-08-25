@@ -244,10 +244,10 @@ observability-render: ## Render the dashboards and alert rules for METRIC_NAMESP
 	$(OCF) observability render $(OBS_RENDER_FLAGS) --out "$(OBS_OUT)"
 
 .PHONY: dashboards
-dashboards: observability-render ## Render the Grafana dashboards for METRIC_NAMESPACE into observability/generated/dashboards.
+dashboards: observability-render ## Alias of observability-render: renders both the dashboards and the alert rules.
 
 .PHONY: alerts
-alerts: observability-render ## Render the Prometheus alert rules for METRIC_NAMESPACE into observability/generated/alerts.
+alerts: observability-render ## Alias of observability-render: renders both the dashboards and the alert rules.
 
 .PHONY: test-alerts
 test-alerts: ## Lint and unit test the alert rules with promtool.

@@ -233,12 +233,13 @@ func (w *world) databases(ctx context.Context) {
 		}
 
 		if i%60 == 0 { // every three minutes
+			// A reason-only change keeps lastTransitionTime, as
+			// meta.SetStatusCondition does while the status stays False.
 			if flipReason == reasonFailing {
 				flipReason = reasonCreating
 			} else {
 				flipReason = reasonFailing
 			}
-			flipSince = time.Now()
 		}
 		c.condition(orders, "StorageReady", "False", reasonFailing, stuckSince)
 		c.condition(orders, "BackupReady", "True", reasonHealthy, stuckSince)

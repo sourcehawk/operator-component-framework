@@ -69,11 +69,14 @@ func run() error {
 
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = srv.Shutdown(shutdown)
+	shutdownErr := srv.Shutdown(shutdown)
 	select {
 	case err := <-serveErr:
 		return fmt.Errorf("serving metrics: %w", err)
 	default:
-		return nil
 	}
+	if shutdownErr != nil {
+		return fmt.Errorf("shutting down metrics server: %w", shutdownErr)
+	}
+	return nil
 }

@@ -135,11 +135,19 @@ takes control of conflicting fields from other managers, while fields it does no
 owners.
 
 The owner's UID is part of the manager name so that every owner is a distinct manager. Two custom resources of one kind
-whose components render the same object therefore do not share a manager: the second owner's apply carries a second
-controller reference, which the API server rejects, so that owner's component reports an error instead of silently
-taking the object's fields from the first. With a manager shared across owners, each forced apply would relinquish the
-other owner's fields wholesale, both would report converged, and neither would ever see a conflict. Naming the owner
-also makes `kubectl get -o yaml --show-managed-fields` say which custom resource wrote a field.
+whose components render the same object therefore do not share a manager. When the framework sets a controller reference
+on the object (the default), the second owner's apply carries a second controller reference, which the API server
+rejects, so that owner's component reports an error instead of silently taking the object's fields from the first. With
+a manager shared across owners, each forced apply would relinquish the other owner's fields wholesale, both would report
+converged, and neither would ever see a conflict. Naming the owner also makes
+`kubectl get -o yaml --show-managed-fields` say which custom resource wrote a field.
+
+The rejection depends on the controller reference. For a resource registered with `Unowned()`, or one whose owner
+reference cannot be set because of a scope mismatch, nothing stops the second owner's forced apply from taking the
+fields it declares, and the fields move between the two owners' managers on every reconcile. `managedFields` then names
+the owner that wrote each field, but the framework does not detect the contention. A shared name between two owners is
+the operator's responsibility in that case; a [guard](component.md#guards) that reads the live object and blocks when
+another owner controls it is the way to make it explicit.
 
 !!! note "Upgrading from a release without the UID in the manager name"
 

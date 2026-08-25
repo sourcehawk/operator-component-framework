@@ -174,9 +174,11 @@ and fields set by other controllers or webhooks are left untouched. The field ma
 `"{Owner.GetKind()}/{componentName}/{Owner.GetUID()}"`, and the framework applies with forced ownership, taking control
 of conflicting fields from other managers while leaving fields it does not include with their current owners. This is
 what lets primitives coexist with other controllers touching the same resource without a perpetual-update fight over
-stripped server defaults. The owner's UID makes each owner a distinct manager: two owners of one kind rendering the same
-object do not silently take each other's fields; the second owner's apply is rejected because of its second controller
-reference.
+stripped server defaults. The owner's UID makes each owner a distinct manager: when the framework sets a controller
+reference (the default), two owners of one kind rendering the same object do not silently take each other's fields; the
+second owner's apply is rejected because of its second controller reference. For `Unowned()` resources, or where a scope
+mismatch prevents the owner reference, the second owner's forced apply still takes the fields it declares;
+`managedFields` names each owner, but the framework does not detect the contention.
 
 **A Go type that overstates the CRD schema breaks Apply.** The API server's field manager types the patch against the
 target's OpenAPI schema before merging anything, so an undeclared field fails the whole apply and the server returns:

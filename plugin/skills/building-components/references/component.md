@@ -455,6 +455,13 @@ stateDiagram-v2
     end note
 ```
 
+`Unknown`, `Disabled`, `FeatureGateError`, `PrerequisiteNotMet`, and the suspension reasons (`PendingSuspension`,
+`Suspending`, `Suspended`) are set outside the converge state machine. When a component enters convergence from one of
+them (its gate is re-enabled, its prerequisites are met, or it resumes from suspension), the condition is derived from
+scratch, exactly as from `Unknown`. The previous condition's status and `lastTransitionTime` are not carried forward: a
+component that was `True`/`Disabled` and blocks on a guard once re-enabled reports `False`/`Blocked`, and the grace
+period starts counting from the new transition rather than from the time the component was disabled or suspended.
+
 ### Reading a component's condition
 
 `(*Component).GetCondition(owner OperatorCRD) Condition` returns the condition this component owns on the given owner.

@@ -461,14 +461,25 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	}
 
 	// Determine new condition for component
+	previous := c.GetCondition(rec.Owner)
 	cond := newConvergingStatusCondition(
 		ctx,
 		rec.Owner,
 		reconcileResults(results).filterParticipators(),
 		c.gracePeriod,
-		c.GetCondition(rec.Owner),
+		previous,
 	)
-	applyStatusCondition(rec, cond)
+	if Status(previous.Reason).converging() {
+		applyStatusCondition(rec, cond)
+	} else {
+		// Entering convergence from a condition produced outside the converge
+		// state machine: the grace period counts from this transition, so the
+		// transition time is stamped explicitly. meta.SetStatusCondition would
+		// keep the previous one whenever the status did not change (False to
+		// False), leaving the grace period already expired on the next reconcile.
+		cond.LastTransitionTime = metav1.Now()
+		replaceStatusCondition(rec.Owner.GetStatusConditions(), metav1.Condition(cond))
+	}
 
 	if err := deleteResources(ctx, rec, c.deleteResources); err != nil {
 		return fail(rec, c.conditionType, err)

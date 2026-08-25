@@ -164,6 +164,54 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(cond.Reason).To(Equal(string(AliveCreating)))
 		})
 
+		It("should restart the grace period when entering convergence from a non-converging reason", func() {
+			// Given: the component sat behind a prerequisite barrier for an hour,
+			// so the owner carries an hour-old False/PrerequisiteNotMet condition.
+			// Because the status stays False when convergence starts, a plain
+			// meta.SetStatusCondition would keep that hour-old transition time
+			// and the 5-minute grace period would be expired on the very next
+			// reconcile.
+			owner.Status.Conditions = []metav1.Condition{{
+				Type:               "TestComponentReady",
+				Status:             metav1.ConditionFalse,
+				Reason:             string(PrerequisiteNotMet),
+				Message:            "waiting for backend",
+				LastTransitionTime: metav1.NewTime(time.Now().Add(-time.Hour)),
+			}}
+			comp.gracePeriod = 5 * time.Minute
+
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-reentry-cm", Namespace: namespace},
+			}
+			res := &MockAliveResource{}
+			res.On("Object").Return(cm, nil)
+			res.On("Identity").Return("ConfigMap/test-reentry-cm")
+			res.On("Mutate", mock.Anything).Return(nil)
+			res.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusCreating,
+				Reason: "Waiting for creation",
+			}, nil)
+			res.On("GraceStatus").Return(concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDown,
+				Reason: "no replicas",
+			}, nil)
+			comp.reconcileResources = []reconcileEntry{{Resource: res, Options: resourceOptions{ParticipationMode: ParticipationModeRequired}}}
+
+			// When: the barrier passes and the component reconciles twice
+			Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+			first := comp.GetCondition(owner)
+			Expect(comp.Reconcile(ctx, recCtx)).To(Succeed())
+
+			// Then: the transition time was reset on entry and the second reconcile
+			// is still inside the grace period
+			Expect(first.Reason).To(Equal(string(AliveCreating)))
+			Expect(first.LastTransitionTime.Time).To(BeTemporally("~", time.Now(), time.Minute))
+
+			cond := getOwnerCondition()
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(string(AliveCreating)))
+		})
+
 		It("should handle read-only resources", func() {
 			// Given
 			cm := &corev1.ConfigMap{

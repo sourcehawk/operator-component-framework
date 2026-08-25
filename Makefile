@@ -59,6 +59,7 @@ $(GINKGO): $(LOCALBIN)
 
 AI_BASE  := .ai/base.md
 AI_REVIEW := .ai/review.md
+AI_GO := .ai/how-we-write-go.md
 
 .PHONY: ai-instructions
 ai-instructions: ai-instructions-gen fmt-md
@@ -68,6 +69,8 @@ ai-instructions-gen: ## Generate all AI instruction files from source templates 
 	cp $(AI_BASE) CLAUDE.md
 	@mkdir -p .junie
 	cp $(AI_BASE) .junie/guidelines.md
+	@mkdir -p .claude/skills/how-we-write-go
+	cp $(AI_GO) .claude/skills/how-we-write-go/SKILL.md
 	@mkdir -p .github
 	cp $(AI_REVIEW) .github/copilot-review-guidelines.md
 	@{ \

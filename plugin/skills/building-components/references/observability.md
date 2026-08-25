@@ -304,11 +304,11 @@ Every condition query in both dashboards joins on the freshest series per owner:
 
 The metric value is the `lastTransitionTime`, so `topk` keeps the most recently transitioned series for each owner and
 drops the stale duplicate. The join carries `kind` because `id` is only `<namespace>/<name>`, and two owners of
-different kinds can share it. Queries that span more than one condition type, such as the CRs by Ready status over time
-panel, join on `topk by (kind, id, condition)` instead, so each owner keeps one freshest series per condition rather
-than one overall. The browser pins `kind` through its variable, so its queries join on `topk by (id, condition)`. The
-condition alerts apply the same join before their status matcher, keyed on `(controller, kind, name, <namespace label>)`
-and, for the rules that keep `condition` in their `by` clause, `condition`.
+different kinds can share it. Queries that span more than one condition type, such as the Unhealthy conditions panel,
+join on `topk by (kind, id, condition)` instead, so each owner keeps one freshest series per condition rather than one
+overall. The browser pins `kind` through its variable, so its queries join on `topk by (id, condition)`. The condition
+alerts apply the same join before their status matcher, keyed on `(controller, kind, name, <namespace label>)` and, for
+the rules that keep `condition` in their `by` clause, `condition`.
 
 ## Previewing locally
 

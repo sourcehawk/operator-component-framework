@@ -1,7 +1,8 @@
 # CLI
 
-`ocf` generates the custom-resource wrapper pattern that [Custom Resources](custom-resource.md) describes. Templates are
-embedded in the binary, so generated code matches the framework version the CLI was built from.
+`ocf` generates the custom-resource wrapper pattern that [Custom Resources](custom-resource.md) describes and renders
+the Grafana dashboards and Prometheus alert rules that [Observability](observability.md) describes. Templates are
+embedded in the binary, so generated code and rendered artifacts match the framework version the CLI was built from.
 
 ## Installation
 
@@ -11,7 +12,42 @@ ocf version
 ```
 
 `ocf version` prints the framework version the binary was built from, so you can confirm which template set a generated
-package came from.
+package or a rendered dashboard came from. Install at the version your operator builds against (`@v0.x.y` instead of
+`@latest`) when the two must agree, as they must for the observability artifacts.
+
+## `ocf observability render`
+
+`ocf observability render` writes the Grafana dashboards and Prometheus alert rules for one operator into
+`<out>/dashboards/*.json` and `<out>/alerts/*.yaml`, keyed on the operator's metric namespace.
+
+| Flag                         | Required | Default              | Meaning                                                                                                        |
+| ---------------------------- | -------- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--metric-namespace`         | yes      |                      | The argument to `ocm.NewOperatorConditionsGauge`. A letter, then `[A-Za-z0-9_]`, at most 17 characters         |
+| `--namespace-label`          | no       | `exported_namespace` | Label carrying the owner's namespace on condition series. Must be a Prometheus label name                      |
+| `--alert-format`             | no       | `prometheusrule`     | `prometheusrule` wraps each rule file in a `PrometheusRule` object; `rules` writes plain `groups:` files       |
+| `--prometheusrule-namespace` | no       |                      | `metadata.namespace` of the `PrometheusRule` objects                                                           |
+| `--prometheusrule-labels`    | no       |                      | Comma-separated `key=value` pairs for `metadata.labels` of the `PrometheusRule` objects, written sorted by key |
+| `--out`                      | no       | `./observability`    | Output directory                                                                                               |
+
+```bash
+ocf observability render --metric-namespace myoperator \
+  --prometheusrule-namespace monitoring --prometheusrule-labels release=kube-prometheus-stack
+```
+
+```
+Rendered observability artifacts for metric namespace "myoperator" in ./observability:
+  dashboards/crd_conditions_browser.json
+  dashboards/ocf_operator.json
+  alerts/controller_runtime.yaml
+  alerts/crd_conditions.yaml
+  alerts/managed_resources.yaml
+```
+
+Rendered files are regenerated output, so there is no `--force`: every `.json` in `<out>/dashboards/` and every `.yaml`
+in `<out>/alerts/` is removed before writing, and files of other types in those directories are left alone. A value that
+fails validation is rejected with an error naming the flag, for example
+`--metric-namespace "my-operator" is not renderable`, and nothing is written. What each artifact contains, how the
+placeholders are substituted and how to install the output is documented in [Observability](observability.md#rendering).
 
 ## `ocf scaffold wrapper`
 

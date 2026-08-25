@@ -2,48 +2,53 @@
 
 The framework ships Grafana dashboards and Prometheus alert rules for the metrics an operator built on it exposes: the
 [condition and resource apply metrics](component.md#metrics) recorded through `pkg/metrics`, and the reconcile,
-workqueue, REST client, leader election and process series every controller-runtime operator exports. They live under
-`observability/` in the repository as templates, keyed on the metric namespace of your operator, and render with `make`.
-A local Prometheus and Grafana stack fed by a simulator lets you look at every panel and every alert without a cluster.
+workqueue, REST client, leader election and process series every controller-runtime operator exports. They are templates
+embedded in the `ocf` CLI, keyed on the metric namespace of your operator, and render with `ocf observability render`. A
+local Prometheus and Grafana stack fed by a simulator lets you look at every panel and every alert without a cluster.
 
 ## What ships
 
-| Artifact                  | File                                         | Scope                                                                                                                                                                                                                                     |
-| ------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OCF Operator dashboard    | `dashboards/ocf_operator.tpl.json`           | Per operator. Rendered uid `<metric_namespace>_ocf_operator`. Operator health end to end: reconciliation, workqueue, managed resource applies, condition summary, API client, process.                                                    |
-| CRD Conditions Browser    | `dashboards/crd_conditions_browser.tpl.json` | Per operator. Rendered uid `<metric_namespace>_crd_conditions_browser`. Per-owner condition drill-down; the target of the condition alerts' `dashboard_url` links.                                                                        |
-| Condition alerts          | `alerts/crd_conditions.tpl.yaml`             | Per operator, rendered per metric namespace as the `PrometheusRule` `<metric-namespace>-crd-conditions`. `CustomResourceNotReady`, `CustomResourceConditionUnknown`, `CustomResourceConditionStuck`.                                      |
-| Managed resource alerts   | `alerts/managed_resources.yaml`              | Shared, cluster-wide. Installed once as the `PrometheusRule` `ocf-managed-resources`, whichever operator rendered it. `ManagedResourceNotConverging`, `ManagedResourceApplyFailing`.                                                      |
-| Controller-runtime alerts | `alerts/controller_runtime.yaml`             | Shared, cluster-wide. Installed once as the `PrometheusRule` `ocf-controller-runtime`. `ControllerReconcileErrors`, `ControllerReconcilePanics`, `ControllerWorkqueueBacklog`, `ControllerReconcileLatencyHigh`, `OperatorLeaderMissing`. |
+| Artifact                  | Rendered file                            | Scope                                                                                                                                                                                                                                     |
+| ------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OCF Operator dashboard    | `dashboards/ocf_operator.json`           | Per operator. Rendered uid `<metric_namespace>_ocf_operator`. Operator health end to end: reconciliation, workqueue, managed resource applies, condition summary, API client, process.                                                    |
+| CRD Conditions Browser    | `dashboards/crd_conditions_browser.json` | Per operator. Rendered uid `<metric_namespace>_crd_conditions_browser`. Per-owner condition drill-down; the target of the condition alerts' `dashboard_url` links.                                                                        |
+| Condition alerts          | `alerts/crd_conditions.yaml`             | Per operator, rendered per metric namespace as the `PrometheusRule` `<metric-namespace>-crd-conditions`. `CustomResourceNotReady`, `CustomResourceConditionUnknown`, `CustomResourceConditionStuck`.                                      |
+| Managed resource alerts   | `alerts/managed_resources.yaml`          | Shared, cluster-wide. Installed once as the `PrometheusRule` `ocf-managed-resources`, whichever operator rendered it. `ManagedResourceNotConverging`, `ManagedResourceApplyFailing`.                                                      |
+| Controller-runtime alerts | `alerts/controller_runtime.yaml`         | Shared, cluster-wide. Installed once as the `PrometheusRule` `ocf-controller-runtime`. `ControllerReconcileErrors`, `ControllerReconcilePanics`, `ControllerWorkqueueBacklog`, `ControllerReconcileLatencyHigh`, `OperatorLeaderMissing`. |
 
 The split follows the metrics. The condition gauge is named after the metric namespace
 (`<metric_namespace>_controller_condition`), so its rules and both dashboards carry a placeholder and render per
 operator. The apply counters (`ocf_resource_apply_total`, `ocf_resource_apply_errors_total`) and the controller-runtime
 families have fixed names shared by every operator in the cluster, so their rules contain no placeholder, tell operators
-apart by label, and are installed once. `make alerts` writes the shared files alongside the per-operator one on every
-render; apply them from whichever operator's render you like, the content is identical.
+apart by label, and are installed once. Every render writes the shared files alongside the per-operator one; apply them
+from whichever operator's render you like, the content is identical.
+
+The templates live in the repository under `internal/observability/templates/` (`dashboards/*.tpl.json`,
+`alerts/*.yaml`) and are embedded in the `ocf` binary, so the version of `ocf` you install decides which templates you
+render.
 
 ## Rendering
 
-The render pipeline is `make` and `sed`; it needs no Go toolchain. Three different things are called a namespace on this
-page, so to be precise: the **metric namespace** is the string your operator passed to `ocm.NewOperatorConditionsGauge`
-(the prefix of the condition gauge's name), the **owner namespace** is the Kubernetes namespace of a custom resource,
-carried as a label on its condition series, and the **operator namespace** is the Kubernetes namespace the operator pod
-runs in, stamped on every series by the scrape job.
+Three different things are called a namespace on this page, so to be precise: the **metric namespace** is the string
+your operator passed to `ocm.NewOperatorConditionsGauge` (the prefix of the condition gauge's name), the **owner
+namespace** is the Kubernetes namespace of a custom resource, carried as a label on its condition series, and the
+**operator namespace** is the Kubernetes namespace the operator pod runs in, stamped on every series by the scrape job.
 
-Clone the repository and, from its root, render with your metric namespace:
+Install `ocf` at the framework version your operator builds against, so the rendered artifacts match the metrics that
+version records, and render with your metric namespace:
 
 ```bash
-make dashboards METRIC_NAMESPACE=myoperator
-make alerts METRIC_NAMESPACE=myoperator
+go install github.com/sourcehawk/operator-component-framework/cmd/ocf@<version>
+ocf observability render --metric-namespace myoperator
 ```
 
-Output lands in `observability/generated/`, which is gitignored. Each target removes the files it previously rendered
-before writing, so a dashboard or rule file that a framework upgrade renamed or dropped does not linger and get
-installed again:
+Output lands in `./observability/` by default (`--out` changes it). Rendered files are regenerated output: every `.json`
+in `<out>/dashboards/` and every `.yaml` in `<out>/alerts/` is removed before writing, so a dashboard or rule file that
+a framework upgrade renamed or dropped does not linger and get installed again. Other files in those directories are
+left alone.
 
 ```
-observability/generated/
+observability/
 ├── alerts/
 │   ├── controller_runtime.yaml   PrometheusRule ocf-controller-runtime (shared)
 │   ├── crd_conditions.yaml       PrometheusRule myoperator-crd-conditions
@@ -53,32 +58,38 @@ observability/generated/
     └── ocf_operator.json
 ```
 
-Two placeholders are substituted: `{{operator_namespace}}` becomes `<METRIC_NAMESPACE>_`, so every reference to the
+Two placeholders are substituted: `{{operator_namespace}}` becomes `<metric namespace>_`, so every reference to the
 condition gauge reads `myoperator_controller_condition` (the placeholder is named for the metric namespace, not a
-Kubernetes one), and `{{namespace_label}}` becomes the value of `NAMESPACE_LABEL`. Pass the same variables to both
-`make dashboards` and `make alerts`. Both placeholders and every variable below are the same as in
-[go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics), so a build that already renders that
-repository's artifacts needs no change.
+Kubernetes one), and `{{namespace_label}}` becomes the value of `--namespace-label`. Both placeholders are the same as
+in [go-crd-condition-metrics](https://github.com/sourcehawk/go-crd-condition-metrics), and every flag below corresponds
+to one of that repository's `make` variables, so a build that already renders its artifacts carries its values over.
 
-| Variable                   | Default                   | Effect                                                                                                                                                                                                                                                                                                                                                                                                                |
-| -------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `METRIC_NAMESPACE`         | required                  | The argument to `ocm.NewOperatorConditionsGauge`. Names the condition gauge, the dashboard uids and the condition `PrometheusRule`. A letter followed by metric name characters (`[A-Za-z0-9_]`), at most 17 characters: it names the `PrometheusRule` objects with `_` mapped to `-`, so it must start with a letter, and the longest rendered uid must fit Grafana's 40 character limit; rendering fails otherwise. |
-| `NAMESPACE_LABEL`          | `exported_namespace`      | The label carrying the owner's namespace on condition series, see below. Must be a Prometheus label name (`[A-Za-z0-9_]`, not starting with a digit); rendering fails otherwise.                                                                                                                                                                                                                                      |
-| `ALERT_FORMAT`             | `prometheusrule`          | `prometheusrule` wraps each rule file in a `monitoring.coreos.com/v1` `PrometheusRule` for the Prometheus Operator; `rules` writes the plain `groups:` file that Prometheus loads through `rule_files`.                                                                                                                                                                                                               |
-| `PROMETHEUSRULE_NAMESPACE` | unset                     | `metadata.namespace` of the `PrometheusRule` objects. Unset leaves it to `kubectl apply -n`.                                                                                                                                                                                                                                                                                                                          |
-| `PROMETHEUSRULE_LABELS`    | unset                     | Comma-separated `key=value` pairs written to `metadata.labels`. An entry without `=` fails the render. A kube-prometheus-stack install selects rules by its release label, so pass `PROMETHEUSRULE_LABELS=release=<release name>`.                                                                                                                                                                                    |
-| `OBS_OUT`                  | `observability/generated` | Render output directory.                                                                                                                                                                                                                                                                                                                                                                                              |
+| Flag                         | Default              | Effect                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--metric-namespace`         | required             | The argument to `ocm.NewOperatorConditionsGauge`. Names the condition gauge, the dashboard uids and the condition `PrometheusRule`. A letter followed by metric name characters (`[A-Za-z0-9_]`), at most 17 characters: it names the `PrometheusRule` objects with `_` mapped to `-`, so it must start with a letter, and the longest rendered uid must fit Grafana's 40 character limit; rendering fails otherwise. |
+| `--namespace-label`          | `exported_namespace` | The label carrying the owner's namespace on condition series, see below. Must be a Prometheus label name (`[A-Za-z0-9_]`, not starting with a digit); rendering fails otherwise.                                                                                                                                                                                                                                      |
+| `--alert-format`             | `prometheusrule`     | `prometheusrule` wraps each rule file in a `monitoring.coreos.com/v1` `PrometheusRule` for the Prometheus Operator; `rules` writes the plain `groups:` file that Prometheus loads through `rule_files`.                                                                                                                                                                                                               |
+| `--prometheusrule-namespace` | unset                | `metadata.namespace` of the `PrometheusRule` objects. Unset leaves it to `kubectl apply -n`.                                                                                                                                                                                                                                                                                                                          |
+| `--prometheusrule-labels`    | unset                | Comma-separated `key=value` pairs written to `metadata.labels`, sorted by key. An entry without `=` fails the render. A kube-prometheus-stack install selects rules by its release label, so pass `--prometheusrule-labels release=<release name>`.                                                                                                                                                                   |
+| `--out`                      | `./observability`    | Render output directory.                                                                                                                                                                                                                                                                                                                                                                                              |
+
+A rejected value exits non-zero with a message naming the flag and the rule it broke, and nothing is written.
 
 `PrometheusRule` names are the metric namespace or `ocf` prefix joined to the file name, lower-cased, with `_` and `:`
 folded to `-`, so a namespace of `My_Operator` renders as `my-operator-crd-conditions`.
+
+From a clone of the repository, `make dashboards METRIC_NAMESPACE=myoperator` and
+`make alerts METRIC_NAMESPACE=myoperator` run the same command through `go run ./cmd/ocf` with the `make` variables
+`METRIC_NAMESPACE`, `NAMESPACE_LABEL`, `ALERT_FORMAT`, `PROMETHEUSRULE_NAMESPACE`, `PROMETHEUSRULE_LABELS` and `OBS_OUT`
+(default `observability/generated`, gitignored) mapped onto the flags above. Both targets render both artifact sets.
 
 ### The namespace label
 
 The condition gauge exports the owner's namespace as a `namespace` label. When a ServiceMonitor or PodMonitor scrapes
 the operator, Prometheus stamps the scrape target's own labels on every series, and the target's `namespace` label (the
 operator pod's namespace) collides with the exported one. Prometheus resolves the collision by renaming the exported
-label to `exported_namespace`, which is why that is the default. Pass `NAMESPACE_LABEL=namespace` when your scrape sets
-`honorLabels: true`, or does not stamp a `namespace` target label at all, so the exported label arrives unchanged.
+label to `exported_namespace`, which is why that is the default. Pass `--namespace-label namespace` when your scrape
+sets `honorLabels: true`, or does not stamp a `namespace` target label at all, so the exported label arrives unchanged.
 
 The setting affects the condition rules and both dashboards. Nothing else is namespace-scoped by owner: the apply
 counters carry no owner namespace by design, and the `namespace` and `job` the controller-runtime and managed-resource
@@ -89,20 +100,21 @@ Outside a cluster both labels are simply absent, which is harmless.
 
 ### Installing
 
-With the default `ALERT_FORMAT`, apply the rendered rules into the namespace your Prometheus Operator watches:
+With the default `--alert-format`, apply the rendered rules into the namespace your Prometheus Operator watches:
 
 ```bash
-make alerts METRIC_NAMESPACE=myoperator PROMETHEUSRULE_NAMESPACE=monitoring PROMETHEUSRULE_LABELS=release=kube-prometheus-stack
-kubectl apply -f observability/generated/alerts/
+ocf observability render --metric-namespace myoperator \
+  --prometheusrule-namespace monitoring --prometheusrule-labels release=kube-prometheus-stack
+kubectl apply -f observability/alerts/
 ```
 
-With `ALERT_FORMAT=rules`, add the three files to your Prometheus `rule_files`.
+With `--alert-format rules`, add the three files to your Prometheus `rule_files`.
 
 For the dashboards, either import the two JSON files through Grafana's UI or API, or, with the Grafana sidecar that
 kube-prometheus-stack deploys, ship them as a ConfigMap carrying the sidecar's label (`grafana_dashboard` by default):
 
 ```bash
-kubectl create configmap myoperator-dashboards -n monitoring --from-file=observability/generated/dashboards/
+kubectl create configmap myoperator-dashboards -n monitoring --from-file=observability/dashboards/
 kubectl label configmap myoperator-dashboards -n monitoring grafana_dashboard=1
 ```
 
@@ -266,7 +278,7 @@ rules aggregate by, so two installs of the same operator in different namespaces
 All, which also matches series that carry no namespace label at all, so an operator scraped outside a cluster still
 renders. `namespace` scopes the controller-runtime, workqueue, apply and process panels, whose `namespace` label is
 always the pod's; the condition panels are scoped by `job` alone, because on condition series that label is the CR's
-namespace when rendered with `NAMESPACE_LABEL=namespace`. `controller` narrows within that operator, see
+namespace when rendered with `--namespace-label namespace`. `controller` narrows within that operator, see
 [Naming the controller](#naming-the-controller). Panel titles say CR for what the framework calls the owner: one custom
 resource instance the controller reconciles, identified by its kind, namespace and name. Rows are ordered by what an
 on-call reader asks first: is the operator healthy right now, are the owners healthy, is anything being rewritten or

@@ -1,19 +1,18 @@
 # Observability
 
-Grafana dashboards and Prometheus alert rules for operators built on the framework, plus a local stack to look at them.
-Full documentation: [docs/observability.md](../docs/observability.md).
+The local Prometheus and Grafana stack for the dashboards and alert rules the framework ships, and the notes for their
+maintainers. The templates themselves live in `internal/observability/templates/` and are embedded in the `ocf` CLI;
+render them for your operator with `ocf observability render --metric-namespace <namespace>`, where the namespace is the
+argument you gave `ocm.NewOperatorConditionsGauge`. Full documentation:
+[docs/observability.md](../docs/observability.md).
 
-Render for your operator, where `METRIC_NAMESPACE` is the argument you gave `ocm.NewOperatorConditionsGauge`:
-
-    make dashboards METRIC_NAMESPACE=myoperator
-    make alerts METRIC_NAMESPACE=myoperator
-
-Output lands in `generated/`. `generated/alerts/` contains the per-operator condition rules, named after the metric
-namespace, plus the shared `ocf-*` rules for controller-runtime and the managed resource counters, which are installed
-once per cluster. Add `NAMESPACE_LABEL=namespace` if your scrape keeps the exported `namespace` label, and
-`ALERT_FORMAT=rules` for plain rule files instead of `PrometheusRule` objects. `PROMETHEUSRULE_NAMESPACE` and
-`PROMETHEUSRULE_LABELS` set the metadata of the `PrometheusRule` objects; for kube-prometheus-stack pass
-`PROMETHEUSRULE_LABELS=release=<name>`.
+From a clone, `make dashboards METRIC_NAMESPACE=myoperator` or `make alerts METRIC_NAMESPACE=myoperator` runs the same
+command through `go run ./cmd/ocf` into `generated/`. `generated/alerts/` contains the per-operator condition rules,
+named after the metric namespace, plus the shared `ocf-*` rules for controller-runtime and the managed resource
+counters, which are installed once per cluster. Add `NAMESPACE_LABEL=namespace` if your scrape keeps the exported
+`namespace` label, and `ALERT_FORMAT=rules` for plain rule files instead of `PrometheusRule` objects.
+`PROMETHEUSRULE_NAMESPACE` and `PROMETHEUSRULE_LABELS` set the metadata of the `PrometheusRule` objects; for
+kube-prometheus-stack pass `PROMETHEUSRULE_LABELS=release=<name>`.
 
 The rest of this file is for maintainers of the templates.
 
@@ -65,23 +64,28 @@ Three checks guard the artifacts. CI runs `make test-alerts` and `make lint-dash
 job; the simulator parity test is an ordinary Go test and runs under `make test` in the unit-test job.
 
 `make test-alerts` needs `promtool`, which ships with Prometheus and is deliberately left out of `make all` so
-contributors without it are unaffected. It renders `crd_conditions.tpl.yaml` with the metric namespace `test_operator`
-into two directories, one with `exported_namespace` and one with `namespace` as the namespace label, copies the two
-shared rule files into both, lints every file with `promtool check rules --lint=all --lint-fatal`, and runs the unit
-tests with `promtool test rules --diff`. Each rule file has a test file of the same name under `alerts/tests/`
-(`crd_conditions_test.yaml` for `crd_conditions.tpl.yaml`), and every alert has a firing case plus the negative cases
-that justify its design, among them legitimate churn at scale and a single edit on an idle resource for
+contributors without it are unaffected. It renders the rules in the plain `rules` format with the metric namespace
+`test_operator` into two directories, one with `exported_namespace` and one with `namespace` as the namespace label,
+lints every file with `promtool check rules --lint=all --lint-fatal`, and runs the unit tests with
+`promtool test rules --diff`. Each rule file has a test file of the same name under
+`internal/observability/templates/alerts/tests/` (`crd_conditions_test.yaml` for `crd_conditions.tpl.yaml`), whose
+`rule_files` point one directory up at the rendered file, and every alert has a firing case plus the negative cases that
+justify its design, among them legitimate churn at scale and a single edit on an idle resource for
 `ManagedResourceNotConverging`, sporadic conflicts among successful applies for `ManagedResourceApplyFailing`, and a
 reason change mid-window and a cluster-scoped owner for the condition rules. Annotations are compared exactly, so a
 wording change shows up as a diff. After editing a rule, run `make test-alerts` and `make lint-dashboards`; the latter
 also asserts that every alert still has a unit test.
 
-`make lint-dashboards` runs `go test ./observability/`, which renders every template with a fixed namespace and checks
-that each dashboard is valid JSON, keeps its uid (`<namespace>_<file name>`) and its disabled auto-refresh, and that no
-`{{placeholder}}` survived rendering. It then pulls every metric name out of every panel query, variable query and alert
-expression and asserts each one exists: the framework's own families and the condition gauge are gathered from the real
-collectors, the controller-runtime, workqueue, client-go, leader election and process families from a fixed list. For
-the alerts it also asserts that every rule carries only the `severity` label and has a promtool unit test.
+`make lint-dashboards` runs `go test ./internal/observability/`, which covers `Options.Validate` and `Render` (both
+alert formats, the `PrometheusRule` metadata, the output file set and the removal of a previous render) and lints the
+embedded templates: it renders every template with a fixed namespace and checks that each dashboard is valid JSON, keeps
+its uid (`<namespace>_<file name>`) and its disabled auto-refresh, and that no `{{placeholder}}` survived rendering. It
+then pulls every metric name out of every panel query, variable query and alert expression and asserts each one exists:
+the framework's own families and the condition gauge are gathered from the real collectors, the controller-runtime,
+workqueue, client-go, leader election and process families from a fixed list. For the alerts it also asserts that every
+rule carries only the `severity` label and has a promtool unit test. The same test pins the 17 character cap on the
+metric namespace to the longest dashboard file name, so a renamed dashboard that no longer fits Grafana's 40 character
+uid limit fails here.
 
 `go test ./observability/dev/simulator/` includes the parity test that keeps the simulator honest: it starts a real,
 unmanaged controller-runtime controller, drives one request through its workqueue so controller-runtime initialises its

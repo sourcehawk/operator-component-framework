@@ -64,7 +64,7 @@ func TestRenderWritesDashboardsAndPrometheusRules(t *testing.T) {
 	written, err := observability.Render(opts, out)
 	require.NoError(t, err)
 
-	var expected []string
+	expected := make([]string, 0, len(expectedDashboards)+len(expectedAlerts))
 	for _, name := range expectedDashboards {
 		expected = append(expected, filepath.Join(out, "dashboards", name))
 	}

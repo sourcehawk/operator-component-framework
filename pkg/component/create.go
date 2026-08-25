@@ -2,6 +2,8 @@ package component
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"strings"
@@ -191,6 +193,35 @@ func applyFailed(rec ReconcileContext, labels ResourceMetricLabels, err error) e
 	return err
 }
 
+// applyFieldOwner returns the Server-Side Apply field manager for one component
+// of one owner: "<Kind>/<component>/<owner UID>", for example
+// "ExampleApp/web-interface/3d8a9d5e-1c2b-4f6e-9a7d-0b1c2d3e4f5a". The owner's
+// UID is part of the name so that two owners of the same kind whose components
+// render the same object are distinct managers to the API server. With a manager
+// shared across owners, each owner's forced apply would relinquish the other's
+// fields wholesale and neither would ever see a conflict. The UID rather than
+// the owner's name keeps the manager independent of the length of user-chosen
+// names and reads the same for cluster-scoped and namespaced owners.
+//
+// The API server rejects a field manager longer than fieldManagerMaxLength.
+// Neither the kind nor the component name has a bounded length, so when the
+// readable form would exceed the limit the manager is the hex-encoded SHA-256
+// of that readable form instead: 64 characters, still deterministic for the
+// owner and component, and still distinct per owner.
+func applyFieldOwner(owner OperatorCRD, componentName string) client.FieldOwner {
+	manager := fmt.Sprintf("%s/%s/%s", owner.GetKind(), componentName, owner.GetUID())
+	if len(manager) > fieldManagerMaxLength {
+		sum := sha256.Sum256([]byte(manager))
+		manager = hex.EncodeToString(sum[:])
+	}
+	return client.FieldOwner(manager)
+}
+
+// fieldManagerMaxLength is the API server's limit on a field manager name,
+// mirroring k8s.io/apimachinery/pkg/apis/meta/v1/validation.FieldManagerMaxLength.
+// Longer managers are rejected.
+const fieldManagerMaxLength = 128
+
 // applyResources ensures that all registered "creation" resources exist and match
 // the desired state in the Kubernetes cluster using Server-Side Apply.
 //
@@ -209,16 +240,15 @@ func applyFailed(rec ReconcileContext, labels ResourceMetricLabels, err error) e
 //     cluster with forced field ownership. Only operator-managed fields are sent; server-defaulted
 //     fields (e.g., imagePullPolicy, strategy) are untouched. This prevents perpetual updates
 //     that occur with CreateOrUpdate when the API server re-adds defaults every reconcile.
-//   - Field ownership is derived from the owner's Kind and the component name
-//     (e.g., "ExampleApp/web-interface"). Forced ownership means the framework takes control
-//     of any conflicting fields from other managers for fields it explicitly declares.
+//   - Field ownership is derived from the owner's Kind, the component name and the
+//     owner's UID (see applyFieldOwner). Forced ownership means the framework takes
+//     control of any conflicting fields from other managers for fields it explicitly
+//     declares.
 func applyResources(
 	ctx context.Context, rec ReconcileContext, entries []reconcileEntry,
 	componentName string, mapper meta.RESTMapper,
 ) ([]reconcileResult, error) {
-	fieldOwner := client.FieldOwner(
-		fmt.Sprintf("%s/%s", rec.Owner.GetKind(), componentName),
-	)
+	fieldOwner := applyFieldOwner(rec.Owner, componentName)
 
 	var results []reconcileResult
 
@@ -259,9 +289,7 @@ func reconcileResources(
 	ctx context.Context, rec ReconcileContext, entries []reconcileEntry,
 	componentName string, mapper meta.RESTMapper,
 ) ([]reconcileResult, error) {
-	fieldOwner := client.FieldOwner(
-		fmt.Sprintf("%s/%s", rec.Owner.GetKind(), componentName),
-	)
+	fieldOwner := applyFieldOwner(rec.Owner, componentName)
 
 	var results []reconcileResult
 

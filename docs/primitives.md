@@ -129,8 +129,38 @@ are sent; server-managed defaults, fields set by other controllers (HPAs, sideca
 and values written by webhooks are left untouched.
 
 The API server tracks field ownership automatically. The field manager name is derived from the owner and component as
-`"{Owner.GetKind()}/{componentName}"`. The framework applies with forced ownership, so it takes control of conflicting
-fields from other managers, while fields it does not include stay with their current owners.
+`"{Owner.GetKind()}/{componentName}/{Owner.GetUID()}"`, for example
+`ExampleApp/web-interface/3d8a9d5e-1c2b-4f6e-9a7d-0b1c2d3e4f5a`. The framework applies with forced ownership, so it
+takes control of conflicting fields from other managers, while fields it does not include stay with their current
+owners.
+
+The API server rejects a field manager longer than 128 characters, and neither the kind nor the component name has a
+bounded length. When the readable form would exceed the limit, the manager is the hex-encoded SHA-256 of that readable
+form instead: 64 characters, deterministic for the owner and component, and still distinct per owner. Such a manager
+shows in `managedFields` as a hash rather than a name, so keep component names short if you rely on reading them there.
+
+The owner's UID is part of the manager name so that every owner is a distinct manager. Two custom resources of one kind
+whose components render the same object therefore do not share a manager. When the framework sets a controller reference
+on the object (the default), the second owner's apply carries a second controller reference, which the API server
+rejects, so that owner's component reports an error instead of silently taking the object's fields from the first. With
+a manager shared across owners, each forced apply would relinquish the other owner's fields wholesale, both would report
+converged, and neither would ever see a conflict. Naming the owner also makes
+`kubectl get -o yaml --show-managed-fields` say which custom resource wrote a field.
+
+The rejection depends on the controller reference. For a resource registered with `Unowned()`, or one whose owner
+reference cannot be set because of a scope mismatch, nothing stops the second owner's forced apply from taking the
+fields it declares, and the fields move between the two owners' managers on every reconcile. `managedFields` then names
+the owner that wrote each field, but the framework does not detect the contention. A shared name between two owners is
+the operator's responsibility in that case; a [guard](component.md#guards) that reads the live object and blocks when
+another owner controls it is the way to make it explicit.
+
+!!! note "Upgrading from a release without the UID in the manager name"
+
+    Releases before the UID was added used `"{Owner.GetKind()}/{componentName}"`. On the first reconcile after
+    upgrading, the new manager takes over every field it declares from the old one through forced ownership, so
+    managed objects converge without intervention. Fields the old manager owned that are no longer part of the desired
+    state stay in `managedFields` under the old manager name and are not pruned; they were already stale before the
+    upgrade.
 
 This removes the perpetual-update problem that arises when an operator strips server defaults every cycle, and it lets
 primitives coexist with other controllers that touch the same resources.

@@ -171,10 +171,16 @@ kind's exact `ExtractInto` signature with `go doc` on its package.
 The framework reconciles with Server-Side Apply: each primitive builds its desired state (baseline plus all active
 mutations) and patches it with `client.Apply`, sending only the fields the operator declares. Server-managed defaults
 and fields set by other controllers or webhooks are left untouched. The field manager name is derived as
-`"{Owner.GetKind()}/{componentName}"`, and the framework applies with forced ownership, taking control of conflicting
-fields from other managers while leaving fields it does not include with their current owners. This is what lets
-primitives coexist with other controllers touching the same resource without a perpetual-update fight over stripped
-server defaults.
+`"{Owner.GetKind()}/{componentName}/{Owner.GetUID()}"`, and the framework applies with forced ownership, taking control
+of conflicting fields from other managers while leaving fields it does not include with their current owners. This is
+what lets primitives coexist with other controllers touching the same resource without a perpetual-update fight over
+stripped server defaults. The owner's UID makes each owner a distinct manager: when the framework sets a controller
+reference (the default), two owners of one kind rendering the same object do not silently take each other's fields; the
+second owner's apply is rejected because of its second controller reference. For `Unowned()` resources, or where a scope
+mismatch prevents the owner reference, the second owner's forced apply still takes the fields it declares;
+`managedFields` names each owner, but the framework does not detect the contention. When the readable manager would
+exceed the API server's 128-character limit, the framework uses the hex-encoded SHA-256 of it instead (64 characters,
+deterministic, still distinct per owner), so long kinds or component names show up in `managedFields` as a hash.
 
 **A Go type that overstates the CRD schema breaks Apply.** The API server's field manager types the patch against the
 target's OpenAPI schema before merging anything, so an undeclared field fails the whole apply and the server returns:

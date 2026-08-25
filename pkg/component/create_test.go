@@ -1,7 +1,10 @@
 package component
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -1091,5 +1094,49 @@ func TestReconcileResources_IgnoreIfAbsent(t *testing.T) {
 
 		_, err := reconcileResources(ctx, reconcileContext, []reconcileEntry{entry}, "comp", mapper)
 		require.Error(t, err)
+	})
+}
+
+func TestApplyFieldOwner(t *testing.T) {
+	const (
+		uid    = "3d8a9d5e-1c2b-4f6e-9a7d-0b1c2d3e4f5a"
+		prefix = "MockOperatorCRD/"
+		suffix = "/" + uid
+	)
+	newOwner := func() *MockOperatorCRD {
+		return &MockOperatorCRD{ObjectMeta: metav1.ObjectMeta{Name: "owner", UID: uid}}
+	}
+
+	t.Run("names the kind, component and owner UID when it fits", func(t *testing.T) {
+		got := applyFieldOwner(newOwner(), "web-interface")
+
+		assert.Equal(t, client.FieldOwner(prefix+"web-interface"+suffix), got)
+	})
+
+	t.Run("keeps a manager of exactly the limit readable", func(t *testing.T) {
+		component := strings.Repeat("c", 128-len(prefix)-len(suffix))
+
+		got := applyFieldOwner(newOwner(), component)
+
+		assert.Len(t, string(got), 128)
+		assert.Equal(t, prefix+component+suffix, string(got))
+	})
+
+	t.Run("hashes the whole name when it would exceed the limit", func(t *testing.T) {
+		component := strings.Repeat("c", 128-len(prefix)-len(suffix)+1)
+		sum := sha256.Sum256([]byte(prefix + component + suffix))
+
+		got := applyFieldOwner(newOwner(), component)
+
+		assert.Equal(t, client.FieldOwner(hex.EncodeToString(sum[:])), got)
+		assert.Len(t, string(got), 64)
+	})
+
+	t.Run("hashed managers still differ per owner", func(t *testing.T) {
+		component := strings.Repeat("c", 100)
+		other := newOwner()
+		other.UID = "00000000-0000-0000-0000-000000000000"
+
+		assert.NotEqual(t, applyFieldOwner(newOwner(), component), applyFieldOwner(other, component))
 	})
 }

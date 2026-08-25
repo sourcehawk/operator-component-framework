@@ -849,12 +849,15 @@ func init() {
 
 recCtx := component.ReconcileContext{
     // ...
-    Metrics: metrics.NewRecorder("webapp-controller", conditions, collectors),
+    Metrics: metrics.NewRecorder("webapp", conditions, collectors),
 }
 ```
 
-The controller name becomes the `controller` label on every series the recorder emits. Passing `nil` for either
-collector disables that family; passing `nil` for `Metrics` itself disables both.
+The controller name becomes the `controller` label on every series the recorder emits. It must match the
+controller-runtime controller name (the lower-cased kind passed to `For`, unless `Named` overrides it) so that the
+shipped [dashboards and alerts](observability.md) correlate the framework's series with controller-runtime's reconcile
+and workqueue series. Passing `nil` for either collector disables that family; passing `nil` for `Metrics` itself
+disables both.
 
 ### Resource metrics
 

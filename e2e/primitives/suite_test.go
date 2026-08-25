@@ -82,21 +82,20 @@ var _ = BeforeSuite(func() {
 
 	By("creating E2E reconcilers")
 	recorder := events.NewFakeRecorder(1000)
-	metricsRecorder := metrics.NewRecorder(
-		"e2e-primitives", ocm.NewOperatorConditionsGauge("e2e_primitives"), metrics.NewCollectors(),
-	)
+	conditions := ocm.NewOperatorConditionsGauge("e2e_primitives")
+	collectors := metrics.NewCollectors()
 	reconciler = framework.NewE2EReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		recorder,
-		metricsRecorder,
+		metrics.NewRecorder("testapp", conditions, collectors),
 		mgr.GetAPIReader(),
 	)
 	clusterReconciler = framework.NewClusterE2EReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		recorder,
-		metricsRecorder,
+		metrics.NewRecorder("clustertestapp", conditions, collectors),
 		mgr.GetAPIReader(),
 	)
 

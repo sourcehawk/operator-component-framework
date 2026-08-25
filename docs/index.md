@@ -33,6 +33,10 @@ New to the framework? Start with **Getting Started**. Already building and looki
 
     Golden snapshots and version-matrix golden generation.
 
+- :material-chart-line: **[Observability](observability.md)**
+
+    Grafana dashboards and Prometheus alerts for your operator.
+
 </div>
 
 ## Why this exists

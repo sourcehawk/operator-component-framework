@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -316,6 +317,25 @@ func reconcileResources(
 			}
 		}
 
+		// A managed resource that another owner controls is blocked before the
+		// apply, so the forced apply never takes that owner's fields.
+		if entry.Options.BlockOnForeignController && !entry.Options.ReadOnly {
+			controller, err := foreignController(ctx, rec, resource)
+			if err != nil {
+				return nil, err
+			}
+			if controller != nil {
+				results = append(results, reconcileResult{
+					Entry: entry,
+					Status: convergingStatusWithReason{
+						Status: convergingStatusGuardBlocked,
+						Reason: foreignControllerReason(controller),
+					},
+				})
+				return results, nil
+			}
+		}
+
 		// Process the resource based on its mode
 		var result *reconcileResult
 		var err error
@@ -358,6 +378,46 @@ func reconcileResources(
 	}
 
 	return results, nil
+}
+
+// foreignController reads the live object of resource through the client and
+// returns its controller owner reference when that reference points at an
+// owner other than rec.Owner. It returns nil when the object does not exist,
+// has no controller reference, or is controlled by rec.Owner.
+func foreignController(
+	ctx context.Context, rec ReconcileContext, resource Resource,
+) (*metav1.OwnerReference, error) {
+	obj, err := resource.Object()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to retrieve object for resource %s: %w", resource.Identity(), err,
+		)
+	}
+	live, err := newEmptyObjectLike(obj)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to prepare controller check for resource %s: %w", resource.Identity(), err,
+		)
+	}
+	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf(
+			"failed to read resource %s for controller check: %w", resource.Identity(), err,
+		)
+	}
+	controller := metav1.GetControllerOf(live)
+	if controller == nil || controller.UID == rec.Owner.GetUID() {
+		return nil, nil
+	}
+	return controller, nil
+}
+
+// foreignControllerReason is the blocked reason for an object controlled by
+// another owner, for example "controlled by DatabaseServer primary".
+func foreignControllerReason(controller *metav1.OwnerReference) string {
+	return fmt.Sprintf("controlled by %s %s", controller.Kind, controller.Name)
 }
 
 // mutateResource applies all desired-state mutations and sets the controller owner

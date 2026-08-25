@@ -109,6 +109,23 @@ func suspendResource(
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to get object on suspension: %w", err)
 	}
 
+	// An object another owner controls is not this component's to scale down or
+	// delete. Report it suspended, since the component holds nothing there.
+	if entry.Options.BlockOnForeignController {
+		controller, err := foreignController(ctx, rec, resource)
+		if err != nil {
+			return concepts.SuspensionStatusWithReason{}, err
+		}
+		if controller != nil {
+			return concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: fmt.Sprintf(
+					"Resource %s is %s; nothing to suspend.", resource.Identity(), foreignControllerReason(controller),
+				),
+			}, nil
+		}
+	}
+
 	// Short-circuit: if the resource should be deleted on suspend and already doesn't exist,
 	// skip Apply to avoid a create->delete churn loop on every reconcile.
 	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.

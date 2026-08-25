@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -417,5 +418,75 @@ func TestSuspendResource(t *testing.T) {
 		_, err := suspendResource(ctx, rec, reconcileEntry{Resource: res}, res, "test-component", nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "network error")
+	})
+}
+
+func TestSuspendResource_BlockOnForeignController(t *testing.T) {
+	ctx := t.Context()
+	scheme := setupScheme()
+	foreign := metav1.OwnerReference{
+		APIVersion: "test/v1", Kind: "MockOperatorCRD", Name: "other-owner", UID: "other-uid",
+		Controller: ptr.To(true),
+	}
+
+	t.Run("reports Suspended without touching an object another owner controls", func(t *testing.T) {
+		owner := setupTestOwner()
+		owner.UID = "this-uid"
+		res := &MockSuspendableResource{}
+		desired := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "cm", Namespace: "default"}}
+		res.On("Object").Return(desired, nil)
+		res.On("Identity").Return("ConfigMap/cm")
+		res.On("DeleteOnSuspend").Return(true)
+		// Suspend, Mutate and SuspensionStatus carry no expectations: reaching any of
+		// them means the foreign object was about to be applied or deleted.
+
+		live := desired.DeepCopy()
+		live.OwnerReferences = []metav1.OwnerReference{foreign}
+		live.Data = map[string]string{"owner": "other-owner"}
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, live).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+		entry := reconcileEntry{Resource: res, Options: resourceOptions{BlockOnForeignController: true}}
+
+		status, err := suspendResource(ctx, rec, entry, res, "test-component", testRESTMapper())
+		require.NoError(t, err)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
+		assert.Contains(t, status.Reason, "controlled by MockOperatorCRD other-owner")
+
+		got := &v1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(desired), got))
+		assert.Equal(t, live.Data, got.Data)
+		assert.Equal(t, live.OwnerReferences, got.OwnerReferences)
+	})
+
+	t.Run("suspends an object this owner controls", func(t *testing.T) {
+		owner := setupTestOwner()
+		owner.UID = "this-uid"
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", false)
+		obj.OwnerReferences = []metav1.OwnerReference{{
+			APIVersion: GroupVersion.String(), Kind: "MockOperatorCRD", Name: owner.Name, UID: owner.UID, Controller: ptr.To(true),
+		}}
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+		entry := reconcileEntry{Resource: res, Options: resourceOptions{BlockOnForeignController: true}}
+
+		status, err := suspendResource(ctx, rec, entry, res, "test-component", testRESTMapper())
+		require.NoError(t, err)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
+		assert.Equal(t, "Done", status.Reason)
+		res.AssertCalled(t, "Suspend")
+	})
+
+	t.Run("suspends an object with no controller", func(t *testing.T) {
+		owner := setupTestOwner()
+		owner.UID = "this-uid"
+		res, obj := setupMockResource("cm", concepts.SuspensionStatusSuspended, "Done", false)
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+		entry := reconcileEntry{Resource: res, Options: resourceOptions{BlockOnForeignController: true}}
+
+		status, err := suspendResource(ctx, rec, entry, res, "test-component", testRESTMapper())
+		require.NoError(t, err)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
+		res.AssertCalled(t, "Suspend")
 	})
 }

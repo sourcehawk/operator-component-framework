@@ -149,10 +149,13 @@ converged, and neither would ever see a conflict. Naming the owner also makes
 
 The rejection depends on the controller reference. For a resource registered with `Unowned()`, or one whose owner
 reference cannot be set because of a scope mismatch, nothing stops the second owner's forced apply from taking the
-fields it declares, and the fields move between the two owners' managers on every reconcile. `managedFields` then names
-the owner that wrote each field, but the framework does not detect the contention. A shared name between two owners is
-the operator's responsibility in that case; a [guard](component.md#guards) that reads the live object and blocks when
-another owner controls it is the way to make it explicit.
+fields it declares, and the fields move between the two owners' managers on every reconcile. Register the resource with
+[`component.BlockOnForeignController()`](component.md#resource-registration-options) to make the contention explicit:
+before each apply the component reads the live object and, when another owner's controller reference is on it, reports
+`Blocked` naming that owner instead of applying. This also turns the rejection in the default case into a readable
+condition. The check compares controller references, so between two owners that both apply without one (two `Unowned()`
+registrations, or owners the object's scope keeps from being referenced) nothing on the object carries either identity,
+the fields keep moving between the two managers, and a shared name remains the operator's responsibility.
 
 !!! note "Upgrading from a release without the UID in the manager name"
 

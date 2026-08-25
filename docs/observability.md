@@ -264,11 +264,13 @@ labels do. `namespace` is the namespace the operator pod runs in and `job` its s
 metrics Service or ServiceMonitor. Together they select one install of one operator, the same pair the shared alert
 rules aggregate by, so two installs of the same operator in different namespaces stay apart. `namespace` defaults to
 All, which also matches series that carry no namespace label at all, so an operator scraped outside a cluster still
-renders. `controller` narrows within that operator, see [Naming the controller](#naming-the-controller). Panel titles
-say CR for what the framework calls the owner: one custom resource instance the controller reconciles, identified by its
-kind, namespace and name. Rows are ordered by what an on-call reader asks first: is the operator healthy right now, are
-the owners healthy, is anything being rewritten or failing, then the controller's own reconciliation and workqueue
-internals, the API client, and the process.
+renders. `namespace` scopes the controller-runtime, workqueue, apply and process panels, whose `namespace` label is
+always the pod's; the condition panels are scoped by `job` alone, because on condition series that label is the CR's
+namespace when rendered with `NAMESPACE_LABEL=namespace`. `controller` narrows within that operator, see
+[Naming the controller](#naming-the-controller). Panel titles say CR for what the framework calls the owner: one custom
+resource instance the controller reconciles, identified by its kind, namespace and name. Rows are ordered by what an
+on-call reader asks first: is the operator healthy right now, are the owners healthy, is anything being rewritten or
+failing, then the controller's own reconciliation and workqueue internals, the API client, and the process.
 
 | Row               | What it answers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -317,7 +319,19 @@ overall. The browser pins `kind` through its variable, so its queries join on `t
 alerts apply the same join before their status matcher, keyed on `(job, controller, kind, name, <namespace label>)` and,
 for the rules that keep `condition` in their `by` clause, `condition`. `job` is in every grouping so two installs
 exporting the same metric namespace never dedupe or merge across each other, and the browser link in each notification
-carries it.
+carries it. `job` is the whole install identity these rules need: two installs only collide on a series when both export
+the same CR (same controller, kind, namespace and name), which means both are reconciling the same object, a deployment
+the framework does not support rather than one to alert on.
+
+#### Known limitation: equal timestamps
+
+A reason-only update keeps `lastTransitionTime` (`meta.SetStatusCondition` preserves it while the status is unchanged),
+so after a leader change a former leader that is still being scraped can export the previous reason with exactly the
+same value as the current leader's series. The alerts are unaffected, because every rule drops `reason` before it
+aggregates and a tie implies the same status. The dashboards' reason-filtered panels can pick either series for as long
+as both are scraped. The window is short: controller-runtime stops the manager when it loses the lease, so the old pod
+restarts and its series disappear within a scrape interval or two. Dedupe on a leadership signal would close it, at the
+cost of a fallback for operators that run without leader election, and is not done.
 
 ## Previewing locally
 

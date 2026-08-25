@@ -79,10 +79,18 @@ type world struct {
 	rt               *runtimeMetrics
 	leader           bool
 	start            time.Time
+	// Scenario timing, overridable so the scripted-world test can drive the
+	// slow scenarios through a full cycle in milliseconds.
+	backlogInterval time.Duration
+	panicDelay      time.Duration
+	panicInterval   time.Duration
 }
 
 func newWorld(conditions *ocm.OperatorConditionsGauge, collectors *metrics.Collectors, rt *runtimeMetrics, leader bool) *world {
-	w := &world{rt: rt, leader: leader, start: time.Now()}
+	w := &world{
+		rt: rt, leader: leader, start: time.Now(),
+		backlogInterval: 5 * time.Second, panicDelay: time.Minute, panicInterval: 20 * time.Minute,
+	}
 	w.webapp = &controllerSim{
 		name: "webapp", ownerKind: "WebApp", rt: rt,
 		rec: metrics.NewRecorder("webapp", conditions, collectors),
@@ -278,7 +286,7 @@ func (w *world) databases(ctx context.Context) {
 // are modelled as persistent levels instead.
 func (w *world) workqueueBacklog(ctx context.Context) {
 	c := w.database
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(w.backlogInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -303,9 +311,9 @@ func (w *world) panics(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(time.Minute):
+	case <-time.After(w.panicDelay):
 	}
-	ticker := time.NewTicker(20 * time.Minute)
+	ticker := time.NewTicker(w.panicInterval)
 	defer ticker.Stop()
 	for {
 		w.database.rt.reconcilePanics.WithLabelValues("database").Inc()

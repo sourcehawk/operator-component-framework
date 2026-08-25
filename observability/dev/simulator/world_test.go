@@ -65,6 +65,11 @@ func TestWorldScriptedScenarios(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	w := newWorld(conditions, collectors, rt, true)
+	// The backlog and panic scenarios run on minute-scale timers in the dev
+	// stack; shorten them so the test sees both fire more than once.
+	w.backlogInterval = 50 * time.Millisecond
+	w.panicDelay = 50 * time.Millisecond
+	w.panicInterval = 50 * time.Millisecond
 	go func() {
 		w.run(ctx)
 		close(done)
@@ -111,6 +116,21 @@ func TestWorldScriptedScenarios(t *testing.T) {
 			if _, ok := seriesValue(mfs, "controller_runtime_reconcile_total", map[string]string{"controller": controller}); !ok {
 				return false
 			}
+		}
+		// The backlog scenario keeps the database queue deep with items waiting
+		// and both workers busy, and the panic scenario keeps counting.
+		depth, ok := seriesValue(mfs, "workqueue_depth", map[string]string{"controller": "database"})
+		if !ok || depth < 30 {
+			return false
+		}
+		if _, ok := seriesValue(mfs, "workqueue_queue_duration_seconds", map[string]string{"controller": "database"}); !ok {
+			return false
+		}
+		if active, ok := seriesValue(mfs, "controller_runtime_active_workers", map[string]string{"controller": "database"}); !ok || active != 2 {
+			return false
+		}
+		if panics, ok := seriesValue(mfs, "controller_runtime_reconcile_panics_total", map[string]string{"controller": "database"}); !ok || panics < 2 {
+			return false
 		}
 		leader, ok := seriesValue(mfs, "leader_election_master_status", map[string]string{"name": "demo-operator"})
 		return ok && leader == 1

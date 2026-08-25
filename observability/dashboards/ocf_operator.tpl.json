@@ -437,7 +437,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
           "legendFormat": "Ready",
           "range": true,
@@ -449,7 +449,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  ({{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  ({{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "B",
           "legendFormat": "Not Ready > 2m",
           "range": true,
@@ -461,7 +461,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "C",
           "legendFormat": "Unknown",
           "range": true,
@@ -786,7 +786,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "A",
           "legendFormat": "Ready",
           "range": true
@@ -797,7 +797,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "B",
           "legendFormat": "Not Ready",
           "range": true
@@ -808,7 +808,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "C",
           "legendFormat": "Unknown",
           "range": true
@@ -917,7 +917,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sort_desc(\n  count by (kind, condition, status) (\n    {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", status!=\"True\"}\n    and\n    topk by (kind, id, condition) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})\n  )\n)",
+          "expr": "sort_desc(\n  count by (kind, condition, status) (\n    {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", status!=\"True\"}\n    and\n    topk by (kind, id, condition) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\"})\n  )\n)",
           "refId": "A",
           "legendFormat": "{{kind}} {{condition}} {{status}}",
           "exemplar": false,
@@ -1068,7 +1068,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (kind, {{namespace_label}}, name, reason, status, id) (\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status!=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
+          "expr": "sum by (kind, {{namespace_label}}, name, reason, status, id) (\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status!=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
           "exemplar": false,
           "instant": true,

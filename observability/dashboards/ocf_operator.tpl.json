@@ -73,15 +73,15 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 3,
+        "h": 5,
+        "w": 6,
         "x": 0,
         "y": 1
       },
       "id": 3,
       "options": {
         "colorMode": "background",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "percentChangeColorMode": "same_as_value",
@@ -105,13 +105,13 @@
           "editorMode": "code",
           "expr": "sum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
-          "range": false,
-          "exemplar": false,
-          "instant": true
+          "range": true,
+          "instant": false
         }
       ],
       "title": "Reconciles/s",
-      "type": "stat"
+      "type": "stat",
+      "description": "Reconciles per second across the selected controllers, with the trend over the dashboard range."
     },
     {
       "datasource": {
@@ -146,15 +146,15 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 3,
+        "h": 5,
+        "w": 6,
+        "x": 6,
         "y": 1
       },
       "id": 4,
       "options": {
         "colorMode": "background",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "percentChangeColorMode": "same_as_value",
@@ -178,13 +178,13 @@
           "editorMode": "code",
           "expr": "sum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\", result=\"error\"}[$__rate_interval]))\n/\nsum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
-          "range": false,
-          "exemplar": false,
-          "instant": true
+          "range": true,
+          "instant": false
         }
       ],
       "title": "Reconcile error ratio",
-      "type": "stat"
+      "type": "stat",
+      "description": "Share of reconciles returning an error. Orange from 5%, red from 25%, the ControllerReconcileErrors threshold."
     },
     {
       "datasource": {
@@ -219,15 +219,15 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 6,
+        "h": 5,
+        "w": 6,
+        "x": 12,
         "y": 1
       },
       "id": 5,
       "options": {
         "colorMode": "background",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "percentChangeColorMode": "same_as_value",
@@ -251,13 +251,13 @@
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(controller_runtime_reconcile_time_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
-          "range": false,
-          "exemplar": false,
-          "instant": true
+          "range": true,
+          "instant": false
         }
       ],
       "title": "p99 reconcile time",
-      "type": "stat"
+      "type": "stat",
+      "description": "p99 reconcile time. Orange from 10s, red from 60s."
     },
     {
       "datasource": {
@@ -292,15 +292,15 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 9,
+        "h": 5,
+        "w": 6,
+        "x": 18,
         "y": 1
       },
       "id": 6,
       "options": {
         "colorMode": "background",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "percentChangeColorMode": "same_as_value",
@@ -324,13 +324,13 @@
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(workqueue_queue_duration_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
-          "range": false,
-          "exemplar": false,
-          "instant": true
+          "range": true,
+          "instant": false
         }
       ],
       "title": "p99 queue wait",
-      "type": "stat"
+      "type": "stat",
+      "description": "p99 time an item waited in the workqueue before a worker picked it up. Orange from 30s, red from 5m."
     },
     {
       "datasource": {
@@ -358,9 +358,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 12,
-        "y": 1
+        "w": 6,
+        "x": 18,
+        "y": 6
       },
       "id": 7,
       "options": {
@@ -463,9 +463,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 15,
-        "y": 1
+        "w": 6,
+        "x": 12,
+        "y": 6
       },
       "id": 8,
       "options": {
@@ -525,13 +525,62 @@
           "unit": "short",
           "noValue": "0"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Not Ready > 2m"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 4,
-        "w": 2,
-        "x": 18,
-        "y": 1
+        "w": 12,
+        "x": 0,
+        "y": 6
       },
       "id": 9,
       "options": {
@@ -548,7 +597,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "auto",
+        "textMode": "value_and_name",
         "wideLayout": true
       },
       "targets": [
@@ -560,67 +609,10 @@
           "editorMode": "code",
           "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
-          "range": false,
-          "exemplar": false,
-          "instant": true
-        }
-      ],
-      "title": "Owners Ready",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "short"
+          "legendFormat": "Ready",
+          "range": true,
+          "instant": false
         },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 2,
-        "x": 20,
-        "y": 1
-      },
-      "id": 10,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "same_as_value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -628,69 +620,11 @@
           },
           "editorMode": "code",
           "expr": "count(\n  ({{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "exemplar": false,
-          "instant": true
-        }
-      ],
-      "title": "Owners not Ready > 2m",
-      "type": "stat",
-      "description": "Owners whose Ready condition has been False for more than two minutes, debounced on lastTransitionTime."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "short"
+          "refId": "B",
+          "legendFormat": "Not Ready > 2m",
+          "range": true,
+          "instant": false
         },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 2,
-        "x": 22,
-        "y": 1
-      },
-      "id": 11,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "same_as_value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -698,14 +632,15 @@
           },
           "editorMode": "code",
           "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "exemplar": false,
-          "instant": true
+          "refId": "C",
+          "legendFormat": "Unknown",
+          "range": true,
+          "instant": false
         }
       ],
-      "title": "Owners Unknown",
-      "type": "stat"
+      "title": "Owners by Ready status",
+      "type": "stat",
+      "description": "Owners counted once each on their freshest Ready series. Not Ready counts only owners whose Ready condition has been False for more than two minutes, debounced on lastTransitionTime, so a rollout in progress does not count."
     },
     {
       "collapsed": false,
@@ -713,7 +648,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 9
       },
       "id": 12,
       "panels": [],
@@ -781,7 +716,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 6
+        "y": 10
       },
       "id": 13,
       "options": {
@@ -878,7 +813,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 6
+        "y": 10
       },
       "id": 14,
       "options": {
@@ -971,7 +906,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 6
+        "y": 10
       },
       "id": 15,
       "options": {
@@ -1086,7 +1021,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 14
+        "y": 18
       },
       "id": 16,
       "options": {
@@ -1179,7 +1114,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 14
+        "y": 18
       },
       "id": 17,
       "options": {
@@ -1291,7 +1226,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 14
+        "y": 18
       },
       "id": 18,
       "options": {
@@ -1340,7 +1275,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 26
       },
       "id": 19,
       "panels": [],
@@ -1408,7 +1343,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 23
+        "y": 27
       },
       "id": 20,
       "options": {
@@ -1501,7 +1436,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 23
+        "y": 27
       },
       "id": 21,
       "options": {
@@ -1598,7 +1533,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 23
+        "y": 27
       },
       "id": 22,
       "options": {
@@ -1691,7 +1626,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 31
+        "y": 35
       },
       "id": 23,
       "options": {
@@ -1784,7 +1719,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 31
+        "y": 35
       },
       "id": 24,
       "options": {
@@ -1877,7 +1812,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 31
+        "y": 35
       },
       "id": 25,
       "options": {
@@ -1915,7 +1850,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 43
       },
       "id": 26,
       "panels": [],
@@ -2044,7 +1979,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 40
+        "y": 44
       },
       "id": 27,
       "options": {
@@ -2092,102 +2027,92 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Managed resources sorted by how often an apply found a diff and updated them. A steadily high rate means the resource never converges.",
+      "description": "Applies per second that found a diff and updated each managed resource, over time. A resource that stays high is rewritten on every reconcile; the Not-converging ratio next to it puts that against the resource's own apply rate. Sort the legend by Last to rank resources as the previous table did. Dashed lines mark the 0.05 and 0.5 updates/s bands.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic"
           },
           "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "filterable": true,
-            "inspect": false
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "text",
+                "color": "green",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.5
               }
             ]
-          }
+          },
+          "unit": "reqps",
+          "min": 0
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Updated/s"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "reqps"
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 0.05
-                    },
-                    {
-                      "color": "red",
-                      "value": 0.5
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 44
       },
       "id": 28,
       "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
           ],
-          "show": false
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "sortBy": "Last *",
+          "sortDesc": true
         },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Updated/s"
-          }
-        ]
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -2196,44 +2121,14 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sort_desc(sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[$__rate_interval])))",
+          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[$__rate_interval]))",
           "refId": "A",
-          "exemplar": false,
-          "instant": true,
-          "range": false,
-          "format": "table"
+          "legendFormat": "{{controller}}/{{component}}/{{resource}} ({{kind}})",
+          "range": true
         }
       ],
       "title": "Updated rate per resource",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true
-            },
-            "includeByName": {},
-            "indexByName": {
-              "Time": 0,
-              "controller": 1,
-              "owner_kind": 2,
-              "component": 3,
-              "resource": 4,
-              "kind": 5,
-              "Value": 6
-            },
-            "renameByName": {
-              "Value": "Updated/s",
-              "component": "Component",
-              "controller": "Controller",
-              "kind": "Kind",
-              "owner_kind": "Owner kind",
-              "resource": "Resource"
-            }
-          }
-        }
-      ],
-      "type": "table"
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -2300,7 +2195,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 53
       },
       "id": 29,
       "options": {
@@ -2394,7 +2289,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 53
       },
       "id": 30,
       "options": {
@@ -2433,7 +2328,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 58
+        "y": 62
       },
       "id": 31,
       "panels": [],
@@ -2515,7 +2410,7 @@
         "h": 10,
         "w": 8,
         "x": 0,
-        "y": 59
+        "y": 63
       },
       "id": 32,
       "options": {
@@ -2677,7 +2572,7 @@
         "h": 10,
         "w": 16,
         "x": 8,
-        "y": 59
+        "y": 63
       },
       "id": 33,
       "options": {
@@ -2782,7 +2677,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 73
       },
       "id": 34,
       "panels": [],
@@ -2850,7 +2745,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 70
+        "y": 74
       },
       "id": 35,
       "options": {
@@ -2943,7 +2838,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 70
+        "y": 74
       },
       "id": 36,
       "options": {
@@ -2981,7 +2876,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 78
+        "y": 82
       },
       "id": 40,
       "panels": [
@@ -3040,13 +2935,72 @@
               },
               "unit": "percentunit"
             },
-            "overrides": []
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "/ request$/"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "text"
+                    }
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        10,
+                        10
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "/ limit$/"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        10,
+                        10
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
           },
           "gridPos": {
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 79
+            "y": 83
           },
           "id": 37,
           "options": {
@@ -3073,11 +3027,33 @@
               "refId": "A",
               "legendFormat": "{{instance}}",
               "range": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "max by (pod) (kube_pod_container_resource_requests{resource=\"cpu\"} and on (namespace, pod) up{job=\"$job\"})",
+              "refId": "B",
+              "legendFormat": "{{pod}} request",
+              "range": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "max by (pod) (kube_pod_container_resource_limits{resource=\"cpu\"} and on (namespace, pod) up{job=\"$job\"})",
+              "refId": "C",
+              "legendFormat": "{{pod}} limit",
+              "range": true
             }
           ],
           "title": "CPU",
           "type": "timeseries",
-          "description": "CPU usage of the operator process; 1 is one full core."
+          "description": "CPU usage of the operator process; 1 is one full core. Dashed lines are the container request and limit from kube-state-metrics (kube_pod_container_resource_requests and _limits), joined to the operator pod through the scrape target labels; they are absent when kube-state-metrics is not scraped or the target carries no namespace and pod labels. A pod with several containers shows its largest request and limit."
         },
         {
           "datasource": {
@@ -3134,13 +3110,72 @@
               },
               "unit": "bytes"
             },
-            "overrides": []
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "/ request$/"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "text"
+                    }
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        10,
+                        10
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "/ limit$/"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        10,
+                        10
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
           },
           "gridPos": {
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 79
+            "y": 83
           },
           "id": 38,
           "options": {
@@ -3167,10 +3202,33 @@
               "refId": "A",
               "legendFormat": "{{instance}}",
               "range": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "max by (pod) (kube_pod_container_resource_requests{resource=\"memory\"} and on (namespace, pod) up{job=\"$job\"})",
+              "refId": "B",
+              "legendFormat": "{{pod}} request",
+              "range": true
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "max by (pod) (kube_pod_container_resource_limits{resource=\"memory\"} and on (namespace, pod) up{job=\"$job\"})",
+              "refId": "C",
+              "legendFormat": "{{pod}} limit",
+              "range": true
             }
           ],
           "title": "Memory RSS",
-          "type": "timeseries"
+          "type": "timeseries",
+          "description": "Resident memory of the operator process. Dashed lines are the container request and limit from kube-state-metrics (kube_pod_container_resource_requests and _limits), joined to the operator pod through the scrape target labels; they are absent when kube-state-metrics is not scraped or the target carries no namespace and pod labels. A pod with several containers shows its largest request and limit."
         },
         {
           "datasource": {
@@ -3233,7 +3291,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 79
+            "y": 83
           },
           "id": 39,
           "options": {

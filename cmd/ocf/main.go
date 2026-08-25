@@ -1,4 +1,5 @@
-// Command ocf generates code for operators built on the operator component framework.
+// Command ocf generates code and renders observability artifacts for operators
+// built on the operator component framework.
 package main
 
 import "os"

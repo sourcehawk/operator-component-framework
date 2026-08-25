@@ -217,8 +217,9 @@ func applyFieldOwner(owner OperatorCRD, componentName string) client.FieldOwner 
 	return client.FieldOwner(manager)
 }
 
-// fieldManagerMaxLength is the API server's limit on a field manager name
-// (metav1 validation.FieldManagerMaxLength). Longer managers are rejected.
+// fieldManagerMaxLength is the API server's limit on a field manager name,
+// mirroring k8s.io/apimachinery/pkg/apis/meta/v1/validation.FieldManagerMaxLength.
+// Longer managers are rejected.
 const fieldManagerMaxLength = 128
 
 // applyResources ensures that all registered "creation" resources exist and match

@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "Health of an operator built on the operator-component-framework: reconciliation, workqueue, managed resource applies, owner conditions, API client and process.",
+  "description": "Health of an operator built on the operator-component-framework: reconciliation, workqueue, managed resource applies, custom resource (CR) conditions, API client and process.",
   "editable": true,
   "graphTooltip": 1,
   "links": [
@@ -468,9 +468,9 @@
           "instant": false
         }
       ],
-      "title": "Owners by Ready status",
+      "title": "CRs by Ready status",
       "type": "stat",
-      "description": "Owners counted once each on their freshest Ready series. Not Ready counts only owners whose Ready condition has been False for more than two minutes, debounced on lastTransitionTime, so a rollout in progress does not count."
+      "description": "CRs counted once each on their freshest Ready series. Not Ready counts only CRs whose Ready condition has been False for more than two minutes, debounced on lastTransitionTime, so a rollout in progress does not count."
     },
     {
       "datasource": {
@@ -814,16 +814,16 @@
           "range": true
         }
       ],
-      "title": "Owners by Ready status over time",
+      "title": "CRs by Ready status over time",
       "type": "timeseries",
-      "description": "Owners counted once each on their freshest Ready series, stacked by status. Not Ready here is every owner whose Ready condition is False, without the two minute debounce the Overview tile applies, so a rollout shows as a short red band."
+      "description": "CRs counted once each on their freshest Ready series, stacked by status. Not Ready here is every CR whose Ready condition is False, without the two minute debounce the Overview tile applies, so a rollout shows as a short red band."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Owner counts per kind, condition and status for every condition that is not True, largest first. Empty when every condition of every owner is True. Unlike the Ready panels this covers all condition types, so a negative polarity condition such as Degraded=False does not appear while Degraded=True does.",
+      "description": "CR counts per kind, condition and status for every condition that is not True, largest first. Empty when every condition of every CR is True. Unlike the Ready panels this covers all condition types, so a negative polarity condition such as Degraded=False does not appear while Degraded=True does.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -933,7 +933,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Owners whose Ready condition is not True. The Name links into the conditions browser filtered to that owner.",
+      "description": "CRs whose Ready condition is not True. The Name links into the conditions browser filtered to that CR.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1076,7 +1076,7 @@
           "format": "table"
         }
       ],
-      "title": "Owners not Ready",
+      "title": "CRs not Ready",
       "transformations": [
         {
           "id": "calculateField",

@@ -258,14 +258,15 @@ second operator's render into a shared Grafana would overwrite the first. Two op
 ### OCF Operator
 
 Variables: `job` (from `controller_runtime_reconcile_total`) and `controller` (multi, All), see
-[Naming the controller](#naming-the-controller). Rows are ordered by what an on-call reader asks first: is the operator
-healthy right now, are the owners healthy, is anything being rewritten or failing, then the controller's own
-reconciliation and workqueue internals, the API client, and the process.
+[Naming the controller](#naming-the-controller). Panel titles say CR for what the framework calls the owner: one custom
+resource instance the controller reconciles, identified by its kind, namespace and name. Rows are ordered by what an
+on-call reader asks first: is the operator healthy right now, are the owners healthy, is anything being rewritten or
+failing, then the controller's own reconciliation and workqueue internals, the API client, and the process.
 
 | Row               | What it answers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Overview          | Is the operator healthy right now? Four stat tiles with sparklines over the dashboard range: reconciles per second, reconcile error ratio, p99 reconcile time and p99 queue wait. Below them, owner counts on one panel, Ready, not Ready for more than two minutes (debounced on `lastTransitionTime`, so a rollout in progress does not count) and Unknown, then leader status and active against max workers. All three owner counts are scoped to the `Ready` condition; unlike `CustomResourceConditionUnknown`, the Unknown count does not cover other conditions.                     |
-| Conditions        | Which owners are unhealthy? Owners by Ready status over time, stacked True, False and Unknown so a rollout or an outage shows as a band; a bar gauge of unhealthy conditions counting owners per kind, condition and status for every condition that is not True (empty when everything is healthy, and independent of how many kinds or condition types the operator has); and a full width Owners not Ready table (kind, namespace, name, reason, since, status) whose rows link into the CRD Conditions Browser filtered to that owner.                                                   |
+| Conditions        | Which CRs are unhealthy? CRs by Ready status over time, stacked True, False and Unknown so a rollout or an outage shows as a band; a bar gauge of unhealthy conditions counting owners per kind, condition and status for every condition that is not True (empty when everything is healthy, and independent of how many kinds or condition types the operator has); and a full width CRs not Ready table (kind, namespace, name, reason, since, status) whose rows link into the CRD Conditions Browser filtered to that owner.                                                            |
 | Managed resources | Is anything being rewritten or failing? Apply rate by operation with the error rate on the same panel, the `updated` rate per resource over time with a legend table sorted by last value so the worst offender is on top, the not-converging ratio per resource, and the apply error ratio per resource. The not-converging panel plots the `ManagedResourceNotConverging` expression without its floor, so a resource heading for the alert is visible before it fires; the error ratio's denominator falls back to the error rate alone when no success series exists, as the alert does. |
 | Reconciliation    | Where does reconcile time go? Reconcile rate by result, error ratio over time, latency at p50, p90 and p99, panics, the age of the longest in-progress reconcile (`workqueue_longest_running_processor_seconds`), and workers.                                                                                                                                                                                                                                                                                                                                                               |
 | Workqueue         | Is the operator keeping up? Depth, adds per second, queue wait p99, work duration p99, retries per second, unfinished work.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -284,8 +285,8 @@ table of them by name, namespace, condition, status and reason with a since colu
 breaks the count down by `False`, `Unknown` and `True`.
 
 `resource_id` is what the alerts drill into: a `CustomResourceNotReady` notification opens the browser with `kind`,
-`condition`, `status` and `resource_id` preset, and the Owners not Ready table on the operator dashboard does the same
-for the row you click.
+`condition`, `status` and `resource_id` preset, and the CRs not Ready table on the operator dashboard does the same for
+the row you click.
 
 Every multi variable answers All with the regular expression `.*` rather than a list of every value. That keeps the
 query size constant however many owners exist, and it keeps cluster-scoped owners visible: their condition series carry
@@ -303,7 +304,7 @@ Every condition query in both dashboards joins on the freshest series per owner:
 
 The metric value is the `lastTransitionTime`, so `topk` keeps the most recently transitioned series for each owner and
 drops the stale duplicate. The join carries `kind` because `id` is only `<namespace>/<name>`, and two owners of
-different kinds can share it. Queries that span more than one condition type, such as the Owners by condition and status
+different kinds can share it. Queries that span more than one condition type, such as the CRs by Ready status over time
 panel, join on `topk by (kind, id, condition)` instead, so each owner keeps one freshest series per condition rather
 than one overall. The browser pins `kind` through its variable, so its queries join on `topk by (id, condition)`. The
 condition alerts apply the same join before their status matcher, keyed on `(controller, kind, name, <namespace label>)`

@@ -209,6 +209,8 @@ e2e-full: kind-create kind-set-context e2e kind-delete ## Full E2E lifecycle: cr
 ##@ Observability
 
 OBS_DIR := observability
+OBS_TEMPLATES := internal/observability/templates
+OCF := go run ./cmd/ocf
 # Render output directory. The dev stack overrides it to keep its render apart.
 OBS_OUT ?= $(OBS_DIR)/generated
 # Prometheus metric namespace the condition gauge was created with
@@ -229,98 +231,23 @@ PROMETHEUSRULE_LABELS ?=
 # Metric namespace the alert unit tests are written against.
 ALERT_TEST_NAMESPACE := test_operator
 
-# Fail unless METRIC_NAMESPACE was given and both variables render to valid
-# output. $(1) is the target name for the hint. The namespace prefixes a metric
-# name, so it is restricted to metric name characters, and it prefixes the
-# dashboard uids, which Grafana limits to 40 characters of [A-Za-z0-9_-]: the
-# longest suffix, `_crd_conditions_browser`, is 23 characters, leaving 17 for
-# the namespace (observability_test.go pins that arithmetic to the dashboard
-# file names), and it names the PrometheusRule objects with `_` mapped to `-`,
-# so it must start with a letter. NAMESPACE_LABEL is substituted into PromQL as
-# a label name, so it must match the Prometheus label name grammar.
-define require_metric_namespace
-@[ -n "$(METRIC_NAMESPACE)" ] || { \
-	echo "Error: METRIC_NAMESPACE is required."; \
-	echo "Usage: make $(1) METRIC_NAMESPACE=my_operator"; \
-	exit 1; \
-}
-@echo "$(METRIC_NAMESPACE)" | grep -Eq '^[A-Za-z][A-Za-z0-9_]{0,16}$$' || { \
-	echo "Error: METRIC_NAMESPACE '$(METRIC_NAMESPACE)' is not renderable."; \
-	echo "It must start with a letter, match ^[A-Za-z][A-Za-z0-9_]*$$ and be at most 17 characters:"; \
-	echo "it names the PrometheusRule <namespace>-crd-conditions, which must start with a letter or digit,"; \
-	echo "and the dashboard uid <namespace>_crd_conditions_browser must fit Grafana's 40 character limit."; \
-	exit 1; \
-}
-@echo "$(NAMESPACE_LABEL)" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$$' || { \
-	echo "Error: NAMESPACE_LABEL '$(NAMESPACE_LABEL)' is not a Prometheus label name."; \
-	echo "It must match ^[A-Za-z_][A-Za-z0-9_]*$$, for example exported_namespace or namespace."; \
-	exit 1; \
-}
-endef
+# The variables above map onto the flags of `ocf observability render`, which
+# validates them and renders both the dashboards and the alerts.
+OBS_RENDER_FLAGS = --metric-namespace "$(METRIC_NAMESPACE)" \
+	--namespace-label "$(NAMESPACE_LABEL)" \
+	--alert-format "$(ALERT_FORMAT)" \
+	--prometheusrule-namespace "$(PROMETHEUSRULE_NAMESPACE)" \
+	--prometheusrule-labels "$(PROMETHEUSRULE_LABELS)"
 
-# Render a template to stdout. $(1) template path, $(2) metric namespace,
-# $(3) namespace label.
-define render_template
-sed -e 's/{{operator_namespace}}/$(2)_/g' -e 's/{{namespace_label}}/$(3)/g' $(1)
-endef
+.PHONY: observability-render
+observability-render: ## Render the dashboards and alert rules for METRIC_NAMESPACE into OBS_OUT.
+	$(OCF) observability render $(OBS_RENDER_FLAGS) --out "$(OBS_OUT)"
 
 .PHONY: dashboards
-dashboards: ## Render the Grafana dashboards for METRIC_NAMESPACE into observability/generated/dashboards.
-	$(call require_metric_namespace,dashboards)
-	@echo "Rendering dashboards for $(METRIC_NAMESPACE) (namespace label: $(NAMESPACE_LABEL))..."
-	@mkdir -p $(OBS_OUT)/dashboards
-	@rm -f $(OBS_OUT)/dashboards/*.json
-	@for file in $(OBS_DIR)/dashboards/*.tpl.json; do \
-	  [ -e "$$file" ] || continue; \
-	  name=$$(basename "$$file" .tpl.json); \
-	  $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) > "$(OBS_OUT)/dashboards/$$name.json"; \
-	done
+dashboards: observability-render ## Render the Grafana dashboards for METRIC_NAMESPACE into observability/generated/dashboards.
 
 .PHONY: alerts
-alerts: ## Render the Prometheus alert rules for METRIC_NAMESPACE into observability/generated/alerts.
-	$(call require_metric_namespace,alerts)
-	@echo "Rendering alerts for $(METRIC_NAMESPACE) (namespace label: $(NAMESPACE_LABEL), format: $(ALERT_FORMAT))..."
-	@mkdir -p $(OBS_OUT)/alerts
-	@rm -f $(OBS_OUT)/alerts/*.yaml
-	@for file in $(OBS_DIR)/alerts/*.yaml; do \
-	  [ -e "$$file" ] || continue; \
-	  case "$$file" in \
-	    *.tpl.yaml) \
-	      name=$$(basename "$$file" .tpl.yaml); \
-	      rule_name="$(METRIC_NAMESPACE)-$$name" ;; \
-	    *) \
-	      name=$$(basename "$$file" .yaml); \
-	      rule_name="ocf-$$name" ;; \
-	  esac; \
-	  rule_name=$$(echo "$$rule_name" | tr '[:upper:]' '[:lower:]' | tr '_:' '--'); \
-	  out="$(OBS_OUT)/alerts/$$name.yaml"; \
-	  case "$(ALERT_FORMAT)" in \
-	    rules) \
-	      $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) > "$$out" ;; \
-	    prometheusrule) \
-	      { \
-	        echo "apiVersion: monitoring.coreos.com/v1"; \
-	        echo "kind: PrometheusRule"; \
-	        echo "metadata:"; \
-	        echo "  name: $$rule_name"; \
-	        [ -z "$(PROMETHEUSRULE_NAMESPACE)" ] || echo "  namespace: $(PROMETHEUSRULE_NAMESPACE)"; \
-	        if [ -n "$(PROMETHEUSRULE_LABELS)" ]; then \
-	          echo "  labels:"; \
-	          for kv in $$(echo "$(PROMETHEUSRULE_LABELS)" | tr ',' ' '); do \
-	            case "$$kv" in \
-	              ?*=*) echo "    $${kv%%=*}: \"$${kv#*=}\"" ;; \
-	              *) echo "Error: PROMETHEUSRULE_LABELS entry '$$kv' is not key=value." >&2; exit 1 ;; \
-	            esac; \
-	          done; \
-	        fi; \
-	        echo "spec:"; \
-	        $(call render_template,"$$file",$(METRIC_NAMESPACE),$(NAMESPACE_LABEL)) \
-	          | sed -e 's/^/  /' -e 's/[[:space:]]*$$//'; \
-	      } > "$$out" ;; \
-	    *) \
-	      echo "Error: ALERT_FORMAT must be prometheusrule or rules, got '$(ALERT_FORMAT)'."; exit 1 ;; \
-	  esac; \
-	done
+alerts: observability-render ## Render the Prometheus alert rules for METRIC_NAMESPACE into observability/generated/alerts.
 
 .PHONY: test-alerts
 test-alerts: ## Lint and unit test the alert rules with promtool.
@@ -332,30 +259,22 @@ test-alerts: ## Lint and unit test the alert rules with promtool.
 	@set -e; \
 	tmpdir=$$(mktemp -d "$${TMPDIR:-/tmp}/ocf-alerts.XXXXXX"); \
 	trap 'rm -rf "$$tmpdir"' EXIT; \
-	mkdir -p "$$tmpdir/tests" "$$tmpdir/namespace-label"; \
-	for file in $(OBS_DIR)/alerts/*.yaml; do \
-	  [ -e "$$file" ] || continue; \
-	  case "$$file" in \
-	    *.tpl.yaml) \
-	      name=$$(basename "$$file" .tpl.yaml); \
-	      $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),exported_namespace) > "$$tmpdir/$$name.yaml"; \
-	      $(call render_template,"$$file",$(ALERT_TEST_NAMESPACE),namespace) > "$$tmpdir/namespace-label/$$name.yaml" ;; \
-	    *) \
-	      cp "$$file" "$$tmpdir/"; \
-	      cp "$$file" "$$tmpdir/namespace-label/" ;; \
-	  esac; \
-	done; \
-	cp $(OBS_DIR)/alerts/tests/*.yaml "$$tmpdir/tests/"; \
+	$(OCF) observability render --metric-namespace $(ALERT_TEST_NAMESPACE) \
+	  --alert-format rules --out "$$tmpdir/default" >/dev/null; \
+	$(OCF) observability render --metric-namespace $(ALERT_TEST_NAMESPACE) \
+	  --alert-format rules --namespace-label namespace --out "$$tmpdir/namespace-label" >/dev/null; \
+	mkdir -p "$$tmpdir/default/alerts/tests"; \
+	cp $(OBS_TEMPLATES)/alerts/tests/*.yaml "$$tmpdir/default/alerts/tests/"; \
 	echo "Linting rules..."; \
-	promtool check rules --lint=all --lint-fatal "$$tmpdir"/*.yaml; \
+	promtool check rules --lint=all --lint-fatal "$$tmpdir"/default/alerts/*.yaml; \
 	echo "Linting rules with NAMESPACE_LABEL=namespace..."; \
-	promtool check rules --lint=all --lint-fatal "$$tmpdir"/namespace-label/*.yaml; \
+	promtool check rules --lint=all --lint-fatal "$$tmpdir"/namespace-label/alerts/*.yaml; \
 	echo "Running unit tests..."; \
-	promtool test rules --diff "$$tmpdir"/tests/*.yaml
+	promtool test rules --diff "$$tmpdir"/default/alerts/tests/*.yaml
 
 .PHONY: lint-dashboards
 lint-dashboards: ## Check the dashboard and alert templates render to valid files that reference real metrics.
-	go test ./$(OBS_DIR)/
+	go test ./internal/observability/
 
 OBS_DEV_NAMESPACE := demo
 OBS_DEV_OUT := $(OBS_DIR)/generated/dev
@@ -364,8 +283,7 @@ SIMULATOR_ARGS ?=
 
 .PHONY: observability-render-dev
 observability-render-dev: ## Render dashboards and plain rules for the dev stack, with every `for:` shortened to 2m.
-	@$(MAKE) --no-print-directory dashboards METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT)
-	@$(MAKE) --no-print-directory alerts METRIC_NAMESPACE=$(OBS_DEV_NAMESPACE) OBS_OUT=$(OBS_DEV_OUT) ALERT_FORMAT=rules
+	$(OCF) observability render --metric-namespace $(OBS_DEV_NAMESPACE) --alert-format rules --out $(OBS_DEV_OUT)
 	@for file in $(OBS_DEV_OUT)/alerts/*.yaml; do \
 	  sed -E 's/^( *for: ).*/\12m/' "$$file" > "$$file.tmp" && mv "$$file.tmp" "$$file"; \
 	done

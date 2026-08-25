@@ -103,7 +103,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum(rate(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "range": true,
           "instant": false
@@ -176,7 +176,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\", result=\"error\"}[$__rate_interval]))\n/\nsum(rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum(rate(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", result=\"error\"}[$__rate_interval]))\n/\nsum(rate(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "range": true,
           "instant": false
@@ -249,7 +249,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(controller_runtime_reconcile_time_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
           "range": true,
           "instant": false
@@ -322,7 +322,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(workqueue_queue_duration_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(workqueue_queue_duration_seconds_bucket{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
           "range": true,
           "instant": false
@@ -437,7 +437,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
           "legendFormat": "Ready",
           "range": true,
@@ -449,7 +449,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  ({{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  ({{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"} < (time() - 120))\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "B",
           "legendFormat": "Not Ready > 2m",
           "range": true,
@@ -461,7 +461,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "C",
           "legendFormat": "Unknown",
           "range": true,
@@ -553,7 +553,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max(leader_election_master_status{job=\"$job\"})",
+          "expr": "max(leader_election_master_status{namespace=~\"$namespace\", job=\"$job\"})",
           "refId": "A",
           "range": false,
           "exemplar": false,
@@ -618,7 +618,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(controller_runtime_active_workers{job=\"$job\", controller=~\"$controller\"})",
+          "expr": "sum(controller_runtime_active_workers{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})",
           "refId": "A",
           "legendFormat": "active",
           "range": false,
@@ -631,7 +631,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(controller_runtime_max_concurrent_reconciles{job=\"$job\", controller=~\"$controller\"})",
+          "expr": "sum(controller_runtime_max_concurrent_reconciles{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})",
           "refId": "B",
           "legendFormat": "max",
           "range": false,
@@ -786,7 +786,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "A",
           "legendFormat": "Ready",
           "range": true
@@ -797,7 +797,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"False\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "B",
           "legendFormat": "Not Ready",
           "range": true
@@ -808,7 +808,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
+          "expr": "count(\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status=\"Unknown\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n) or vector(0)",
           "refId": "C",
           "legendFormat": "Unknown",
           "range": true
@@ -917,7 +917,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sort_desc(\n  count by (kind, condition, status) (\n    {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", status!=\"True\"}\n    and\n    topk by (kind, id, condition) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\"})\n  )\n)",
+          "expr": "sort_desc(\n  count by (kind, condition, status) (\n    {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", status!=\"True\"}\n    and\n    topk by (kind, id, condition) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})\n  )\n)",
           "refId": "A",
           "legendFormat": "{{kind}} {{condition}} {{status}}",
           "exemplar": false,
@@ -1068,7 +1068,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (kind, {{namespace_label}}, name, reason, status, id) (\n  {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status!=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
+          "expr": "sum by (kind, {{namespace_label}}, name, reason, status, id) (\n  {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\", status!=\"True\"}\n  and\n  topk by (kind, id) (1, {{operator_namespace}}controller_condition{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", condition=\"Ready\"})\n)",
           "refId": "A",
           "exemplar": false,
           "instant": true,
@@ -1256,7 +1256,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[$__rate_interval]))",
+          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{controller}}/{{component}}/{{resource}} ({{kind}})",
           "range": true
@@ -1410,7 +1410,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (operation) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum by (operation) (rate(ocf_resource_apply_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{operation}}",
           "range": true
@@ -1421,7 +1421,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum(rate(ocf_resource_apply_errors_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "B",
           "legendFormat": "error",
           "range": true
@@ -1520,7 +1520,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[15m]))\n/\nsum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\"}[15m]))",
+          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", operation=\"updated\"}[15m]))\n/\nsum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[15m]))",
           "refId": "A",
           "legendFormat": "{{controller}}/{{component}}/{{resource}} ({{kind}})",
           "range": true
@@ -1616,7 +1616,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n/\n(\n  sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n  +\n  (sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) or sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) * 0)\n)",
+          "expr": "sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n/\n(\n  sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))\n  +\n  (sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) or sum by (controller, owner_kind, component, resource, kind) (rate(ocf_resource_apply_errors_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])) * 0)\n)",
           "refId": "A",
           "legendFormat": "{{controller}}/{{component}}/{{resource}} ({{kind}})",
           "range": true
@@ -1723,7 +1723,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller, result) (rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum by (controller, result) (rate(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{controller}} {{result}}",
           "range": true
@@ -1822,7 +1822,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\", result=\"error\"}[$__rate_interval]))\n/\nsum by (controller) (rate(controller_runtime_reconcile_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum by (controller) (rate(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\", result=\"error\"}[$__rate_interval]))\n/\nsum by (controller) (rate(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -1915,7 +1915,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "p50 {{controller}}",
           "range": true
@@ -1926,7 +1926,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.90, sum by (controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "B",
           "legendFormat": "p90 {{controller}}",
           "range": true
@@ -1937,7 +1937,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "C",
           "legendFormat": "p99 {{controller}}",
           "range": true
@@ -2030,7 +2030,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (increase(controller_runtime_reconcile_panics_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum by (controller) (increase(controller_runtime_reconcile_panics_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2123,7 +2123,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (controller) (workqueue_longest_running_processor_seconds{job=\"$job\", controller=~\"$controller\"})",
+          "expr": "max by (controller) (workqueue_longest_running_processor_seconds{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2235,7 +2235,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (controller_runtime_active_workers{job=\"$job\", controller=~\"$controller\"})",
+          "expr": "sum by (controller) (controller_runtime_active_workers{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})",
           "refId": "A",
           "legendFormat": "active {{controller}}",
           "range": true
@@ -2246,7 +2246,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (controller_runtime_max_concurrent_reconciles{job=\"$job\", controller=~\"$controller\"})",
+          "expr": "sum by (controller) (controller_runtime_max_concurrent_reconciles{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})",
           "refId": "B",
           "legendFormat": "max {{controller}}",
           "range": true
@@ -2352,7 +2352,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (workqueue_depth{job=\"$job\", controller=~\"$controller\"})",
+          "expr": "sum by (controller) (workqueue_depth{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2445,7 +2445,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (rate(workqueue_adds_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum by (controller) (rate(workqueue_adds_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2542,7 +2542,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (controller, le) (rate(workqueue_queue_duration_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (controller, le) (rate(workqueue_queue_duration_seconds_bucket{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2635,7 +2635,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (controller, le) (rate(workqueue_work_duration_seconds_bucket{job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (controller, le) (rate(workqueue_work_duration_seconds_bucket{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2728,7 +2728,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (rate(workqueue_retries_total{job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
+          "expr": "sum by (controller) (rate(workqueue_retries_total{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2821,7 +2821,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (workqueue_unfinished_work_seconds{job=\"$job\", controller=~\"$controller\"})",
+          "expr": "sum by (controller) (workqueue_unfinished_work_seconds{namespace=~\"$namespace\", job=\"$job\", controller=~\"$controller\"})",
           "refId": "A",
           "legendFormat": "{{controller}}",
           "range": true
@@ -2927,7 +2927,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (method) (rate(rest_client_requests_total{job=\"$job\"}[$__rate_interval]))",
+          "expr": "sum by (method) (rate(rest_client_requests_total{namespace=~\"$namespace\", job=\"$job\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{method}}",
           "range": true
@@ -3020,7 +3020,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (code) (rate(rest_client_requests_total{job=\"$job\", code!~\"2..\"}[$__rate_interval]))",
+          "expr": "sum by (code) (rate(rest_client_requests_total{namespace=~\"$namespace\", job=\"$job\", code!~\"2..\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{code}}",
           "range": true
@@ -3182,7 +3182,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "rate(process_cpu_seconds_total{job=\"$job\"}[$__rate_interval])",
+              "expr": "rate(process_cpu_seconds_total{namespace=~\"$namespace\", job=\"$job\"}[$__rate_interval])",
               "refId": "A",
               "legendFormat": "{{instance}}",
               "range": true
@@ -3193,7 +3193,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "max by (pod) (kube_pod_container_resource_requests{resource=\"cpu\"} and on (namespace, pod) up{job=\"$job\"})",
+              "expr": "max by (pod) (kube_pod_container_resource_requests{resource=\"cpu\"} and on (namespace, pod) up{namespace=~\"$namespace\", job=\"$job\"})",
               "refId": "B",
               "legendFormat": "{{pod}} request",
               "range": true
@@ -3204,7 +3204,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "max by (pod) (kube_pod_container_resource_limits{resource=\"cpu\"} and on (namespace, pod) up{job=\"$job\"})",
+              "expr": "max by (pod) (kube_pod_container_resource_limits{resource=\"cpu\"} and on (namespace, pod) up{namespace=~\"$namespace\", job=\"$job\"})",
               "refId": "C",
               "legendFormat": "{{pod}} limit",
               "range": true
@@ -3357,7 +3357,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "process_resident_memory_bytes{job=\"$job\"}",
+              "expr": "process_resident_memory_bytes{namespace=~\"$namespace\", job=\"$job\"}",
               "refId": "A",
               "legendFormat": "{{instance}}",
               "range": true
@@ -3368,7 +3368,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "max by (pod) (kube_pod_container_resource_requests{resource=\"memory\"} and on (namespace, pod) up{job=\"$job\"})",
+              "expr": "max by (pod) (kube_pod_container_resource_requests{resource=\"memory\"} and on (namespace, pod) up{namespace=~\"$namespace\", job=\"$job\"})",
               "refId": "B",
               "legendFormat": "{{pod}} request",
               "range": true
@@ -3379,7 +3379,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "max by (pod) (kube_pod_container_resource_limits{resource=\"memory\"} and on (namespace, pod) up{job=\"$job\"})",
+              "expr": "max by (pod) (kube_pod_container_resource_limits{resource=\"memory\"} and on (namespace, pod) up{namespace=~\"$namespace\", job=\"$job\"})",
               "refId": "C",
               "legendFormat": "{{pod}} limit",
               "range": true
@@ -3473,7 +3473,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "go_goroutines{job=\"$job\"}",
+              "expr": "go_goroutines{namespace=~\"$namespace\", job=\"$job\"}",
               "refId": "A",
               "legendFormat": "{{instance}}",
               "range": true
@@ -3506,25 +3506,53 @@
         "type": "datasource"
       },
       {
-        "current": {},
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
         "datasource": {
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(controller_runtime_reconcile_total,job)",
-        "includeAll": false,
-        "label": "Job",
+        "definition": "label_values(controller_runtime_reconcile_total,namespace)",
+        "description": "Kubernetes namespace the operator runs in, as stamped on its series by the scrape. All also covers series without a namespace label, such as an operator scraped outside a cluster.",
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Operator namespace",
         "multi": false,
-        "name": "job",
+        "name": "namespace",
         "options": [],
         "query": {
-          "query": "label_values(controller_runtime_reconcile_total,job)",
-          "refId": "job"
+          "query": "label_values(controller_runtime_reconcile_total,namespace)",
+          "refId": "namespace"
         },
         "refresh": 2,
         "regex": "",
         "sort": 1,
         "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(controller_runtime_reconcile_total{namespace=~\"$namespace\"},job)",
+        "includeAll": false,
+        "label": "Operator (scrape job)",
+        "multi": false,
+        "name": "job",
+        "options": [],
+        "query": {
+          "query": "label_values(controller_runtime_reconcile_total{namespace=~\"$namespace\"},job)",
+          "refId": "job"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query",
+        "description": "The Prometheus scrape job of the operator, usually the name of its metrics Service or ServiceMonitor. Every controller-runtime operator exports the same metric names, so this is what selects one operator."
       },
       {
         "current": {
@@ -3540,14 +3568,14 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(controller_runtime_reconcile_total{job=\"$job\"},controller)",
+        "definition": "label_values(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\"},controller)",
         "includeAll": true,
         "label": "Controller",
         "multi": true,
         "name": "controller",
         "options": [],
         "query": {
-          "query": "label_values(controller_runtime_reconcile_total{job=\"$job\"},controller)",
+          "query": "label_values(controller_runtime_reconcile_total{namespace=~\"$namespace\", job=\"$job\"},controller)",
           "refId": "controller"
         },
         "refresh": 2,

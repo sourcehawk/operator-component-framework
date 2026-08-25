@@ -257,11 +257,18 @@ second operator's render into a shared Grafana would overwrite the first. Two op
 
 ### OCF Operator
 
-Variables: `job` (from `controller_runtime_reconcile_total`) and `controller` (multi, All), see
-[Naming the controller](#naming-the-controller). Panel titles say CR for what the framework calls the owner: one custom
-resource instance the controller reconciles, identified by its kind, namespace and name. Rows are ordered by what an
-on-call reader asks first: is the operator healthy right now, are the owners healthy, is anything being rewritten or
-failing, then the controller's own reconciliation and workqueue internals, the API client, and the process.
+Variables, in cascade: `namespace` (Operator namespace), `job` (Operator, the scrape job) and `controller` (multi, All).
+Every controller-runtime operator on a cluster exports the same metric names, so nothing in `controller_runtime_*`,
+`workqueue_*`, `rest_client_*`, `process_*` or the apply counters says which operator a series belongs to; the scrape
+labels do. `namespace` is the namespace the operator pod runs in and `job` its scrape job, usually the name of the
+metrics Service or ServiceMonitor. Together they select one install of one operator, the same pair the shared alert
+rules aggregate by, so two installs of the same operator in different namespaces stay apart. `namespace` defaults to
+All, which also matches series that carry no namespace label at all, so an operator scraped outside a cluster still
+renders. `controller` narrows within that operator, see [Naming the controller](#naming-the-controller). Panel titles
+say CR for what the framework calls the owner: one custom resource instance the controller reconciles, identified by its
+kind, namespace and name. Rows are ordered by what an on-call reader asks first: is the operator healthy right now, are
+the owners healthy, is anything being rewritten or failing, then the controller's own reconciliation and workqueue
+internals, the API client, and the process.
 
 | Row               | What it answers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

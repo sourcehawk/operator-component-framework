@@ -1,12 +1,13 @@
-// Package observability_test checks the dashboard and alert templates: that
-// they render to valid JSON/YAML, keep their uids, leave no placeholder behind
-// and reference only metric names that actually exist.
-package observability_test
+package observability
+
+// This file checks the embedded dashboard and alert templates: that they
+// render to valid JSON/YAML, keep their uids, leave no placeholder behind and
+// reference only metric names that actually exist.
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,22 +24,16 @@ import (
 
 const (
 	lintNamespace = "lint_operator"
-	// maxMetricNamespaceLen is the cap the Makefile's require_metric_namespace
-	// enforces on METRIC_NAMESPACE, derived from maxGrafanaUIDLen and the
-	// longest dashboard file name.
-	maxMetricNamespaceLen = 17
-	// maxGrafanaUIDLen is Grafana's limit on a dashboard uid.
-	maxGrafanaUIDLen = 40
-	nsLabel          = "exported_namespace"
+	nsLabel       = "exported_namespace"
 )
 
-// render mirrors the Makefile's render_template.
-func render(t *testing.T, path string) string {
+// render substitutes the placeholders of one embedded template the way Render
+// does, without the PrometheusRule wrapper.
+func render(t *testing.T, file string) string {
 	t.Helper()
-	b, err := os.ReadFile(path)
+	b, err := templates.ReadFile(file)
 	require.NoError(t, err)
-	s := strings.ReplaceAll(string(b), "{{operator_namespace}}", lintNamespace+"_")
-	return strings.ReplaceAll(s, "{{namespace_label}}", nsLabel)
+	return string(substitute(b, Options{MetricNamespace: lintNamespace, NamespaceLabel: nsLabel}))
 }
 
 // knownMetrics is every metric name the templates may reference: the
@@ -144,25 +139,25 @@ func exprsFromJSON(v any, out *[]string) {
 }
 
 func TestDashboards(t *testing.T) {
-	files, err := filepath.Glob("dashboards/*.tpl.json")
+	files, err := fs.Glob(templates, path.Join(dashboardsDir, "*.tpl.json"))
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 	known := knownMetrics(t)
 	for _, f := range files {
-		t.Run(filepath.Base(f), func(t *testing.T) {
+		t.Run(path.Base(f), func(t *testing.T) {
 			rendered := render(t, f)
 			assert.NotContains(t, rendered, "{{operator_namespace}}")
 			assert.NotContains(t, rendered, "{{namespace_label}}")
 			var d map[string]any
 			require.NoError(t, json.Unmarshal([]byte(rendered), &d), "valid JSON")
-			want := strings.TrimSuffix(filepath.Base(f), ".tpl.json")
+			want := strings.TrimSuffix(path.Base(f), ".tpl.json")
 			assert.Equal(t, lintNamespace+"_"+want, d["uid"], "uid is the file name prefixed with the metric namespace")
-			// Grafana limits a uid to 40 characters of [A-Za-z0-9_-]. The Makefile
-			// caps METRIC_NAMESPACE at maxMetricNamespaceLen on that basis, so a
+			// Grafana limits a uid to 40 characters of [A-Za-z0-9_-]. Options.Validate
+			// caps the metric namespace at MaxMetricNamespaceLen on that basis, so a
 			// dashboard file name that no longer leaves room for it must fail here.
 			assert.Regexp(t, `^[A-Za-z0-9_-]+$`, want, "dashboard file name is made of Grafana uid characters")
-			assert.LessOrEqual(t, maxMetricNamespaceLen+1+len(want), maxGrafanaUIDLen,
-				"a METRIC_NAMESPACE of %d characters must still render a uid within Grafana's %d character limit; shorten the file name or lower the cap in the Makefile", maxMetricNamespaceLen, maxGrafanaUIDLen)
+			assert.LessOrEqual(t, MaxMetricNamespaceLen+1+len(want), maxGrafanaUIDLen,
+				"a metric namespace of %d characters must still render a uid within Grafana's %d character limit; shorten the file name or lower MaxMetricNamespaceLen", MaxMetricNamespaceLen, maxGrafanaUIDLen)
 			assert.Equal(t, "", d["refresh"], "auto refresh is off by default")
 			var exprs []string
 			exprsFromJSON(d, &exprs)
@@ -177,12 +172,12 @@ func TestDashboards(t *testing.T) {
 func TestAlerts(t *testing.T) {
 	// The glob matches the shared files and, because `.tpl.yaml` also ends in
 	// `.yaml`, the templated ones too; render handles both.
-	files, err := filepath.Glob("alerts/*.yaml")
+	files, err := fs.Glob(templates, path.Join(alertsDir, "*.yaml"))
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 	known := knownMetrics(t)
 	for _, f := range files {
-		t.Run(filepath.Base(f), func(t *testing.T) {
+		t.Run(path.Base(f), func(t *testing.T) {
 			rendered := render(t, f)
 			assert.NotContains(t, rendered, "{{operator_namespace}}")
 			assert.NotContains(t, rendered, "{{namespace_label}}")
@@ -206,8 +201,8 @@ func TestAlerts(t *testing.T) {
 				}
 			}
 			// Every alert in the file has a promtool unit test.
-			base := strings.TrimSuffix(strings.TrimSuffix(filepath.Base(f), ".yaml"), ".tpl")
-			tests, err := os.ReadFile(filepath.Join("alerts", "tests", base+"_test.yaml"))
+			base := strings.TrimSuffix(strings.TrimSuffix(path.Base(f), ".yaml"), ".tpl")
+			tests, err := templates.ReadFile(path.Join(alertTestsDir, base+"_test.yaml"))
 			require.NoError(t, err, "every rule file has a promtool test file")
 			for _, g := range doc.Groups {
 				for _, r := range g.Rules {

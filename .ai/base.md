@@ -24,7 +24,7 @@ Understand the intended design first:
 - `docs/primitives.md` — primitive categories, field application, mutation system, editors, selectors
 - `docs/primitives/*.md` — primitive implementations
 - `docs/custom-resource.md` — implementing custom resource wrappers using `pkg/generic`
-- `docs/cli.md` — the `ocf` scaffolding CLI, its flags, and what the generated code contains
+- `docs/cli.md` — the `ocf` CLI: wrapper scaffolding, observability rendering, flags, and what the output contains
 - `docs/guidelines.md` — best practices for structuring operators (desired state, one component per condition, etc.)
 - `docs/compatibility.md` — supported version combinations and compatibility policy
 - `docs/observability.md` — Grafana dashboards, Prometheus alert rules, the render pipeline and the local stack
@@ -41,6 +41,8 @@ Verify the real API before using or documenting it. Key packages:
 - `pkg/generic/` — generic building blocks for custom resource wrappers (reconciliation, mutation sequencing,
   suspension, data extraction)
 - `cmd/ocf/` and `internal/scaffold/` — the `ocf` CLI and the wrapper templates it renders
+- `internal/observability/` — the embedded dashboard and alert templates, `Options.Validate` and `Render` behind
+  `ocf observability render`, and the template lint test
 - `pkg/mutation/editors/` — available methods per editor type
 - `pkg/mutation/selectors/` — available container selectors
 - `pkg/feature/feature.go` — `NewVersionGate`, `Mutation[T]`
@@ -48,7 +50,7 @@ Verify the real API before using or documenting it. Key packages:
 - `pkg/metrics/` — Prometheus implementation of `component.MetricsRecorder`: condition metrics plus the per-resource
   apply counters
 - `pkg/testing/` — testing utilities (`golden/` for snapshot tests, `integration/` for integration helpers)
-- `observability/` — dashboard and alert templates, the dev stack and simulator, and the template lint test
+- `observability/` — the dev stack (compose, provisioning, simulator) and the maintainer README
 
 When changing a public API, also check `examples/` for real usage patterns and to identify what else needs updating.
 
@@ -104,7 +106,7 @@ Update documentation in the **same response** as the code change — never leave
 | Primitives, field application, editors, selectors   | `docs/primitives.md`                       |
 | Primitive implementations                           | `docs/primitives/*.md`                     |
 | Generic building blocks, custom resource wrappers   | `docs/custom-resource.md`                  |
-| Wrapper templates, CLI flags                        | `docs/cli.md`                              |
+| Wrapper templates, CLI flags, observability render  | `docs/cli.md`                              |
 | Operator structuring patterns, best practices       | `docs/guidelines.md`                       |
 | Dashboards, alert rules, render pipeline, dev stack | `docs/observability.md`                    |
 | Any `pkg/` export visible in the quick start        | `README.md`                                |

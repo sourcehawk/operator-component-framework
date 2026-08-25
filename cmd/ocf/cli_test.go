@@ -32,7 +32,134 @@ func TestRootCommandListsSubcommands(t *testing.T) {
 	out, err := runCommand(t, "--help")
 	require.NoError(t, err)
 	assert.Contains(t, out, "scaffold")
+	assert.Contains(t, out, "observability")
 	assert.Contains(t, out, "version")
+}
+
+func TestObservabilityRenderWritesArtifacts(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "observability")
+
+	out, err := runCommand(t,
+		"observability", "render",
+		"--metric-namespace", "demo",
+		"--prometheusrule-namespace", "monitoring",
+		"--prometheusrule-labels", "release=kps",
+		"--out", dir,
+	)
+	require.NoError(t, err)
+
+	for _, name := range []string{"dashboards/ocf_operator.json", "dashboards/crd_conditions_browser.json"} {
+		assert.FileExists(t, filepath.Join(dir, name))
+		assert.Contains(t, out, name)
+	}
+	for _, name := range []string{"alerts/controller_runtime.yaml", "alerts/crd_conditions.yaml", "alerts/managed_resources.yaml"} {
+		assert.FileExists(t, filepath.Join(dir, name))
+		assert.Contains(t, out, name)
+	}
+	assert.Contains(t, out, `metric namespace "demo" in `+dir)
+
+	rule, err := os.ReadFile(filepath.Join(dir, "alerts", "crd_conditions.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(rule), "kind: PrometheusRule\nmetadata:\n  name: demo-crd-conditions\n  namespace: monitoring\n  labels:\n    release: \"kps\"\n")
+	assert.NotContains(t, string(rule), "{{operator_namespace}}")
+	assert.NotContains(t, string(rule), "{{namespace_label}}")
+
+	dashboard, err := os.ReadFile(filepath.Join(dir, "dashboards", "ocf_operator.json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(dashboard), `"uid": "demo_ocf_operator"`)
+}
+
+func TestObservabilityRenderDefaultsOutToObservabilityDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	out, err := runCommand(t, "observability", "render", "--metric-namespace", "demo")
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(dir, "observability", "dashboards", "ocf_operator.json"))
+	assert.Contains(t, out, "in ./observability:")
+}
+
+func TestObservabilityRenderRulesFormat(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	_, err := runCommand(t,
+		"observability", "render",
+		"--metric-namespace", "demo",
+		"--namespace-label", "namespace",
+		"--alert-format", "rules",
+		"--out", dir,
+	)
+	require.NoError(t, err)
+
+	rule, err := os.ReadFile(filepath.Join(dir, "alerts", "crd_conditions.yaml"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(rule), "kind: PrometheusRule")
+	assert.Contains(t, string(rule), "groups:\n")
+	assert.Contains(t, string(rule), "by (job, controller, kind, name, namespace)")
+}
+
+func TestObservabilityRenderFlagErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		args        []string
+		expectedErr string
+	}{
+		{
+			name:        "missing metric namespace",
+			args:        []string{},
+			expectedErr: "--metric-namespace is required",
+		},
+		{
+			name:        "hyphen in metric namespace",
+			args:        []string{"--metric-namespace", "my-operator"},
+			expectedErr: `--metric-namespace "my-operator" is not renderable`,
+		},
+		{
+			name:        "colon in metric namespace",
+			args:        []string{"--metric-namespace", "my:op"},
+			expectedErr: `--metric-namespace "my:op" is not renderable`,
+		},
+		{
+			name:        "18 character metric namespace",
+			args:        []string{"--metric-namespace", "abcdefghijklmnopqr"},
+			expectedErr: "at most 17 characters",
+		},
+		{
+			name:        "invalid namespace label",
+			args:        []string{"--metric-namespace", "demo", "--namespace-label", "my-ns"},
+			expectedErr: `--namespace-label "my-ns" is not a Prometheus label name`,
+		},
+		{
+			name:        "unknown alert format",
+			args:        []string{"--metric-namespace", "demo", "--alert-format", "yaml"},
+			expectedErr: `--alert-format must be prometheusrule or rules, got "yaml"`,
+		},
+		{
+			name:        "label without value",
+			args:        []string{"--metric-namespace", "demo", "--prometheusrule-labels", "release"},
+			expectedErr: `--prometheusrule-labels entry "release" is not key=value`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "observability")
+			args := append([]string{"observability", "render"}, tt.args...)
+			args = append(args, "--out", dir)
+			_, err := runCommand(t, args...)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+			assert.NoDirExists(t, dir, "nothing is written on a rejected flag")
+		})
+	}
 }
 
 func TestVersionCommandPrintsVersion(t *testing.T) {

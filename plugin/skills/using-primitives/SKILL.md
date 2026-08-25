@@ -178,7 +178,9 @@ stripped server defaults. The owner's UID makes each owner a distinct manager: w
 reference (the default), two owners of one kind rendering the same object do not silently take each other's fields; the
 second owner's apply is rejected because of its second controller reference. For `Unowned()` resources, or where a scope
 mismatch prevents the owner reference, the second owner's forced apply still takes the fields it declares;
-`managedFields` names each owner, but the framework does not detect the contention.
+`managedFields` names each owner, but the framework does not detect the contention. When the readable manager would
+exceed the API server's 128-character limit, the framework uses the hex-encoded SHA-256 of it instead (64 characters,
+deterministic, still distinct per owner), so long kinds or component names show up in `managedFields` as a hash.
 
 **A Go type that overstates the CRD schema breaks Apply.** The API server's field manager types the patch against the
 target's OpenAPI schema before merging anything, so an undeclared field fails the whole apply and the server returns:

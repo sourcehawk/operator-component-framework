@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -82,6 +83,18 @@ var _ = Describe("Apply field manager", func() {
 		Expect(cm.OwnerReferences).To(HaveLen(1))
 		Expect(cm.OwnerReferences[0].UID).To(Equal(ownerA.UID))
 		Expect(applyManagers(cm)).To(ConsistOf("MockOperatorCRD/" + componentName + "/" + string(ownerA.UID)))
+	})
+
+	It("applies with a hashed manager when the readable name exceeds the API server limit", func() {
+		comp := sharedConfigMapComponent(ownerA)
+		comp.name = strings.Repeat("c", 128)
+		Expect(comp.Reconcile(ctx, newTestReconcileContext(ownerA))).To(Succeed())
+
+		cm := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: "shared-cm", Namespace: namespace}, cm)).To(Succeed())
+		Expect(cm.Data).To(HaveKeyWithValue("owner", ownerA.Name))
+		Expect(applyManagers(cm)).To(ConsistOf(string(applyFieldOwner(ownerA, comp.name))))
+		Expect(applyManagers(cm)[0]).To(HaveLen(64))
 	})
 
 	It("keeps one manager per owner across repeated reconciles", func() {

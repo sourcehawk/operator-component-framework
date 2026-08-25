@@ -2,6 +2,8 @@ package component
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"strings"
@@ -199,13 +201,25 @@ func applyFailed(rec ReconcileContext, labels ResourceMetricLabels, err error) e
 // shared across owners, each owner's forced apply would relinquish the other's
 // fields wholesale and neither would ever see a conflict. The UID rather than
 // the owner's name keeps the manager independent of the length of user-chosen
-// names, which matters for the API server's 128-character manager limit, and
-// reads the same for cluster-scoped and namespaced owners.
+// names and reads the same for cluster-scoped and namespaced owners.
+//
+// The API server rejects a field manager longer than fieldManagerMaxLength.
+// Neither the kind nor the component name has a bounded length, so when the
+// readable form would exceed the limit the manager is the hex-encoded SHA-256
+// of that readable form instead: 64 characters, still deterministic for the
+// owner and component, and still distinct per owner.
 func applyFieldOwner(owner OperatorCRD, componentName string) client.FieldOwner {
-	return client.FieldOwner(
-		fmt.Sprintf("%s/%s/%s", owner.GetKind(), componentName, owner.GetUID()),
-	)
+	manager := fmt.Sprintf("%s/%s/%s", owner.GetKind(), componentName, owner.GetUID())
+	if len(manager) > fieldManagerMaxLength {
+		sum := sha256.Sum256([]byte(manager))
+		manager = hex.EncodeToString(sum[:])
+	}
+	return client.FieldOwner(manager)
 }
+
+// fieldManagerMaxLength is the API server's limit on a field manager name
+// (metav1 validation.FieldManagerMaxLength). Longer managers are rejected.
+const fieldManagerMaxLength = 128
 
 // applyResources ensures that all registered "creation" resources exist and match
 // the desired state in the Kubernetes cluster using Server-Side Apply.

@@ -134,6 +134,11 @@ The API server tracks field ownership automatically. The field manager name is d
 takes control of conflicting fields from other managers, while fields it does not include stay with their current
 owners.
 
+The API server rejects a field manager longer than 128 characters, and neither the kind nor the component name has a
+bounded length. When the readable form would exceed the limit, the manager is the hex-encoded SHA-256 of that readable
+form instead: 64 characters, deterministic for the owner and component, and still distinct per owner. Such a manager
+shows in `managedFields` as a hash rather than a name, so keep component names short if you rely on reading them there.
+
 The owner's UID is part of the manager name so that every owner is a distinct manager. Two custom resources of one kind
 whose components render the same object therefore do not share a manager. When the framework sets a controller reference
 on the object (the default), the second owner's apply carries a second controller reference, which the API server

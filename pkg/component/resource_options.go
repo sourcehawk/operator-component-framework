@@ -183,8 +183,9 @@ func Unowned() ResourceOption {
 // owner's forced apply from taking the object's fields at all.
 //
 // During suspension the resource is not applied or deleted while another owner
-// controls it; it reports Suspended with the same reason, since the component
-// holds nothing there to suspend.
+// controls it; it reports Suspended with a reason naming that owner
+// ("Resource <identity> is controlled by <Kind> <name>; nothing to suspend."),
+// since the component holds nothing there to suspend.
 //
 // Requires a managed resource: combining it with ReadOnly is a configuration
 // error returned by Build.

@@ -90,7 +90,8 @@ controller reference it replaces the API server's rejection of a second controll
 [Server-Side Apply](primitives.md#server-side-apply)). An object with no controller reference is never blocked, so
 contention between two owners that both apply without one is not detected. Unlike a custom guard, the check also runs
 during suspension: a resource another owner controls is neither scaled down nor deleted, and reports `Suspended` with
-the same reason. It requires a managed resource; combining it with `ReadOnly()` is a build error.
+the reason `Resource <identity> is controlled by <Kind> <name>; nothing to suspend.`. It requires a managed resource;
+combining it with `ReadOnly()` is a build error.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 

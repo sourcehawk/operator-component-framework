@@ -65,7 +65,7 @@ be passed without a guard.
 | `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)                                                                                                                                       |
 | `component.BlockOnAbsence()`                        | Read-only only: a NotFound records a blocked status and short-circuits the remaining resources                                                                                                                                          |
 | `component.IgnoreIfAbsent()`                        | Read-only only: a NotFound is silently ignored and last-known state is preserved                                                                                                                                                        |
-| `component.BlockOnForeignController()`              | Managed only: records a blocked status that names the owner whose controller reference is on the live object, performs no apply, and skips the remaining resources                                                                      |
+| `component.BlockOnForeignController()`              | Managed only: records a blocked status that names the owner whose controller reference is on the live object, then skips the apply and the remaining resources                                                                          |
 | `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                                                                                                                                                  |
 
 A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
@@ -1147,9 +1147,9 @@ registered custom guard; it does not affect declared data guards.
   regardless of its participation mode, and all resources after it are skipped entirely. This override exists because a
   blocked guard halts the entire pipeline; subsequent required resources would otherwise be silently absent from health
   aggregation.
-- After the guard of a resource clears, the component also compares the controller reference of the live object for a
-  managed resource registered with [`BlockOnForeignController()`](#resource-registration-options). A reference to
-  another owner records `Blocked` in the same way, with the message `controlled by <Kind> <name>`.
+- After the guard of a resource clears, the component also reads the controller reference of the live object for a
+  resource registered with [`BlockOnForeignController()`](#resource-registration-options). A reference to another owner
+  records `Blocked` in the same way, with the message `controlled by <Kind> <name>`.
 - On the next reconcile, if the guard clears (`Unblocked`), the resource is applied normally.
 - Guards are **not** evaluated during suspension. The suspension path always proceeds regardless of guard state. The
   exception is [`BlockOnForeignController()`](#resource-registration-options), which the component checks on every path.

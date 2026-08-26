@@ -114,8 +114,8 @@ func (b *Builder) WithConditionType(conditionType ConditionType) *Builder {
 //
 // Options configure the resource's lifecycle and its participation in health
 // aggregation; see the ResourceOption constructors (ReadOnly, Delete, DeleteWhen,
-// GatedBy, Auxiliary, BlockOnAbsence, IgnoreIfAbsent,
-// SuppressGraceInconsistencyWarning). With no options the resource is created or
+// GatedBy, OrphanWhen, Unowned, Auxiliary, BlockOnAbsence, IgnoreIfAbsent,
+// BlockOnForeignController, SuppressGraceInconsistencyWarning). With no options the resource is created or
 // updated and is required for the component to become Ready.
 //
 // A nil resource (a nil interface or a typed-nil pointer) is rejected with a

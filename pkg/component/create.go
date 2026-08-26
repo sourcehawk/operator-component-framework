@@ -380,10 +380,16 @@ func reconcileResources(
 	return results, nil
 }
 
-// foreignController reads the live object of resource through the client and
-// returns its controller owner reference when that reference points at an
-// owner other than rec.Owner. It returns nil when the object does not exist,
-// has no controller reference, or is controlled by rec.Owner.
+// foreignController reads the live object of resource and returns its
+// controller owner reference when that reference points at an owner other than
+// rec.Owner. It returns nil when the object does not exist, has no controller
+// reference, or is controlled by rec.Owner.
+//
+// The read goes through rec.APIReader when one is set and rec.Client otherwise.
+// The manager's Client serves reads from the informer cache, which can still
+// hold the object without the controller reference the API server already
+// carries; a forced apply decided on that stale read would take the other
+// owner's fields, which is what the option exists to stop.
 func foreignController(
 	ctx context.Context, rec ReconcileContext, resource Resource,
 ) (*metav1.OwnerReference, error) {
@@ -399,7 +405,11 @@ func foreignController(
 			"failed to prepare controller check for resource %s: %w", resource.Identity(), err,
 		)
 	}
-	if err := rec.Client.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
+	var reader client.Reader = rec.Client
+	if rec.APIReader != nil {
+		reader = rec.APIReader
+	}
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}

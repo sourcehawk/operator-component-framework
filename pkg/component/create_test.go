@@ -1140,3 +1140,35 @@ func TestApplyFieldOwner(t *testing.T) {
 		assert.NotEqual(t, applyFieldOwner(newOwner(), component), applyFieldOwner(other, component))
 	})
 }
+
+func TestReconcileResources_BlockOnForeignController_ReadsThroughAPIReader(t *testing.T) {
+	scheme := setupScheme()
+	owner := &MockOperatorCRD{ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "ns", UID: "this-uid"}}
+	desired := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "shared", Namespace: "ns"}}
+
+	// The cache still holds the object without a controller; the API server
+	// already has another owner's controller reference on it.
+	stale := desired.DeepCopy()
+	live := desired.DeepCopy()
+	live.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: GroupVersion.String(), Kind: "MockOperatorCRD", Name: "other", UID: "other-uid",
+		Controller: ptr.To(true),
+	}}
+	cache := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, stale).Build()
+	apiServer := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, live).Build()
+
+	rec := setupReconcileContext(scheme, owner, cache)
+	rec.APIReader = apiServer
+
+	resource := &MockResource{}
+	resource.On("Object").Return(desired, nil)
+	resource.On("Identity").Return("ConfigMap/shared")
+	entry := reconcileEntry{Resource: resource, Options: resourceOptions{Unowned: true, BlockOnForeignController: true}}
+
+	results, err := reconcileResources(t.Context(), rec, []reconcileEntry{entry}, "comp", createTestRESTMapper())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, convergingStatusGuardBlocked, results[0].Status.Status)
+	assert.Equal(t, "controlled by MockOperatorCRD other", results[0].Status.Reason)
+	resource.AssertNotCalled(t, "Mutate", mock.Anything)
+}

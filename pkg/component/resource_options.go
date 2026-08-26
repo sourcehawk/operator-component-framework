@@ -168,7 +168,8 @@ func Unowned() ResourceOption {
 
 // BlockOnForeignController blocks the resource while the live object is
 // controlled by another owner. Before every apply the component reads the live
-// object; when it exists and carries a controller owner reference whose UID is
+// object, through ReconcileContext.APIReader when set and the cached
+// ReconcileContext.Client otherwise; when it exists and carries a controller owner reference whose UID is
 // not the reconciling owner's, the resource records a blocked status with a
 // reason naming the controlling owner ("controlled by <Kind> <name>") and, like
 // any blocked guard, stops the resources after it. The block clears on the

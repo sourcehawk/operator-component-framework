@@ -81,17 +81,19 @@ suspension with `DeleteOnSuspend()` all delete it directly, regardless of the `U
 (triggered by owner CR deletion) is suppressed.
 
 `BlockOnForeignController()` guards a managed resource against an object that another owner already controls. Before
-each apply the component reads the live object; when it exists and carries a controller owner reference whose UID is not
-the reconciling owner's, the resource reports `Blocked` with the message `controlled by <Kind> <name>`, no apply is
-performed, and the resources after it are skipped, exactly as for a [blocked guard](#guards). The block clears on the
-reconcile after that reference is gone. Reach for it wherever two custom resources may name one object: with the default
-controller reference it replaces the API server's rejection of a second controller with a readable condition, and with
-`Unowned()` it stops the second owner's forced apply from taking the object's fields at all (see
-[Server-Side Apply](primitives.md#server-side-apply)). An object with no controller reference is never blocked, so
-contention between two owners that both apply without one is not detected. Unlike a custom guard, the check also runs
-during suspension: a resource another owner controls is neither scaled down nor deleted, and reports `Suspended` with
-the reason `Resource <identity> is controlled by <Kind> <name>; nothing to suspend.`. It requires a managed resource;
-combining it with `ReadOnly()` is a build error.
+each apply the component reads the live object, through `ReconcileContext.APIReader` when set (the cached client can
+still miss a controller reference the API server already carries) and `ReconcileContext.Client` otherwise; when it
+exists and carries a controller owner reference whose UID is not the reconciling owner's, the resource reports `Blocked`
+with the message `controlled by <Kind> <name>`, no apply is performed, and the resources after it are skipped, exactly
+as for a [blocked guard](#guards). The block clears on the reconcile after that reference is gone. Reach for it wherever
+two custom resources may name one object: with the default controller reference it replaces the API server's rejection
+of a second controller with a readable condition, and with `Unowned()` it stops the second owner's forced apply from
+taking the object's fields at all (see [Server-Side Apply](primitives.md#server-side-apply)). An object with no
+controller reference is never blocked, so contention between two owners that both apply without one is not detected.
+Unlike a custom guard, the check also runs during suspension: a resource another owner controls is neither scaled down
+nor deleted, and reports `Suspended` with the reason
+`Resource <identity> is controlled by <Kind> <name>; nothing to suspend.`. It requires a managed resource; combining it
+with `ReadOnly()` is a build error.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 

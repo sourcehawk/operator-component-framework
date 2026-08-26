@@ -51,9 +51,12 @@ if err != nil {
 
 Each `WithResource` call accepts `ResourceOption` values: `component.ReadOnly()`, `component.Delete()` /
 `component.DeleteWhen(cond)`, `component.GatedBy(gate)`, `component.OrphanWhen(cond)`, `component.Unowned()`,
-`component.Auxiliary()`, `component.BlockOnAbsence()`, `component.IgnoreIfAbsent()`. With no options a resource is
-**Managed**: applied via Server-Side Apply, required for the condition. `ReadOnly()` is mutually exclusive with the
-deletion and gating options. See `references/component.md` for the full option matrix and `IncludeWhen` vs. `GatedBy`.
+`component.Auxiliary()`, `component.BlockOnAbsence()`, `component.IgnoreIfAbsent()`,
+`component.BlockOnForeignController()`. With no options a resource is **Managed**: applied via Server-Side Apply,
+required for the condition. `ReadOnly()` is mutually exclusive with the deletion and gating options.
+`BlockOnForeignController()` reports `Blocked` naming the owner whose controller reference is on the live object instead
+of applying over it; register it on any resource two custom resources may name. See `references/component.md` for the
+full option matrix and `IncludeWhen` vs. `GatedBy`.
 
 ## Registration order is execution order
 

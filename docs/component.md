@@ -94,7 +94,9 @@ Unlike a custom guard, the check also covers every path that would delete the ob
 another owner controls is neither scaled down nor deleted; it counts as suspended, so the component condition reads
 `Suspended` with the usual `All resources are suspended.` message. A deletion asked for by `Delete()`, `DeleteWhen()`,
 `GatedBy()` or a disabled component feature gate is skipped the same way. Each skip is logged with the controlling
-owner. It requires a managed resource; combining it with `ReadOnly()` is a build error.
+owner. A delete of an object observed as safe carries the observed UID and resourceVersion as preconditions, so an owner
+that claims the object between the read and the delete keeps it: the delete fails and the next reconcile observes the
+object again. It requires a managed resource; combining it with `ReadOnly()` is a build error.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 

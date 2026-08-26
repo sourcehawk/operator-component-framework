@@ -115,7 +115,7 @@ func suspendResource(
 	// per-resource reason is folded into "All resources are suspended." by
 	// suspensionResults.summary, so the controlling owner is logged here.
 	if entry.Options.BlockOnForeignController {
-		controller, err := foreignController(ctx, rec, resource)
+		_, controller, err := observeController(ctx, rec, resource)
 		if err != nil {
 			return concepts.SuspensionStatusWithReason{}, err
 		}
@@ -183,12 +183,16 @@ func suspendResource(
 		return suspension, nil
 	}
 
-	// Delete resource if it should be deleted
+	// Delete resource if it should be deleted. deleteEntry re-observes an entry
+	// registered with BlockOnForeignController, so an owner that claimed the
+	// object during the suspension apply keeps it.
 	if suspendable.DeleteOnSuspend() {
-		if err := rec.Client.Delete(ctx, object); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return suspension, fmt.Errorf("failed to delete resource: %w", err)
-			}
+		deleted, err := deleteEntry(ctx, rec, entry, object)
+		if err != nil {
+			return suspension, err
+		}
+		if !deleted {
+			return suspension, nil
 		}
 
 		rec.EventRecorder.Eventf(

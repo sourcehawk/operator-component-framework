@@ -320,7 +320,7 @@ func reconcileResources(
 		// A managed resource that another owner controls is blocked before the
 		// apply, so the forced apply never takes that owner's fields.
 		if entry.Options.BlockOnForeignController && !entry.Options.ReadOnly {
-			controller, err := foreignController(ctx, rec, resource)
+			_, controller, err := observeController(ctx, rec, resource)
 			if err != nil {
 				return nil, err
 			}
@@ -380,28 +380,29 @@ func reconcileResources(
 	return results, nil
 }
 
-// foreignController reads the live object of resource and returns its
-// controller owner reference when that reference points at an owner other than
-// rec.Owner. It returns nil when the object does not exist, has no controller
-// reference, or is controlled by rec.Owner.
+// observeController reads the live object of resource and returns it together
+// with its controller owner reference when that reference points at an owner
+// other than rec.Owner. The object is nil when it does not exist; the
+// controller is nil when the object has no controller reference or is
+// controlled by rec.Owner.
 //
 // The read goes through rec.APIReader when one is set and rec.Client otherwise.
 // The manager's Client serves reads from the informer cache, which can still
 // hold the object without the controller reference the API server already
 // carries; a forced apply decided on that stale read would take the other
 // owner's fields, which is what the option exists to stop.
-func foreignController(
+func observeController(
 	ctx context.Context, rec ReconcileContext, resource Resource,
-) (*metav1.OwnerReference, error) {
+) (client.Object, *metav1.OwnerReference, error) {
 	obj, err := resource.Object()
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"failed to retrieve object for resource %s: %w", resource.Identity(), err,
 		)
 	}
 	live, err := newEmptyObjectLike(obj)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"failed to prepare controller check for resource %s: %w", resource.Identity(), err,
 		)
 	}
@@ -411,17 +412,17 @@ func foreignController(
 	}
 	if err := reader.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"failed to read resource %s for controller check: %w", resource.Identity(), err,
 		)
 	}
 	controller := metav1.GetControllerOf(live)
 	if controller == nil || controller.UID == rec.Owner.GetUID() {
-		return nil, nil
+		return live, nil, nil
 	}
-	return controller, nil
+	return live, controller, nil
 }
 
 // foreignControllerReason is the blocked reason for an object controlled by

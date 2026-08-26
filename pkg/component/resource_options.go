@@ -189,7 +189,11 @@ func Unowned() ResourceOption {
 // holds nothing there to suspend, so the component condition reads Suspended
 // with the usual "All resources are suspended." message. A deletion asked for
 // by Delete, DeleteWhen, GatedBy or a disabled component feature gate is
-// skipped the same way. Each skip is logged with the controlling owner.
+// skipped the same way. Each skip is logged with the controlling owner. A
+// delete of an object observed as safe carries the observed UID and
+// resourceVersion as preconditions, so an owner that claims the object between
+// the read and the delete keeps it: the delete fails and the next reconcile
+// observes the object again.
 //
 // Requires a managed resource: combining it with ReadOnly is a configuration
 // error returned by Build.

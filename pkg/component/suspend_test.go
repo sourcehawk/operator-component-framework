@@ -490,3 +490,38 @@ func TestSuspendResource_BlockOnForeignController(t *testing.T) {
 		res.AssertCalled(t, "Suspend")
 	})
 }
+
+func TestSuspendResource_BlockOnForeignController_DeleteOnSuspend(t *testing.T) {
+	ctx := t.Context()
+	scheme := setupScheme()
+
+	t.Run("does not delete on suspend an object another owner claims after it was observed as safe", func(t *testing.T) {
+		owner := setupTestOwner()
+		owner.UID = "this-uid"
+		res, obj := setupMockResource("claimed", concepts.SuspensionStatusSuspended, "Done", true)
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(claimBeforeDelete(t, "claimed")).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+		entry := reconcileEntry{Resource: res, Options: resourceOptions{Unowned: true, BlockOnForeignController: true}}
+
+		_, err := suspendResource(ctx, rec, entry, res, "test-component", testRESTMapper())
+		require.Error(t, err)
+		got := &v1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), got))
+		assert.Equal(t, "other-uid", string(got.OwnerReferences[0].UID))
+	})
+
+	t.Run("deletes on suspend an object it observed as safe", func(t *testing.T) {
+		owner := setupTestOwner()
+		owner.UID = "this-uid"
+		res, obj := setupMockResource("safe", concepts.SuspensionStatusSuspended, "Done", true)
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+		entry := reconcileEntry{Resource: res, Options: resourceOptions{Unowned: true, BlockOnForeignController: true}}
+
+		status, err := suspendResource(ctx, rec, entry, res, "test-component", testRESTMapper())
+		require.NoError(t, err)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
+		assert.True(t, apierrors.IsNotFound(cli.Get(ctx, client.ObjectKeyFromObject(obj), &v1.ConfigMap{})))
+	})
+}

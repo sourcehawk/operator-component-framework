@@ -161,7 +161,10 @@ func (b *Builder) WithResource(resource Resource, opts ...ResourceOption) *Build
 	case options.Orphan:
 		b.component.orphanResources = append(b.component.orphanResources, resource)
 	case options.Delete:
-		b.component.deleteResources = append(b.component.deleteResources, resource)
+		b.component.deleteResources = append(b.component.deleteResources, reconcileEntry{
+			Resource: resource,
+			Options:  options,
+		})
 	default:
 		b.component.reconcileResources = append(b.component.reconcileResources, reconcileEntry{
 			Resource: resource,

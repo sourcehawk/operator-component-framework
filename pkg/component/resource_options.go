@@ -75,9 +75,9 @@ type resourceOptions struct {
 	// BlockOnForeignController applies to managed resources. When true, the
 	// live object is read before every apply and, when it carries a controller
 	// reference to an owner other than the reconciling one, the resource records
-	// a blocked status naming that owner and no apply is performed. During
-	// suspension such a resource counts as suspended without being applied or
-	// deleted. Mutually exclusive with ReadOnly.
+	// a blocked status naming that owner and no apply is performed. Deletion
+	// paths (a deletion flag, a disabled feature gate, suspension) leave such an
+	// object in place. Mutually exclusive with ReadOnly.
 	BlockOnForeignController bool
 }
 
@@ -183,10 +183,13 @@ func Unowned() ResourceOption {
 // controller into a readable condition, and with Unowned it stops the second
 // owner's forced apply from taking the object's fields at all.
 //
-// During suspension the resource is not applied or deleted while another owner
-// controls it. It counts as suspended, since the component holds nothing there
-// to suspend, so the component condition reads Suspended with the usual "All
-// resources are suspended." message; the controlling owner is logged.
+// The object is protected on every path that would write or delete it, not
+// only the apply. During suspension the resource is not applied or deleted
+// while another owner controls it; it counts as suspended, since the component
+// holds nothing there to suspend, so the component condition reads Suspended
+// with the usual "All resources are suspended." message. A deletion asked for
+// by Delete, DeleteWhen, GatedBy or a disabled component feature gate is
+// skipped the same way. Each skip is logged with the controlling owner.
 //
 // Requires a managed resource: combining it with ReadOnly is a configuration
 // error returned by Build.

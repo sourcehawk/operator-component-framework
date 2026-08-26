@@ -146,6 +146,44 @@ var _ = Describe("BlockOnForeignController", func() {
 		Expect(after.OwnerReferences[0].UID).To(Equal(ownerA.UID))
 	})
 
+	It("does not delete the object another owner controls when the feature gate is disabled", func() {
+		Expect(sharedConfigMapComponent(ownerA, resourceOptions{}).Reconcile(ctx, newTestReconcileContext(ownerA))).To(Succeed())
+		before := liveConfigMap()
+
+		res := &MockResource{}
+		res.On("Object").Return(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: namespace}}, nil)
+		res.On("Identity").Return("ConfigMap/" + cmName)
+		comp, err := NewComponentBuilder().
+			WithName("shared").
+			WithConditionType("SharedReady").
+			WithFeatureGate(&testGate{enabled: false}).
+			WithResource(res, Unowned(), BlockOnForeignController()).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(comp.Reconcile(ctx, newTestReconcileContext(ownerB))).To(Succeed())
+		Expect(comp.GetCondition(ownerB).Reason).To(Equal(string(Disabled)))
+		Expect(liveConfigMap().ResourceVersion).To(Equal(before.ResourceVersion))
+	})
+
+	It("does not delete the object another owner controls when the resource is marked for deletion", func() {
+		Expect(sharedConfigMapComponent(ownerA, resourceOptions{}).Reconcile(ctx, newTestReconcileContext(ownerA))).To(Succeed())
+		before := liveConfigMap()
+
+		res := &MockResource{}
+		res.On("Object").Return(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: namespace}}, nil)
+		res.On("Identity").Return("ConfigMap/" + cmName)
+		comp, err := NewComponentBuilder().
+			WithName("shared").
+			WithConditionType("SharedReady").
+			WithResource(res, Delete(), BlockOnForeignController()).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(comp.Reconcile(ctx, newTestReconcileContext(ownerB))).To(Succeed())
+		Expect(liveConfigMap().ResourceVersion).To(Equal(before.ResourceVersion))
+	})
+
 	It("unblocks once the controlling owner's reference is gone", func() {
 		Expect(sharedConfigMapComponent(ownerA, resourceOptions{}).Reconcile(ctx, newTestReconcileContext(ownerA))).To(Succeed())
 

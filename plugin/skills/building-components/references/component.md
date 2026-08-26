@@ -90,10 +90,11 @@ two custom resources may name one object: with the default controller reference 
 of a second controller with a readable condition, and with `Unowned()` it stops the second owner's forced apply from
 taking the object's fields at all (see [Server-Side Apply](primitives.md#server-side-apply)). An object with no
 controller reference is never blocked, so contention between two owners that both apply without one is not detected.
-Unlike a custom guard, the check also runs during suspension: a resource another owner controls is neither scaled down
-nor deleted. It counts as suspended, so the component condition reads `Suspended` with the usual
-`All resources are suspended.` message, and the controlling owner is logged. It requires a managed resource; combining
-it with `ReadOnly()` is a build error.
+Unlike a custom guard, the check also covers every path that would delete the object. During suspension a resource
+another owner controls is neither scaled down nor deleted; it counts as suspended, so the component condition reads
+`Suspended` with the usual `All resources are suspended.` message. A deletion asked for by `Delete()`, `DeleteWhen()`,
+`GatedBy()` or a disabled component feature gate is skipped the same way. Each skip is logged with the controlling
+owner. It requires a managed resource; combining it with `ReadOnly()` is a build error.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 

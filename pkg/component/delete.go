@@ -7,6 +7,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // deleteConfig holds configuration for a deleteResources call.
@@ -36,13 +37,18 @@ func withDeletionReason(reason string) deleteOption {
 // any errors encountered (e.g., failure to retrieve the underlying object or
 // failure of the delete operation) and continues with the remaining resources.
 //
+// An entry registered with BlockOnForeignController is left in place when the
+// live object is controlled by another owner: the object is not this
+// component's to delete, whichever path (a deletion flag, a disabled feature
+// gate, suspension) asked for it. The skip is logged with the controlling owner.
+//
 // For each successful deletion, a "ResourceDeleted" event is recorded on the owner object.
 // The opts parameter allows callers to customize the event message via functional options.
 //
 // Returns a joined error containing all encountered errors, or nil if all deletions
 // were successful or resulted in "Not Found" errors.
 func deleteResources(
-	ctx context.Context, rec ReconcileContext, resources []Resource, opts ...deleteOption,
+	ctx context.Context, rec ReconcileContext, entries []reconcileEntry, opts ...deleteOption,
 ) error {
 	cfg := deleteConfig{reason: "resource deletion flag"}
 	for _, opt := range opts {
@@ -51,7 +57,24 @@ func deleteResources(
 	// we gather errors in order to delete as many resources as possible
 	var errs []error
 
-	for _, resource := range resources {
+	for _, entry := range entries {
+		resource := entry.Resource
+
+		if entry.Options.BlockOnForeignController {
+			controller, err := foreignController(ctx, rec, resource)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			if controller != nil {
+				log.FromContext(ctx).Info(
+					"skipping deletion of a resource another owner controls",
+					"resource", resource.Identity(), "controller", controller.Kind+" "+controller.Name,
+				)
+				continue
+			}
+		}
+
 		object, err := resource.Object()
 		if err != nil {
 			errs = append(errs, fmt.Errorf(

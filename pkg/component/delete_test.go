@@ -46,7 +46,7 @@ func TestDeleteResources(t *testing.T) {
 		resource.On("Identity").Return("v1/ConfigMap/test-cm")
 
 		// When
-		err = deleteResources(ctx, reconcileContext, []Resource{resource})
+		err = deleteResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}})
 
 		// Then
 		require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestDeleteResources(t *testing.T) {
 		resource.On("Object").Return(resourceObject, nil)
 
 		// When
-		err := deleteResources(ctx, reconcileContext, []Resource{resource})
+		err := deleteResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}})
 
 		// Then
 		require.NoError(t, err)
@@ -100,7 +100,7 @@ func TestDeleteResources(t *testing.T) {
 		resource2.On("Identity").Return("v1/ConfigMap/test-cm-2")
 
 		// When
-		err = deleteResources(ctx, reconcileContext, []Resource{resource1, resource2})
+		err = deleteResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource1}, {Resource: resource2}})
 
 		// Then
 		require.Error(t, err)
@@ -148,7 +148,7 @@ func TestDeleteResources(t *testing.T) {
 		resource2.On("Identity").Return("v1/ConfigMap/test-cm-2")
 
 		// When
-		err := deleteResources(ctx, recCtx, []Resource{resource1, resource2})
+		err := deleteResources(ctx, recCtx, []reconcileEntry{{Resource: resource1}, {Resource: resource2}})
 
 		// Then
 		require.Error(t, err)
@@ -176,7 +176,7 @@ func TestDeleteResources(t *testing.T) {
 		recCtx := setupReconcileContext(scheme, owner, fakeClient)
 
 		// When
-		err := deleteResources(ctx, recCtx, []Resource{resource}, withDeletionReason("suspension"))
+		err := deleteResources(ctx, recCtx, []reconcileEntry{{Resource: resource}}, withDeletionReason("suspension"))
 
 		// Then
 		require.NoError(t, err)
@@ -205,7 +205,7 @@ func TestDeleteResources(t *testing.T) {
 		recCtx := setupReconcileContext(scheme, owner, fakeClient)
 
 		// When
-		err := deleteResources(ctx, recCtx, []Resource{resource})
+		err := deleteResources(ctx, recCtx, []reconcileEntry{{Resource: resource}})
 
 		// Then
 		require.NoError(t, err)

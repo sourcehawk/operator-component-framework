@@ -76,7 +76,7 @@ type resourceOptions struct {
 	// live object is read before every apply and, when it carries a controller
 	// reference to an owner other than the reconciling one, the resource records
 	// a blocked status naming that owner and no apply is performed. During
-	// suspension such a resource reports Suspended without being applied or
+	// suspension such a resource counts as suspended without being applied or
 	// deleted. Mutually exclusive with ReadOnly.
 	BlockOnForeignController bool
 }
@@ -184,9 +184,9 @@ func Unowned() ResourceOption {
 // owner's forced apply from taking the object's fields at all.
 //
 // During suspension the resource is not applied or deleted while another owner
-// controls it; it reports Suspended with a reason naming that owner
-// ("Resource <identity> is controlled by <Kind> <name>; nothing to suspend."),
-// since the component holds nothing there to suspend.
+// controls it. It counts as suspended, since the component holds nothing there
+// to suspend, so the component condition reads Suspended with the usual "All
+// resources are suspended." message; the controlling owner is logged.
 //
 // Requires a managed resource: combining it with ReadOnly is a configuration
 // error returned by Build.

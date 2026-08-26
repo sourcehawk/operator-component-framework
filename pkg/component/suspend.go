@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type suspensionResults []concepts.SuspensionStatusWithReason
@@ -110,13 +111,19 @@ func suspendResource(
 	}
 
 	// An object another owner controls is not this component's to scale down or
-	// delete. Report it suspended, since the component holds nothing there.
+	// delete. Report it suspended, since the component holds nothing there. The
+	// per-resource reason is folded into "All resources are suspended." by
+	// suspensionResults.summary, so the controlling owner is logged here.
 	if entry.Options.BlockOnForeignController {
 		controller, err := foreignController(ctx, rec, resource)
 		if err != nil {
 			return concepts.SuspensionStatusWithReason{}, err
 		}
 		if controller != nil {
+			log.FromContext(ctx).Info(
+				"skipping suspension of a resource another owner controls",
+				"resource", resource.Identity(), "controller", controller.Kind+" "+controller.Name,
+			)
 			return concepts.SuspensionStatusWithReason{
 				Status: concepts.SuspensionStatusSuspended,
 				Reason: fmt.Sprintf(

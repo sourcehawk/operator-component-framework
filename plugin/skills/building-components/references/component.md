@@ -91,9 +91,9 @@ of a second controller with a readable condition, and with `Unowned()` it stops 
 taking the object's fields at all (see [Server-Side Apply](primitives.md#server-side-apply)). An object with no
 controller reference is never blocked, so contention between two owners that both apply without one is not detected.
 Unlike a custom guard, the check also runs during suspension: a resource another owner controls is neither scaled down
-nor deleted, and reports `Suspended` with the reason
-`Resource <identity> is controlled by <Kind> <name>; nothing to suspend.`. It requires a managed resource; combining it
-with `ReadOnly()` is a build error.
+nor deleted. It counts as suspended, so the component condition reads `Suspended` with the usual
+`All resources are suspended.` message, and the controlling owner is logged. It requires a managed resource; combining
+it with `ReadOnly()` is a build error.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 

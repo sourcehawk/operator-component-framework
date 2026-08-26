@@ -116,6 +116,36 @@ var _ = Describe("BlockOnForeignController", func() {
 		Expect(liveConfigMap().OwnerReferences[0].UID).To(Equal(ownerA.UID))
 	})
 
+	It("reports a suspended component without scaling down or deleting the object another owner controls", func() {
+		Expect(sharedConfigMapComponent(ownerA, resourceOptions{}).Reconcile(ctx, newTestReconcileContext(ownerA))).To(Succeed())
+		before := liveConfigMap()
+
+		desired := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: namespace}}
+		res := &MockSuspendableResource{}
+		res.On("Object").Return(desired, nil)
+		res.On("Identity").Return("ConfigMap/" + cmName)
+		res.On("DeleteOnSuspend").Return(true)
+		// No Suspend, Mutate or SuspensionStatus expectation: reaching any of them
+		// means the component was about to apply or delete the other owner's object.
+		comp := &Component{
+			name:          "shared",
+			conditionType: "SharedReady",
+			suspended:     true,
+			reconcileResources: []reconcileEntry{{
+				Resource: res, Options: resourceOptions{Unowned: true, BlockOnForeignController: true},
+			}},
+		}
+
+		Expect(comp.Reconcile(ctx, newTestReconcileContext(ownerB))).To(Succeed())
+		cond := comp.GetCondition(ownerB)
+		Expect(cond.Reason).To(Equal(string(Suspended)))
+		Expect(cond.Message).To(Equal("All resources are suspended."))
+
+		after := liveConfigMap()
+		Expect(after.ResourceVersion).To(Equal(before.ResourceVersion))
+		Expect(after.OwnerReferences[0].UID).To(Equal(ownerA.UID))
+	})
+
 	It("unblocks once the controlling owner's reference is gone", func() {
 		Expect(sharedConfigMapComponent(ownerA, resourceOptions{}).Reconcile(ctx, newTestReconcileContext(ownerA))).To(Succeed())
 

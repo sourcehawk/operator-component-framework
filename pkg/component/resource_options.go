@@ -33,6 +33,7 @@ type resourceConfig struct {
 	participationMode                 ParticipationMode
 	blockOnAbsence                    bool
 	ignoreIfAbsent                    bool
+	blockOnForeignController          bool
 	suppressGraceInconsistencyWarning bool
 }
 
@@ -71,6 +72,13 @@ type resourceOptions struct {
 	// reconciliation of subsequent resources continues. Last-known state is
 	// preserved across an absence. Mutually exclusive with BlockOnAbsence.
 	IgnoreIfAbsent bool
+	// BlockOnForeignController applies to managed resources. When true, the
+	// live object is read before every apply and, when it carries a controller
+	// reference to an owner other than the reconciling one, the resource records
+	// a blocked status naming that owner and no apply is performed. Deletion
+	// paths (a deletion flag, a disabled feature gate, suspension) leave such an
+	// object in place. Mutually exclusive with ReadOnly.
+	BlockOnForeignController bool
 }
 
 // ReadOnly marks the resource as read-only: the component fetches its current
@@ -158,6 +166,41 @@ func Unowned() ResourceOption {
 	return func(c *resourceConfig) { c.unowned = true }
 }
 
+// BlockOnForeignController blocks the resource while the live object is
+// controlled by another owner. Before every apply the component reads the live
+// object, through ReconcileContext.APIReader when set and the cached
+// ReconcileContext.Client otherwise; when it exists and carries a controller owner reference whose UID is
+// not the reconciling owner's, the resource records a blocked status with a
+// reason naming the controlling owner ("controlled by <Kind> <name>") and, like
+// any blocked guard, stops the resources after it. The block clears on the
+// reconcile after that reference is gone. An object with no controller
+// reference is never blocked, so contention between two owners that both apply
+// without one (two Unowned registrations, or owners the object's scope keeps
+// from being referenced) is not detected.
+//
+// Use it wherever two custom resources may name one object: with the default
+// controller reference it turns the API server's rejection of a second
+// controller into a readable condition, and with Unowned it stops the second
+// owner's forced apply from taking the object's fields at all.
+//
+// The object is protected on every path that would write or delete it, not
+// only the apply. During suspension the resource is not applied or deleted
+// while another owner controls it; it counts as suspended, since the component
+// holds nothing there to suspend, so the component condition reads Suspended
+// with the usual "All resources are suspended." message. A deletion asked for
+// by Delete, DeleteWhen, GatedBy or a disabled component feature gate is
+// skipped the same way. Each skip is logged with the controlling owner. A
+// delete of an object observed as safe carries the observed UID and
+// resourceVersion as preconditions, so an owner that claims the object between
+// the read and the delete keeps it: the delete fails and the next reconcile
+// observes the object again.
+//
+// Requires a managed resource: combining it with ReadOnly is a configuration
+// error returned by Build.
+func BlockOnForeignController() ResourceOption {
+	return func(c *resourceConfig) { c.blockOnForeignController = true }
+}
+
 // SuppressGraceInconsistencyWarning suppresses the warning log emitted when the
 // resource's grace handler returns Healthy while its convergence handler returns
 // non-healthy. Use this when the inconsistency is intentional.
@@ -191,6 +234,12 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 	}
 	if c.ignoreIfAbsent && !c.readOnly {
 		return resourceOptions{}, errors.New("resource option IgnoreIfAbsent requires ReadOnly")
+	}
+	if c.blockOnForeignController && c.readOnly {
+		return resourceOptions{}, errors.New(
+			"resource option BlockOnForeignController is mutually exclusive with ReadOnly; " +
+				"a read-only resource is never applied",
+		)
 	}
 
 	// A read-only resource is not owned by the component, so it must never be
@@ -264,5 +313,6 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 		SuppressGraceInconsistencyWarning: c.suppressGraceInconsistencyWarning,
 		BlockOnAbsence:                    c.blockOnAbsence,
 		IgnoreIfAbsent:                    c.ignoreIfAbsent,
+		BlockOnForeignController:          c.blockOnForeignController,
 	}, nil
 }

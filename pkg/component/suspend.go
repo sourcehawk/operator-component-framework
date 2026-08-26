@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type suspensionResults []concepts.SuspensionStatusWithReason
@@ -109,6 +110,29 @@ func suspendResource(
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf("failed to get object on suspension: %w", err)
 	}
 
+	// An object another owner controls is not this component's to scale down or
+	// delete. Report it suspended, since the component holds nothing there. The
+	// per-resource reason is folded into "All resources are suspended." by
+	// suspensionResults.summary, so the controlling owner is logged here.
+	if entry.Options.BlockOnForeignController {
+		_, controller, err := observeController(ctx, rec, resource)
+		if err != nil {
+			return concepts.SuspensionStatusWithReason{}, err
+		}
+		if controller != nil {
+			log.FromContext(ctx).Info(
+				"skipping suspension of a resource another owner controls",
+				"resource", resource.Identity(), "controller", controller.Kind+" "+controller.Name,
+			)
+			return concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: fmt.Sprintf(
+					"Resource %s is %s; nothing to suspend.", resource.Identity(), foreignControllerReason(controller),
+				),
+			}, nil
+		}
+	}
+
 	// Short-circuit: if the resource should be deleted on suspend and already doesn't exist,
 	// skip Apply to avoid a create->delete churn loop on every reconcile.
 	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.
@@ -159,12 +183,16 @@ func suspendResource(
 		return suspension, nil
 	}
 
-	// Delete resource if it should be deleted
+	// Delete resource if it should be deleted. deleteEntry re-observes an entry
+	// registered with BlockOnForeignController, so an owner that claimed the
+	// object during the suspension apply keeps it.
 	if suspendable.DeleteOnSuspend() {
-		if err := rec.Client.Delete(ctx, object); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return suspension, fmt.Errorf("failed to delete resource: %w", err)
-			}
+		deleted, err := deleteEntry(ctx, rec, entry, object)
+		if err != nil {
+			return suspension, err
+		}
+		if !deleted {
+			return suspension, nil
 		}
 
 		rec.EventRecorder.Eventf(

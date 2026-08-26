@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -10,8 +11,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 func TestDeleteResources(t *testing.T) {
@@ -46,7 +49,7 @@ func TestDeleteResources(t *testing.T) {
 		resource.On("Identity").Return("v1/ConfigMap/test-cm")
 
 		// When
-		err = deleteResources(ctx, reconcileContext, []Resource{resource})
+		err = deleteResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}})
 
 		// Then
 		require.NoError(t, err)
@@ -73,7 +76,7 @@ func TestDeleteResources(t *testing.T) {
 		resource.On("Object").Return(resourceObject, nil)
 
 		// When
-		err := deleteResources(ctx, reconcileContext, []Resource{resource})
+		err := deleteResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource}})
 
 		// Then
 		require.NoError(t, err)
@@ -100,7 +103,7 @@ func TestDeleteResources(t *testing.T) {
 		resource2.On("Identity").Return("v1/ConfigMap/test-cm-2")
 
 		// When
-		err = deleteResources(ctx, reconcileContext, []Resource{resource1, resource2})
+		err = deleteResources(ctx, reconcileContext, []reconcileEntry{{Resource: resource1}, {Resource: resource2}})
 
 		// Then
 		require.Error(t, err)
@@ -148,7 +151,7 @@ func TestDeleteResources(t *testing.T) {
 		resource2.On("Identity").Return("v1/ConfigMap/test-cm-2")
 
 		// When
-		err := deleteResources(ctx, recCtx, []Resource{resource1, resource2})
+		err := deleteResources(ctx, recCtx, []reconcileEntry{{Resource: resource1}, {Resource: resource2}})
 
 		// Then
 		require.Error(t, err)
@@ -176,7 +179,7 @@ func TestDeleteResources(t *testing.T) {
 		recCtx := setupReconcileContext(scheme, owner, fakeClient)
 
 		// When
-		err := deleteResources(ctx, recCtx, []Resource{resource}, withDeletionReason("suspension"))
+		err := deleteResources(ctx, recCtx, []reconcileEntry{{Resource: resource}}, withDeletionReason("suspension"))
 
 		// Then
 		require.NoError(t, err)
@@ -205,7 +208,7 @@ func TestDeleteResources(t *testing.T) {
 		recCtx := setupReconcileContext(scheme, owner, fakeClient)
 
 		// When
-		err := deleteResources(ctx, recCtx, []Resource{resource})
+		err := deleteResources(ctx, recCtx, []reconcileEntry{{Resource: resource}})
 
 		// Then
 		require.NoError(t, err)
@@ -213,5 +216,82 @@ func TestDeleteResources(t *testing.T) {
 		recorder, ok := recCtx.EventRecorder.(*spyRecorder)
 		require.True(t, ok)
 		assert.Empty(t, recorder.recorded())
+	})
+}
+
+// claimBeforeDelete returns interceptor funcs that hand another owner the
+// controller reference of the named object at the moment it is about to be
+// deleted, reproducing an owner claiming the object between the check that
+// observed it as safe and the delete.
+func claimBeforeDelete(t *testing.T, name string) interceptor.Funcs {
+	t.Helper()
+	return interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			if obj.GetName() == name {
+				live := obj.DeepCopyObject().(client.Object)
+				require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(obj), live))
+				live.SetOwnerReferences([]metav1.OwnerReference{{
+					APIVersion: GroupVersion.String(), Kind: "MockOperatorCRD", Name: "other", UID: "other-uid",
+					Controller: ptr.To(true),
+				}})
+				require.NoError(t, c.Update(ctx, live))
+			}
+			return c.Delete(ctx, obj, opts...)
+		},
+	}
+}
+
+func TestDeleteResources_BlockOnForeignController(t *testing.T) {
+	ctx := t.Context()
+	scheme := setupScheme()
+	newOwner := func() *MockOperatorCRD {
+		return &MockOperatorCRD{ObjectMeta: metav1.ObjectMeta{Name: "owner", Namespace: "default", UID: "this-uid"}}
+	}
+	newResource := func(name string) (*MockResource, *corev1.ConfigMap) {
+		obj := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
+		res := &MockResource{}
+		res.On("Object").Return(obj, nil)
+		res.On("Identity").Return("ConfigMap/" + name)
+		return res, obj
+	}
+	guarded := func(res Resource) []reconcileEntry {
+		return []reconcileEntry{{Resource: res, Options: resourceOptions{BlockOnForeignController: true}}}
+	}
+
+	t.Run("treats an absent object as deleted without calling Delete", func(t *testing.T) {
+		owner := newOwner()
+		res, _ := newResource("absent")
+		deletes := 0
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).WithInterceptorFuncs(interceptor.Funcs{
+			Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+				deletes++
+				return c.Delete(ctx, obj, opts...)
+			},
+		}).Build()
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), guarded(res)))
+		assert.Equal(t, 0, deletes)
+	})
+
+	t.Run("deletes an object it observed as safe", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("safe")
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).Build()
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), guarded(res)))
+		assert.True(t, apierrors.IsNotFound(cli.Get(ctx, client.ObjectKeyFromObject(obj), &corev1.ConfigMap{})))
+	})
+
+	t.Run("does not delete an object another owner claims after it was observed as safe", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("claimed")
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(claimBeforeDelete(t, "claimed")).Build()
+
+		err := deleteResources(ctx, setupReconcileContext(scheme, owner, cli), guarded(res))
+		require.Error(t, err, "a delete that lost the race must be reported so the next reconcile rechecks")
+		got := &corev1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), got))
+		assert.Equal(t, "other-uid", string(got.OwnerReferences[0].UID))
 	})
 }

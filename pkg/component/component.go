@@ -147,7 +147,7 @@ type Component struct {
 	// reconcileResources holds all non-delete resources in registration order.
 	// Each entry pairs the resource with its full options.
 	reconcileResources []reconcileEntry
-	deleteResources    []Resource
+	deleteResources    []reconcileEntry
 	orphanResources    []Resource
 	resourceLookup     map[string]Resource
 
@@ -494,18 +494,19 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 
 // allManagedResources returns every managed (non-read-only) resource known to
 // the component, combining non-read-only reconcile entries and delete entries
-// into a single slice. This is used when the feature gate is disabled and all
-// managed resources must be deleted. Read-only resources are excluded because
-// they are never created or modified by the component.
-func (c *Component) allManagedResources() []Resource {
-	resources := make([]Resource, 0, len(c.reconcileResources)+len(c.deleteResources))
+// into a single slice, each with its resolved options. This is used when the
+// feature gate is disabled and all managed resources must be deleted. Read-only
+// resources are excluded because they are never created or modified by the
+// component.
+func (c *Component) allManagedResources() []reconcileEntry {
+	entries := make([]reconcileEntry, 0, len(c.reconcileResources)+len(c.deleteResources))
 	for _, entry := range c.reconcileResources {
 		if !entry.Options.ReadOnly {
-			resources = append(resources, entry.Resource)
+			entries = append(entries, entry)
 		}
 	}
-	resources = append(resources, c.deleteResources...)
-	return resources
+	entries = append(entries, c.deleteResources...)
+	return entries
 }
 
 // prerequisiteBarrierActive reports whether the prerequisite initialization

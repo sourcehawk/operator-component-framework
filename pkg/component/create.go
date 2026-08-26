@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -316,6 +317,25 @@ func reconcileResources(
 			}
 		}
 
+		// A managed resource that another owner controls is blocked before the
+		// apply, so the forced apply never takes that owner's fields.
+		if entry.Options.BlockOnForeignController && !entry.Options.ReadOnly {
+			_, controller, err := observeController(ctx, rec, resource)
+			if err != nil {
+				return nil, err
+			}
+			if controller != nil {
+				results = append(results, reconcileResult{
+					Entry: entry,
+					Status: convergingStatusWithReason{
+						Status: convergingStatusGuardBlocked,
+						Reason: foreignControllerReason(controller),
+					},
+				})
+				return results, nil
+			}
+		}
+
 		// Process the resource based on its mode
 		var result *reconcileResult
 		var err error
@@ -358,6 +378,57 @@ func reconcileResources(
 	}
 
 	return results, nil
+}
+
+// observeController reads the live object of resource and returns it together
+// with its controller owner reference when that reference points at an owner
+// other than rec.Owner. The object is nil when it does not exist; the
+// controller is nil when the object has no controller reference or is
+// controlled by rec.Owner.
+//
+// The read goes through rec.APIReader when one is set and rec.Client otherwise.
+// The manager's Client serves reads from the informer cache, which can still
+// hold the object without the controller reference the API server already
+// carries; a forced apply decided on that stale read would take the other
+// owner's fields, which is what the option exists to stop.
+func observeController(
+	ctx context.Context, rec ReconcileContext, resource Resource,
+) (client.Object, *metav1.OwnerReference, error) {
+	obj, err := resource.Object()
+	if err != nil {
+		return nil, nil, fmt.Errorf(
+			"failed to retrieve object for resource %s: %w", resource.Identity(), err,
+		)
+	}
+	live, err := newEmptyObjectLike(obj)
+	if err != nil {
+		return nil, nil, fmt.Errorf(
+			"failed to prepare controller check for resource %s: %w", resource.Identity(), err,
+		)
+	}
+	var reader client.Reader = rec.Client
+	if rec.APIReader != nil {
+		reader = rec.APIReader
+	}
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf(
+			"failed to read resource %s for controller check: %w", resource.Identity(), err,
+		)
+	}
+	controller := metav1.GetControllerOf(live)
+	if controller == nil || controller.UID == rec.Owner.GetUID() {
+		return live, nil, nil
+	}
+	return live, controller, nil
+}
+
+// foreignControllerReason is the blocked reason for an object controlled by
+// another owner, for example "controlled by DatabaseServer primary".
+func foreignControllerReason(controller *metav1.OwnerReference) string {
+	return fmt.Sprintf("controlled by %s %s", controller.Kind, controller.Name)
 }
 
 // mutateResource applies all desired-state mutations and sets the controller owner

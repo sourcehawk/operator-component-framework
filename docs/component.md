@@ -65,6 +65,7 @@ be passed without a guard.
 | `component.Auxiliary()`                             | The resource's health does not contribute to the component condition (a blocked guard still does)                                                                                                                                       |
 | `component.BlockOnAbsence()`                        | Read-only only: a NotFound records a blocked status and short-circuits the remaining resources                                                                                                                                          |
 | `component.IgnoreIfAbsent()`                        | Read-only only: a NotFound is silently ignored and last-known state is preserved                                                                                                                                                        |
+| `component.BlockOnForeignController()`              | Managed only: records a blocked status that names the owner whose controller reference is on the live object, then skips the apply and the remaining resources                                                                          |
 | `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                                                                                                                                                  |
 
 A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
@@ -78,6 +79,31 @@ lifecycle — for example, backup records that should persist after the applicat
 is still subject to explicit deletion: `Delete()`, `DeleteWhen()`, `GatedBy()` (when the gate is disabled), and
 suspension with `DeleteOnSuspend()` all delete it directly, regardless of the `Unowned` flag. Only Kubernetes GC
 (triggered by owner CR deletion) is suppressed.
+
+`BlockOnForeignController()` protects a managed resource from an object that another owner already controls. Before each
+apply, the component reads the live object. If the object has a controller reference to a different owner, the resource
+reports `Blocked` with the message `controlled by <Kind> <name>`. The component performs no apply and skips the
+resources after it, exactly as for a [blocked guard](#guards). The block clears on the first reconcile after that
+reference is gone. An object with no controller reference is never blocked, so the option does not detect two owners
+that both apply without one.
+
+The read goes through `ReconcileContext.APIReader` when it is set, and through `ReconcileContext.Client` otherwise. The
+cached client can miss a controller reference that the API server already has.
+
+Use the option on any resource that two custom resources can name. With the default controller reference, it replaces
+the rejection by the API server of a second controller with a readable condition. With `Unowned()`, it stops the forced
+apply of the second owner from taking the fields of the object (see
+[Server-Side Apply](primitives.md#server-side-apply)).
+
+Unlike a custom guard, the check also covers every path that deletes the object. During suspension, the component does
+not scale down or delete a resource that another owner controls. The resource counts as suspended, so the component
+condition reads `Suspended` with the usual `All resources are suspended.` message. The component also skips a deletion
+that `Delete()`, `DeleteWhen()`, `GatedBy()` or a disabled feature gate asks for. The component logs each skip with the
+controlling owner.
+
+A delete of an object that the read found safe carries the observed UID and resourceVersion as preconditions. If another
+owner claims the object between the read and the delete, the delete fails and the next reconcile reads the object again.
+The option requires a managed resource. A combination with `ReadOnly()` is a build error.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 
@@ -1121,8 +1147,13 @@ registered custom guard; it does not affect declared data guards.
   regardless of its participation mode, and all resources after it are skipped entirely. This override exists because a
   blocked guard halts the entire pipeline; subsequent required resources would otherwise be silently absent from health
   aggregation.
+- After the guard of a resource clears, the component also reads the controller reference of the live object for a
+  resource registered with [`BlockOnForeignController()`](#resource-registration-options). A reference to another owner
+  records `Blocked` in the same way, with the message `controlled by <Kind> <name>`.
 - On the next reconcile, if the guard clears (`Unblocked`), the resource is applied normally.
-- Guards are **not** evaluated during suspension. The suspension path always proceeds regardless of guard state.
+- Guards are **not** evaluated during suspension. The suspension path always proceeds regardless of guard state. The
+  exception is [`BlockOnForeignController()`](#resource-registration-options), which the component checks on every path.
+  As a result, a suspension never scales down or deletes an object that another owner controls.
 - A guard evaluation error is treated as a reconciliation failure and sets the condition to `Error`.
 
 A blocked guard produces a condition like:

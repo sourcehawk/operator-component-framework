@@ -105,6 +105,16 @@ func TestResolveResourceOptions(t *testing.T) {
 			want: resourceOptions{Delete: true, ParticipationMode: ParticipationModeAuxiliary},
 		},
 		{
+			name: "BlockOnForeignController sets flag",
+			opts: []ResourceOption{BlockOnForeignController()},
+			want: resourceOptions{BlockOnForeignController: true, ParticipationMode: ParticipationModeRequired},
+		},
+		{
+			name: "BlockOnForeignController alongside Unowned",
+			opts: []ResourceOption{Unowned(), BlockOnForeignController()},
+			want: resourceOptions{Unowned: true, BlockOnForeignController: true, ParticipationMode: ParticipationModeRequired},
+		},
+		{
 			name: "ReadOnly sets flag",
 			opts: []ResourceOption{ReadOnly()},
 			want: resourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired},
@@ -205,6 +215,11 @@ func TestResolveResourceOptions_ValidationErrors(t *testing.T) {
 			name:      "IgnoreIfAbsent without ReadOnly errors",
 			opts:      []ResourceOption{IgnoreIfAbsent()},
 			wantErrIs: "IgnoreIfAbsent requires ReadOnly",
+		},
+		{
+			name:      "BlockOnForeignController with ReadOnly errors",
+			opts:      []ResourceOption{ReadOnly(), BlockOnForeignController()},
+			wantErrIs: "BlockOnForeignController is mutually exclusive with ReadOnly",
 		},
 		{
 			name:      "BlockOnAbsence without ReadOnly errors",

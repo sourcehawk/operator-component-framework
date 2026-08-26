@@ -582,7 +582,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(cm, nil)
 			res.On("Identity").Return("ConfigMap/to-be-deleted")
 
-			comp.deleteResources = []Resource{res}
+			comp.deleteResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -648,7 +648,7 @@ var _ = Describe("Component Reconciler", func() {
 			res.On("Object").Return(nil, fmt.Errorf("delete object error"))
 			res.On("Identity").Return("failing-delete-resource")
 
-			comp.deleteResources = []Resource{res}
+			comp.deleteResources = []reconcileEntry{{Resource: res}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)
@@ -709,7 +709,7 @@ var _ = Describe("Component Reconciler", func() {
 			delRes.On("Identity").Return("failing-suspend-delete-resource")
 
 			comp.reconcileResources = []reconcileEntry{{Resource: susRes}}
-			comp.deleteResources = []Resource{delRes}
+			comp.deleteResources = []reconcileEntry{{Resource: delRes}}
 
 			// When
 			err := comp.Reconcile(ctx, recCtx)

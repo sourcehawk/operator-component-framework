@@ -88,18 +88,22 @@ func (c reconcileResults) convergeSummary() convergingStatusWithReason {
 }
 
 // evaluateGrace populates the GraceStatus field on each result whose resource
-// implements the Graceful interface, and on each guard-blocked result. A
-// guard-blocked result is Down with the guard's reason. Other results without
-// a Graceful resource are left with a nil GraceStatus.
+// implements the Graceful interface, and on each Blocked result. Other results
+// without a Graceful resource are left with a nil GraceStatus.
 func (c reconcileResults) evaluateGrace() error {
 	for i := range c {
 		// A blocked resource was neither applied nor read, so its object holds
 		// only desired state and its own grace handler would grade an empty
-		// status instead of the guard that holds it back.
+		// status instead of the reason it is blocked.
 		if c[i].Status.Status == convergingStatusGuardBlocked {
+			reason := c[i].Status.Reason
+			if reason == "" {
+				reason = fmt.Sprintf("%s is blocked", c[i].Entry.Resource.Identity())
+			}
+
 			c[i].GraceStatus = &concepts.GraceStatusWithReason{
 				Status: concepts.GraceStatusDown,
-				Reason: c[i].Status.Reason,
+				Reason: reason,
 			}
 			continue
 		}
@@ -197,9 +201,8 @@ func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 //     - Other states indicating non-healthiness do not remain stable.
 //
 //  5. Grace Expiry (Transition to Failure):
-//     - Once graceExpired() is true, the status transitions to Down or Degraded
-//     based on the aggregate grace status of the resources (see evaluateGrace).
-//     A resource blocked by a guard counts as Down with the guard's reason.
+//     - Once graceExpired() is true, a Down or Degraded aggregate grace status (see evaluateGrace)
+//     becomes the condition. A Healthy aggregate leaves the converging condition in place.
 //
 //  6. Sticky Failure:
 //     - Once Down or Degraded, the component stays in that failure state until it either

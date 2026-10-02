@@ -645,9 +645,12 @@ component is still not ready, a `Graceful` resource's `GraceStatus()` determines
 issue), `Degraded` (partially functional), or `Down` (non-functional). This prevents spurious failure alerts during
 normal operations such as rolling updates. See the [Guidelines](guidelines.md) for choosing grace durations.
 
-A resource that a [guard](#guards) blocks is not applied or read, so it has no live status to grade. After the period
-expires, the component counts a blocked resource as `Down` and uses the guard's reason as the message. The resources
-after it are skipped and are not graded.
+A resource that reports `Blocked` was not applied, so it has no live status to grade. A resource reports `Blocked` when
+its [guard](#guards) blocks it, or when [`BlockOnAbsence()`](#resource-registration-options) or
+[`BlockOnForeignController()`](#resource-registration-options) holds it back. After the period expires, the component
+counts a blocked resource as `Down` and uses the block reason as the message, for example
+`Component is down: controlled by <Kind> <name>`. If a custom guard returns `Blocked` with an empty reason, the message
+is `Component is down: <identity> is blocked`. The resources after a blocked resource are skipped and are not graded.
 
 ## Suspension
 

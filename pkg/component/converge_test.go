@@ -241,6 +241,23 @@ func TestConvergeResultsGraceSummary(t *testing.T) {
 		assert.Equal(t, "waiting for the license", summary.Reason)
 	})
 
+	t.Run("should name the blocked resource when the guard gives no reason", func(t *testing.T) {
+		blocked := &MockResource{}
+		blocked.On("Identity").Return("apps/v1/Deployment/test-ns/web")
+
+		results := reconcileResults{
+			{
+				Entry:  reconcileEntry{Resource: blocked},
+				Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked},
+			},
+		}
+
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
+		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
+		assert.Equal(t, "apps/v1/Deployment/test-ns/web is blocked", summary.Reason)
+	})
+
 	t.Run("should report a guard-blocked resource over healthy earlier resources", func(t *testing.T) {
 		applied := &MockAliveResource{}
 		applied.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy, Reason: "Ready"}, nil)

@@ -645,6 +645,10 @@ component is still not ready, a `Graceful` resource's `GraceStatus()` determines
 issue), `Degraded` (partially functional), or `Down` (non-functional). This prevents spurious failure alerts during
 normal operations such as rolling updates. See the [Guidelines](guidelines.md) for choosing grace durations.
 
+A resource that a [guard](#guards) blocks is not applied or read, so it has no live status to grade. After the period
+expires, the component counts a blocked resource as `Down` and uses the guard's reason as the message. The resources
+after it are skipped and are not graded.
+
 ## Suspension
 
 Suspension intentionally deactivates a component without deleting its configuration. When `Suspend(true)` is set on the
@@ -1167,6 +1171,16 @@ message: 'waiting for data "backend-endpoint"'
 
 The `Blocked` status is not sticky. It is self-reinforcing only because the guard re-evaluates on every reconcile; when
 the guard clears, the status immediately transitions to the next applicable state (for example `Creating`).
+
+The [grace period](#grace-period) runs while a guard is blocked. If the guard is still blocked when the period expires,
+the condition becomes `Down` and keeps the guard's reason:
+
+```yaml
+type: BackendReady
+status: "False"
+reason: Down
+message: 'Component is down: waiting for data "backend-endpoint"'
+```
 
 !!! note
 

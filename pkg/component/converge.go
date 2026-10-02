@@ -88,10 +88,22 @@ func (c reconcileResults) convergeSummary() convergingStatusWithReason {
 }
 
 // evaluateGrace populates the GraceStatus field on each result whose resource
-// implements the Graceful interface. Results without a Graceful resource are
-// left with a nil GraceStatus.
+// implements the Graceful interface, and on each guard-blocked result. A
+// guard-blocked result is Down with the guard's reason. Other results without
+// a Graceful resource are left with a nil GraceStatus.
 func (c reconcileResults) evaluateGrace() error {
 	for i := range c {
+		// A blocked resource was neither applied nor read, so its object holds
+		// only desired state and its own grace handler would grade an empty
+		// status instead of the guard that holds it back.
+		if c[i].Status.Status == convergingStatusGuardBlocked {
+			c[i].GraceStatus = &concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDown,
+				Reason: c[i].Status.Reason,
+			}
+			continue
+		}
+
 		graceful, ok := c[i].Entry.Resource.(concepts.Graceful)
 		if !ok {
 			continue
@@ -106,8 +118,8 @@ func (c reconcileResults) evaluateGrace() error {
 }
 
 // graceSummary aggregates the evaluated grace statuses into a single result.
-// The most severe status wins (Down > Degraded > Healthy). If no Graceful
-// resources are present, it returns Down. Must be called after evaluateGrace.
+// The most severe status wins (Down > Degraded > Healthy). If no result
+// carries a grace status, it returns Down. Must be called after evaluateGrace.
 func (c reconcileResults) graceSummary() concepts.GraceStatusWithReason {
 	var maxStatus concepts.GraceStatus
 	var reasons []string
@@ -186,7 +198,8 @@ func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 //
 //  5. Grace Expiry (Transition to Failure):
 //     - Once graceExpired() is true, the status transitions to Down or Degraded
-//     based on the aggregate status of resources that implement the Alive interface.
+//     based on the aggregate grace status of the resources (see evaluateGrace).
+//     A resource blocked by a guard counts as Down with the guard's reason.
 //
 //  6. Sticky Failure:
 //     - Once Down or Degraded, the component stays in that failure state until it either

@@ -4,6 +4,7 @@ package primitives
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/sourcehawk/operator-component-framework/e2e/framework"
@@ -324,7 +325,8 @@ var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 		It("should report Degraded when new pods never become ready while old pods stay ready", func() {
 			gracePeriod := 30 * time.Second
 			depName := "web-stuck"
-			var breakReadiness bool
+			// The test goroutine sets breakReadiness and the reconcile goroutine reads it.
+			var breakReadiness atomic.Bool
 
 			// With maxUnavailable 0 the deployment controller keeps every old pod
 			// until a new pod is ready. The new pods fail their readiness probe, so
@@ -338,7 +340,7 @@ var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 						MaxSurge:       ptr.To(intstr.FromInt32(1)),
 					},
 				}
-				if breakReadiness {
+				if breakReadiness.Load() {
 					dep.Spec.Template.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							HTTPGet: &corev1.HTTPGetAction{Path: "/", Port: intstr.FromInt32(8081)},
@@ -367,7 +369,7 @@ var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
 
 			By("rolling out a pod template whose pods never become ready")
-			breakReadiness = true
+			breakReadiness.Store(true)
 			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
 				if a.Annotations == nil {
 					a.Annotations = map[string]string{}

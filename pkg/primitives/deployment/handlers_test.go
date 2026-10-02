@@ -351,6 +351,63 @@ func TestDefaultHandlers_UnfinishedRollout(t *testing.T) {
 	}
 }
 
+// TestDefaultHandlers_PausedRollout covers a paused Deployment whose pod template
+// changed. The deployment controller does not roll out a paused Deployment, so
+// the handlers do not wait for the rollout, but they still require the current
+// generation to be observed and all desired replicas to be ready.
+func TestDefaultHandlers_PausedRollout(t *testing.T) {
+	paused := func(observedGeneration, readyReplicas int32) *appsv1.Deployment {
+		return &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Generation: 2},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(3)),
+				Paused:   true,
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: int64(observedGeneration),
+				Replicas:           3,
+				ReadyReplicas:      readyReplicas,
+			},
+		}
+	}
+
+	t.Run("healthy when all old replicas are ready", func(t *testing.T) {
+		deployment := paused(2, 3)
+
+		converge, err := DefaultConvergingStatusHandler(concepts.ConvergingOperationNone, deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.AliveConvergingStatusHealthy, converge.Status)
+
+		grace, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusHealthy, grace.Status)
+	})
+
+	t.Run("not healthy while the generation is stale", func(t *testing.T) {
+		deployment := paused(1, 3)
+
+		converge, err := DefaultConvergingStatusHandler(concepts.ConvergingOperationNone, deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.AliveConvergingStatusUpdating, converge.Status)
+
+		grace, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, grace.Status)
+	})
+
+	t.Run("not healthy while replicas are not ready", func(t *testing.T) {
+		deployment := paused(2, 2)
+
+		converge, err := DefaultConvergingStatusHandler(concepts.ConvergingOperationNone, deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.AliveConvergingStatusScaling, converge.Status)
+
+		grace, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, grace.Status)
+	})
+}
+
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 	assert.False(t, DefaultDeleteOnSuspendHandler(deploy))

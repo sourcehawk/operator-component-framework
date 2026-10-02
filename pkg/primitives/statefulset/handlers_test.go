@@ -441,6 +441,33 @@ func TestDefaultHandlers_RolloutHeldBack(t *testing.T) {
 			},
 		},
 		{
+			// The statefulset controller counts the partition from
+			// Spec.Ordinals.Start, so a partition of 1 with start 5 holds back
+			// only the pod with ordinal 5.
+			name: "partition counts from a custom start ordinal",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(3)),
+					Ordinals: &appsv1.StatefulSetOrdinals{Start: 5},
+					UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+						Type: appsv1.RollingUpdateStatefulSetStrategyType,
+						RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{
+							Partition: ptr.To(int32(1)),
+						},
+					},
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           3,
+					UpdatedReplicas:    2,
+					ReadyReplicas:      3,
+					CurrentRevision:    "web-1",
+					UpdateRevision:     "web-2",
+				},
+			},
+		},
+		{
 			name: "OnDelete leaves replicas on the old revision",
 			sts: &appsv1.StatefulSet{
 				ObjectMeta: metav1.ObjectMeta{Generation: 2},

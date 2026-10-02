@@ -15,6 +15,7 @@ import (
 //   - Status.ReadyReplicas equals Spec.Replicas (1 when nil).
 //   - The rollout is complete: Status.UpdatedReplicas is not less than Spec.Replicas, and
 //     Status.Replicas is not more than Status.UpdatedReplicas, so no old replicas remain.
+//     A paused Deployment (Spec.Paused) skips this check.
 //
 // Otherwise it reports Creating when the apply created the Deployment. For other operations it
 // reports Updating while the controller is behind the spec or the rollout is incomplete. While the
@@ -76,6 +77,12 @@ func desiredReplicas(deployment *appsv1.Deployment) int32 {
 // pendingRollout reports why the rollout of the current pod template is not complete, or false
 // when it is complete.
 func pendingRollout(deployment *appsv1.Deployment, desiredReplicas int32) (string, bool) {
+	// The deployment controller does not roll out a paused Deployment, so old replicas can
+	// remain while it is paused.
+	if deployment.Spec.Paused {
+		return "", false
+	}
+
 	status := deployment.Status
 	if status.UpdatedReplicas < desiredReplicas {
 		return fmt.Sprintf("Waiting for rollout: %d/%d replicas updated", status.UpdatedReplicas, desiredReplicas), true

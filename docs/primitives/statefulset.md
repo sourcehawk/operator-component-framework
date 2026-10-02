@@ -273,10 +273,10 @@ healthy StatefulSet. All of these conditions must be true:
 
 The revisions are `Status.CurrentRevision` and `Status.UpdateRevision`. The statefulset controller sets
 `Status.CurrentRevision` to `Status.UpdateRevision` only when a rolling update is complete. With a partition, the pods
-with an ordinal less than the partition keep the current revision, so the revisions stay different after the partitioned
-rollout is complete. With `OnDelete`, the controller does not replace pods. Pods move to the update revision only when
-something outside the controller deletes them, so the handlers cannot wait for it. To track an `OnDelete` rollout, use
-`WithCustomConvergeStatus` and `WithCustomGraceStatus`.
+with an ordinal less than `Spec.Ordinals.Start` plus the partition keep the current revision, so the revisions stay
+different after the partitioned rollout is complete. With `OnDelete`, the controller does not replace pods. Pods move to
+the update revision only when something outside the controller deletes them, so the handlers cannot wait for it. To
+track an `OnDelete` rollout, use `WithCustomConvergeStatus` and `WithCustomGraceStatus`.
 
 ### ConvergingStatus
 

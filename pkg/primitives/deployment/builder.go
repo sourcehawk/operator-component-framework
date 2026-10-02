@@ -70,8 +70,9 @@ func (b *Builder) WithMutation(ms ...Mutation) *Builder {
 // Deployment has reached its desired state.
 //
 // The default behavior uses DefaultConvergingStatusHandler, which considers a
-// Deployment ready when the deployment controller has observed the current spec, all desired
-// replicas are ready, and the rollout is complete.
+// Deployment ready when the deployment controller has observed the current spec, the ready count
+// equals the desired count, and the rollout is complete, with the exceptions that
+// DefaultConvergingStatusHandler documents.
 // Use this method if your Deployment requires more complex health checks, such
 // as waiting for specific annotations, status conditions, or external signals.
 //

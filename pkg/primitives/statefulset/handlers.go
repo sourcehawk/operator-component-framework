@@ -19,14 +19,10 @@ import (
 // not be less than Spec.Replicas, and Status.CurrentRevision must equal Status.UpdateRevision.
 // For RollingUpdate with a partition more than zero, Status.UpdatedReplicas must not be less than
 // Spec.Replicas minus the partition. The revisions are not compared, because the replicas below
-// the partition keep the current revision. For OnDelete, the rollout is always complete: the
-// controller does not replace pods, so the handler cannot wait for them to move to the update
-// revision.
+// the partition keep the current revision. For OnDelete, Healthy does not mean that the pods run
+// the update revision, because the controller replaces a pod only after a user deletes it.
 //
-// Otherwise it reports Creating when the apply created the StatefulSet. For other operations it
-// reports Updating while the controller is behind the spec or the rollout is incomplete. While the
-// ready count differs from the desired count, it reports Updating for ConvergingOperationUpdated
-// and Scaling for all other operations.
+// Otherwise it reports Creating, Updating, or Scaling.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
@@ -117,7 +113,8 @@ func pendingRollout(sts *appsv1.StatefulSet, desiredReplicas int32) (string, boo
 //
 // It categorizes the current state into:
 //   - GraceStatusHealthy: DefaultConvergingStatusHandler reports Healthy for the same StatefulSet.
-//   - GraceStatusDown: Spec.Replicas is more than zero and no replicas are ready.
+//   - GraceStatusDown: No replicas are ready and the desired count (Spec.Replicas, 1 when nil) is
+//     more than zero.
 //   - GraceStatusDegraded: All other states. These include a statefulset controller that has not
 //     observed the current generation, a ready count that differs from the desired count, and an
 //     incomplete rollout.

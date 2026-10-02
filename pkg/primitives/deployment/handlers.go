@@ -17,10 +17,7 @@ import (
 //     Status.Replicas is not more than Status.UpdatedReplicas, so no old replicas remain.
 //     A paused Deployment (Spec.Paused) skips this check.
 //
-// Otherwise it reports Creating when the apply created the Deployment. For other operations it
-// reports Updating while the controller is behind the spec or the rollout is incomplete. While the
-// ready count differs from the desired count, it reports Updating for ConvergingOperationUpdated
-// and Scaling for all other operations.
+// Otherwise it reports Creating, Updating, or Scaling.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
@@ -104,7 +101,8 @@ func pendingRollout(deployment *appsv1.Deployment, desiredReplicas int32) (strin
 //
 // It categorizes the current state into:
 //   - GraceStatusHealthy: DefaultConvergingStatusHandler reports Healthy for the same Deployment.
-//   - GraceStatusDown: Spec.Replicas is more than zero and no replicas are ready.
+//   - GraceStatusDown: No replicas are ready and the desired count (Spec.Replicas, 1 when nil) is
+//     more than zero.
 //   - GraceStatusDegraded: All other states. These include a deployment controller that has not
 //     observed the current generation, a ready count that differs from the desired count, and an
 //     incomplete rollout.

@@ -73,7 +73,8 @@ func (r *Resource) Mutate(current client.Object) error {
 // ConvergingStatus evaluates if the StatefulSet has successfully reached its desired state.
 //
 // By default, it uses DefaultConvergingStatusHandler, which requires the statefulset controller to
-// have observed the current spec, all desired replicas to be ready, and the rollout to be complete.
+// have observed the current spec, the ready count to equal the desired count, and the rollout to be
+// complete, with the exceptions that DefaultConvergingStatusHandler documents.
 //
 // The return value includes a descriptive status (Healthy, Creating, Updating, or Scaling)
 // and a human-readable reason, which are used to update the component's conditions.

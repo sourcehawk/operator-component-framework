@@ -377,6 +377,10 @@ var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 				a.Annotations["e2e.ocf.io/trigger"] = "break-readiness"
 			})
 
+			By("reporting Updating before the grace period expires")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), gracePeriod/2, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Updating"))
+
 			By("waiting for the rollout to stall with all old replicas ready")
 			Eventually(func(g Gomega) {
 				var dep appsv1.Deployment
@@ -385,10 +389,6 @@ var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 				g.Expect(dep.Status.UpdatedReplicas).To(Equal(int32(1)))
 				g.Expect(dep.Status.ReadyReplicas).To(Equal(int32(2)))
 			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
-
-			By("reporting Updating before the grace period expires")
-			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), gracePeriod/2, framework.DefaultPolling).
-				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Updating"))
 
 			By("waiting for grace period to expire")
 			time.Sleep(gracePeriod + 2*time.Second)

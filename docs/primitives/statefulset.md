@@ -265,11 +265,11 @@ healthy StatefulSet. All of these conditions must be true:
 - `Status.ReadyReplicas` equals the desired replica count.
 - The rollout is complete for the update strategy of the StatefulSet. The table below gives the rule for each strategy.
 
-| Update strategy                                  | The rollout is complete when                                                              |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `RollingUpdate` (or no type) without a partition | `Status.UpdatedReplicas` is not less than the desired count, and the revisions are equal. |
-| `RollingUpdate` with a partition more than zero  | `Status.UpdatedReplicas` is not less than the desired count minus the partition.          |
-| `OnDelete`                                       | Always.                                                                                   |
+| Update strategy                                  | The rollout is complete when                                                     |
+| ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `RollingUpdate` (or no type) without a partition | `Status.UpdatedReplicas` equals the desired count, and the revisions are equal.  |
+| `RollingUpdate` with a partition more than zero  | `Status.UpdatedReplicas` is not less than the desired count minus the partition. |
+| `OnDelete`                                       | Always.                                                                          |
 
 The revisions are `Status.CurrentRevision` and `Status.UpdateRevision`. The statefulset controller sets
 `Status.CurrentRevision` to `Status.UpdateRevision` only when a rolling update is complete. With a partition, the pods

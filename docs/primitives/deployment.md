@@ -238,9 +238,9 @@ healthy Deployment. All of these conditions must be true:
 
 - The deployment controller has observed the current spec: `Status.ObservedGeneration >= Generation`.
 - `Status.ReadyReplicas` equals the desired replica count.
-- The rollout is complete: `Status.UpdatedReplicas` is not less than the desired replica count, and `Status.Replicas` is
-  not more than `Status.UpdatedReplicas`, so no old replicas remain. A paused Deployment (`Spec.Paused`) skips this
-  check, because the deployment controller does not roll out a paused Deployment. The other two checks still apply.
+- The rollout is complete: `Status.UpdatedReplicas` equals the desired replica count, and `Status.Replicas` is not more
+  than `Status.UpdatedReplicas`, so no old replicas remain. A paused Deployment (`Spec.Paused`) skips this check,
+  because the deployment controller does not roll out a paused Deployment. The other two checks still apply.
 
 The rollout check is necessary because the deployment controller keeps old pods until the new pods are ready. If the new
 pods never become ready, `Status.ReadyReplicas` can stay at the desired count while the rollout does not end.

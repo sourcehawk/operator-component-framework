@@ -317,6 +317,24 @@ func TestDefaultHandlers_UnfinishedRollout(t *testing.T) {
 			wantGraceReason: "Waiting for rollout: 3 old replicas pending termination",
 		},
 		{
+			name: "updated replica set still above the desired count",
+			op:   concepts.ConvergingOperationNone,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           4,
+					UpdatedReplicas:    4,
+					ReadyReplicas:      3,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for scale-down: 4/3 replicas",
+			wantGraceReason: "Waiting for scale-down: 4/3 replicas",
+		},
+		{
 			name: "unfinished rollout of a just created deployment",
 			op:   concepts.ConvergingOperationCreated,
 			deployment: &appsv1.Deployment{

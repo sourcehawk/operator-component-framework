@@ -16,7 +16,7 @@ import (
 //   - The rollout is complete for Spec.UpdateStrategy, as described below.
 //
 // For RollingUpdate (or an empty strategy type) without a partition, Status.UpdatedReplicas must
-// not be less than Spec.Replicas, and Status.CurrentRevision must equal Status.UpdateRevision.
+// equal Spec.Replicas, and Status.CurrentRevision must equal Status.UpdateRevision.
 // For RollingUpdate with a partition more than zero, Status.UpdatedReplicas must not be less than
 // Spec.Replicas minus the partition. The revisions are not compared, because the replicas below
 // the partition keep the current revision. For OnDelete, Healthy does not mean that the pods run
@@ -97,6 +97,10 @@ func pendingRollout(sts *appsv1.StatefulSet, desiredReplicas int32) (string, boo
 
 	if status.UpdatedReplicas < desiredReplicas {
 		return fmt.Sprintf("Waiting for rollout: %d/%d replicas updated", status.UpdatedReplicas, desiredReplicas), true
+	}
+
+	if status.UpdatedReplicas > desiredReplicas {
+		return fmt.Sprintf("Waiting for scale-down: %d/%d replicas", status.UpdatedReplicas, desiredReplicas), true
 	}
 
 	// The statefulset controller moves CurrentRevision to UpdateRevision only when the rolling

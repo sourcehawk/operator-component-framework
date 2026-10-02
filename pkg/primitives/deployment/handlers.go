@@ -13,7 +13,7 @@ import (
 //   - The deployment controller has observed the current generation
 //     (Status.ObservedGeneration >= ObjectMeta.Generation).
 //   - Status.ReadyReplicas equals Spec.Replicas (1 when nil).
-//   - The rollout is complete: Status.UpdatedReplicas is not less than Spec.Replicas, and
+//   - The rollout is complete: Status.UpdatedReplicas equals Spec.Replicas, and
 //     Status.Replicas is not more than Status.UpdatedReplicas, so no old replicas remain.
 //     A paused Deployment (Spec.Paused) skips this check.
 //
@@ -83,6 +83,10 @@ func pendingRollout(deployment *appsv1.Deployment, desiredReplicas int32) (strin
 	status := deployment.Status
 	if status.UpdatedReplicas < desiredReplicas {
 		return fmt.Sprintf("Waiting for rollout: %d/%d replicas updated", status.UpdatedReplicas, desiredReplicas), true
+	}
+
+	if status.UpdatedReplicas > desiredReplicas {
+		return fmt.Sprintf("Waiting for scale-down: %d/%d replicas", status.UpdatedReplicas, desiredReplicas), true
 	}
 
 	// With a surge, the controller can update every desired replica while old pods still run

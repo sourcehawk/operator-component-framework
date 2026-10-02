@@ -401,6 +401,21 @@ func TestDefaultHandlers_PausedRollout(t *testing.T) {
 		assert.Equal(t, concepts.GraceStatusHealthy, grace.Status)
 	})
 
+	t.Run("not healthy while extra replicas scale down", func(t *testing.T) {
+		deployment := paused(2, 3)
+		deployment.Status.Replicas = 4
+
+		converge, err := DefaultConvergingStatusHandler(concepts.ConvergingOperationNone, deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.AliveConvergingStatusUpdating, converge.Status)
+		assert.Equal(t, "Waiting for scale-down: 4/3 replicas", converge.Reason)
+
+		grace, err := DefaultGraceStatusHandler(deployment)
+		require.NoError(t, err)
+		assert.Equal(t, concepts.GraceStatusDegraded, grace.Status)
+		assert.Equal(t, "Waiting for scale-down: 4/3 replicas", grace.Reason)
+	})
+
 	t.Run("not healthy while the generation is stale", func(t *testing.T) {
 		deployment := paused(1, 3)
 

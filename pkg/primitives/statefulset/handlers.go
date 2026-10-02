@@ -13,6 +13,7 @@ import (
 //   - The statefulset controller has observed the current generation
 //     (Status.ObservedGeneration >= ObjectMeta.Generation).
 //   - Status.ReadyReplicas equals Spec.Replicas (1 when nil).
+//   - Status.Replicas is not more than Spec.Replicas, for every update strategy.
 //   - The rollout is complete for Spec.UpdateStrategy, as described below.
 //
 // For RollingUpdate (or an empty strategy type) without a partition, Status.UpdatedReplicas must
@@ -79,12 +80,16 @@ func desiredReplicas(sts *appsv1.StatefulSet) int32 {
 // pendingRollout reports why the rollout of the current pod template is not complete, or false
 // when it is complete for the update strategy of the StatefulSet.
 func pendingRollout(sts *appsv1.StatefulSet, desiredReplicas int32) (string, bool) {
+	status := sts.Status
+	if status.Replicas > desiredReplicas {
+		return fmt.Sprintf("Waiting for scale-down: %d/%d replicas", status.Replicas, desiredReplicas), true
+	}
+
 	strategy := sts.Spec.UpdateStrategy
 	if strategy.Type == appsv1.OnDeleteStatefulSetStrategyType {
 		return "", false
 	}
 
-	status := sts.Status
 	if strategy.RollingUpdate != nil && strategy.RollingUpdate.Partition != nil && *strategy.RollingUpdate.Partition > 0 {
 		target := max(desiredReplicas-*strategy.RollingUpdate.Partition, 0)
 		if status.UpdatedReplicas < target {
@@ -97,10 +102,6 @@ func pendingRollout(sts *appsv1.StatefulSet, desiredReplicas int32) (string, boo
 
 	if status.UpdatedReplicas < desiredReplicas {
 		return fmt.Sprintf("Waiting for rollout: %d/%d replicas updated", status.UpdatedReplicas, desiredReplicas), true
-	}
-
-	if status.UpdatedReplicas > desiredReplicas {
-		return fmt.Sprintf("Waiting for scale-down: %d/%d replicas", status.UpdatedReplicas, desiredReplicas), true
 	}
 
 	// The statefulset controller moves CurrentRevision to UpdateRevision only when the rolling

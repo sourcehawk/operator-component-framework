@@ -15,7 +15,8 @@ import (
 //   - Status.ReadyReplicas equals Spec.Replicas (1 when nil).
 //   - The rollout is complete: Status.UpdatedReplicas equals Spec.Replicas, and
 //     Status.Replicas is not more than Status.UpdatedReplicas, so no old replicas remain.
-//     A paused Deployment (Spec.Paused) skips this check.
+//     For a paused Deployment (Spec.Paused), only Status.Replicas must not be more than
+//     Spec.Replicas.
 //
 // Otherwise it reports Creating, Updating, or Scaling.
 //
@@ -74,13 +75,18 @@ func desiredReplicas(deployment *appsv1.Deployment) int32 {
 // pendingRollout reports why the rollout of the current pod template is not complete, or false
 // when it is complete.
 func pendingRollout(deployment *appsv1.Deployment, desiredReplicas int32) (string, bool) {
+	status := deployment.Status
+
 	// The deployment controller does not roll out a paused Deployment, so old replicas can
 	// remain while it is paused.
 	if deployment.Spec.Paused {
+		// The deployment controller still scales a paused Deployment, so wait for the scale-down.
+		if status.Replicas > desiredReplicas {
+			return fmt.Sprintf("Waiting for scale-down: %d/%d replicas", status.Replicas, desiredReplicas), true
+		}
 		return "", false
 	}
 
-	status := deployment.Status
 	if status.UpdatedReplicas < desiredReplicas {
 		return fmt.Sprintf("Waiting for rollout: %d/%d replicas updated", status.UpdatedReplicas, desiredReplicas), true
 	}

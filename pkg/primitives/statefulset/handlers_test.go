@@ -372,6 +372,59 @@ func TestDefaultHandlers_UnfinishedRollout(t *testing.T) {
 			wantGraceReason: "Waiting for scale-down: 4/3 replicas",
 		},
 		{
+			name: "scale-down with a partition",
+			op:   concepts.ConvergingOperationNone,
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(3)),
+					UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+						Type: appsv1.RollingUpdateStatefulSetStrategyType,
+						RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{
+							Partition: ptr.To(int32(1)),
+						},
+					},
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           4,
+					UpdatedReplicas:    4,
+					ReadyReplicas:      3,
+					CurrentRevision:    "web-2",
+					UpdateRevision:     "web-2",
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for scale-down: 4/3 replicas",
+			wantGraceReason: "Waiting for scale-down: 4/3 replicas",
+		},
+		{
+			name: "scale-down with OnDelete",
+			op:   concepts.ConvergingOperationNone,
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To(int32(3)),
+					UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+						Type: appsv1.OnDeleteStatefulSetStrategyType,
+					},
+				},
+				Status: appsv1.StatefulSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           4,
+					UpdatedReplicas:    4,
+					ReadyReplicas:      3,
+					CurrentRevision:    "web-2",
+					UpdateRevision:     "web-2",
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for scale-down: 4/3 replicas",
+			wantGraceReason: "Waiting for scale-down: 4/3 replicas",
+		},
+		{
 			name: "unfinished rollout of a just created statefulset",
 			op:   concepts.ConvergingOperationCreated,
 			sts: &appsv1.StatefulSet{

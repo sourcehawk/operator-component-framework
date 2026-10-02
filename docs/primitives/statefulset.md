@@ -263,6 +263,8 @@ healthy StatefulSet. All of these conditions must be true:
 
 - The statefulset controller has observed the current spec: `Status.ObservedGeneration >= Generation`.
 - `Status.ReadyReplicas` equals the desired replica count.
+- `Status.Replicas` is not more than the desired replica count, so a scale-down is complete. This applies to every
+  update strategy, because the controller removes extra pods whatever the strategy is.
 - The rollout is complete for the update strategy of the StatefulSet. The table below gives the rule for each strategy.
 
 | Update strategy                                  | The rollout is complete when                                                     |

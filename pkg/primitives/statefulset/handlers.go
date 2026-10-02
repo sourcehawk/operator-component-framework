@@ -9,11 +9,24 @@ import (
 
 // DefaultConvergingStatusHandler is the default logic for determining if a StatefulSet has reached its desired state.
 //
-// It considers a StatefulSet ready when the statefulset controller has observed the current generation
-// (Status.ObservedGeneration >= ObjectMeta.Generation) and Status.ReadyReplicas matches the
-// Spec.Replicas (defaulting to 1 if nil). If the controller has not yet observed the latest spec,
-// the handler reports Creating (when the resource was just created) or Updating (otherwise) to avoid
-// falsely reporting health based on stale status fields.
+// It reports Healthy when all of these are true:
+//   - The statefulset controller has observed the current generation
+//     (Status.ObservedGeneration >= ObjectMeta.Generation).
+//   - Status.ReadyReplicas equals Spec.Replicas (1 when nil).
+//   - The rollout is complete for Spec.UpdateStrategy, as described below.
+//
+// For RollingUpdate (or an empty strategy type) without a partition, Status.UpdatedReplicas must
+// not be less than Spec.Replicas, and Status.CurrentRevision must equal Status.UpdateRevision.
+// For RollingUpdate with a partition more than zero, Status.UpdatedReplicas must not be less than
+// Spec.Replicas minus the partition. The revisions are not compared, because the replicas below
+// the partition keep the current revision. For OnDelete, the rollout is always complete: the
+// controller does not replace pods, so the handler cannot wait for them to move to the update
+// revision.
+//
+// Otherwise it reports Creating when the apply created the StatefulSet. For other operations it
+// reports Updating while the controller is behind the spec or the rollout is incomplete. While the
+// ready count differs from the desired count, it reports Updating for ConvergingOperationUpdated
+// and Scaling for all other operations.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
@@ -26,71 +39,128 @@ func DefaultConvergingStatusHandler(
 		return *status, nil
 	}
 
-	desiredReplicas := int32(1)
-	if sts.Spec.Replicas != nil {
-		desiredReplicas = *sts.Spec.Replicas
-	}
+	desired := desiredReplicas(sts)
 
-	if sts.Status.ReadyReplicas == desiredReplicas {
+	if sts.Status.ReadyReplicas != desired {
+		var status concepts.AliveConvergingStatus
+		switch op {
+		case concepts.ConvergingOperationCreated:
+			status = concepts.AliveConvergingStatusCreating
+		case concepts.ConvergingOperationUpdated:
+			status = concepts.AliveConvergingStatusUpdating
+		default:
+			status = concepts.AliveConvergingStatusScaling
+		}
+
 		return concepts.AliveStatusWithReason{
-			Status: concepts.AliveConvergingStatusHealthy,
-			Reason: "All replicas are ready",
+			Status: status,
+			Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", sts.Status.ReadyReplicas, desired),
 		}, nil
 	}
 
-	var status concepts.AliveConvergingStatus
-	switch op {
-	case concepts.ConvergingOperationCreated:
-		status = concepts.AliveConvergingStatusCreating
-	case concepts.ConvergingOperationUpdated:
-		status = concepts.AliveConvergingStatusUpdating
-	default:
-		status = concepts.AliveConvergingStatusScaling
+	if reason, pending := pendingRollout(sts, desired); pending {
+		status := concepts.AliveConvergingStatusUpdating
+		if op == concepts.ConvergingOperationCreated {
+			status = concepts.AliveConvergingStatusCreating
+		}
+
+		return concepts.AliveStatusWithReason{Status: status, Reason: reason}, nil
 	}
 
 	return concepts.AliveStatusWithReason{
-		Status: status,
-		Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", sts.Status.ReadyReplicas, desiredReplicas),
+		Status: concepts.AliveConvergingStatusHealthy,
+		Reason: "All replicas are ready",
 	}, nil
+}
+
+func desiredReplicas(sts *appsv1.StatefulSet) int32 {
+	if sts.Spec.Replicas == nil {
+		return 1
+	}
+	return *sts.Spec.Replicas
+}
+
+// pendingRollout reports why the rollout of the current pod template is not complete, or false
+// when it is complete for the update strategy of the StatefulSet.
+func pendingRollout(sts *appsv1.StatefulSet, desiredReplicas int32) (string, bool) {
+	strategy := sts.Spec.UpdateStrategy
+	if strategy.Type == appsv1.OnDeleteStatefulSetStrategyType {
+		return "", false
+	}
+
+	status := sts.Status
+	if strategy.RollingUpdate != nil && strategy.RollingUpdate.Partition != nil && *strategy.RollingUpdate.Partition > 0 {
+		target := max(desiredReplicas-*strategy.RollingUpdate.Partition, 0)
+		if status.UpdatedReplicas < target {
+			return fmt.Sprintf(
+				"Waiting for partitioned rollout: %d/%d replicas updated", status.UpdatedReplicas, target,
+			), true
+		}
+		return "", false
+	}
+
+	if status.UpdatedReplicas < desiredReplicas {
+		return fmt.Sprintf("Waiting for rollout: %d/%d replicas updated", status.UpdatedReplicas, desiredReplicas), true
+	}
+
+	// The statefulset controller moves CurrentRevision to UpdateRevision only when the rolling
+	// update is complete, so the counts alone can look done one sync before the rollout is.
+	if status.CurrentRevision != status.UpdateRevision {
+		return fmt.Sprintf("Waiting for rollout to revision %s", status.UpdateRevision), true
+	}
+
+	return "", false
 }
 
 // DefaultGraceStatusHandler provides a default health assessment of the StatefulSet when it has not yet
 // reached full readiness.
 //
 // It categorizes the current state into:
-//   - GraceStatusHealthy: ReadyReplicas matches the desired replica count.
-//   - GraceStatusDegraded: At least one replica is ready, but the desired count is not met.
-//   - GraceStatusDown: No replicas are ready.
+//   - GraceStatusHealthy: DefaultConvergingStatusHandler reports Healthy for the same StatefulSet.
+//   - GraceStatusDown: Spec.Replicas is more than zero and no replicas are ready.
+//   - GraceStatusDegraded: All other states. These include a statefulset controller that has not
+//     observed the current generation, a ready count that differs from the desired count, and an
+//     incomplete rollout.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultGraceStatusHandler(sts *appsv1.StatefulSet) (concepts.GraceStatusWithReason, error) {
-	desiredReplicas := int32(1)
-	if sts.Spec.Replicas != nil {
-		desiredReplicas = *sts.Spec.Replicas
-	}
+	desired := desiredReplicas(sts)
 
-	// Use == rather than >= so that grace and convergence agree on replica state.
-	// Both handlers evaluate the same object in the same reconcile loop, so grace
-	// must not return Healthy for a state that convergence considers non-healthy
-	// (e.g. ReadyReplicas > desiredReplicas during scale-down).
-	if sts.Status.ReadyReplicas == desiredReplicas {
+	if sts.Status.ReadyReplicas == 0 && desired > 0 {
 		return concepts.GraceStatusWithReason{
-			Status: concepts.GraceStatusHealthy,
-			Reason: "All replicas are ready",
+			Status: concepts.GraceStatusDown,
+			Reason: "No replicas are ready",
 		}, nil
 	}
 
-	if sts.Status.ReadyReplicas > 0 {
+	if sts.Status.ObservedGeneration < sts.Generation {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: "Waiting for statefulset controller to observe latest spec",
+		}, nil
+	}
+
+	// Use != rather than < so that grace and convergence agree on replica state.
+	// Grace must not return Healthy for a state that convergence considers
+	// non-healthy (e.g. ReadyReplicas > desired during scale-down).
+	if sts.Status.ReadyReplicas != desired {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDegraded,
 			Reason: "StatefulSet partially available",
 		}, nil
 	}
 
+	if reason, pending := pendingRollout(sts, desired); pending {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: reason,
+		}, nil
+	}
+
 	return concepts.GraceStatusWithReason{
-		Status: concepts.GraceStatusDown,
-		Reason: "No replicas are ready",
+		Status: concepts.GraceStatusHealthy,
+		Reason: "All replicas are ready",
 	}, nil
 }
 

@@ -256,6 +256,54 @@ When the component is suspended, the StatefulSet is scaled to zero replicas. The
 Override any handler via `WithCustomSuspendMutation`, `WithCustomSuspendStatus`, or `WithCustomSuspendDeletionDecision`
 on the builder.
 
+## Status Handlers
+
+The desired replica count is `Spec.Replicas`, or 1 when it is not set. Both default handlers use the same rule for a
+healthy StatefulSet. All of these conditions must be true:
+
+- The statefulset controller has observed the current spec: `Status.ObservedGeneration >= Generation`.
+- `Status.ReadyReplicas` equals the desired replica count.
+- The rollout is complete for the update strategy of the StatefulSet. The table below gives the rule for each strategy.
+
+| Update strategy                                  | The rollout is complete when                                                              |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `RollingUpdate` (or no type) without a partition | `Status.UpdatedReplicas` is not less than the desired count, and the revisions are equal. |
+| `RollingUpdate` with a partition more than zero  | `Status.UpdatedReplicas` is not less than the desired count minus the partition.          |
+| `OnDelete`                                       | Always.                                                                                   |
+
+The revisions are `Status.CurrentRevision` and `Status.UpdateRevision`. The statefulset controller sets
+`Status.CurrentRevision` to `Status.UpdateRevision` only when a rolling update is complete. With a partition, the pods
+with an ordinal less than the partition keep the current revision, so the revisions stay different after the partitioned
+rollout is complete. With `OnDelete`, the controller does not replace pods. Pods move to the update revision only when
+something outside the controller deletes them, so the handlers cannot wait for it. To track an `OnDelete` rollout, use
+`WithCustomConvergeStatus` and `WithCustomGraceStatus`.
+
+### ConvergingStatus
+
+`DefaultConvergingStatusHandler` reports `Healthy` when the StatefulSet is healthy. Otherwise it reports:
+
+| Status                            | Condition                                                        |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `Creating` or `Updating`          | The controller has not observed the current spec.                |
+| `Creating`, `Updating`, `Scaling` | `Status.ReadyReplicas` differs from the desired replica count.   |
+| `Creating` or `Updating`          | All desired replicas are ready, but the rollout is not complete. |
+
+The status follows the operation of the apply. `Created` gives `Creating`. `Updated` gives `Updating`. `None` gives
+`Updating` in the first and third rows, and `Scaling` in the second row.
+
+### GraceStatus
+
+`DefaultGraceStatusHandler` categorizes health as:
+
+| Status     | Condition                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `Healthy`  | The StatefulSet is healthy.                                                                                                 |
+| `Down`     | The desired replica count is more than zero and no replicas are ready.                                                      |
+| `Degraded` | All other states: the spec is not observed, the ready count differs from the desired count, or the rollout is not complete. |
+
+Because the two handlers use the same rule, a StatefulSet that does not converge before the grace period expires reports
+`Degraded` or `Down`. Override the handlers with `WithCustomConvergeStatus` and `WithCustomGraceStatus`.
+
 ## Full Example
 
 ```go

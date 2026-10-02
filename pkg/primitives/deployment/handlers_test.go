@@ -25,7 +25,9 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 			deployment: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{},
 				Status: appsv1.DeploymentStatus{
-					ReadyReplicas: 1,
+					Replicas:        1,
+					UpdatedReplicas: 1,
+					ReadyReplicas:   1,
 				},
 			},
 			wantStatus: concepts.AliveConvergingStatusHealthy,
@@ -41,6 +43,8 @@ func TestDefaultConvergingStatusHandler(t *testing.T) {
 				},
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 2,
+					Replicas:           3,
+					UpdatedReplicas:    3,
 					ReadyReplicas:      3,
 				},
 			},
@@ -157,7 +161,9 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 				Replicas: &replicas,
 			},
 			Status: appsv1.DeploymentStatus{
-				ReadyReplicas: 3,
+				Replicas:        3,
+				UpdatedReplicas: 3,
+				ReadyReplicas:   3,
 			},
 		}
 		got, err := DefaultGraceStatusHandler(deployment)
@@ -169,7 +175,9 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 	t.Run("healthy (nil replicas, one ready)", func(t *testing.T) {
 		deployment := &appsv1.Deployment{
 			Status: appsv1.DeploymentStatus{
-				ReadyReplicas: 1,
+				Replicas:        1,
+				UpdatedReplicas: 1,
+				ReadyReplicas:   1,
 			},
 		}
 		got, err := DefaultGraceStatusHandler(deployment)
@@ -221,6 +229,126 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 		assert.Equal(t, concepts.GraceStatusDown, got.Status)
 		assert.Equal(t, "No replicas are ready", got.Reason)
 	})
+}
+
+// TestDefaultHandlers_UnfinishedRollout covers a Deployment whose ready replica
+// count matches the desired count while its rollout is not complete. The
+// framework reports the converging status until the grace period expires and the
+// grace status after it, so both handlers must report the rollout as not healthy.
+// A Healthy grace status here is what makes the framework log a grace
+// inconsistency and keep the progress reason.
+func TestDefaultHandlers_UnfinishedRollout(t *testing.T) {
+	tests := []struct {
+		name            string
+		op              concepts.ConvergingOperation
+		deployment      *appsv1.Deployment
+		wantConverge    concepts.AliveConvergingStatus
+		wantGrace       concepts.GraceStatus
+		wantReason      string
+		wantGraceReason string
+	}{
+		{
+			name: "stale observed generation with all replicas ready",
+			op:   concepts.ConvergingOperationNone,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 3},
+				Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           3,
+					UpdatedReplicas:    3,
+					ReadyReplicas:      3,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for deployment controller to observe latest spec",
+			wantGraceReason: "Waiting for deployment controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation with no replicas ready",
+			op:   concepts.ConvergingOperationNone,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 3},
+				Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDown,
+			wantReason:      "Waiting for deployment controller to observe latest spec",
+			wantGraceReason: "No replicas are ready",
+		},
+		{
+			name: "new replicas not updated while all old replicas stay ready",
+			op:   concepts.ConvergingOperationNone,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           4,
+					UpdatedReplicas:    1,
+					ReadyReplicas:      3,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for rollout: 1/3 replicas updated",
+			wantGraceReason: "Waiting for rollout: 1/3 replicas updated",
+		},
+		{
+			name: "all replicas updated while old replicas remain",
+			op:   concepts.ConvergingOperationNone,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           6,
+					UpdatedReplicas:    3,
+					ReadyReplicas:      3,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for rollout: 3 old replicas pending termination",
+			wantGraceReason: "Waiting for rollout: 3 old replicas pending termination",
+		},
+		{
+			name: "unfinished rollout of a just created deployment",
+			op:   concepts.ConvergingOperationCreated,
+			deployment: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Generation: 1},
+				Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.DeploymentStatus{
+					ObservedGeneration: 1,
+					Replicas:           3,
+					UpdatedReplicas:    2,
+					ReadyReplicas:      3,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusCreating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for rollout: 2/3 replicas updated",
+			wantGraceReason: "Waiting for rollout: 2/3 replicas updated",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			converge, err := DefaultConvergingStatusHandler(tt.op, tt.deployment)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantConverge, converge.Status)
+			assert.Equal(t, tt.wantReason, converge.Reason)
+
+			grace, err := DefaultGraceStatusHandler(tt.deployment)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantGrace, grace.Status)
+			assert.Equal(t, tt.wantGraceReason, grace.Reason)
+		})
+	}
 }
 
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {

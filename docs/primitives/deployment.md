@@ -231,6 +231,45 @@ When the component is suspended, the Deployment is scaled to zero replicas. The 
 Override any handler via `WithCustomSuspendMutation`, `WithCustomSuspendStatus`, or `WithCustomSuspendDeletionDecision`
 on the builder.
 
+## Status Handlers
+
+The desired replica count is `Spec.Replicas`, or 1 when it is not set. Both default handlers use the same rule for a
+healthy Deployment. All of these conditions must be true:
+
+- The deployment controller has observed the current spec: `Status.ObservedGeneration >= Generation`.
+- `Status.ReadyReplicas` equals the desired replica count.
+- The rollout is complete: `Status.UpdatedReplicas` is not less than the desired replica count, and `Status.Replicas` is
+  not more than `Status.UpdatedReplicas`, so no old replicas remain.
+
+The rollout check is necessary because the deployment controller keeps old pods until the new pods are ready. If the new
+pods never become ready, `Status.ReadyReplicas` can stay at the desired count while the rollout does not end.
+
+### ConvergingStatus
+
+`DefaultConvergingStatusHandler` reports `Healthy` when the Deployment is healthy. Otherwise it reports:
+
+| Status                            | Condition                                                        |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `Creating` or `Updating`          | The controller has not observed the current spec.                |
+| `Creating`, `Updating`, `Scaling` | `Status.ReadyReplicas` differs from the desired replica count.   |
+| `Creating` or `Updating`          | All desired replicas are ready, but the rollout is not complete. |
+
+The status follows the operation of the apply. `Created` gives `Creating`. `Updated` gives `Updating`. `None` gives
+`Updating` in the first and third rows, and `Scaling` in the second row.
+
+### GraceStatus
+
+`DefaultGraceStatusHandler` categorizes health as:
+
+| Status     | Condition                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `Healthy`  | The Deployment is healthy.                                                                                                  |
+| `Down`     | The desired replica count is more than zero and no replicas are ready.                                                      |
+| `Degraded` | All other states: the spec is not observed, the ready count differs from the desired count, or the rollout is not complete. |
+
+Because the two handlers use the same rule, a Deployment that does not converge before the grace period expires reports
+`Degraded` or `Down`. Override the handlers with `WithCustomConvergeStatus` and `WithCustomGraceStatus`.
+
 ## Full Example
 
 ```go

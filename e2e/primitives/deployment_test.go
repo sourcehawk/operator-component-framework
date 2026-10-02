@@ -17,6 +17,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:revive
 	. "github.com/onsi/gomega"    //nolint:revive
@@ -315,6 +317,88 @@ var _ = Describe("Deployment Primitive", Label("deployment"), func() {
 			By("waiting for Down condition")
 			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
 				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Down"))
+		})
+	})
+
+	Context("Grace Period — Stuck Rollout", func() {
+		It("should report Degraded when new pods never become ready while old pods stay ready", func() {
+			gracePeriod := 30 * time.Second
+			depName := "web-stuck"
+			var breakReadiness bool
+
+			// With maxUnavailable 0 the deployment controller keeps every old pod
+			// until a new pod is ready. The new pods fail their readiness probe, so
+			// ReadyReplicas stays at the desired count while the rollout never ends.
+			clusterReconciler.RegisterComponent(name, func(owner *framework.ClusterTestApp) (*component.Component, error) {
+				dep := newBaseDeployment(ns, depName, 2)
+				dep.Spec.Strategy = appsv1.DeploymentStrategy{
+					Type: appsv1.RollingUpdateDeploymentStrategyType,
+					RollingUpdate: &appsv1.RollingUpdateDeployment{
+						MaxUnavailable: ptr.To(intstr.FromInt32(0)),
+						MaxSurge:       ptr.To(intstr.FromInt32(1)),
+					},
+				}
+				if breakReadiness {
+					dep.Spec.Template.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							HTTPGet: &corev1.HTTPGetAction{Path: "/", Port: intstr.FromInt32(8081)},
+						},
+						PeriodSeconds: 1,
+					}
+				}
+
+				res, err := deployment.NewBuilder(dep).Build()
+				if err != nil {
+					return nil, err
+				}
+
+				return component.NewComponentBuilder().
+					WithName("e2e-stuck-rollout").
+					WithConditionType("E2EReady").
+					WithResource(res).
+					WithGracePeriod(gracePeriod).
+					Build()
+			})
+
+			framework.NewClusterTestApp(ctx, k8sClient, name)
+
+			By("waiting for initial Healthy state")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionTrue, "Healthy"))
+
+			By("rolling out a pod template whose pods never become ready")
+			breakReadiness = true
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				if a.Annotations == nil {
+					a.Annotations = map[string]string{}
+				}
+				a.Annotations["e2e.ocf.io/trigger"] = "break-readiness"
+			})
+
+			By("waiting for the rollout to stall with all old replicas ready")
+			Eventually(func(g Gomega) {
+				var dep appsv1.Deployment
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: depName, Namespace: ns}, &dep)).To(Succeed())
+				g.Expect(dep.Status.ObservedGeneration).To(Equal(dep.Generation))
+				g.Expect(dep.Status.UpdatedReplicas).To(Equal(int32(1)))
+				g.Expect(dep.Status.ReadyReplicas).To(Equal(int32(2)))
+			}, framework.DefaultTimeout, framework.DefaultPolling).Should(Succeed())
+
+			By("reporting Updating before the grace period expires")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), gracePeriod/2, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Updating"))
+
+			By("waiting for grace period to expire")
+			time.Sleep(gracePeriod + 2*time.Second)
+
+			By("triggering re-reconciliation after grace period")
+			framework.UpdateClusterTestApp(ctx, k8sClient, name, func(a *framework.ClusterTestApp) {
+				a.Annotations["e2e.ocf.io/trigger"] = "grace-check"
+			})
+
+			By("waiting for Degraded condition")
+			Eventually(framework.GetClusterCondition(ctx, k8sClient, name, "E2EReady"), framework.DefaultTimeout, framework.DefaultPolling).
+				Should(framework.HaveConditionStatus(metav1.ConditionFalse, "Degraded"))
 		})
 	})
 

@@ -47,8 +47,8 @@ actually violated.
    converging (a rolling Deployment, a `Blocked` guard) instead of letting that state surface through its condition.
    Look for an explicit `reconcile.Result{RequeueAfter: ...}` set without a concrete reason to poll on a fixed cadence,
    where the normal watch and resync mechanics would already requeue at the right time. Also flag the opposite: a
-   component built `WithGracePeriod` whose controller does not set `RequeueAfter` from `GraceRemaining` (or
-   `EarliestGraceRemaining`), so a stuck resource stays in its converging reason long after the grace period ends.
+   component built with a positive `WithGracePeriod` whose controller does not set `RequeueAfter` from `GraceRemaining`
+   (or `EarliestGraceRemaining`), so a stuck resource stays in its converging reason long after the grace period ends.
 7. **Resource Registration Order Is Execution Order.** Look for `WithResource` calls where a dependent resource is
    registered before the resource it depends on, for example a workload registered before the Secret, ServiceAccount, or
    Service it needs. Look for a read-only prerequisite resource that omits `BlockOnAbsence` when the rest of the

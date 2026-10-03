@@ -694,17 +694,24 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
 ```
 
 `GraceRemaining` reads the condition of the component on the owner, the same condition that `GetCondition` returns. It
-reports `false` when no grace period is pending, so the controller does not requeue:
+also uses the time at which the last `Reconcile` of the same component checked the grace period. Call it after
+`Reconcile`, on the same component and with the same owner. It reports `false` when no grace period is pending, so the
+controller does not requeue:
 
 - The condition is ready (`Healthy`, `Operational`, `Completed`), or it is already `Degraded` or `Down`.
 - The condition is `Disabled`, `FeatureGateError`, `PrerequisiteNotMet`, or a suspension reason, or the component is
   built with `Suspend(true)`.
 - The component has a grace period of 0, or it has not reconciled yet.
-- The grace period has already ended. The reconcile that just ran graded the condition.
+- `Reconcile` found the grace period ended, and the grace status of the resources was `Healthy`, so the condition kept
+  its converging reason. A requeue would find the same result again.
+
+The grace period can end after `Reconcile` checked it and before the controller calls `GraceRemaining`, for example when
+API calls are slow. No reconcile has graded the condition then, so `GraceRemaining` returns a delay of at most one
+second.
 
 The delay is a little longer than the rest of the grace period. The API server stores `lastTransitionTime` in whole
 seconds, so the next reconcile can read a transition time up to one second earlier than the one in memory. The delay
-covers that difference: the reconcile at the end of the delay always finds the grace period expired.
+covers that difference: the reconcile at the end of the delay finds the grace period expired.
 
 An owner with several components needs the earliest of their delays. `EarliestGraceRemaining` returns it, and `false`
 when no component has a pending grace period:

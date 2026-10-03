@@ -10,6 +10,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// overdueGraceRequeue is the delay that graceRemaining returns when a grace
+// period ended after the last reconcile checked it.
+const overdueGraceRequeue = time.Second
+
 type reconcileResult struct {
 	Entry       reconcileEntry
 	Status      convergingStatusWithReason
@@ -164,10 +168,10 @@ func (c reconcileResults) graceSummary() concepts.GraceStatusWithReason {
 }
 
 // graceExpired returns true if the grace duration of the component has been exceeded
-// since the last condition transition. If gracePeriod is 0, grace never expires (infinite grace).
-func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
+// at now since the last condition transition. If gracePeriod is 0, grace never expires (infinite grace).
+func graceExpired(gracePeriod time.Duration, transition, now time.Time) bool {
 	deadline, ok := graceDeadline(gracePeriod, transition)
-	return ok && time.Now().After(deadline)
+	return ok && now.After(deadline)
 }
 
 // graceDeadline returns the last instant of a grace period that started at
@@ -179,16 +183,25 @@ func graceDeadline(gracePeriod time.Duration, transition time.Time) (time.Time, 
 	return transition.Add(gracePeriod), true
 }
 
-// graceRemaining returns the delay after which a reconcile grades cond because
-// its grace period has ended, and false when no reconcile will grade it.
-func graceRemaining(cond Condition, gracePeriod time.Duration, now time.Time) (time.Duration, bool) {
+// graceRemaining returns the result of [Component.GraceRemaining] for cond
+// when the component is not suspended.
+// convergedAt is the time at which the last reconcile checked the grace period
+// of cond, or zero when no reconcile is known.
+func graceRemaining(cond Condition, gracePeriod time.Duration, convergedAt, now time.Time) (time.Duration, bool) {
 	status := Status(cond.Reason)
 	if !status.graceTimed() || status == Degraded || status == Down {
 		return 0, false
 	}
 
-	deadline, ok := graceDeadline(gracePeriod, cond.LastTransitionTime.Time)
+	transition := cond.LastTransitionTime.Time
+	deadline, ok := graceDeadline(gracePeriod, transition)
 	if !ok {
+		return 0, false
+	}
+
+	// That reconcile graded the condition, or its resources reported a Healthy
+	// grace status. A requeue would find the same and repeat without end.
+	if !convergedAt.IsZero() && graceExpired(gracePeriod, transition, convergedAt) {
 		return 0, false
 	}
 
@@ -200,10 +213,18 @@ func graceRemaining(cond Condition, gracePeriod time.Duration, now time.Time) (t
 	requeueAt := deadline.Truncate(time.Second).Add(time.Second)
 
 	remaining := requeueAt.Sub(now)
-	if remaining <= 0 {
+	switch {
+	case remaining > 0:
+		return remaining, true
+	case convergedAt.IsZero():
 		return 0, false
+	default:
+		// The deadline passed after the reconcile checked the grace period, so
+		// no reconcile graded the condition yet. A watch event that started
+		// that reconcile also removed an earlier delayed requeue from the
+		// priority queue of controller-runtime.
+		return overdueGraceRequeue, true
 	}
-	return remaining, true
 }
 
 // newConvergingStatusCondition derives the next component condition based on the
@@ -249,7 +270,12 @@ func graceRemaining(cond Condition, gracePeriod time.Duration, now time.Time) (t
 //
 // If health aggregation (GraceStatus) fails for any resource, an Error condition is returned.
 func newConvergingStatusCondition(
-	ctx context.Context, owner OperatorCRD, results reconcileResults, gracePeriod time.Duration, previousCondition Condition,
+	ctx context.Context,
+	owner OperatorCRD,
+	results reconcileResults,
+	gracePeriod time.Duration,
+	previousCondition Condition,
+	now time.Time,
 ) Condition {
 	generation := owner.GetGeneration()
 	conditionType := ConditionType(previousCondition.Type)
@@ -282,7 +308,7 @@ func newConvergingStatusCondition(
 	logger := log.FromContext(ctx)
 
 	// If the grace period expired, and we're still not healthy, set a down/degraded status
-	if graceExpired(gracePeriod, previousCondition.LastTransitionTime.Time) {
+	if graceExpired(gracePeriod, previousCondition.LastTransitionTime.Time, now) {
 		if err := results.evaluateGrace(); err != nil {
 			logger.Error(err, "failed to evaluate grace status for component")
 			return conditionError(conditionType, err, generation)

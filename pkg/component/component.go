@@ -166,6 +166,15 @@ type Component struct {
 	// order, collected at Build time. Reconcile clears them all at the start of
 	// each pass so no extracted value leaks between reconciles.
 	dataCells []concepts.DataCell
+
+	// clock returns the current time, or time.Now when nil. Tests set it to
+	// put a reconcile and a GraceRemaining call on either side of a deadline.
+	clock func() time.Time
+
+	// convergedAt is the time at which the last Reconcile derived the
+	// converging condition and checked the grace period. It is zero before the
+	// first Reconcile and after a Reconcile that returned before that step.
+	convergedAt time.Time
 }
 
 // reconcileEntry pairs a resource with its configuration options.
@@ -197,12 +206,17 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 // reconciles the owner again, so that the component grades a resource that is
 // still not ready when the grace period ends. No watch event starts that
 // reconcile, so a controller that sets a grace period returns this delay as
-// RequeueAfter. Call it after Reconcile, with the same owner.
+// RequeueAfter.
+//
+// Call it after Reconcile, on the same component and with the same owner. If
+// the grace period ended after Reconcile checked it, GraceRemaining still
+// returns a delay of at most one second, because no reconcile has graded the
+// condition yet.
 //
 // It returns false when no grace period is pending: the condition is ready,
 // Degraded, Down, Disabled, FeatureGateError, PrerequisiteNotMet or a
 // suspension reason, the component is suspended or has a grace period of 0,
-// or the grace period has already ended.
+// or Reconcile found the grace period ended and every grace status Healthy.
 //
 // The delay can exceed the rest of the grace period by up to one second. The
 // reconcile at the end of the delay therefore finds the grace period expired,
@@ -211,7 +225,7 @@ func (c *Component) GraceRemaining(owner OperatorCRD) (time.Duration, bool) {
 	if c.suspended {
 		return 0, false
 	}
-	return graceRemaining(c.GetCondition(owner), c.gracePeriod, time.Now())
+	return graceRemaining(c.GetCondition(owner), c.gracePeriod, c.convergedAt, c.now())
 }
 
 // EarliestGraceRemaining returns the shortest [Component.GraceRemaining] of
@@ -402,6 +416,8 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	)
 	ctx = log.IntoContext(ctx, logger)
 
+	c.convergedAt = time.Time{}
+
 	// Reset declared data cells before anything else runs so no extracted
 	// value leaks from a previous reconcile into this one.
 	for _, cell := range c.dataCells {
@@ -501,13 +517,16 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 
 	// Determine new condition for component
 	previous := c.GetCondition(rec.Owner)
+	now := c.now()
 	cond := newConvergingStatusCondition(
 		ctx,
 		rec.Owner,
 		reconcileResults(results).filterParticipators(),
 		c.gracePeriod,
 		previous,
+		now,
 	)
+	c.convergedAt = now
 	if Status(previous.Reason).converging() {
 		applyStatusCondition(rec, cond)
 	} else {
@@ -516,7 +535,7 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 		// transition time is stamped explicitly. meta.SetStatusCondition would
 		// keep the previous one whenever the status did not change (False to
 		// False), leaving the grace period already expired on the next reconcile.
-		cond.LastTransitionTime = metav1.Now()
+		cond.LastTransitionTime = metav1.NewTime(now)
 		replaceStatusCondition(rec.Owner.GetStatusConditions(), metav1.Condition(cond))
 	}
 
@@ -529,6 +548,13 @@ func (c *Component) Reconcile(ctx context.Context, rec ReconcileContext) error {
 	}
 
 	return nil
+}
+
+func (c *Component) now() time.Time {
+	if c.clock == nil {
+		return time.Now()
+	}
+	return c.clock()
 }
 
 // allManagedResources returns every managed (non-read-only) resource known to

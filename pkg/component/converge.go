@@ -10,6 +10,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// overdueGraceRequeue is the delay that graceRemaining returns when a grace
+// period ended after the last reconcile checked it.
+const overdueGraceRequeue = time.Second
+
 type reconcileResult struct {
 	Entry       reconcileEntry
 	Status      convergingStatusWithReason
@@ -164,12 +168,63 @@ func (c reconcileResults) graceSummary() concepts.GraceStatusWithReason {
 }
 
 // graceExpired returns true if the grace duration of the component has been exceeded
-// since the last condition transition. If gracePeriod is 0, grace never expires (infinite grace).
-func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
+// at now since the last condition transition. If gracePeriod is 0, grace never expires (infinite grace).
+func graceExpired(gracePeriod time.Duration, transition, now time.Time) bool {
+	deadline, ok := graceDeadline(gracePeriod, transition)
+	return ok && now.After(deadline)
+}
+
+// graceDeadline returns the last instant of a grace period that started at
+// transition. It returns false for a grace period of 0, which never ends.
+func graceDeadline(gracePeriod time.Duration, transition time.Time) (time.Time, bool) {
 	if gracePeriod == 0 {
-		return false
+		return time.Time{}, false
 	}
-	return time.Since(transition) > gracePeriod
+	return transition.Add(gracePeriod), true
+}
+
+// graceRemaining returns the result of [Component.GraceRemaining] for cond
+// when the component is not suspended.
+// convergedAt is the time at which the last reconcile checked the grace period
+// of cond, or zero when no reconcile is known.
+func graceRemaining(cond Condition, gracePeriod time.Duration, convergedAt, now time.Time) (time.Duration, bool) {
+	status := Status(cond.Reason)
+	if !status.graceTimed() || status == Degraded || status == Down {
+		return 0, false
+	}
+
+	transition := cond.LastTransitionTime.Time
+	deadline, ok := graceDeadline(gracePeriod, transition)
+	if !ok {
+		return 0, false
+	}
+
+	// That reconcile graded the condition, or its resources reported a Healthy
+	// grace status. A requeue would find the same and repeat without end.
+	if !convergedAt.IsZero() && graceExpired(gracePeriod, transition, convergedAt) {
+		return 0, false
+	}
+
+	// graceExpired needs a time strictly after the deadline. The API server
+	// stores LastTransitionTime in whole seconds, so the reconcile can read a
+	// transition time up to one second earlier than cond holds, which only
+	// moves its deadline earlier. The first whole second after the deadline is
+	// therefore late enough for both values.
+	requeueAt := deadline.Truncate(time.Second).Add(time.Second)
+
+	remaining := requeueAt.Sub(now)
+	switch {
+	case remaining > 0:
+		return remaining, true
+	case convergedAt.IsZero():
+		return 0, false
+	default:
+		// The deadline passed after the reconcile checked the grace period, so
+		// no reconcile graded the condition yet. A watch event that started
+		// that reconcile also removed an earlier delayed requeue from the
+		// priority queue of controller-runtime.
+		return overdueGraceRequeue, true
+	}
 }
 
 // newConvergingStatusCondition derives the next component condition based on the
@@ -215,7 +270,12 @@ func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 //
 // If health aggregation (GraceStatus) fails for any resource, an Error condition is returned.
 func newConvergingStatusCondition(
-	ctx context.Context, owner OperatorCRD, results reconcileResults, gracePeriod time.Duration, previousCondition Condition,
+	ctx context.Context,
+	owner OperatorCRD,
+	results reconcileResults,
+	gracePeriod time.Duration,
+	previousCondition Condition,
+	now time.Time,
 ) Condition {
 	generation := owner.GetGeneration()
 	conditionType := ConditionType(previousCondition.Type)
@@ -227,21 +287,16 @@ func newConvergingStatusCondition(
 	// Convert the previous condition reason to a component status
 	status := Status(previousCondition.Reason)
 
-	// The previous condition was not produced by this state machine (no condition
-	// yet, feature gate disabled, prerequisite barrier, suspension): its status and
-	// transition time say nothing about convergence, so derive the initial
-	// condition from the converge summary instead of building on it.
-	if !status.converging() {
-		summary := results.convergeSummary()
-		return convergingCondition(conditionType, summary, generation)
-	}
-
 	// Get the summary for an updated description of why we're here
 	convergeSummary := results.convergeSummary()
 
-	// If we're no longer healthy (results.healthy() = false) but have a Healthy reason on the previous condition,
-	// calculate a new condition from the converge summary
-	if status.Healthy() {
+	// The grace period does not run for the previous condition: it was not
+	// produced by this state machine (no condition yet, feature gate disabled,
+	// prerequisite barrier, suspension), or it was ready and the resources are
+	// no longer healthy. Its status and transition time say nothing about this
+	// convergence, so derive a new condition from the converge summary instead
+	// of building on it.
+	if !status.graceTimed() {
 		return convergingCondition(conditionType, convergeSummary, generation)
 	}
 
@@ -253,7 +308,7 @@ func newConvergingStatusCondition(
 	logger := log.FromContext(ctx)
 
 	// If the grace period expired, and we're still not healthy, set a down/degraded status
-	if graceExpired(gracePeriod, previousCondition.LastTransitionTime.Time) {
+	if graceExpired(gracePeriod, previousCondition.LastTransitionTime.Time, now) {
 		if err := results.evaluateGrace(); err != nil {
 			logger.Error(err, "failed to evaluate grace status for component")
 			return conditionError(conditionType, err, generation)

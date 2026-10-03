@@ -260,9 +260,11 @@ call failed, a mutation could not be applied, a version is below the supported f
 
 Return the error from `Reconcile` and let controller-runtime apply exponential backoff. Avoid setting an explicit
 `reconcile.Result{RequeueAfter: ...}` unless you have a concrete reason to poll on a fixed cadence; in most cases the
-combination of resource watches and the manager's resync period already re-queues at the right time. Because
-`FlushStatus` is deferred, the owner's conditions are written before the error propagates, so the failure is visible in
-status even while controller-runtime backs off.
+combination of resource watches and the manager's resync period already re-queues at the right time. A component with a
+grace period is the exception: no watch event arrives when its grace period ends, so requeue with the delay from
+[`GraceRemaining`](component.md#requeue-when-the-grace-period-ends). Because `FlushStatus` is deferred, the owner's
+conditions are written before the error propagates, so the failure is visible in status even while controller-runtime
+backs off.
 
 ## Resource Registration Order Is Execution Order
 
@@ -643,6 +645,11 @@ comp, _ := component.NewComponentBuilder().
 Set the grace period to how long the resource legitimately takes to converge. A workload with a large image pull or a
 slow readiness probe needs a longer grace period than a ConfigMap update. A very long grace period delays detection of
 genuine failures, so choose a value that reflects expected convergence time, not a safety margin.
+
+The component grades a stuck resource only when it reconciles after the grace period ends, and a stuck resource often
+sends no watch event at that time. Return the delay from `GraceRemaining` (or `EarliestGraceRemaining` for several
+components) as `RequeueAfter`. See
+[Requeue when the grace period ends](component.md#requeue-when-the-grace-period-ends).
 
 ## Handle Cluster-Scoped Resources Explicitly
 

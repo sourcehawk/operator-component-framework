@@ -310,7 +310,7 @@ func TestGraceExpired(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, graceExpired(tt.gracePeriod, tt.transition))
+			assert.Equal(t, tt.expected, graceExpired(tt.gracePeriod, tt.transition, now))
 		})
 	}
 }
@@ -334,7 +334,7 @@ func TestNewConvergingStatusCondition(t *testing.T) {
 		}
 		previous := Condition{Type: "Test", Reason: string(AliveCreating)}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		assert.Equal(t, string(Healthy), cond.Reason)
@@ -360,7 +360,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, string(AliveCreating), cond.Reason)
@@ -373,7 +373,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, string(OperationPending), cond.Reason)
@@ -386,7 +386,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, string(CompletionRunning), cond.Reason)
@@ -410,7 +410,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 			LastTransitionTime: metav1.Time{Time: transition},
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Degraded), cond.Reason)
 		assert.Contains(t, cond.Message, "Resource Degraded")
@@ -432,7 +432,7 @@ func TestNewConvergingStatusCondition_Initialization(t *testing.T) {
 			LastTransitionTime: metav1.Time{Time: transition},
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Down), cond.Reason)
 		assert.Contains(t, cond.Message, "Operational Down")
@@ -466,7 +466,7 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 			Reason: string(Down),
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Degraded), cond.Reason)
 		assert.Contains(t, cond.Message, "Now Degraded")
@@ -490,7 +490,7 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 			LastTransitionTime: metav1.Time{Time: transitionTime},
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Down), cond.Reason)
 		// It currently uses the message from graceStatus summary
@@ -511,7 +511,7 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 			Message: "Initial Degraded",
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Down), cond.Reason)
 		assert.Contains(t, cond.Message, "Now Down")
@@ -531,7 +531,7 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 			Message: "Initial Down",
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Degraded), cond.Reason)
 		assert.Contains(t, cond.Message, "Now Degraded")
@@ -556,7 +556,7 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 			LastTransitionTime: metav1.Time{Time: time.Now().Add(-10 * time.Minute)},
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Down), cond.Reason)
 		assert.Equal(t, "Component is down: waiting for the license", cond.Message)
@@ -582,7 +582,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 		}
 		previous := Condition{Type: "Test", Reason: string(Unknown)}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, string(AliveUpdating), cond.Reason)
@@ -599,7 +599,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			Reason: string(Healthy),
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionFalse, cond.Status)
 		assert.Equal(t, string(AliveScaling), cond.Reason)
@@ -624,7 +624,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			},
 		}
 
-		cond := newConvergingStatusCondition(ctx, ownerWithNewGen, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, ownerWithNewGen, results, 0, previous, time.Now())
 
 		assert.Equal(t, int64(11), cond.ObservedGeneration)
 		assert.Equal(t, string(AliveUpdating), cond.Reason)
@@ -649,7 +649,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			ObservedGeneration: 0,
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, ownerGeneration, cond.ObservedGeneration)
 		assert.Equal(t, previous.Reason, cond.Reason)
@@ -669,7 +669,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			ObservedGeneration: 0,
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 
 		assert.Equal(t, string(AliveCreating), cond.Reason)
 		assert.Equal(t, "Still creating something", cond.Message)
@@ -678,7 +678,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 		results = reconcileResults{
 			{Status: convergingStatusWithReason{Status: convergingStatusAliveScaling, Reason: "Taking forever to create"}},
 		}
-		cond = newConvergingStatusCondition(ctx, owner, results, 0, previous)
+		cond = newConvergingStatusCondition(ctx, owner, results, 0, previous, time.Now())
 		assert.Equal(t, string(AliveCreating), cond.Reason)
 		assert.Equal(t, "Taking forever to create", cond.Message)
 	})
@@ -697,7 +697,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			Reason: string(Down),
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, string(Down), cond.Reason)
 		assert.Contains(t, cond.Message, "Still Down")
@@ -716,7 +716,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			Reason: string(Degraded),
 		}
 
-		cond = newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond = newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 		assert.Equal(t, string(Degraded), cond.Reason)
 		assert.Contains(t, cond.Message, "Still Degraded")
 	})
@@ -733,7 +733,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			Reason: string(Down),
 		}
 
-		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		assert.Equal(t, string(Healthy), cond.Reason)
@@ -745,7 +745,7 @@ func TestNewConvergingStatusCondition_Transitions(t *testing.T) {
 			Reason: string(Degraded),
 		}
 
-		cond = newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+		cond = newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 		assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		assert.Equal(t, string(Healthy), cond.Reason)
@@ -791,7 +791,7 @@ func TestNewConvergingStatusCondition_ReenteringConvergence(t *testing.T) {
 				{Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked, Reason: "Waiting for base backup"}},
 			}
 
-			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 			assert.Equal(t, metav1.ConditionFalse, cond.Status)
 			assert.Equal(t, string(GuardBlocked), cond.Reason)
@@ -803,7 +803,7 @@ func TestNewConvergingStatusCondition_ReenteringConvergence(t *testing.T) {
 				{Status: convergingStatusWithReason{Status: convergingStatusAliveCreating, Reason: "Creating pods"}},
 			}
 
-			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 			assert.Equal(t, metav1.ConditionFalse, cond.Status)
 			assert.Equal(t, string(AliveCreating), cond.Reason)
@@ -818,7 +818,7 @@ func TestNewConvergingStatusCondition_ReenteringConvergence(t *testing.T) {
 				},
 			}
 
-			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+			cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous, time.Now())
 
 			assert.Equal(t, string(AliveCreating), cond.Reason)
 		})

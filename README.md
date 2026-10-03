@@ -69,10 +69,18 @@ comp, err := component.NewComponentBuilder().
     Suspend(owner.Spec.Suspended).
     Build()
 if err != nil {
-    return err
+    return reconcile.Result{}, err
 }
 
-return comp.Reconcile(ctx, recCtx)
+if err := comp.Reconcile(ctx, recCtx); err != nil {
+    return reconcile.Result{}, err
+}
+
+// No watch event arrives when the grace period ends, so requeue for it.
+if remaining, ok := comp.GraceRemaining(owner); ok {
+    return reconcile.Result{RequeueAfter: remaining}, nil
+}
+return reconcile.Result{}, nil
 ```
 
 ## Installation

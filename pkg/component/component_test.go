@@ -944,6 +944,140 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(condition.Message).To(ContainSubstring("Degraded but partially functional"))
 		})
 
+		It("should grade a stuck resource on a requeue at the time GraceRemaining reports", func() {
+			// Given
+			res := &MockAliveResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "grace-requeue-res", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("ConfigMap/grace-requeue-res")
+			res.On("Mutate", mock.Anything).Return(nil)
+			res.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusCreating,
+				Reason: "Waiting for replicas",
+			}, nil)
+			res.On("GraceStatus").Return(concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDegraded,
+				Reason: "Replicas are not ready",
+			}, nil)
+
+			c, err := NewComponentBuilder().
+				WithName("grace-requeue-comp").
+				WithConditionType("Ready").
+				WithGracePeriod(time.Second).
+				WithResource(res).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+			Expect(c.GetCondition(owner).Reason).To(Equal(string(AliveCreating)))
+
+			// When the controller reads the requeue from its in-memory owner
+			// and persists the condition, the API server truncates the
+			// transition time that the next reconcile reads.
+			remaining, ok := c.GraceRemaining(owner)
+			Expect(ok).To(BeTrue())
+			Expect(FlushStatus(ctx, recCtx, []*Component{c})).To(Succeed())
+
+			time.Sleep(remaining)
+
+			requeued := &MockOperatorCRD{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), requeued)).To(Succeed())
+			Expect(c.GetCondition(requeued).LastTransitionTime.Nanosecond()).To(BeZero())
+			requeuedCtx := newTestReconcileContext(requeued)
+			Expect(c.Reconcile(ctx, requeuedCtx)).To(Succeed())
+
+			// Then
+			condition := c.GetCondition(requeued)
+			Expect(condition.Reason).To(Equal(string(Degraded)))
+			Expect(condition.Message).To(ContainSubstring("Replicas are not ready"))
+			_, ok = c.GraceRemaining(requeued)
+			Expect(ok).To(BeFalse())
+		})
+
+		Context("GraceRemaining after the deadline passed during or after Reconcile", func() {
+			const grace = time.Minute
+
+			// stuckComponent builds a component whose only resource stays
+			// Creating and grades as the given grace status. Its clock returns
+			// *now, so a test moves time between Reconcile and GraceRemaining.
+			stuckComponent := func(name string, graceStatus concepts.GraceStatus, now *time.Time) *Component {
+				res := &MockAliveResource{}
+				res.On("Object").Return(&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+				}, nil)
+				res.On("Identity").Return("ConfigMap/" + name)
+				res.On("Mutate", mock.Anything).Return(nil)
+				res.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+					Status: concepts.AliveConvergingStatusCreating,
+					Reason: "Waiting for replicas",
+				}, nil)
+				res.On("GraceStatus").Return(concepts.GraceStatusWithReason{
+					Status: graceStatus,
+					Reason: "graded",
+				}, nil)
+
+				c, err := NewComponentBuilder().
+					WithName(name).
+					WithConditionType("Ready").
+					WithGracePeriod(grace).
+					WithResource(res, SuppressGraceInconsistencyWarning()).
+					Build()
+				Expect(err).NotTo(HaveOccurred())
+				c.clock = func() time.Time { return *now }
+
+				return c
+			}
+
+			It("should still request a requeue when the deadline passed after Reconcile checked the grace period", func() {
+				// Given a reconcile that checked the grace period before its deadline
+				now := time.Now()
+				c := stuckComponent("grace-straddle", concepts.GraceStatusDegraded, &now)
+				Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+				Expect(c.GetCondition(owner).Reason).To(Equal(string(AliveCreating)))
+
+				// When GraceRemaining runs after the requeue time
+				now = now.Add(2 * grace)
+				remaining, ok := c.GraceRemaining(owner)
+
+				// Then the controller still requeues, so a reconcile grades the condition
+				Expect(ok).To(BeTrue())
+				Expect(remaining).To(BeNumerically(">", 0))
+				Expect(remaining).To(BeNumerically("<=", time.Second))
+			})
+
+			It("should report no expiry after Reconcile graded the condition", func() {
+				now := time.Now()
+				c := stuckComponent("grace-graded", concepts.GraceStatusDegraded, &now)
+				Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+
+				now = now.Add(2 * grace)
+				Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+				Expect(c.GetCondition(owner).Reason).To(Equal(string(Degraded)))
+
+				_, ok := c.GraceRemaining(owner)
+
+				Expect(ok).To(BeFalse())
+			})
+
+			It("should report no expiry when Reconcile found the grace period ended and the grace status Healthy", func() {
+				// A requeue here would repeat forever: each reconcile keeps the
+				// converging reason, because the grace status is Healthy.
+				now := time.Now()
+				c := stuckComponent("grace-healthy", concepts.GraceStatusHealthy, &now)
+				Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+
+				now = now.Add(2 * grace)
+				Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+				Expect(c.GetCondition(owner).Reason).To(Equal(string(AliveCreating)))
+
+				now = now.Add(grace)
+				_, ok := c.GraceRemaining(owner)
+
+				Expect(ok).To(BeFalse())
+			})
+		})
+
 		It("should handle Suspendable resources", func() {
 			res := &MockSuspendableResource{}
 			res.On("Object").Return(&corev1.ConfigMap{

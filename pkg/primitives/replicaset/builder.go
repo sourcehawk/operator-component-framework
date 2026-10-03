@@ -70,7 +70,8 @@ func (b *Builder) WithMutation(ms ...Mutation) *Builder {
 // ReplicaSet has reached its desired state.
 //
 // The default behavior uses DefaultConvergingStatusHandler, which considers a
-// ReplicaSet ready when its ReadyReplicas count matches the desired replica count.
+// ReplicaSet ready when the replicaset controller has observed the current spec, the ready count
+// equals the desired count, and no replicas above the desired count remain.
 // Use this method if your ReplicaSet requires more complex health checks.
 //
 // If you want to augment the default behavior, you can call DefaultConvergingStatusHandler

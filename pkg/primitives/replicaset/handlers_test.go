@@ -235,6 +235,86 @@ func TestDefaultGraceStatusHandler(t *testing.T) {
 	})
 }
 
+// TestDefaultHandlers_NotConverged covers a ReplicaSet whose ready replica count
+// matches the desired count while it has not converged. The framework reports the
+// converging status until the grace period expires and the grace status after it,
+// so both handlers must report the ReplicaSet as not healthy.
+func TestDefaultHandlers_NotConverged(t *testing.T) {
+	tests := []struct {
+		name            string
+		op              concepts.ConvergingOperation
+		rs              *appsv1.ReplicaSet
+		wantConverge    concepts.AliveConvergingStatus
+		wantGrace       concepts.GraceStatus
+		wantReason      string
+		wantGraceReason string
+	}{
+		{
+			name: "stale observed generation with all replicas ready",
+			op:   concepts.ConvergingOperationNone,
+			rs: &appsv1.ReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 3},
+				Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.ReplicaSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           3,
+					ReadyReplicas:      3,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for replicaset controller to observe latest spec",
+			wantGraceReason: "Waiting for replicaset controller to observe latest spec",
+		},
+		{
+			name: "stale observed generation with no replicas ready",
+			op:   concepts.ConvergingOperationNone,
+			rs: &appsv1.ReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 3},
+				Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.ReplicaSetStatus{
+					ObservedGeneration: 2,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDown,
+			wantReason:      "Waiting for replicaset controller to observe latest spec",
+			wantGraceReason: "No replicas are ready",
+		},
+		{
+			name: "extra replicas still scaling down",
+			op:   concepts.ConvergingOperationNone,
+			rs: &appsv1.ReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Spec:       appsv1.ReplicaSetSpec{Replicas: ptr.To(int32(3))},
+				Status: appsv1.ReplicaSetStatus{
+					ObservedGeneration: 2,
+					Replicas:           4,
+					ReadyReplicas:      3,
+				},
+			},
+			wantConverge:    concepts.AliveConvergingStatusUpdating,
+			wantGrace:       concepts.GraceStatusDegraded,
+			wantReason:      "Waiting for scale-down: 4/3 replicas",
+			wantGraceReason: "Waiting for scale-down: 4/3 replicas",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			converge, err := DefaultConvergingStatusHandler(tt.op, tt.rs)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantConverge, converge.Status)
+			assert.Equal(t, tt.wantReason, converge.Reason)
+
+			grace, err := DefaultGraceStatusHandler(tt.rs)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantGrace, grace.Status)
+			assert.Equal(t, tt.wantGraceReason, grace.Reason)
+		})
+	}
+}
+
 func TestDefaultDeleteOnSuspendHandler(t *testing.T) {
 	rs := &appsv1.ReplicaSet{}
 	assert.False(t, DefaultDeleteOnSuspendHandler(rs))

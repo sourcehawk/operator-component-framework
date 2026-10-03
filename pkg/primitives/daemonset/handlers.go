@@ -9,14 +9,18 @@ import (
 
 // DefaultConvergingStatusHandler is the default logic for determining if a DaemonSet has reached its desired state.
 //
-// It considers a DaemonSet ready when the DaemonSet controller has observed the current generation
-// (Status.ObservedGeneration >= ObjectMeta.Generation) and either:
-//   - Status.NumberReady >= Status.DesiredNumberScheduled and DesiredNumberScheduled > 0, or
-//   - DesiredNumberScheduled is zero (no matching nodes is a valid converged state).
+// It reports Healthy when all of these are true:
+//   - The DaemonSet controller has observed the current generation
+//     (Status.ObservedGeneration >= ObjectMeta.Generation).
+//   - Status.NumberReady equals Status.DesiredNumberScheduled.
+//   - The rollout is complete: Status.UpdatedNumberScheduled is not less than
+//     Status.DesiredNumberScheduled. A DaemonSet with the OnDelete update strategy skips this check,
+//     so Healthy does not mean that its pods run the current template.
 //
-// If the controller has not yet observed the latest spec, the handler reports Creating (when the
-// resource was just created) or Updating (otherwise) to avoid falsely reporting health based on
-// stale status fields.
+// A DesiredNumberScheduled of zero means that no nodes match the node selector. Such a DaemonSet is
+// Healthy once its controller has observed the current generation.
+//
+// Otherwise it reports Creating, Updating, or Scaling.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
@@ -38,79 +42,110 @@ func DefaultConvergingStatusHandler(
 		}, nil
 	}
 
-	if ds.Status.NumberReady >= desired {
+	if ds.Status.NumberReady != desired {
+		var status concepts.AliveConvergingStatus
+		switch op {
+		case concepts.ConvergingOperationCreated:
+			status = concepts.AliveConvergingStatusCreating
+		case concepts.ConvergingOperationUpdated:
+			status = concepts.AliveConvergingStatusUpdating
+		default:
+			status = concepts.AliveConvergingStatusScaling
+		}
+
 		return concepts.AliveStatusWithReason{
-			Status: concepts.AliveConvergingStatusHealthy,
-			Reason: "All pods are ready",
+			Status: status,
+			Reason: fmt.Sprintf("Waiting for pods: %d/%d ready", ds.Status.NumberReady, desired),
 		}, nil
 	}
 
-	var status concepts.AliveConvergingStatus
-	switch op {
-	case concepts.ConvergingOperationCreated:
-		status = concepts.AliveConvergingStatusCreating
-	case concepts.ConvergingOperationUpdated:
-		status = concepts.AliveConvergingStatusUpdating
-	default:
-		status = concepts.AliveConvergingStatusScaling
+	if reason, pending := pendingRollout(ds); pending {
+		status := concepts.AliveConvergingStatusUpdating
+		if op == concepts.ConvergingOperationCreated {
+			status = concepts.AliveConvergingStatusCreating
+		}
+
+		return concepts.AliveStatusWithReason{Status: status, Reason: reason}, nil
 	}
 
 	return concepts.AliveStatusWithReason{
-		Status: status,
-		Reason: fmt.Sprintf("Waiting for pods: %d/%d ready", ds.Status.NumberReady, desired),
+		Status: concepts.AliveConvergingStatusHealthy,
+		Reason: "All pods are ready",
 	}, nil
+}
+
+// pendingRollout reports why the rollout of the current pod template is not complete, or false
+// when it is complete for the update strategy of the DaemonSet.
+func pendingRollout(ds *appsv1.DaemonSet) (string, bool) {
+	// The DaemonSet controller does not replace pods under OnDelete, so they move to the current
+	// template only when something outside the controller deletes them.
+	if ds.Spec.UpdateStrategy.Type == appsv1.OnDeleteDaemonSetStrategyType {
+		return "", false
+	}
+
+	// With maxSurge the controller keeps the old pod on a node until the new pod is ready, and it
+	// counts only the oldest pod of each node, so NumberReady can match while new pods fail.
+	status := ds.Status
+	if status.UpdatedNumberScheduled < status.DesiredNumberScheduled {
+		return fmt.Sprintf(
+			"Waiting for rollout: %d/%d pods updated", status.UpdatedNumberScheduled, status.DesiredNumberScheduled,
+		), true
+	}
+
+	return "", false
 }
 
 // DefaultGraceStatusHandler provides a default health assessment of the DaemonSet when it has not yet
 // reached full readiness.
 //
 // It categorizes the current state into:
-//   - GraceStatusHealthy: DesiredNumberScheduled is zero, the controller has observed the current
-//     generation (Status.ObservedGeneration >= Generation), and no nodes match the selector; this is a
-//     valid configuration state, not a failure. Also healthy when NumberReady matches
-//     DesiredNumberScheduled.
-//   - GraceStatusDegraded: DesiredNumberScheduled is zero but the controller has not yet observed the
-//     current generation, or DesiredNumberScheduled > 0 and at least one pod is ready, but below desired.
-//   - GraceStatusDown: DesiredNumberScheduled > 0 and no pods are ready.
+//   - GraceStatusHealthy: DefaultConvergingStatusHandler reports Healthy for the same DaemonSet.
+//   - GraceStatusDown: DesiredNumberScheduled is more than zero and no pods are ready.
+//   - GraceStatusDegraded: All other states.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultGraceStatusHandler(ds *appsv1.DaemonSet) (concepts.GraceStatusWithReason, error) {
-	if ds.Status.DesiredNumberScheduled == 0 {
-		if ds.Status.ObservedGeneration >= ds.Generation {
-			return concepts.GraceStatusWithReason{
-				Status: concepts.GraceStatusHealthy,
-				Reason: "No nodes match the DaemonSet node selector",
-			}, nil
-		}
+	desired := ds.Status.DesiredNumberScheduled
 
+	if ds.Status.NumberReady == 0 && desired > 0 {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDown,
+			Reason: "No pods are ready",
+		}, nil
+	}
+
+	if ds.Status.ObservedGeneration < ds.Generation {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDegraded,
-			Reason: "Waiting for DaemonSet controller to observe latest generation",
+			Reason: "Waiting for DaemonSet controller to observe latest spec",
 		}, nil
 	}
 
-	// Use == rather than >= so that grace and convergence agree on pod counts.
-	// Both handlers evaluate the same object in the same reconcile loop, so grace
-	// must not return Healthy for a state that convergence considers non-healthy
-	// (e.g. NumberReady > DesiredNumberScheduled during a rolling update).
-	if ds.Status.NumberReady == ds.Status.DesiredNumberScheduled {
+	if desired == 0 {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusHealthy,
-			Reason: "All pods are ready",
+			Reason: "No nodes match the DaemonSet node selector",
 		}, nil
 	}
 
-	if ds.Status.NumberReady >= 1 {
+	if ds.Status.NumberReady != desired {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDegraded,
 			Reason: "DaemonSet partially available",
 		}, nil
 	}
 
+	if reason, pending := pendingRollout(ds); pending {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: reason,
+		}, nil
+	}
+
 	return concepts.GraceStatusWithReason{
-		Status: concepts.GraceStatusDown,
-		Reason: "No pods are ready",
+		Status: concepts.GraceStatusHealthy,
+		Reason: "All pods are ready",
 	}, nil
 }
 

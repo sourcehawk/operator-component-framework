@@ -72,14 +72,11 @@ func (r *Resource) Mutate(current client.Object) error {
 
 // ConvergingStatus evaluates if the DaemonSet has successfully reached its desired state.
 //
-// By default, it uses DefaultConvergingStatusHandler, which first ensures that
-// status.ObservedGeneration is at least the DaemonSet's metadata.Generation.
-// Once the generation has been observed:
-//   - If DesiredNumberScheduled is zero, the DaemonSet is considered converged (no pods expected).
-//   - If DesiredNumberScheduled is greater than zero, the DaemonSet is considered converged when
-//     NumberReady is greater than or equal to DesiredNumberScheduled.
+// By default, it uses DefaultConvergingStatusHandler, which requires the DaemonSet controller to
+// have observed the current spec, the ready count to equal the desired count, and the rollout to be
+// complete, with the exceptions that DefaultConvergingStatusHandler documents.
 //
-// The return value includes a descriptive status (Ready, Creating, Updating, or Scaling)
+// The return value includes a descriptive status (Healthy, Creating, Updating, or Scaling)
 // and a human-readable reason, which are used to update the component's conditions.
 func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.AliveStatusWithReason, error) {
 	return r.base.ConvergingStatus(op)
@@ -88,10 +85,9 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.A
 // GraceStatus provides a health assessment of the DaemonSet when it has not yet
 // reached full readiness.
 //
-// By default, it uses DefaultGraceStatusHandler, which categorizes the current state into:
-//   - GraceStatusHealthy: DesiredNumberScheduled is zero (no matching nodes).
-//   - GraceStatusDegraded: Some pods are ready but below the desired count.
-//   - GraceStatusDown: No pods are ready.
+// By default, it uses DefaultGraceStatusHandler, which reports GraceStatusHealthy only when
+// DefaultConvergingStatusHandler reports Healthy, GraceStatusDown when pods are desired but
+// none are ready, and GraceStatusDegraded otherwise.
 func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	return r.base.GraceStatus()
 }

@@ -72,8 +72,9 @@ func (r *Resource) Mutate(current client.Object) error {
 
 // ConvergingStatus evaluates if the StatefulSet has successfully reached its desired state.
 //
-// By default, it uses DefaultConvergingStatusHandler, which checks if the number of ReadyReplicas
-// matches the desired replica count.
+// By default, it uses DefaultConvergingStatusHandler, which requires the statefulset controller to
+// have observed the current spec, the ready count to equal the desired count, and the rollout to be
+// complete, with the exceptions that DefaultConvergingStatusHandler documents.
 //
 // The return value includes a descriptive status (Healthy, Creating, Updating, or Scaling)
 // and a human-readable reason, which are used to update the component's conditions.
@@ -84,9 +85,9 @@ func (r *Resource) ConvergingStatus(op concepts.ConvergingOperation) (concepts.A
 // GraceStatus provides a health assessment of the StatefulSet when it has not yet
 // reached full readiness.
 //
-// By default, it uses DefaultGraceStatusHandler, which categorizes the current state into:
-//   - GraceStatusDegraded: At least one replica is ready, but the desired count is not met.
-//   - GraceStatusDown: No replicas are ready.
+// By default, it uses DefaultGraceStatusHandler, which reports GraceStatusHealthy only when
+// DefaultConvergingStatusHandler reports Healthy, GraceStatusDown when replicas are desired but
+// none are ready, and GraceStatusDegraded otherwise.
 func (r *Resource) GraceStatus() (concepts.GraceStatusWithReason, error) {
 	return r.base.GraceStatus()
 }

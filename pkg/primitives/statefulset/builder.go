@@ -66,7 +66,9 @@ func (b *Builder) WithMutation(ms ...Mutation) *Builder {
 // StatefulSet has reached its desired state.
 //
 // The default behavior uses DefaultConvergingStatusHandler, which considers a
-// StatefulSet ready when its ReadyReplicas count matches the desired replica count.
+// StatefulSet ready when the statefulset controller has observed the current spec, the ready count
+// equals the desired count, and the rollout is complete, with the exceptions that
+// DefaultConvergingStatusHandler documents.
 func (b *Builder) WithCustomConvergeStatus(
 	handler func(concepts.ConvergingOperation, *appsv1.StatefulSet) (concepts.AliveStatusWithReason, error),
 ) *Builder {

@@ -199,6 +199,45 @@ When the component is suspended, the ReplicaSet is scaled to zero replicas. The 
 Override any handler via `WithCustomSuspendMutation`, `WithCustomSuspendStatus`, or `WithCustomSuspendDeletionDecision`
 on the builder.
 
+## Status Handlers
+
+The desired replica count is `Spec.Replicas`, or 1 when it is not set. Both default handlers use the same rule for a
+healthy ReplicaSet. All of these conditions must be true:
+
+- The replicaset controller has observed the current spec: `Status.ObservedGeneration >= Generation`.
+- `Status.ReadyReplicas` equals the desired replica count.
+- The scale-down is complete: `Status.Replicas` is not more than the desired replica count.
+
+A ReplicaSet does not roll out a new pod template, so the handlers have no rollout check. The scale-down check is
+necessary because a pod that is not ready can wait for removal while `Status.ReadyReplicas` already equals the desired
+count.
+
+### ConvergingStatus
+
+`DefaultConvergingStatusHandler` reports `Healthy` when the ReplicaSet is healthy. Otherwise it reports:
+
+| Status                            | Condition                                                           |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `Creating` or `Updating`          | The controller has not observed the current spec.                   |
+| `Creating`, `Updating`, `Scaling` | `Status.ReadyReplicas` differs from the desired replica count.      |
+| `Creating` or `Updating`          | All desired replicas are ready, but the scale-down is not complete. |
+
+The status follows the operation of the apply. `Created` gives `Creating`. `Updated` gives `Updating`. `None` gives
+`Updating` in the first and third rows, and `Scaling` in the second row.
+
+### GraceStatus
+
+`DefaultGraceStatusHandler` categorizes health as:
+
+| Status     | Condition                                                                                                                      |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `Healthy`  | The ReplicaSet is healthy.                                                                                                     |
+| `Down`     | The desired replica count is more than zero and no replicas are ready.                                                         |
+| `Degraded` | All other states: the spec is not observed, the ready count differs from the desired count, or the scale-down is not complete. |
+
+Because the two handlers use the same rule, a ReplicaSet that does not converge before the grace period expires reports
+`Degraded` or `Down`. Override the handlers with `WithCustomConvergeStatus` and `WithCustomGraceStatus`.
+
 ## Full Example
 
 ```go

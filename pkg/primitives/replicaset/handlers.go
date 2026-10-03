@@ -9,11 +9,13 @@ import (
 
 // DefaultConvergingStatusHandler is the default logic for determining if a ReplicaSet has reached its desired state.
 //
-// It considers a ReplicaSet ready when the replicaset controller has observed the current generation
-// (Status.ObservedGeneration >= ObjectMeta.Generation) and Status.ReadyReplicas matches the
-// Spec.Replicas (defaulting to 1 if nil). If the controller has not yet observed the latest spec,
-// the handler reports Creating (when the resource was just created) or Updating (otherwise) to avoid
-// falsely reporting health based on stale status fields.
+// It reports Healthy when all of these are true:
+//   - The replicaset controller has observed the current generation
+//     (Status.ObservedGeneration >= ObjectMeta.Generation).
+//   - Status.ReadyReplicas equals Spec.Replicas (1 when nil).
+//   - The scale-down is complete: Status.Replicas is not more than Spec.Replicas.
+//
+// Otherwise it reports Creating, Updating, or Scaling.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomConvergeStatus. It can be reused within custom handlers to augment the default behavior.
@@ -26,71 +28,103 @@ func DefaultConvergingStatusHandler(
 		return *status, nil
 	}
 
-	desiredReplicas := int32(1)
-	if rs.Spec.Replicas != nil {
-		desiredReplicas = *rs.Spec.Replicas
-	}
+	desired := desiredReplicas(rs)
 
-	if rs.Status.ReadyReplicas == desiredReplicas {
+	if rs.Status.ReadyReplicas != desired {
+		var status concepts.AliveConvergingStatus
+		switch op {
+		case concepts.ConvergingOperationCreated:
+			status = concepts.AliveConvergingStatusCreating
+		case concepts.ConvergingOperationUpdated:
+			status = concepts.AliveConvergingStatusUpdating
+		default:
+			status = concepts.AliveConvergingStatusScaling
+		}
+
 		return concepts.AliveStatusWithReason{
-			Status: concepts.AliveConvergingStatusHealthy,
-			Reason: "All replicas are ready",
+			Status: status,
+			Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", rs.Status.ReadyReplicas, desired),
 		}, nil
 	}
 
-	var status concepts.AliveConvergingStatus
-	switch op {
-	case concepts.ConvergingOperationCreated:
-		status = concepts.AliveConvergingStatusCreating
-	case concepts.ConvergingOperationUpdated:
-		status = concepts.AliveConvergingStatusUpdating
-	default:
-		status = concepts.AliveConvergingStatusScaling
+	if reason, pending := pendingScaleDown(rs, desired); pending {
+		status := concepts.AliveConvergingStatusUpdating
+		if op == concepts.ConvergingOperationCreated {
+			status = concepts.AliveConvergingStatusCreating
+		}
+
+		return concepts.AliveStatusWithReason{Status: status, Reason: reason}, nil
 	}
 
 	return concepts.AliveStatusWithReason{
-		Status: status,
-		Reason: fmt.Sprintf("Waiting for replicas: %d/%d ready", rs.Status.ReadyReplicas, desiredReplicas),
+		Status: concepts.AliveConvergingStatusHealthy,
+		Reason: "All replicas are ready",
 	}, nil
+}
+
+func desiredReplicas(rs *appsv1.ReplicaSet) int32 {
+	if rs.Spec.Replicas == nil {
+		return 1
+	}
+	return *rs.Spec.Replicas
+}
+
+// pendingScaleDown reports why replicas above the desired count remain, or false when none remain.
+// A replica that is not ready can wait for removal while ReadyReplicas already equals the desired
+// count.
+func pendingScaleDown(rs *appsv1.ReplicaSet, desiredReplicas int32) (string, bool) {
+	if rs.Status.Replicas > desiredReplicas {
+		return fmt.Sprintf("Waiting for scale-down: %d/%d replicas", rs.Status.Replicas, desiredReplicas), true
+	}
+
+	return "", false
 }
 
 // DefaultGraceStatusHandler provides a default health assessment of the ReplicaSet when it has not yet
 // reached full readiness.
 //
 // It categorizes the current state into:
-//   - GraceStatusHealthy: ReadyReplicas matches the desired replica count.
-//   - GraceStatusDegraded: At least one replica is ready, but the desired count is not met.
-//   - GraceStatusDown: No replicas are ready.
+//   - GraceStatusHealthy: DefaultConvergingStatusHandler reports Healthy for the same ReplicaSet.
+//   - GraceStatusDown: No replicas are ready and the desired count (Spec.Replicas, 1 when nil) is
+//     more than zero.
+//   - GraceStatusDegraded: All other states.
 //
 // This function is used as the default handler by the Resource if no custom handler is registered via
 // Builder.WithCustomGraceStatus. It can be reused within custom handlers to augment the default behavior.
 func DefaultGraceStatusHandler(rs *appsv1.ReplicaSet) (concepts.GraceStatusWithReason, error) {
-	desiredReplicas := int32(1)
-	if rs.Spec.Replicas != nil {
-		desiredReplicas = *rs.Spec.Replicas
-	}
+	desired := desiredReplicas(rs)
 
-	// Use == rather than >= so that grace and convergence agree on replica state.
-	// Both handlers evaluate the same object in the same reconcile loop, so grace
-	// must not return Healthy for a state that convergence considers non-healthy
-	// (e.g. ReadyReplicas > desiredReplicas during scale-down).
-	if rs.Status.ReadyReplicas == desiredReplicas {
+	if rs.Status.ReadyReplicas == 0 && desired > 0 {
 		return concepts.GraceStatusWithReason{
-			Status: concepts.GraceStatusHealthy,
-			Reason: "All replicas are ready",
+			Status: concepts.GraceStatusDown,
+			Reason: "No replicas are ready",
 		}, nil
 	}
 
-	if rs.Status.ReadyReplicas > 0 {
+	if rs.Status.ObservedGeneration < rs.Generation {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: "Waiting for replicaset controller to observe latest spec",
+		}, nil
+	}
+
+	if rs.Status.ReadyReplicas != desired {
 		return concepts.GraceStatusWithReason{
 			Status: concepts.GraceStatusDegraded,
 			Reason: "ReplicaSet partially available",
 		}, nil
 	}
 
+	if reason, pending := pendingScaleDown(rs, desired); pending {
+		return concepts.GraceStatusWithReason{
+			Status: concepts.GraceStatusDegraded,
+			Reason: reason,
+		}, nil
+	}
+
 	return concepts.GraceStatusWithReason{
-		Status: concepts.GraceStatusDown,
-		Reason: "No replicas are ready",
+		Status: concepts.GraceStatusHealthy,
+		Reason: "All replicas are ready",
 	}, nil
 }
 

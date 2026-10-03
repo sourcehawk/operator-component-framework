@@ -228,26 +228,51 @@ Override these handlers via `WithCustomSuspendDeletionDecision`, `WithCustomSusp
 
 ## Status Handlers
 
+The desired pod count is `Status.DesiredNumberScheduled`: the number of nodes that must run a pod of the DaemonSet. Both
+default handlers use the same rule for a healthy DaemonSet. All of these conditions must be true:
+
+- The DaemonSet controller has observed the current spec: `Status.ObservedGeneration >= Generation`.
+- `Status.NumberReady` equals the desired pod count.
+- The rollout is complete: `Status.UpdatedNumberScheduled` is not less than the desired pod count. A DaemonSet with the
+  `OnDelete` update strategy skips this check.
+
+When the desired pod count is zero, no nodes match the node selector. This is a valid state, so the DaemonSet is healthy
+once the controller has observed the current spec.
+
+The rollout check is necessary when `maxSurge` is set. The controller then keeps the old pod on a node until the new pod
+is ready, and it counts only the oldest pod of each node. If the new pods never become ready, `Status.NumberReady` can
+stay at the desired count while the rollout does not end. With `OnDelete`, the controller does not replace pods. Pods
+move to the new template only when something outside the controller deletes them, so the handlers cannot wait for it. To
+track an `OnDelete` rollout, use `WithCustomConvergeStatus` and `WithCustomGraceStatus`.
+
+A DaemonSet has no scale-down to wait for. The controller counts at most one pod for each node that must run one, and
+`kubectl rollout status` does not wait for `Status.NumberMisscheduled`, so the handlers do not check it.
+
 ### ConvergingStatus
 
-`DefaultConvergingStatusHandler` considers a DaemonSet ready when `Status.NumberReady >= Status.DesiredNumberScheduled`
-and `DesiredNumberScheduled > 0`. When `DesiredNumberScheduled` is zero and the controller has observed the current
-generation (`ObservedGeneration >= Generation`), the DaemonSet is considered converged with reason "No nodes match the
-DaemonSet node selector".
+`DefaultConvergingStatusHandler` reports `Healthy` when the DaemonSet is healthy. Otherwise it reports:
+
+| Status                            | Condition                                                    |
+| --------------------------------- | ------------------------------------------------------------ |
+| `Creating` or `Updating`          | The controller has not observed the current spec.            |
+| `Creating`, `Updating`, `Scaling` | `Status.NumberReady` differs from the desired pod count.     |
+| `Creating` or `Updating`          | All desired pods are ready, but the rollout is not complete. |
+
+The status follows the operation of the apply. `Created` gives `Creating`. `Updated` gives `Updating`. `None` gives
+`Updating` in the first and third rows, and `Scaling` in the second row.
 
 ### GraceStatus
 
 `DefaultGraceStatusHandler` categorizes health as:
 
-| Status     | Condition                                                                                                   |
-| ---------- | ----------------------------------------------------------------------------------------------------------- |
-| `Healthy`  | `DesiredNumberScheduled == 0` and `ObservedGeneration >= Generation` (no matching nodes is a valid state)   |
-| `Degraded` | `DesiredNumberScheduled == 0` but controller has not observed the latest generation, or at least one pod is |
-|            | ready but below desired count                                                                               |
-| `Down`     | `DesiredNumberScheduled > 0` and `NumberReady == 0`                                                         |
+| Status     | Condition                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `Healthy`  | The DaemonSet is healthy.                                                                                                   |
+| `Down`     | The desired pod count is more than zero and no pods are ready.                                                              |
+| `Degraded` | All other states: the spec is not observed, the ready count differs from the desired count, or the rollout is not complete. |
 
-The `Healthy` status for zero desired pods reflects that having no matching nodes is a valid configuration, not a
-failure. The generation check ensures the controller has observed the latest spec before declaring health.
+Because the two handlers use the same rule, a DaemonSet that does not converge before the grace period expires reports
+`Degraded` or `Down`. Override the handlers with `WithCustomConvergeStatus` and `WithCustomGraceStatus`.
 
 ## Full Example
 

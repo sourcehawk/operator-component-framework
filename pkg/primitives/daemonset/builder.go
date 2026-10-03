@@ -69,11 +69,10 @@ func (b *Builder) WithMutation(ms ...Mutation) *Builder {
 // WithCustomConvergeStatus overrides the default logic for determining if the
 // DaemonSet has reached its desired state.
 //
-// The default behavior uses DefaultConvergingStatusHandler, which:
-//   - Treats the DaemonSet as converged when DesiredNumberScheduled == 0 as soon as
-//     status.ObservedGeneration is greater than or equal to metadata.Generation.
-//   - When DesiredNumberScheduled > 0, treats the DaemonSet as converged once
-//     status.NumberReady is greater than or equal to status.DesiredNumberScheduled.
+// The default behavior uses DefaultConvergingStatusHandler, which considers a
+// DaemonSet ready when the DaemonSet controller has observed the current spec, the ready count
+// equals the desired count, and the rollout is complete, with the exceptions that
+// DefaultConvergingStatusHandler documents.
 //
 // If you want to augment the default behavior, you can call DefaultConvergingStatusHandler
 // within your custom handler.

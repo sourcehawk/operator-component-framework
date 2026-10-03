@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // Controller reconciles an ExampleApp with a Deployment that has a custom grace
@@ -28,8 +29,9 @@ type Controller struct {
 }
 
 // Reconcile builds and reconciles a component with grace period and
-// inconsistency suppression.
-func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err error) {
+// inconsistency suppression. The result requeues the owner when the grace
+// period of the component ends, because no watch event starts that reconcile.
+func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (res reconcile.Result, err error) {
 	recCtx := component.ReconcileContext{
 		Client:        r.Client,
 		Scheme:        r.Scheme,
@@ -51,11 +53,18 @@ func (r *Controller) Reconcile(ctx context.Context, owner *ExampleApp) (err erro
 
 	comp, err := r.BuildComponent(owner)
 	if err != nil {
-		return err
+		return reconcile.Result{}, err
 	}
 	comps = []*component.Component{comp}
 
-	return comp.Reconcile(ctx, recCtx)
+	if err := comp.Reconcile(ctx, recCtx); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if remaining, ok := comp.GraceRemaining(owner); ok {
+		res.RequeueAfter = remaining
+	}
+	return res, nil
 }
 
 // BuildComponent assembles the monitoring component: a Deployment whose custom

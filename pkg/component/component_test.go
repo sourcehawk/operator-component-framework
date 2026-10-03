@@ -1519,6 +1519,44 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(cond.Message).To(ContainSubstring("waiting for cloud provider role ARN"))
 		})
 
+		It("should report Down with the guard reason when a guard stays blocked past the grace period", func() {
+			// Given
+			res := &MockGuardableAliveResource{}
+			res.On("GuardStatus").Return(concepts.GuardStatusWithReason{
+				Status: concepts.GuardStatusBlocked,
+				Reason: "waiting for the license terms to be accepted",
+			}, nil)
+			res.On("Identity").Return("apps/v1/Deployment/guarded-deploy")
+			res.On("GraceStatus").Return(concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDown,
+				Reason: "No replicas are ready",
+			}, nil)
+
+			c, err := NewComponentBuilder().
+				WithName("guard-grace-comp").
+				WithConditionType("TestComponentReady").
+				WithGracePeriod(1 * time.Nanosecond).
+				WithResource(res).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+			time.Sleep(10 * time.Millisecond)
+
+			// When
+			err = c.Reconcile(ctx, recCtx)
+
+			// Then
+			Expect(err).NotTo(HaveOccurred())
+			res.AssertNotCalled(GinkgoT(), "Object")
+			res.AssertNotCalled(GinkgoT(), "GraceStatus")
+
+			cond := c.GetCondition(owner)
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(string(Down)))
+			Expect(cond.Message).To(Equal("Component is down: waiting for the license terms to be accepted"))
+		})
+
 		It("should skip all resources after a blocked guard", func() {
 			// Given
 			res1 := &MockResource{}

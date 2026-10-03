@@ -206,6 +206,78 @@ func TestConvergeResultsGraceSummary(t *testing.T) {
 		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
 		assert.Equal(t, "Completable Down", summary.Reason)
 	})
+
+	t.Run("should grade a guard-blocked resource Down with the guard reason", func(t *testing.T) {
+		// The object of a blocked resource holds only desired state, so its own
+		// grace handler would grade an empty status.
+		blocked := &MockAliveResource{}
+		blocked.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "No replicas are ready"}, nil)
+
+		results := reconcileResults{
+			{
+				Entry:  reconcileEntry{Resource: blocked},
+				Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked, Reason: "waiting for the license"},
+			},
+		}
+
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
+		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
+		assert.Equal(t, "waiting for the license", summary.Reason)
+		blocked.AssertNotCalled(t, "GraceStatus")
+	})
+
+	t.Run("should grade a guard-blocked resource that is not graceful Down with the guard reason", func(t *testing.T) {
+		results := reconcileResults{
+			{
+				Entry:  reconcileEntry{Resource: &MockResource{}},
+				Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked, Reason: "waiting for the license"},
+			},
+		}
+
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
+		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
+		assert.Equal(t, "waiting for the license", summary.Reason)
+	})
+
+	t.Run("should name the blocked resource when the guard gives no reason", func(t *testing.T) {
+		blocked := &MockResource{}
+		blocked.On("Identity").Return("apps/v1/Deployment/test-ns/web")
+
+		results := reconcileResults{
+			{
+				Entry:  reconcileEntry{Resource: blocked},
+				Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked},
+			},
+		}
+
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
+		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
+		assert.Equal(t, "apps/v1/Deployment/test-ns/web is blocked", summary.Reason)
+	})
+
+	t.Run("should report a guard-blocked resource over healthy earlier resources", func(t *testing.T) {
+		applied := &MockAliveResource{}
+		applied.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy, Reason: "Ready"}, nil)
+
+		results := reconcileResults{
+			{
+				Entry:  reconcileEntry{Resource: applied},
+				Status: convergingStatusWithReason{Status: convergingStatusAliveHealthy},
+			},
+			{
+				Entry:  reconcileEntry{Resource: &MockResource{}},
+				Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked, Reason: "waiting for the license"},
+			},
+		}
+
+		require.NoError(t, results.evaluateGrace())
+		summary := results.graceSummary()
+		assert.Equal(t, concepts.GraceStatusDown, summary.Status)
+		assert.Equal(t, "waiting for the license", summary.Reason)
+	})
 }
 
 func TestGraceExpired(t *testing.T) {
@@ -463,6 +535,31 @@ func TestNewConvergingStatusCondition_GracePeriod(t *testing.T) {
 
 		assert.Equal(t, string(Degraded), cond.Reason)
 		assert.Contains(t, cond.Message, "Now Degraded")
+	})
+
+	t.Run("should report Down with the guard reason when a guard stays blocked past the grace period", func(t *testing.T) {
+		blocked := &MockAliveResource{}
+		blocked.On("GraceStatus").Return(concepts.GraceStatusWithReason{Status: concepts.GraceStatusDown, Reason: "No replicas are ready"}, nil)
+
+		results := reconcileResults{
+			{
+				Entry:  reconcileEntry{Resource: blocked},
+				Status: convergingStatusWithReason{Status: convergingStatusGuardBlocked, Reason: "waiting for the license"},
+			},
+		}
+
+		previous := Condition{
+			Type:               "Test",
+			Status:             metav1.ConditionFalse,
+			Reason:             string(GuardBlocked),
+			Message:            "waiting for the license",
+			LastTransitionTime: metav1.Time{Time: time.Now().Add(-10 * time.Minute)},
+		}
+
+		cond := newConvergingStatusCondition(ctx, owner, results, 5*time.Minute, previous)
+
+		assert.Equal(t, string(Down), cond.Reason)
+		assert.Equal(t, "Component is down: waiting for the license", cond.Message)
 	})
 }
 

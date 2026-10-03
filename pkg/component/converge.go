@@ -88,10 +88,26 @@ func (c reconcileResults) convergeSummary() convergingStatusWithReason {
 }
 
 // evaluateGrace populates the GraceStatus field on each result whose resource
-// implements the Graceful interface. Results without a Graceful resource are
-// left with a nil GraceStatus.
+// implements the Graceful interface, and on each Blocked result. Other results
+// without a Graceful resource are left with a nil GraceStatus.
 func (c reconcileResults) evaluateGrace() error {
 	for i := range c {
+		// A blocked resource was neither applied nor read, so its object holds
+		// only desired state and its own grace handler would grade an empty
+		// status instead of the reason it is blocked.
+		if c[i].Status.Status == convergingStatusGuardBlocked {
+			reason := c[i].Status.Reason
+			if reason == "" {
+				reason = fmt.Sprintf("%s is blocked", c[i].Entry.Resource.Identity())
+			}
+
+			c[i].GraceStatus = &concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDown,
+				Reason: reason,
+			}
+			continue
+		}
+
 		graceful, ok := c[i].Entry.Resource.(concepts.Graceful)
 		if !ok {
 			continue
@@ -106,8 +122,8 @@ func (c reconcileResults) evaluateGrace() error {
 }
 
 // graceSummary aggregates the evaluated grace statuses into a single result.
-// The most severe status wins (Down > Degraded > Healthy). If no Graceful
-// resources are present, it returns Down. Must be called after evaluateGrace.
+// The most severe status wins (Down > Degraded > Healthy). If no result
+// carries a grace status, it returns Down. Must be called after evaluateGrace.
 func (c reconcileResults) graceSummary() concepts.GraceStatusWithReason {
 	var maxStatus concepts.GraceStatus
 	var reasons []string
@@ -185,8 +201,8 @@ func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
 //     - Other states indicating non-healthiness do not remain stable.
 //
 //  5. Grace Expiry (Transition to Failure):
-//     - Once graceExpired() is true, the status transitions to Down or Degraded
-//     based on the aggregate status of resources that implement the Alive interface.
+//     - Once graceExpired() is true, a Down or Degraded aggregate grace status (see evaluateGrace)
+//     becomes the condition. A Healthy aggregate leaves the converging condition in place.
 //
 //  6. Sticky Failure:
 //     - Once Down or Degraded, the component stays in that failure state until it either

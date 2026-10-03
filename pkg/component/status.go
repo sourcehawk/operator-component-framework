@@ -21,6 +21,7 @@ const (
 	convergingStatusCompletableRunning   = convergingStatus(concepts.CompletionStatusRunning)
 	convergingStatusCompletableFailed    = convergingStatus(concepts.CompletionStatusFailing)
 
+	// A Blocked result comes from a guard, BlockOnAbsence or BlockOnForeignController.
 	convergingStatusGuardBlocked = convergingStatus(concepts.GuardStatusBlocked)
 )
 

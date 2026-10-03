@@ -652,6 +652,69 @@ counts a blocked resource as `Down` and uses the block reason as the message, fo
 `Component is down: controlled by <Kind> <name>`. If a custom guard returns `Blocked` with an empty reason, the message
 is `Component is down: <identity> is blocked`. The resources after a blocked resource are skipped and are not graded.
 
+### Requeue when the grace period ends
+
+The component grades a stuck resource only when it reconciles after the grace period ends. A stuck resource often
+changes no status, so no watch event starts that reconcile. Without a requeue, the condition keeps its converging reason
+until an unrelated event or the resync period of the manager (10 hours by default) starts the next reconcile.
+
+A controller that sets a grace period must therefore requeue the owner when the grace period ends. Read the delay with
+`(*Component).GraceRemaining(owner OperatorCRD) (time.Duration, bool)` after `Reconcile`, on the same owner:
+
+```go
+func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request) (res reconcile.Result, err error) {
+    owner := &v1alpha1.WebApp{}
+    if err := r.Get(ctx, req.NamespacedName, owner); err != nil {
+        return reconcile.Result{}, client.IgnoreNotFound(err)
+    }
+
+    recCtx := component.ReconcileContext{ /* ... */ Owner: owner}
+    var comps []*component.Component
+    defer func() {
+        if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
+            err = flushErr
+        }
+    }()
+
+    comp, err := buildFrontendComponent(owner) // built WithGracePeriod(5 * time.Minute)
+    if err != nil {
+        return reconcile.Result{}, err
+    }
+    comps = append(comps, comp)
+
+    if err := comp.Reconcile(ctx, recCtx); err != nil {
+        return reconcile.Result{}, err
+    }
+
+    if remaining, ok := comp.GraceRemaining(owner); ok {
+        res.RequeueAfter = remaining
+    }
+    return res, nil
+}
+```
+
+`GraceRemaining` reads the condition of the component on the owner, the same condition that `GetCondition` returns. It
+reports `false` when no grace period is pending, so the controller does not requeue:
+
+- The condition is ready (`Healthy`, `Operational`, `Completed`), or it is already `Degraded` or `Down`.
+- The condition is `Disabled`, `FeatureGateError`, `PrerequisiteNotMet`, or a suspension reason, or the component is
+  built with `Suspend(true)`.
+- The component has a grace period of 0, or it has not reconciled yet.
+- The grace period has already ended. The reconcile that just ran graded the condition.
+
+The delay is a little longer than the rest of the grace period. The API server stores `lastTransitionTime` in whole
+seconds, so the next reconcile can read a transition time up to one second earlier than the one in memory. The delay
+covers that difference: the reconcile at the end of the delay always finds the grace period expired.
+
+An owner with several components needs the earliest of their delays. `EarliestGraceRemaining` returns it, and `false`
+when no component has a pending grace period:
+
+```go
+if remaining, ok := component.EarliestGraceRemaining(owner, comps...); ok {
+    res.RequeueAfter = remaining
+}
+```
+
 ## Suspension
 
 Suspension intentionally deactivates a component without deleting its configuration. When `Suspend(true)` is set on the

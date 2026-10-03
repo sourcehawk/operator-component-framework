@@ -284,6 +284,14 @@ func (s Status) converging() bool {
 	}
 }
 
+// graceTimed reports whether the grace period runs for a condition with this
+// reason: a reconcile that finds the component unready after the grace period
+// has ended grades the condition Degraded or Down. Every other reason makes
+// that reconcile start a new convergence, with a new transition time.
+func (s Status) graceTimed() bool {
+	return s.converging() && !s.Healthy()
+}
+
 func (s Status) sticky() bool {
 	switch s {
 	case AliveCreating, AliveUpdating, AliveScaling:

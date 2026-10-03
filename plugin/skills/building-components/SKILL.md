@@ -155,6 +155,12 @@ post-expiry severity: `Healthy` (no issue), `Degraded` (partially functional), o
 grace period does not by itself mean failure; it means the component's own `GraceStatus()` is now consulted to decide
 whether the still-not-ready state is degraded, down, or actually fine.
 
+The component grades only when it reconciles after the grace period ends, and a stuck resource often sends no watch
+event at that time. A controller that sets a grace period must requeue: after `Reconcile`, call
+`comp.GraceRemaining(owner)` (or `component.EarliestGraceRemaining(owner, comps...)` for several components) and, when
+it returns `true`, set `RequeueAfter` to the returned delay. The delay already allows for the API server truncating
+`lastTransitionTime` to whole seconds. See `references/component.md` (Requeue when the grace period ends).
+
 Suspension (`Suspend(true)` on the builder) intentionally deactivates a component without deleting its configuration.
 The component calls `Suspend()` on every `Suspendable` resource, polls `SuspensionStatus()`, and progresses the
 condition through `PendingSuspension` -> `Suspending` -> `Suspended` (all condition status `True`). While the

@@ -193,6 +193,45 @@ func (c *Component) GetCondition(owner OperatorCRD) Condition {
 	return Condition(*cond)
 }
 
+// GraceRemaining returns how long the controller must wait before it
+// reconciles the owner again, so that the component grades a resource that is
+// still not ready when the grace period ends. No watch event starts that
+// reconcile, so a controller that sets a grace period returns this delay as
+// RequeueAfter. Call it after Reconcile, with the same owner.
+//
+// It returns false when no grace period is pending: the condition is ready,
+// Degraded, Down, Disabled, FeatureGateError, PrerequisiteNotMet or a
+// suspension reason, the component is suspended or has a grace period of 0,
+// or the grace period has already ended.
+//
+// The delay can exceed the rest of the grace period by up to one second. The
+// reconcile at the end of the delay therefore finds the grace period expired,
+// also after the API server truncates LastTransitionTime to whole seconds.
+func (c *Component) GraceRemaining(owner OperatorCRD) (time.Duration, bool) {
+	if c.suspended {
+		return 0, false
+	}
+	return graceRemaining(c.GetCondition(owner), c.gracePeriod, time.Now())
+}
+
+// EarliestGraceRemaining returns the shortest [Component.GraceRemaining] of
+// comps on owner, for a controller that requeues once for several components.
+// It returns false when no component has a pending grace period, or when comps
+// is empty. Every component in comps must be non-nil.
+func EarliestGraceRemaining(owner OperatorCRD, comps ...*Component) (time.Duration, bool) {
+	var earliest time.Duration
+	found := false
+
+	for _, comp := range comps {
+		remaining, ok := comp.GraceRemaining(owner)
+		if ok && (!found || remaining < earliest) {
+			earliest, found = remaining, true
+		}
+	}
+
+	return earliest, found
+}
+
 // Preview renders the desired state of every managed resource registered on the
 // component, in registration order, without contacting the cluster.
 //

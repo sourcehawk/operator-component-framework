@@ -166,10 +166,44 @@ func (c reconcileResults) graceSummary() concepts.GraceStatusWithReason {
 // graceExpired returns true if the grace duration of the component has been exceeded
 // since the last condition transition. If gracePeriod is 0, grace never expires (infinite grace).
 func graceExpired(gracePeriod time.Duration, transition time.Time) bool {
+	deadline, ok := graceDeadline(gracePeriod, transition)
+	return ok && time.Now().After(deadline)
+}
+
+// graceDeadline returns the last instant of a grace period that started at
+// transition. It returns false for a grace period of 0, which never ends.
+func graceDeadline(gracePeriod time.Duration, transition time.Time) (time.Time, bool) {
 	if gracePeriod == 0 {
-		return false
+		return time.Time{}, false
 	}
-	return time.Since(transition) > gracePeriod
+	return transition.Add(gracePeriod), true
+}
+
+// graceRemaining returns the delay after which a reconcile grades cond because
+// its grace period has ended, and false when no reconcile will grade it.
+func graceRemaining(cond Condition, gracePeriod time.Duration, now time.Time) (time.Duration, bool) {
+	status := Status(cond.Reason)
+	if !status.graceTimed() || status == Degraded || status == Down {
+		return 0, false
+	}
+
+	deadline, ok := graceDeadline(gracePeriod, cond.LastTransitionTime.Time)
+	if !ok {
+		return 0, false
+	}
+
+	// graceExpired needs a time strictly after the deadline. The API server
+	// stores LastTransitionTime in whole seconds, so the reconcile can read a
+	// transition time up to one second earlier than cond holds, which only
+	// moves its deadline earlier. The first whole second after the deadline is
+	// therefore late enough for both values.
+	requeueAt := deadline.Truncate(time.Second).Add(time.Second)
+
+	remaining := requeueAt.Sub(now)
+	if remaining <= 0 {
+		return 0, false
+	}
+	return remaining, true
 }
 
 // newConvergingStatusCondition derives the next component condition based on the
@@ -227,21 +261,16 @@ func newConvergingStatusCondition(
 	// Convert the previous condition reason to a component status
 	status := Status(previousCondition.Reason)
 
-	// The previous condition was not produced by this state machine (no condition
-	// yet, feature gate disabled, prerequisite barrier, suspension): its status and
-	// transition time say nothing about convergence, so derive the initial
-	// condition from the converge summary instead of building on it.
-	if !status.converging() {
-		summary := results.convergeSummary()
-		return convergingCondition(conditionType, summary, generation)
-	}
-
 	// Get the summary for an updated description of why we're here
 	convergeSummary := results.convergeSummary()
 
-	// If we're no longer healthy (results.healthy() = false) but have a Healthy reason on the previous condition,
-	// calculate a new condition from the converge summary
-	if status.Healthy() {
+	// The grace period does not run for the previous condition: it was not
+	// produced by this state machine (no condition yet, feature gate disabled,
+	// prerequisite barrier, suspension), or it was ready and the resources are
+	// no longer healthy. Its status and transition time say nothing about this
+	// convergence, so derive a new condition from the converge summary instead
+	// of building on it.
+	if !status.graceTimed() {
 		return convergingCondition(conditionType, convergeSummary, generation)
 	}
 

@@ -11,8 +11,10 @@ This example demonstrates how to suppress the **grace inconsistency warning** us
   healthy. By default the framework logs a warning about this mismatch.
 - **Suppression**: passing `component.SuppressGraceInconsistencyWarning()` to `WithResource` tells the framework the
   inconsistency is deliberate, silencing the warning.
-- **Grace period**: The component uses `WithGracePeriod(5 * time.Second)` to set the window during which the grace
-  handler is consulted.
+- **Grace period**: The component uses `WithGracePeriod(5 * time.Second)`. The grace handler is consulted when the
+  component reconciles after the grace period ends.
+- **Requeue**: No watch event arrives when the grace period ends. The controller reads the delay with
+  `comp.GraceRemaining(owner)` and returns it as `RequeueAfter`, so the next reconcile runs on time.
 
 ## When to use this
 
@@ -22,8 +24,10 @@ being considered healthy during its grace period.
 
 ## Reconciliation steps
 
-1. Initial reconciliation with 0 ready replicas. Convergence says non-healthy, grace says healthy, no warning logged.
-2. Steady-state reconciliation.
+1. Initial reconciliation with 0 ready replicas. The condition is `Creating`, and the controller asks for a requeue when
+   the grace period ends.
+2. Reconciliation after the grace period. Convergence says non-healthy, grace says healthy, so the condition stays
+   `Creating` and no warning is logged. No grace period is pending, so the controller asks for no requeue.
 
 ## Running
 

@@ -944,6 +944,57 @@ var _ = Describe("Component Reconciler", func() {
 			Expect(condition.Message).To(ContainSubstring("Degraded but partially functional"))
 		})
 
+		It("should grade a stuck resource on a requeue at the time GraceRemaining reports", func() {
+			// Given
+			res := &MockAliveResource{}
+			res.On("Object").Return(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "grace-requeue-res", Namespace: namespace},
+			}, nil)
+			res.On("Identity").Return("ConfigMap/grace-requeue-res")
+			res.On("Mutate", mock.Anything).Return(nil)
+			res.On("ConvergingStatus", mock.Anything).Return(concepts.AliveStatusWithReason{
+				Status: concepts.AliveConvergingStatusCreating,
+				Reason: "Waiting for replicas",
+			}, nil)
+			res.On("GraceStatus").Return(concepts.GraceStatusWithReason{
+				Status: concepts.GraceStatusDegraded,
+				Reason: "Replicas are not ready",
+			}, nil)
+
+			c, err := NewComponentBuilder().
+				WithName("grace-requeue-comp").
+				WithConditionType("Ready").
+				WithGracePeriod(time.Second).
+				WithResource(res).
+				Build()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(c.Reconcile(ctx, recCtx)).To(Succeed())
+			Expect(c.GetCondition(owner).Reason).To(Equal(string(AliveCreating)))
+
+			// When the controller reads the requeue from its in-memory owner
+			// and persists the condition, the API server truncates the
+			// transition time that the next reconcile reads.
+			remaining, ok := c.GraceRemaining(owner)
+			Expect(ok).To(BeTrue())
+			Expect(FlushStatus(ctx, recCtx, []*Component{c})).To(Succeed())
+
+			time.Sleep(remaining)
+
+			requeued := &MockOperatorCRD{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), requeued)).To(Succeed())
+			Expect(c.GetCondition(requeued).LastTransitionTime.Nanosecond()).To(BeZero())
+			requeuedCtx := newTestReconcileContext(requeued)
+			Expect(c.Reconcile(ctx, requeuedCtx)).To(Succeed())
+
+			// Then
+			condition := c.GetCondition(requeued)
+			Expect(condition.Reason).To(Equal(string(Degraded)))
+			Expect(condition.Message).To(ContainSubstring("Replicas are not ready"))
+			_, ok = c.GraceRemaining(requeued)
+			Expect(ok).To(BeFalse())
+		})
+
 		It("should handle Suspendable resources", func() {
 			res := &MockSuspendableResource{}
 			res.On("Object").Return(&corev1.ConfigMap{

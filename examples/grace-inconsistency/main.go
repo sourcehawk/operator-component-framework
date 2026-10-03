@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	ocm "github.com/sourcehawk/go-crd-condition-metrics/pkg/crd-condition-metrics"
 	"github.com/sourcehawk/operator-component-framework/examples/grace-inconsistency/app"
@@ -58,17 +59,26 @@ func main() {
 	// intentionally returns Healthy. Without suppression this would log a
 	// warning; with SuppressGraceInconsistencyWarning it is silent.
 	fmt.Println("--- Step 1: Initial reconciliation (0 ready replicas) ---")
-	if err := controller.Reconcile(ctx, owner); err != nil {
+	res, err := controller.Reconcile(ctx, owner)
+	if err != nil {
 		exit("reconciliation failed: %v", err)
 	}
 	printConditions(owner)
 
-	// Reconcile again to show steady-state.
-	fmt.Println("\n--- Step 2: Steady-state reconciliation ---")
-	if err := controller.Reconcile(ctx, owner); err != nil {
+	// The grace period is still running, so the controller asks for a requeue
+	// when it ends. A manager would start the next reconcile at that time.
+	fmt.Printf("  Requeue after: %s\n", res.RequeueAfter)
+	time.Sleep(res.RequeueAfter)
+
+	// The custom grace handler reports Healthy, so the condition keeps its
+	// converging reason, and no further grace expiry is pending.
+	fmt.Println("\n--- Step 2: Reconciliation after the grace period ---")
+	res, err = controller.Reconcile(ctx, owner)
+	if err != nil {
 		exit("reconciliation failed: %v", err)
 	}
 	printConditions(owner)
+	fmt.Printf("  Requeue after: %s\n", res.RequeueAfter)
 
 	fmt.Println("\nDone.")
 }

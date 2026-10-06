@@ -2,10 +2,11 @@
 name: structuring-operators
 description:
   Use when designing, structuring, or reviewing an operator built on the operator-component-framework - desired state in
-  the baseline, pure mutations, one component per logical condition, thin controllers, deriving the owner CR's aggregate
-  Ready condition from its component conditions, mutation ordering and layering, prerequisites vs guards vs feature
-  gates, resources whose CRD may not be installed on the cluster, participation modes, grace periods, naming
-  conventions, version floors, and supported version pinning.
+  the baseline, pure mutations, one component per logical condition, thin controllers, which controller layer owns a
+  status write, a requeue decision, or a branch of a decision, deriving the owner CR's aggregate Ready condition from
+  its component conditions, mutation ordering and layering, prerequisites vs guards vs feature gates, resources whose
+  CRD may not be installed on the cluster, participation modes, grace periods, naming conventions, version floors, and
+  supported version pinning.
 ---
 
 # Structuring Operators
@@ -40,6 +41,7 @@ checklist: a change that violates one of these rules is a candidate for rework, 
 | Keep Controllers Thin                                               | A controller fetches the owner, builds and reconciles components, and defers one `FlushStatus(ctx, rec, comps)` passing the components it built, or `nil` if it built none; resource construction and mutation logic live in pure, testable component-building functions.                                                             |
 | Derive the Owner's Aggregate Condition from Component Conditions    | Derive the owner's aggregate condition with `component.Aggregate` rather than by hand: it is `True` only when every component condition is `True` (unanimity), and its reason comes from the governing component, the highest `Status.Priority()` among the non-True conditions, or among all of them when every condition is `True`. |
 | Reconciler Error Handling and Requeueing                            | Return an error only for a genuine fault (a failed API call, a mutation that cannot apply, a version below the supported floor); let a merely converging resource report through its condition and requeue via normal watch and resync.                                                                                               |
+| Give Each Controller Layer One Visible Responsibility               | A helper that changes an object does not also persist it, only `Reconcile` returns a `reconcile.Result`, and each layer is correct on its own inputs rather than on a check in its caller or a hidden side effect of its callee.                                                                                                      |
 | Resource Registration Order Is Execution Order                      | Resources reconcile in the exact order they were registered with `WithResource`; register dependencies before dependents.                                                                                                                                                                                                             |
 | Mutation Ordering and Container-Name Dependencies                   | Use broad, name-independent selectors for version-independent mutations, and register name-specific mutations before any compat mutation that renames the container.                                                                                                                                                                  |
 | Layer Mutations in a Fixed Order                                    | Order a resource's mutations into fixed layers: defaults, compat, overrides, then checksum, so the pipeline reads the same way for every workload.                                                                                                                                                                                    |

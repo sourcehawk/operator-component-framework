@@ -262,7 +262,8 @@ resource, err := builder.Build()
 ```
 
 Resources registered later in the same component block on the cell with `WithDataGuard(password)` or read it
-opportunistically with `WithOptionalData(password)`. See [Declared Data](../component.md#declared-data).
+opportunistically with `WithOptionalData(password)`. See
+[Declared Data](../../../building-components/references/component.md#declared-data).
 
 A cell extracted from a Secret holds the decoded plaintext for the rest of the reconcile. Use it to build the object you
 are applying, and keep it out of conditions, events, and log lines.

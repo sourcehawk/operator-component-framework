@@ -13,7 +13,8 @@ Choose between the three approaches in this order:
    to manage an external CRD without generating Go client code. You supply all lifecycle semantics through required
    handlers.
 3. **Custom resource wrapper** (`pkg/generic`): use this when you own the Go type (your own CRD) or want a fully typed
-   mutation surface with a custom builder API. See the [Custom Resource Implementation Guide](../custom-resource.md).
+   mutation surface with a custom builder API. See the
+   [Custom Resource Implementation Guide](../../../custom-resource-wrappers/references/custom-resource.md).
 
 See also [Unstructured Primitives](../primitives.md#unstructured-primitives) in the Primitives Overview for a summary
 table and [Implementing a Custom Resource](../primitives.md#implementing-a-custom-resource) for the full walkthrough.
@@ -253,7 +254,8 @@ static.ExtractInto(builder, providerIP, func(obj uns.Unstructured) (string, erro
 An absent field yields the zero value and the cell is still marked present, which a data guard treats as satisfied.
 Return an error from the function instead when a missing field should fail the reconcile and leave the cell unset.
 Resources registered later in the same component block on the cell with `WithDataGuard(providerIP)` or read it
-opportunistically with `WithOptionalData(providerIP)`. See [Declared Data](../component.md#declared-data).
+opportunistically with `WithOptionalData(providerIP)`. See
+[Declared Data](../../../building-components/references/component.md#declared-data).
 
 ## Suspension Handlers
 
@@ -346,4 +348,5 @@ operator author. Write table-driven tests covering all status transitions before
 
 **Use typed primitives or custom resource wrappers for your own CRDs.** Unstructured primitives are intended for
 third-party or generated resources where a Go type is unavailable. For your own CRDs, generate the Go type and use a
-typed wrapper; see the [Custom Resource Implementation Guide](../custom-resource.md).
+typed wrapper; see the
+[Custom Resource Implementation Guide](../../../custom-resource-wrappers/references/custom-resource.md).

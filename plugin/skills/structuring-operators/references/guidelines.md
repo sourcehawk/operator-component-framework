@@ -129,9 +129,9 @@ for the aggregation pattern.
 ## Keep Controllers Thin
 
 A controller should fetch the owner, decide which components to build, reconcile each one, and defer a single
-[`component.FlushStatus`](component.md#persisting-status-with-flushstatus) to persist status. Resource construction,
-feature decisions, and mutation logic belong in component-building functions, which then test as pure functions: owner
-in, component out, no cluster required.
+[`component.FlushStatus`](../../building-components/references/component.md#persisting-status-with-flushstatus) to
+persist status. Resource construction, feature decisions, and mutation logic belong in component-building functions,
+which then test as pure functions: owner in, component out, no cluster required.
 
 When a controller owns several components, reconcile them all, collect the first error but **continue on error** so one
 failing component does not stall the rest, and flush once at the end.
@@ -198,8 +198,9 @@ enabling an optional feature changes which components the resolver returns witho
 Users and automation gate on one signal, not on a list of them. A controller with several components therefore stages
 one more condition on the owner, usually `Ready`, derived from the component conditions it just reconciled.
 
-Use [`component.Aggregate`](component.md#aggregating-components-into-one-owner-condition) rather than deriving it by
-hand:
+Use
+[`component.Aggregate`](../../building-components/references/component.md#aggregating-components-into-one-owner-condition)
+rather than deriving it by hand:
 
 ```go
 ready := component.Aggregate("Ready", app, backendComp, frontendComp)
@@ -207,14 +208,14 @@ meta.SetStatusCondition(app.GetStatusConditions(), metav1.Condition(ready))
 ```
 
 Stage it after the component loop and before the deferred
-[`FlushStatus`](component.md#persisting-status-with-flushstatus) runs, so the aggregate reaches the API server in the
-same status update as the component conditions it summarizes.
+[`FlushStatus`](../../building-components/references/component.md#persisting-status-with-flushstatus) runs, so the
+aggregate reaches the API server in the same status update as the component conditions it summarizes.
 
 `Aggregate` makes two decisions separately. The status is `True` if and only if every component condition is `True`, and
 the reason comes from the governing component, the one with the highest `Status.Priority()` among the conditions that
 are not `True`.
-[Aggregating components into one owner condition](component.md#aggregating-components-into-one-owner-condition) carries
-the full rules, the behavior table, and what to expect from suspended and gate-disabled components.
+[Aggregating components into one owner condition](../../building-components/references/component.md#aggregating-components-into-one-owner-condition)
+carries the full rules, the behavior table, and what to expect from suspended and gate-disabled components.
 
 **Why not derive it by hand.** The rule that looks obvious is to take the highest-priority component condition and adopt
 its condition status. That inverts the answer for a case operators hit in practice. `Suspended` has priority 15 and maps
@@ -235,9 +236,10 @@ particular, and metrics, dashboards, and downstream automation key on the reason
 different prose, and leave the reason alone.
 
 **Remove the conditions of components you retire.** `Aggregate` reads only the components you pass it, and
-[`FlushStatus`](component.md#persisting-status-with-flushstatus) merges conditions by type and never prunes, so a
-component the controller has stopped building leaves its last condition on the owner indefinitely. The aggregate ignores
-it, and users still see it in `kubectl describe`. Delete it explicitly when you retire a component:
+[`FlushStatus`](../../building-components/references/component.md#persisting-status-with-flushstatus) merges conditions
+by type and never prunes, so a component the controller has stopped building leaves its last condition on the owner
+indefinitely. The aggregate ignores it, and users still see it in `kubectl describe`. Delete it explicitly when you
+retire a component:
 
 ```go
 meta.RemoveStatusCondition(owner.GetStatusConditions(), "OldComponentReady")
@@ -262,9 +264,9 @@ Return the error from `Reconcile` and let controller-runtime apply exponential b
 `reconcile.Result{RequeueAfter: ...}` unless you have a concrete reason to poll on a fixed cadence; in most cases the
 combination of resource watches and the manager's resync period already re-queues at the right time. A component with a
 grace period is the exception: no watch event arrives when its grace period ends, so requeue with the delay from
-[`GraceRemaining`](component.md#requeue-when-the-grace-period-ends). Because `FlushStatus` is deferred, the owner's
-conditions are written before the error propagates, so the failure is visible in status even while controller-runtime
-backs off.
+[`GraceRemaining`](../../building-components/references/component.md#requeue-when-the-grace-period-ends). Because
+`FlushStatus` is deferred, the owner's conditions are written before the error propagates, so the failure is visible in
+status even while controller-runtime backs off.
 
 Only `Reconcile` decides when to requeue. A helper or a sub-reconciler returns an error or a domain value, not a
 `reconcile.Result`. See
@@ -281,9 +283,10 @@ guideline has three parts.
 
 A helper that changes an in-memory object does not also persist it. The layer that owns the write decides when to
 persist. In a controller built on the framework, that layer is `Reconcile`. For status, it writes with its one deferred
-[`FlushStatus`](component.md#persisting-status-with-flushstatus). For any other write to the owner, such as a finalizer,
-`Reconcile` calls `Update` or `Patch` itself, after the helper changed the object. A function that changes an object it
-gets shows this in its name (`set`, `apply`, `mutate`) or in its doc comment.
+[`FlushStatus`](../../building-components/references/component.md#persisting-status-with-flushstatus). For any other
+write to the owner, such as a finalizer, `Reconcile` calls `Update` or `Patch` itself, after the helper changed the
+object. A function that changes an object it gets shows this in its name (`set`, `apply`, `mutate`) or in its doc
+comment.
 
 ```go
 // BAD: markSchemaPending stages a condition and also writes the status. The
@@ -458,9 +461,10 @@ data extraction depend on it, and reading the calls top to bottom tells you the 
 to reconstruct.
 
 Register dependencies before dependents. A common per-component bundle reads as a dependency chain: read-only Secret
-references first (with [`BlockOnAbsence`](component.md#resource-registration-options) so an absent Secret blocks the
-rest rather than erroring), then the ServiceAccount for workloads that need an identity, then the Service, then the
-workload last.
+references first (with
+[`BlockOnAbsence`](../../building-components/references/component.md#resource-registration-options) so an absent Secret
+blocks the rest rather than erroring), then the ServiceAccount for workloads that need an identity, then the Service,
+then the workload last.
 
 ```go
 comp, err := component.NewComponentBuilder().
@@ -502,7 +506,8 @@ res, err := deployment.NewBuilder(frontendDeployment(app)).
 
 Do not work around ordering by matching multiple names (`ContainersNamed("frontend", "web")`); that couples the mutation
 to every name the container has ever had. The primitives overview covers the
-[ordering semantics within a feature](primitives.md#ordering-within-a-feature) in full.
+[ordering semantics within a feature](../../using-primitives/references/primitives.md#ordering-within-a-feature) in
+full.
 
 ## Layer Mutations in a Fixed Order
 
@@ -666,8 +671,9 @@ normal reconciliation for the first time, the prerequisite is permanently satisf
 Prerequisites are for **startup** ordering, not ongoing health. If the backend goes down after the frontend is already
 running, the frontend keeps reconciling its own resources; the two conditions reflect their own health independently.
 Contrast with [guards](#use-data-extraction-and-guards-for-intra-component-dependencies), which work within a single
-component and re-evaluate every reconcile. See the [prerequisite behavior](component.md#prerequisite-behavior) section
-for the full lifecycle.
+component and re-evaluate every reconcile. See the
+[prerequisite behavior](../../building-components/references/component.md#prerequisite-behavior) section for the full
+lifecycle.
 
 ## Use Feature Gates for Optional Components and Conditional Resources
 
@@ -689,8 +695,8 @@ cacheComp, err := component.NewComponentBuilder().
 When the gate is disabled the framework deletes the component's resources and reports `True/Disabled`. A disabled gate
 takes precedence over suspension.
 
-For a single optional resource the component owns, use [`component.GatedBy`](component.md#feature-gates) on
-`WithResource`:
+For a single optional resource the component owns, use
+[`component.GatedBy`](../../building-components/references/component.md#feature-gates) on `WithResource`:
 
 ```go
 comp, _ := component.NewComponentBuilder().
@@ -703,7 +709,8 @@ comp, _ := component.NewComponentBuilder().
 
 A disabled `GatedBy` gate deletes the resource on the next reconcile. For an optional resource the component does
 **not** own (a read-only Secret reference behind an optional spec field), use `IncludeWhen`, which omits the resource
-without ever deleting it. The [IncludeWhen vs. GatedBy](component.md#includewhen-vs-gatedby) section covers the
+without ever deleting it. The
+[IncludeWhen vs. GatedBy](../../building-components/references/component.md#includewhen-vs-gatedby) section covers the
 distinction.
 
 ## Provide a User-Override Escape Hatch as the Last Mutation
@@ -787,14 +794,14 @@ failure is recorded on the owner's condition where an operator can see it.
 Give every mutation a `Name`. Names appear in error reporting, and version-matrix golden manifests reference them in
 their `requires` and `forbids` lists, so descriptive names keep those manifests self-documenting. Name compat mutations
 after what they restore (`CompatV1Container`), so a reader scanning a builder chain understands each entry without
-opening its implementation. See [testing.md](testing.md#firing-set-classification) for how named mutations drive
-firing-set classification.
+opening its implementation. See [testing.md](../../testing-operators/references/testing.md#firing-set-classification)
+for how named mutations drive firing-set classification.
 
 ## Understand Participation Modes
 
-[`component.Auxiliary()`](component.md#resource-registration-options) means "reconciled but not required for health." It
-does not mean "skipped." A failing auxiliary resource still fails the reconciliation; the only difference is that its
-health does not affect whether the component condition becomes Ready.
+[`component.Auxiliary()`](../../building-components/references/component.md#resource-registration-options) means
+"reconciled but not required for health." It does not mean "skipped." A failing auxiliary resource still fails the
+reconciliation; the only difference is that its health does not affect whether the component condition becomes Ready.
 
 ```go
 comp, _ := component.NewComponentBuilder().
@@ -834,7 +841,7 @@ genuine failures, so choose a value that reflects expected convergence time, not
 The component grades a stuck resource only when it reconciles after the grace period ends, and a stuck resource often
 sends no watch event at that time. Return the delay from `GraceRemaining` (or `EarliestGraceRemaining` for several
 components) as `RequeueAfter`. See
-[Requeue when the grace period ends](component.md#requeue-when-the-grace-period-ends).
+[Requeue when the grace period ends](../../building-components/references/component.md#requeue-when-the-grace-period-ends).
 
 ## Handle Cluster-Scoped Resources Explicitly
 
@@ -843,8 +850,9 @@ not allow cross-scope ownership, so the framework cannot set an owner reference.
 and logs the skip with its garbage-collection implication.
 
 The consequence is that those resources are **not** garbage-collected when the owner is deleted. Clean them up
-explicitly with [`component.Delete()`](component.md#resource-registration-options) (or `DeleteWhen`) and a finalizer on
-the owner CRD that keeps the owner alive until its cluster-scoped resources are removed.
+explicitly with [`component.Delete()`](../../building-components/references/component.md#resource-registration-options)
+(or `DeleteWhen`) and a finalizer on the owner CRD that keeps the owner alive until its cluster-scoped resources are
+removed.
 
 ```go
 comp, _ := component.NewComponentBuilder().
@@ -854,8 +862,8 @@ comp, _ := component.NewComponentBuilder().
     Build()
 ```
 
-The [cluster-scoped resources](component.md#cluster-scoped-resources) section covers the ownership and deletion behavior
-in full.
+The [cluster-scoped resources](../../building-components/references/component.md#cluster-scoped-resources) section
+covers the ownership and deletion behavior in full.
 
 ## Name Resources to Avoid Multi-Tenant Collisions
 
@@ -894,7 +902,7 @@ Use `goldengen.Resource` rather than a hand-written loop with one golden per ver
 them into firing regimes (one golden per distinct set of firing mutations, not one per version), asserts which mutations
 fire at each version, and proves through `AssertComplete` that every registered mutation is covered. A new version that
 fires the same mutations as an existing one adds no golden; a version that crosses a gate boundary gets its own. See
-[Testing](testing.md) for the mechanics.
+[Testing](../../testing-operators/references/testing.md) for the mechanics.
 
 After a deliberate baseline change, regenerate with `go test ./path -update` and review the diff. Only the regimes you
 meant to change should move. If an older regime's golden shifts, a compat mutation broke, and the diff shows exactly

@@ -9,7 +9,7 @@ object metadata within the component lifecycle.
     controller owner reference (the scopes are incompatible). The owner reference is skipped and the skip is logged.
     The `ClusterRole` is **not** garbage-collected when the owner is deleted. Manage its lifecycle explicitly (for
     example with a finalizer on the owner) or use a cluster-scoped owner if automatic cleanup is required. See
-    [Cluster-Scoped Resources](../component.md#cluster-scoped-resources) for the full behavior.
+    [Cluster-Scoped Resources](../../../building-components/references/component.md#cluster-scoped-resources) for the full behavior.
 
 ## Capabilities
 
@@ -207,7 +207,8 @@ resource, err := builder.Build()
 ```
 
 Resources registered later in the same component block on the cell with `WithDataGuard(roleName)` or read it
-opportunistically with `WithOptionalData(roleName)`. See [Declared Data](../component.md#declared-data).
+opportunistically with `WithOptionalData(roleName)`. See
+[Declared Data](../../../building-components/references/component.md#declared-data).
 
 ## Full Example
 

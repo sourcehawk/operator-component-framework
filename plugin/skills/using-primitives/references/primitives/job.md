@@ -194,7 +194,8 @@ resource, err := builder.Build()
 ```
 
 Resources registered later in the same component block on the cell with `WithDataGuard(succeeded)` or read it
-opportunistically with `WithOptionalData(succeeded)`. See [Declared Data](../component.md#declared-data).
+opportunistically with `WithOptionalData(succeeded)`. See
+[Declared Data](../../../building-components/references/component.md#declared-data).
 
 Guard on the Job's `Completable` status when a later resource must wait for the Job to finish. Data cells carry values
 between resources; they are not a substitute for the completion condition.

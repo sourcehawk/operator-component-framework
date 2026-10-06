@@ -36,11 +36,15 @@ var Bundled = []Copy{
 	{"testing.md", "testing-operators/references/testing.md"},
 }
 
-// linkPattern matches the target of an inline Markdown link or image.
-var linkPattern = regexp.MustCompile(`\]\(([^()\s]+)\)`)
+// linkPatterns match the destination, in their first group, of an inline link or image with an optional title, and
+// of a link reference definition.
+var linkPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\]\(([^()\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)`),
+	regexp.MustCompile(`(?m)^ {0,3}\[[^\]]+\]:[ \t]*(\S+)`),
+}
 
-// Sync copies each doc of docs from docsDir to skillsDir. It first removes each <skill>/references folder that a copy
-// goes to, so a doc that is no longer bundled leaves no stale copy. In each copy, a link to another copied doc points
+// Sync copies each doc of docs from docsDir to skillsDir. It first removes each <skill>/references folder under
+// skillsDir, so a doc or a skill that is no longer bundled leaves no stale copy. In each copy, a link to another copied doc points
 // to the copy of that doc, and a link to a doc that is not copied points to its page on the docs site at siteURL.
 // Anchors are kept, and links inside code do not change. Sync fails for a link to a doc that does not exist in
 // docsDir, and for a glob that matches no doc.
@@ -50,8 +54,12 @@ func Sync(docsDir, skillsDir, siteURL string, docs []Copy) error {
 		return err
 	}
 
-	for _, dir := range referenceDirs(copies) {
-		if err := os.RemoveAll(filepath.Join(skillsDir, dir)); err != nil {
+	stale, err := filepath.Glob(filepath.Join(skillsDir, "*", "references"))
+	if err != nil {
+		return fmt.Errorf("finding reference folders: %w", err)
+	}
+	for _, dir := range stale {
+		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("removing %s: %w", dir, err)
 		}
 	}
@@ -106,20 +114,6 @@ func resolveCopies(docsDir string, docs []Copy) (map[string]string, error) {
 	return copies, nil
 }
 
-// referenceDirs returns the top two levels, <skill>/references, of each destination, without repeats.
-func referenceDirs(copies map[string]string) []string {
-	var dirs []string
-	for _, dest := range copies {
-		parts := strings.SplitN(dest, "/", 3)
-		dir := path.Join(parts[0], parts[1])
-		if !slices.Contains(dirs, dir) {
-			dirs = append(dirs, dir)
-		}
-	}
-	slices.Sort(dirs)
-	return dirs
-}
-
 // rewriteLinks rewrites each relative link to a Markdown doc in content, a doc at source in docsDir, for its copy in
 // the plugin. It returns an error for a link to a doc that does not exist in docsDir.
 func rewriteLinks(content, source, docsDir string, copies map[string]string, siteURL string) (string, error) {
@@ -170,8 +164,8 @@ func pagePath(doc string) string {
 	return strings.TrimSuffix(page, "/index") + "/"
 }
 
-// CheckLinks walks the Markdown files under root and returns an error that names each relative link, outside code,
-// that resolves to no file.
+// CheckLinks walks the Markdown files under root and returns an error that names each relative destination, outside
+// code, of an inline link or a link reference definition that resolves to no file.
 func CheckLinks(root string) error {
 	var errs []error
 	err := filepath.WalkDir(root, func(file string, d os.DirEntry, err error) error {
@@ -207,31 +201,55 @@ func isRelative(target string) bool {
 	return target != "" && !strings.HasPrefix(target, "/") && !strings.Contains(target, ":")
 }
 
-// mapLinks replaces the target of each inline link in content with the result of fn. It does not change a link in a
-// fenced code block or in an inline code span.
+// mapLinks replaces the destination of each inline link and link reference definition in content with the result of
+// fn. It does not change a link in a fenced code block or in an inline code span.
 func mapLinks(content string, fn func(target string) string) string {
-	lines := strings.SplitAfter(content, "\n")
+	var out, paragraph strings.Builder
+	flush := func() {
+		out.WriteString(mapOutsideCodeSpans(paragraph.String(), func(text string) string {
+			for _, pattern := range linkPatterns {
+				text = replaceFirstGroup(pattern, text, fn)
+			}
+			return text
+		}))
+		paragraph.Reset()
+	}
+
 	fence := ""
-	for i, line := range lines {
+	for _, line := range strings.SplitAfter(content, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if fence != "" {
-			if strings.HasPrefix(trimmed, fence) {
+		switch {
+		case fence != "":
+			out.WriteString(line)
+			if closesFence(trimmed, fence) {
 				fence = ""
 			}
-			continue
+		case fenceMarker(trimmed) != "":
+			flush()
+			fence = fenceMarker(trimmed)
+			out.WriteString(line)
+		case trimmed == "":
+			flush()
+			out.WriteString(line)
+		default:
+			paragraph.WriteString(line)
 		}
-		if marker := fenceMarker(trimmed); marker != "" {
-			fence = marker
-			continue
-		}
-
-		lines[i] = mapOutsideCodeSpans(line, func(text string) string {
-			return linkPattern.ReplaceAllStringFunc(text, func(match string) string {
-				return "](" + fn(match[2:len(match)-1]) + ")"
-			})
-		})
 	}
-	return strings.Join(lines, "")
+	flush()
+	return out.String()
+}
+
+// replaceFirstGroup replaces the first group of each match of pattern in text with the result of fn.
+func replaceFirstGroup(pattern *regexp.Regexp, text string, fn func(string) string) string {
+	var out strings.Builder
+	last := 0
+	for _, m := range pattern.FindAllStringSubmatchIndex(text, -1) {
+		out.WriteString(text[last:m[2]])
+		out.WriteString(fn(text[m[2]:m[3]]))
+		last = m[3]
+	}
+	out.WriteString(text[last:])
+	return out.String()
 }
 
 // fenceMarker returns the run of backticks or tildes that opens a fenced code block on line, or "".
@@ -245,28 +263,34 @@ func fenceMarker(line string) string {
 	return ""
 }
 
-// mapOutsideCodeSpans applies fn to each part of line that is not in an inline code span.
-func mapOutsideCodeSpans(line string, fn func(text string) string) string {
+// closesFence reports whether line closes the fence that marker opened: a run of the same character, at least as long,
+// with nothing after it.
+func closesFence(line, marker string) bool {
+	return strings.HasPrefix(line, marker) && strings.Trim(line, marker[:1]) == ""
+}
+
+// mapOutsideCodeSpans applies fn to each part of paragraph that is not in an inline code span.
+func mapOutsideCodeSpans(paragraph string, fn func(text string) string) string {
 	var out strings.Builder
 	for {
-		start := strings.Index(line, "`")
+		start := strings.Index(paragraph, "`")
 		if start < 0 {
-			out.WriteString(fn(line))
+			out.WriteString(fn(paragraph))
 			return out.String()
 		}
 
-		run := len(line[start:]) - len(strings.TrimLeft(line[start:], "`"))
-		delimiter := line[start : start+run]
-		end := closingDelimiter(line[start+run:], delimiter)
+		run := len(paragraph[start:]) - len(strings.TrimLeft(paragraph[start:], "`"))
+		delimiter := paragraph[start : start+run]
+		end := closingDelimiter(paragraph[start+run:], delimiter)
 		if end < 0 {
-			out.WriteString(fn(line))
+			out.WriteString(fn(paragraph))
 			return out.String()
 		}
 
 		spanEnd := start + run + end + run
-		out.WriteString(fn(line[:start]))
-		out.WriteString(line[start:spanEnd])
-		line = line[spanEnd:]
+		out.WriteString(fn(paragraph[:start]))
+		out.WriteString(paragraph[start:spanEnd])
+		paragraph = paragraph[spanEnd:]
 	}
 }
 

@@ -59,6 +59,30 @@ func TestSync(t *testing.T) {
 			want: "See [the CLI](https://docs.example.com/cli/#regenerating) and [home](https://docs.example.com/).\n",
 		},
 		{
+			name: "link with a title keeps its title",
+			doc:  "guidelines.md",
+			in:   "See [status](component.md#status \"Status\").\n",
+			want: "See [status](../../components/references/component.md#status \"Status\").\n",
+		},
+		{
+			name: "link reference definition points to the copy",
+			doc:  "guidelines.md",
+			in:   "See [status][s].\n\n[s]: component.md#status\n",
+			want: "See [status][s].\n\n[s]: ../../components/references/component.md#status\n",
+		},
+		{
+			name: "link in an inline code span over a line break does not change",
+			doc:  "guidelines.md",
+			in:   "Write `cells[x](component.md) and\nmore` here.\n",
+			want: "Write `cells[x](component.md) and\nmore` here.\n",
+		},
+		{
+			name: "a fence line with text after the marker does not close the fence",
+			doc:  "guidelines.md",
+			in:   "```\n[a](component.md)\n```not-a-close\n[b](component.md)\n```\n[c](component.md)\n",
+			want: "```\n[a](component.md)\n```not-a-close\n[b](component.md)\n```\n[c](../../components/references/component.md)\n",
+		},
+		{
 			name: "external links, anchors, and links in inline code do not change",
 			doc:  "guidelines.md",
 			in:   "[Go](https://go.dev), [up](#top), `[x](component.md)`, ``a ` [y](component.md)``.\n",
@@ -92,12 +116,16 @@ func TestSyncRemovesStaleCopies(t *testing.T) {
 	stale := filepath.Join(skillsDir, "components/references/removed.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(stale), 0o755))
 	require.NoError(t, os.WriteFile(stale, []byte("old"), 0o644))
+	retired := filepath.Join(skillsDir, "retired/references/old.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(retired), 0o755))
+	require.NoError(t, os.WriteFile(retired, []byte("old"), 0o644))
 	skillFile := filepath.Join(skillsDir, "components/SKILL.md")
 	require.NoError(t, os.WriteFile(skillFile, []byte("skill"), 0o644))
 
 	require.NoError(t, pluginsync.Sync(docsDir, skillsDir, siteURL, testCopies))
 
 	assert.NoFileExists(t, stale)
+	assert.NoDirExists(t, filepath.Dir(retired))
 	assert.FileExists(t, skillFile)
 }
 
@@ -135,13 +163,15 @@ func TestCheckLinks(t *testing.T) {
 
 	t.Run("names each relative link that resolves to no file", func(t *testing.T) {
 		dir := filepath.Join(root, "broken")
-		write(t, filepath.Join(dir, "nested/doc.md"), "[a](missing.md) [b](../gone.md#x)\n")
+		write(t, filepath.Join(dir, "nested/doc.md"),
+			"[a](missing.md) [b](../gone.md#x) [c](titled.md \"Title\")\n\n[d]: defined.md\n")
 
 		err := pluginsync.CheckLinks(dir)
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "missing.md")
-		assert.Contains(t, err.Error(), "../gone.md#x")
+		for _, target := range []string{"missing.md", "../gone.md#x", "titled.md", "defined.md"} {
+			assert.Contains(t, err.Error(), target)
+		}
 	})
 }
 

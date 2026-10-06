@@ -1,7 +1,6 @@
 {
   "name": "ocf",
   "displayName": "Operator Component Framework",
-  "version": "0.23.0",
   "description": "Skills, scaffolding commands, and a guidelines reviewer for building Kubernetes operators with the operator-component-framework.",
   "author": {
     "name": "sourcehawk",

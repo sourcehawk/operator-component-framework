@@ -132,9 +132,9 @@ The repository ships a Claude Code plugin for framework consumers in `plugin/` (
   when a link in `plugin/` resolves to no file.
 - When changing public API behaviour, check whether the distilled guidance in the affected `plugin/skills/*/SKILL.md` is
   stale and update it in the same response.
-- Claude Code caches a plugin by the `version` in `plugin/.claude-plugin/plugin.json`, so an installed plugin updates
-  only when that version changes. Before you tag a release, merge a PR that runs `make plugin-version VERSION=<tag>`.
-  The Release workflow fails on a release whose plugin version does not match its tag, and opens that PR for you.
+- Do not add a `version` to `plugin/.claude-plugin/plugin.json` or to the marketplace entry. Claude Code caches a plugin
+  by that version, and without one it uses the commit. Consumers pin the marketplace `ref` to a framework tag, so the
+  commit makes each tag install its own plugin. A version that a release forgets to change keeps them on old skills.
 
 ### Examples
 

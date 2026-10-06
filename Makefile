@@ -100,16 +100,6 @@ sync-plugin: prettier ## Sync framework docs into the Claude plugin skill refere
 	go run ./internal/pluginsync/syncplugin
 	$(PRETTIER) --write --log-level warn '$(PLUGIN_SKILLS)/*/references/**/*.md'
 
-PLUGIN_MANIFEST := plugin/.claude-plugin/plugin.json
-
-.PHONY: plugin-version
-plugin-version: ## Set the Claude plugin version to the release tag VERSION (for example VERSION=v0.24.0).
-	@echo "$(VERSION)" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' || { \
-		echo "VERSION must be a release tag such as v0.24.0, got '$(VERSION)'" >&2; exit 1; }
-	sed -i.bak -E 's/("version": *")[^"]*"/\1$(patsubst v%,%,$(VERSION))"/' $(PLUGIN_MANIFEST)
-	@rm -f $(PLUGIN_MANIFEST).bak
-	@grep '"version"' $(PLUGIN_MANIFEST)
-
 .PHONY: prettier
 prettier: $(PRETTIER) ## Download prettier locally if necessary.
 $(PRETTIER): $(LOCALBIN)

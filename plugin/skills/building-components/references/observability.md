@@ -345,6 +345,101 @@ as both are scraped. The window is short: controller-runtime stops the manager w
 restarts and its series disappear within a scrape interval or two. Dedupe on a leadership signal would close it, at the
 cost of a fallback for operators that run without leader election, and is not done.
 
+## Signals from your own controller
+
+The framework reports what it does to managed resources. Your controller has its own facts to report, and it has four
+signals for them. Each signal answers a different question, so choose the signal by its reader, not by habit.
+
+| Signal    | What it reports                                       | Who reads it, and how                                   |
+| --------- | ----------------------------------------------------- | ------------------------------------------------------- |
+| Condition | The current state of the owner                        | A user, with `kubectl get` or `kubectl wait`            |
+| Event     | A transition on one object at one time                | A user, with `kubectl describe` or `kubectl events`     |
+| Log       | Operator-internal tracing and diagnostics             | The operator developer. A user does not need to read it |
+| Metric    | Rates and loops across many owners, over a time range | Prometheus, the shipped dashboards and alerts           |
+
+A condition is set on each reconcile, and setting it again to the same value changes nothing. An event is different:
+each call records a new occurrence.
+
+### What the framework already reports
+
+The framework records these events on the owner, with the affected resource as the related object:
+
+| Reason             | Action   | Recorded when                                               |
+| ------------------ | -------- | ----------------------------------------------------------- |
+| `Created<Kind>`    | `Create` | An apply created the resource                               |
+| `Updated<Kind>`    | `Update` | An apply changed the resource                               |
+| `ResourceDeleted`  | `Delete` | The framework deleted the resource                          |
+| `ResourceOrphaned` | `Orphan` | The framework removed its owner reference from the resource |
+
+An apply that changes nothing records no event. The framework also sets one condition for each component, and with a
+`Metrics` recorder it records the condition gauge and the apply counters. See [Status model](component.md#status-model)
+and [Metrics](component.md#metrics).
+
+### Rules
+
+- **An event marks a transition, never a reconcile.** A reconcile in steady state records no event. Record one only when
+  something changed, for example when `meta.SetStatusCondition` returns `true`, or when a value that the controller
+  records in status changes. Use `corev1.EventTypeNormal` for an expected transition, such as a finished migration, and
+  `corev1.EventTypeWarning` for a fault.
+- **A returned error is not a transition by itself.** While a fault lasts, each reconcile returns the same error. Report
+  the fault through a condition, and record a Warning event only when that condition changes to the failed state.
+- **Do not record an event for an apply.** The framework records `Created<Kind>` and `Updated<Kind>`, and it records
+  none for an apply that changes nothing.
+- **Do not record an event and a log line for the same fact.** The event is for the user. A log line with the same text
+  adds nothing.
+- **Do not log an error that `Reconcile` returns.** controller-runtime logs each returned error with the name of the
+  controller and the owner. Use `logger.Error` only for an error that the controller handles and does not return.
+- **Keep `V(0)` logs sparse in the reconcile path.** `logger.Info` logs at `V(0)`, and each reconcile of each owner
+  emits these lines. A line such as "reconciling WebApp" at the start of each reconcile belongs at `V(1)` or higher.
+- **Give the reason and the action of an event named constants.** `events.EventRecorder` requires an action as well as a
+  reason, and both are part of the contract that a user filters on.
+- **Find a hot loop in the apply metrics, not in events.** A managed resource that is rewritten on each reconcile shows
+  in the `updated` rate of `ocf_resource_apply_total` and fires [`ManagedResourceNotConverging`](#managed-resources).
+  [Resource metrics](component.md#resource-metrics) explains why events do not show it.
+
+The example below reports a failed backup. `backupCondition` is a pure function that returns the `BackupReady` condition
+for the result of the last backup.
+
+```go
+const (
+    reasonBackupFailed = "BackupFailed"
+    actionBackup       = "Backup"
+)
+
+// BAD: while the backup fails, each reconcile records the warning again.
+cond := backupCondition(backupErr)
+meta.SetStatusCondition(app.GetStatusConditions(), cond)
+if backupErr != nil {
+    r.EventRecorder.Eventf(app, nil, corev1.EventTypeWarning, reasonBackupFailed, actionBackup, "%s", cond.Message)
+}
+
+// GOOD: the condition carries the state on each reconcile. The event marks the
+// transition, so it is recorded only when the condition changed.
+cond := backupCondition(backupErr)
+if meta.SetStatusCondition(app.GetStatusConditions(), cond) && cond.Status == metav1.ConditionFalse {
+    r.EventRecorder.Eventf(app, nil, corev1.EventTypeWarning, reasonBackupFailed, actionBackup, "%s", cond.Message)
+}
+```
+
+The `nil` argument is the related object. The event concerns only the owner. `meta.SetStatusCondition` returns `true`
+when the status, the reason, the message, or the observed generation of the condition changed. The comparison is against
+the last persisted status only because the controller fetches the owner fresh at the top of each reconcile. See
+[Persisting Status with FlushStatus](component.md#persisting-status-with-flushstatus).
+
+Keep values that change on each pass, such as a timestamp or a retry count, out of the condition message. Otherwise the
+condition changes on each reconcile, and so does the event.
+
+### Why an event on each reconcile costs more than noise
+
+The `events.EventRecorder` from client-go folds each repeat of an event into one series. A repeat is an event with the
+same type, reason, action, regarding object, and related object. The note of a repeat is not kept. The recorder writes
+the second occurrence at once, and after that it writes the count of the series only every 30 minutes, or when the
+series ends after 6 minutes with no repeat.
+
+An event on each reconcile thus becomes one event with a count. It does not show when the state changed. A repeat with a
+new note, such as a new error message, is lost, because it folds into the series of the old one. An event that marks
+only transitions keeps one occurrence for each change.
+
 ## Previewing locally
 
 A clone of the repository can bring up Prometheus and Grafana with simulated operator data behind them, so you can look

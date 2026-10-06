@@ -988,8 +988,9 @@ rate(ocf_resource_apply_total{operation="updated"}[5m])
 ```
 
 A resource whose `updated` rate never settles to zero is being rewritten on every reconcile even though nothing changed.
-Events report the same thing, but client-go's spam filter truncates them within seconds under exactly those conditions,
-which is why the counter exists.
+Events do not show it. The `events.EventRecorder` from client-go folds each repeat of the `Updated<Kind>` event into one
+series, and it writes the count of the series only every 30 minutes, which is why the counter exists. See
+[Signals from your own controller](observability.md#why-an-event-on-each-reconcile-costs-more-than-noise).
 
 ### The resource identifier
 

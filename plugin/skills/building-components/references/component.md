@@ -988,9 +988,9 @@ rate(ocf_resource_apply_total{operation="updated"}[5m])
 ```
 
 A resource whose `updated` rate never settles to zero is being rewritten on every reconcile even though nothing changed.
-Events do not show it. The `events.EventRecorder` from client-go folds each repeat of the `Updated<Kind>` event into one
-series, and it writes the count of the series only every 30 minutes, which is why the counter exists. See
-[Signals from your own controller](observability.md#why-an-event-on-each-reconcile-costs-more-than-noise).
+Events do not give this signal. Each event concerns one owner, the API server keeps events only for a limited time (one
+hour by default), and Prometheus cannot compute a rate or fire an alert from them. The counter gives the rate across all
+owners, which is why it exists.
 
 ### The resource identifier
 

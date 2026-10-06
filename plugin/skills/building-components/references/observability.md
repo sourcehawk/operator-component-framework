@@ -431,14 +431,23 @@ condition changes on each reconcile, and so does the event.
 
 ### Why an event on each reconcile costs more than noise
 
-The `events.EventRecorder` from client-go folds each repeat of an event into one series. A repeat is an event with the
-same type, reason, action, regarding object, and related object. The note of a repeat is not kept. The recorder writes
-the second occurrence at once, and after that it writes the count of the series only every 30 minutes, or when the
-series ends after 6 minutes with no repeat.
+The `events.EventRecorder` from client-go folds a repeat of an event into one series. A repeat has the same type,
+reason, action, reporting controller, and reporting instance. Its references to the regarding object and the related
+object are also the same, resource versions included. The note is not part of this match. The recorder writes the second
+occurrence at once. After that, it writes the count only every 30 minutes, or when the series ends after 6 minutes with
+no repeat.
 
-An event on each reconcile thus becomes one event with a count. It does not show when the state changed. A repeat with a
-new note, such as a new error message, is lost, because it folds into the series of the old one. An event that marks
-only transitions keeps one occurrence for each change.
+An event on each reconcile thus has one of two results:
+
+- If the owner did not change between two reconciles, the events fold into one series with a count. The series does not
+  show when the state changed. A repeat with a new note, such as a new error message, is lost.
+- If the owner changed, for example because the controller wrote its status, the resource version differs. Each
+  reconcile then creates a new Event object. These objects add load on the API server, and the event that reports a real
+  change is hidden among them in `kubectl describe`.
+
+An event that marks only transitions keeps the events few, so the event that reports a change stays visible. This
+reduces the noise. It does not make sure that each transition gets a separate Event object: two transitions with the
+same key can still fold into one series.
 
 ## Previewing locally
 

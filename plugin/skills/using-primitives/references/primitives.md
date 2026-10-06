@@ -1,8 +1,8 @@
 # Primitives Overview
 
 The `primitives` packages provide reusable, type-safe wrappers for individual Kubernetes objects. A primitive sits
-between the [Component layer](component.md) and a raw Kubernetes resource, handling state synchronization, mutation, and
-lifecycle so operator authors do not have to.
+between the [Component layer](../../building-components/references/component.md) and a raw Kubernetes resource, handling
+state synchronization, mutation, and lifecycle so operator authors do not have to.
 
 This page is the canonical reference for the concepts shared across every primitive: the lifecycle interfaces and the
 status values they report, the mutation system, editors and selectors, Server-Side Apply, and cluster-scoped handling.
@@ -76,8 +76,8 @@ A primitive participates in status aggregation by implementing one or more lifec
 
 !!! note "This table is the single source of truth"
 
-    Other documentation links here for the interface-to-status mapping. The [component page](component.md) owns how
-    these values are prioritized and aggregated; the [custom resource guide](custom-resource.md) owns the Go constant
+    Other documentation links here for the interface-to-status mapping. The [component page](../../building-components/references/component.md) owns how
+    these values are prioritized and aggregated; the [custom resource guide](../../custom-resource-wrappers/references/custom-resource.md) owns the Go constant
     reference for implementers.
 
 | Interface         | Reported status values                                   | Typical kinds                                    |
@@ -119,7 +119,8 @@ cluster-scoped object must not have a namespace
 A cluster-scoped builder also provides an identity function that omits the namespace segment (for example
 `rbac.authorization.k8s.io/v1/ClusterRole/my-role`). At reconcile time the framework detects scope mismatches between
 the owner CRD and managed resources using the cluster's REST mapper. See
-[Cluster-Scoped Resources](component.md#cluster-scoped-resources) for owner-reference and garbage-collection behavior.
+[Cluster-Scoped Resources](../../building-components/references/component.md#cluster-scoped-resources) for
+owner-reference and garbage-collection behavior.
 
 ## Server-Side Apply
 
@@ -151,13 +152,14 @@ The rejection depends on the controller reference. For a resource registered wit
 reference cannot be set because of a scope mismatch, nothing stops the second owner's forced apply from taking the
 fields it declares, and the fields move between the two owners' managers on every reconcile.
 
-Register the resource with [`component.BlockOnForeignController()`](component.md#resource-registration-options) to make
-the contention visible. Before each apply, the component reads the live object. If the object has a controller reference
-to another owner, the resource reports `Blocked` and names that owner instead of applying. In the default case, this
-also turns the rejection by the API server into a readable condition. The check compares controller references only, so
-two owners that both apply without one leave no identity on the object (two `Unowned()` registrations, or owners that
-the scope of the object keeps from being referenced). Then the fields keep moving between the two managers, and a shared
-name remains the responsibility of the operator.
+Register the resource with
+[`component.BlockOnForeignController()`](../../building-components/references/component.md#resource-registration-options)
+to make the contention visible. Before each apply, the component reads the live object. If the object has a controller
+reference to another owner, the resource reports `Blocked` and names that owner instead of applying. In the default
+case, this also turns the rejection by the API server into a readable condition. The check compares controller
+references only, so two owners that both apply without one leave no identity on the object (two `Unowned()`
+registrations, or owners that the scope of the object keeps from being referenced). Then the fields keep moving between
+the two managers, and a shared name remains the responsibility of the operator.
 
 !!! note "Upgrading from a release without the UID in the manager name"
 
@@ -193,7 +195,7 @@ primitives coexist with other controllers that touch the same resources.
     between mutation and apply, so the two honest options are to sanitize the object in a `client.Client` decorator
     installed in `ReconcileContext.Client`, or to manage the kind through the
     [unstructured primitives](#unstructured-primitives), whose content map holds only the fields you put in it. See
-    [When Server-Side Apply Rejects a Typed Object](custom-resource.md#when-server-side-apply-rejects-a-typed-object)
+    [When Server-Side Apply Rejects a Typed Object](../../custom-resource-wrappers/references/custom-resource.md#when-server-side-apply-rejects-a-typed-object)
     for both, including why a decorator must decode the server's response back into the typed object.
 
 ## The Mutation System
@@ -409,8 +411,9 @@ object's name carries a generated suffix.
 
 The identifier is a Prometheus label value, not a Kubernetes name, so it must be low-cardinality and stable across
 reconciles. Never derive it from a per-owner value such as the owning custom resource's name. `Build` rejects a blank
-identifier; omit the call to accept the default. See [Metrics](component.md#metrics) for the series, their labels, and
-the cardinality contract.
+identifier; omit the call to accept the default. See
+[Metrics](../../building-components/references/component.md#metrics) for the series, their labels, and the cardinality
+contract.
 
 ## Built-in Primitives
 
@@ -540,11 +543,11 @@ the result with a component.
 
 !!! note "Guards versus prerequisites"
 
-    A [guard](component.md#guards) handles a dependency **within** one component: an earlier resource extracts a value
-    into a [data cell](component.md#declared-data) after it is applied, and a later resource blocks on that cell before
+    A [guard](../../building-components/references/component.md#guards) handles a dependency **within** one component: an earlier resource extracts a value
+    into a [data cell](../../building-components/references/component.md#declared-data) after it is applied, and a later resource blocks on that cell before
     proceeding. For a dependency **between** components (the frontend cannot start until the backend is ready), use
-    [prerequisites](component.md#prerequisites) on the component builder instead. See
-    [Guards](component.md#guards) for the full behavioral contract.
+    [prerequisites](../../building-components/references/component.md#prerequisites) on the component builder instead. See
+    [Guards](../../building-components/references/component.md#guards) for the full behavioral contract.
 
 ## Unstructured Primitives
 
@@ -571,5 +574,5 @@ When the built-in primitives do not cover your kind, implement a custom resource
 including your own CRDs. The framework provides generic building blocks in `pkg/generic` that handle reconciliation
 mechanics, mutation sequencing, and suspension, so you supply only the type-specific logic.
 
-See the [Custom Resource Implementation Guide](custom-resource.md) for a complete walkthrough covering mutator design,
-status handlers, builders, and component registration.
+See the [Custom Resource Implementation Guide](../../custom-resource-wrappers/references/custom-resource.md) for a
+complete walkthrough covering mutator design, status handlers, builders, and component registration.

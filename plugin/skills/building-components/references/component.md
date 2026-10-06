@@ -17,9 +17,10 @@ flowchart TD
     Controller --> Component --> Primitive --> Object
 ```
 
-For the broader mental model and the primitive layer beneath a component, see the [Primitives Overview](primitives.md).
-For operator-structuring advice (one component per condition, thin controllers, participation modes), see the
-[Guidelines](guidelines.md).
+For the broader mental model and the primitive layer beneath a component, see the
+[Primitives Overview](../../using-primitives/references/primitives.md). For operator-structuring advice (one component
+per condition, thin controllers, participation modes), see the
+[Guidelines](../../structuring-operators/references/guidelines.md).
 
 ## Building a Component
 
@@ -93,7 +94,7 @@ cached client can miss a controller reference that the API server already has.
 Use the option on any resource that two custom resources can name. With the default controller reference, it replaces
 the rejection by the API server of a second controller with a readable condition. With `Unowned()`, it stops the forced
 apply of the second owner from taking the fields of the object (see
-[Server-Side Apply](primitives.md#server-side-apply)).
+[Server-Side Apply](../../using-primitives/references/primitives.md#server-side-apply)).
 
 Unlike a custom guard, the check also covers every path that deletes the object. During suspension, the component does
 not scale down or delete a resource that another owner controls. The resource counts as suspended, so the component
@@ -395,7 +396,8 @@ Return the cells from your component assembly function so tests can reach them, 
 [`examples/extraction-and-guards`](https://github.com/sourcehawk/operator-component-framework/tree/main/examples/extraction-and-guards)
 does.
 
-Each managed resource must implement [`concepts.Previewable`](primitives.md#lifecycle-interfaces) (`Preview()`). All
+Each managed resource must implement
+[`concepts.Previewable`](../../using-primitives/references/primitives.md#lifecycle-interfaces) (`Preview()`). All
 built-in primitives satisfy it through `generic.BaseResource`. A custom resource must implement it to be previewable;
 without it, `Component.Preview` returns an error for that resource. `Preview` is the natural input for whole-component
 golden snapshots via `golden.AssertComponentYAML`.
@@ -424,8 +426,8 @@ omit the namespace segment (for example `rbac.authorization.k8s.io/v1/ClusterRol
 The component also satisfies `concepts.MutationInspector` (`RegisteredMutations()` and `FiringSet()`), which surfaces
 the names of registered mutations and the subset that fire at the version the component was built at. A custom resource
 implements the same interface so version-matrix golden generation can introspect it. See
-[`concepts.MutationInspector`](primitives.md#lifecycle-interfaces) for the contract and the [Testing](testing.md) guide
-for how it drives version-matrix goldens.
+[`concepts.MutationInspector`](../../using-primitives/references/primitives.md#lifecycle-interfaces) for the contract
+and the [Testing](../../testing-operators/references/testing.md) guide for how it drives version-matrix goldens.
 
 The data-flow counterpart is `concepts.DataInspector` (`DataTopology()`), which reports the declared flow of every data
 cell through the component without running any extraction. See [Inspecting the topology](#inspecting-the-topology).
@@ -449,14 +451,14 @@ If the owner CRD is itself cluster-scoped, owner references are set normally on 
 ## Status Model
 
 A component reports one condition whose reason is a `component.Status` value. Which states are reachable depends on
-which [lifecycle interfaces](primitives.md#lifecycle-interfaces) a resource implements: long-running workloads report
-`Alive` states, run-to-completion resources report `Completable` states, externally-dependent resources report
-`Operational` states, and resources implementing none of these are ready as long as they exist. The component aggregates
-across all registered resources and surfaces the most critical state.
+which [lifecycle interfaces](../../using-primitives/references/primitives.md#lifecycle-interfaces) a resource
+implements: long-running workloads report `Alive` states, run-to-completion resources report `Completable` states,
+externally-dependent resources report `Operational` states, and resources implementing none of these are ready as long
+as they exist. The component aggregates across all registered resources and surfaces the most critical state.
 
 For the raw lifecycle-interface to status-string mapping, see
-[Primitives Overview: Lifecycle Interfaces](primitives.md#lifecycle-interfaces). This page owns the priority and
-aggregation behavior.
+[Primitives Overview: Lifecycle Interfaces](../../using-primitives/references/primitives.md#lifecycle-interfaces). This
+page owns the priority and aggregation behavior.
 
 ```mermaid
 stateDiagram-v2
@@ -504,7 +506,7 @@ priority := status.Priority()            // the aggregation priority of that sta
 `GetCondition` reads the owner object in memory, so reconcile the component first. A condition read before
 `comp.Reconcile` reflects the previous pass. Prefer it over `meta.FindStatusCondition` on the owner's conditions: the
 synthetic `Unknown` is what keeps a not-yet-reconciled component visible to
-[owner-level aggregation](guidelines.md#derive-the-owners-aggregate-condition-from-component-conditions).
+[owner-level aggregation](../../structuring-operators/references/guidelines.md#derive-the-owners-aggregate-condition-from-component-conditions).
 
 ### Condition priority and aggregation
 
@@ -519,7 +521,7 @@ reason when no non-True condition outranks it.
 
 `Status.Priority()` is the exported way to consume this ordering. A controller that derives an owner-level condition
 from several component conditions calls it directly, as
-[Derive the Owner's Aggregate Condition from Component Conditions](guidelines.md#derive-the-owners-aggregate-condition-from-component-conditions)
+[Derive the Owner's Aggregate Condition from Component Conditions](../../structuring-operators/references/guidelines.md#derive-the-owners-aggregate-condition-from-component-conditions)
 describes. The `Reason` on a condition **the framework writes for a component** is always a `component.Status` value,
 never free text, so metrics and other consumers can key on the reason string. Convert one back with
 `Condition.ComponentStatus()`. That guarantee does not extend to conditions on the owner written by anyone else:
@@ -643,7 +645,8 @@ component.NewComponentBuilder().
 During the grace period the component reports its real converging state, not a failure. After the period expires, if the
 component is still not ready, a `Graceful` resource's `GraceStatus()` determines the post-expiry severity: `Healthy` (no
 issue), `Degraded` (partially functional), or `Down` (non-functional). This prevents spurious failure alerts during
-normal operations such as rolling updates. See the [Guidelines](guidelines.md) for choosing grace durations.
+normal operations such as rolling updates. See the [Guidelines](../../structuring-operators/references/guidelines.md)
+for choosing grace durations.
 
 A resource that reports `Blocked` was not applied, so it has no live status to grade. A resource reports `Blocked` when
 its [guard](#guards) blocks it, or when [`BlockOnAbsence()`](#resource-registration-options) or
@@ -771,7 +774,7 @@ elsewhere. Leave it `nil` to opt out. See [Metrics](#metrics).
 
 `EventRecorder` takes a `k8s.io/client-go/tools/events.EventRecorder`. The manager accessor that returns one,
 `GetEventRecorder(name)`, was added in controller-runtime v0.23; on v0.22.x, build the recorder from client-go instead,
-as described in [Compatibility](compatibility.md).
+as described in [Compatibility](../../structuring-operators/references/compatibility.md).
 
 ## Persisting Status with FlushStatus
 
@@ -877,8 +880,8 @@ recording is skipped. See [Metrics](#metrics).
 
 This split is what lets a controller with several components stage several conditions during one reconcile and persist
 them in a single write. Persisting after each component would race the components' writes and produce 409 conflicts. See
-[Keep Controllers Thin](guidelines.md#keep-controllers-thin) and
-[One Component Per Logical Condition](guidelines.md#one-component-per-logical-condition).
+[Keep Controllers Thin](../../structuring-operators/references/guidelines.md#keep-controllers-thin) and
+[One Component Per Logical Condition](../../structuring-operators/references/guidelines.md#one-component-per-logical-condition).
 
 ### One write path for the owner's status
 
@@ -1063,7 +1066,7 @@ its result in the cell and marks it present. If it returns an error, the reconci
 several values from one object means several `ExtractInto` calls, one per cell.
 
 Custom resource wrappers expose the same shape by delegating to `generic.ExtractInto`; see the
-[custom resource guide](custom-resource.md#5-implement-the-builder).
+[custom resource guide](../../custom-resource-wrappers/references/custom-resource.md#5-implement-the-builder).
 
 ### Declaring a read
 
@@ -1074,8 +1077,8 @@ Two builder methods record "this resource reads this cell", and both accept any 
   object only when the value is there.
 
 Both modes are validated and both show up in the topology. The
-[Guidelines](guidelines.md#use-data-extraction-and-guards-for-intra-component-dependencies) page has the table of
-consumption modes and when to pick each.
+[Guidelines](../../structuring-operators/references/guidelines.md#use-data-extraction-and-guards-for-intra-component-dependencies)
+page has the table of consumption modes and when to pick each.
 
 ### Reset at the start of each reconcile
 
@@ -1124,8 +1127,9 @@ for _, edge := range comp.DataTopology() {
 ```
 
 `Producers`, `Guarded`, and `Optional` hold resource identities in registration order. This is the data-flow counterpart
-of [`concepts.MutationInspector`](primitives.md#lifecycle-interfaces): nothing in the reconcile path calls it, and tests
-can assert a component's declared data flow the same way they assert its registered mutations.
+of [`concepts.MutationInspector`](../../using-primitives/references/primitives.md#lifecycle-interfaces): nothing in the
+reconcile path calls it, and tests can assert a component's declared data flow the same way they assert its registered
+mutations.
 
 ## Guards
 
@@ -1264,10 +1268,12 @@ message: 'Component is down: waiting for data "backend-endpoint"'
 ## Component-Specific Guidance
 
 General operator-structuring advice (one component per condition, keeping controllers thin, grouping by lifecycle,
-naming conditions for their audience) lives in the [Guidelines](guidelines.md). The one piece specific to this page:
+naming conditions for their audience) lives in the [Guidelines](../../structuring-operators/references/guidelines.md).
+The one piece specific to this page:
 
 **Use `component.Auxiliary()` for non-critical resources.** A metrics-exporter sidecar should not block your primary
 component from becoming ready. Every resource defaults to `ParticipationModeRequired`, so register a resource with
 `component.Auxiliary()` when its health should not gate the component condition. A blocked guard on an auxiliary
 resource still contributes, because a blocked guard halts the whole pipeline. See
-[Understand Participation Modes](guidelines.md#understand-participation-modes) for the full discussion.
+[Understand Participation Modes](../../structuring-operators/references/guidelines.md#understand-participation-modes)
+for the full discussion.

@@ -170,7 +170,8 @@ resource, err := builder.Build()
 ```
 
 Resources registered later in the same component block on the cell with `WithDataGuard(boundClaim)` or read it
-opportunistically with `WithOptionalData(boundClaim)`. See [Declared Data](../component.md#declared-data).
+opportunistically with `WithOptionalData(boundClaim)`. See
+[Declared Data](../../../building-components/references/component.md#declared-data).
 
 ## Operational Status
 

@@ -284,7 +284,8 @@ resource, err := builder.Build()
 ```
 
 Resources registered later in the same component block on the cell with `WithDataGuard(bootstrapServers)` or read it
-opportunistically with `WithOptionalData(bootstrapServers)`. See [Declared Data](../component.md#declared-data).
+opportunistically with `WithOptionalData(bootstrapServers)`. See
+[Declared Data](../../../building-components/references/component.md#declared-data).
 
 ## Full Example
 

@@ -97,8 +97,9 @@ type ComponentPreviewer interface {
 
 All built-in primitives satisfy `Previewer` through `generic.BaseResource`. A built `*component.Component` satisfies
 `ComponentPreviewer` through its `Preview` method. If you are implementing a custom resource wrapper, your built
-resource must also satisfy `Previewer` for golden tests to work. See [Custom Resources](custom-resource.md) for how to
-implement `Preview` on a custom resource.
+resource must also satisfy `Previewer` for golden tests to work. See
+[Custom Resources](../../custom-resource-wrappers/references/custom-resource.md) for how to implement `Preview` on a
+custom resource.
 
 ### Assert a single resource
 
@@ -159,9 +160,10 @@ convention, so the files are invisible to the compiler.
 
 `AssertComponentYAML` previews every resource a component would apply and serializes them into one multi-document YAML
 stream (`---` separated, in apply order). `buildComponent` here is your own helper that assembles the component with
-`component.NewComponentBuilder` (see [Getting Started](getting-started.md#step-5-wire-the-reconciler) for building one);
-extract it from your reconciler so the test and the controller build the component the same way. A built
-`*component.Component` satisfies `golden.ComponentPreviewer` directly, so no type assertion is needed.
+`component.NewComponentBuilder` (see
+[Getting Started](https://sourcehawk.github.io/operator-component-framework/getting-started/#step-5-wire-the-reconciler)
+for building one); extract it from your reconciler so the test and the controller build the component the same way. A
+built `*component.Component` satisfies `golden.ComponentPreviewer` directly, so no type assertion is needed.
 
 ```go
 func TestComponentGolden(t *testing.T) {
@@ -299,8 +301,9 @@ a separate component-level set.
 `goldengen.Resource` requires that the primitive satisfies both `concepts.MutationInspector` (for `RegisteredMutations`
 and `FiringSet`) and `concepts.Previewable` (for `Preview`); `goldengen.Component` requires the equivalent on a
 `*component.Component`. All built-in primitives satisfy both through `generic.BaseResource`, and a built component
-satisfies them by aggregating its resources. For custom resources, see [Custom Resources](custom-resource.md) for how to
-implement `MutationInspector`.
+satisfies them by aggregating its resources. For custom resources, see
+[Custom Resources](../../custom-resource-wrappers/references/custom-resource.md) for how to implement
+`MutationInspector`.
 
 ### Run the sweep
 
@@ -613,10 +616,10 @@ assert.Equal(t, app.Generation, ready.ObservedGeneration)
 `"Ready"` is your own aggregate condition type here, not a framework-fixed name; a single component's condition type
 reads the same way. `meta.FindStatusCondition` is the right reader, because the test is a consumer of the persisted
 object. Inside the controller, aggregation reads component conditions through
-[`GetCondition`](component.md#reading-a-components-condition) instead, for the synthetic `Unknown` it returns before the
-first reconcile. Assert the reason as well as the status: the reason is a
-[`component.Status`](component.md#condition-priority-and-aggregation) value, so it pins which component governed the
-result and not merely that something was ready.
+[`GetCondition`](../../building-components/references/component.md#reading-a-components-condition) instead, for the
+synthetic `Unknown` it returns before the first reconcile. Assert the reason as well as the status: the reason is a
+[`component.Status`](../../building-components/references/component.md#condition-priority-and-aggregation) value, so it
+pins which component governed the result and not merely that something was ready.
 
 Two assertions are worth writing at this layer and nowhere else: that a not-yet-reconciled component holds the owner at
 `False`, and that a component built with `Suspend(true)` reports `True` while the resource is gone from the cluster.

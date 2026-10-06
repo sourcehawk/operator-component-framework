@@ -1,9 +1,10 @@
 # Custom Resources
 
-This guide is for operator authors who need to manage a Kubernetes object that the [built-in primitives](primitives.md)
-do not cover. The built-in set handles the common kinds (Deployments, StatefulSets, ConfigMaps, Services, and more) and
-is highly customizable through status handlers, suspension logic, mutations, and declared data. Reach for a custom
-resource only when the kind you manage has no matching primitive:
+This guide is for operator authors who need to manage a Kubernetes object that the
+[built-in primitives](../../using-primitives/references/primitives.md) do not cover. The built-in set handles the common
+kinds (Deployments, StatefulSets, ConfigMaps, Services, and more) and is highly customizable through status handlers,
+suspension logic, mutations, and declared data. Reach for a custom resource only when the kind you manage has no
+matching primitive:
 
 - A **custom CRD** defined by your project or a third-party operator.
 - A **standard Kubernetes kind** that the built-in set does not yet wrap.
@@ -15,13 +16,13 @@ status, and mutator logic, exactly the way the built-in primitives do.
 !!! note "If your CRD has no typed Go struct"
 
     You can manage any CRD without writing a wrapper at all by using the unstructured static primitive
-    (`pkg/primitives/unstructured/static`). See [Unstructured Primitives](primitives.md#unstructured-primitives). This
+    (`pkg/primitives/unstructured/static`). See [Unstructured Primitives](../../using-primitives/references/primitives.md#unstructured-primitives). This
     guide covers the wrapper pattern, which gives you a typed, self-documenting API for a kind you manage often.
 
 !!! tip "Generate this pattern"
 
     `ocf scaffold wrapper` generates the complete package this page describes: mutator, builder, resource, and tests,
-    compiling and passing on a fresh scaffold. See the [CLI](cli.md) guide. This page stays the reference for what the
+    compiling and passing on a fresh scaffold. See the [CLI](https://sourcehawk.github.io/operator-component-framework/cli/) guide. This page stays the reference for what the
     generated code means and what to replace in it.
 
 ---
@@ -64,7 +65,7 @@ health, so it is a **workload**. [Step 4](#4-implement-status-handlers) and the
 
 `ocf scaffold wrapper` owns exactly four files in a wrapper package: `builder.go`, `builder_test.go`, `mutator.go`, and
 `resource.go`. Every other file in the directory is yours. `--force` rewrites those four and leaves the rest alone, as
-[Regenerating](cli.md#regenerating) describes.
+[Regenerating](https://sourcehawk.github.io/operator-component-framework/cli/#regenerating) describes.
 
 This boundary is the package layout, not a workaround for one. Your real status handlers and your mutator helpers live
 in files of their own beside the generated four, so a regeneration cannot touch them.
@@ -97,7 +98,7 @@ the registration in `builder.go`, never the handlers you wrote.
 
 The framework defines four resource categories. Each maps to a generic resource type with a different set of lifecycle
 interfaces. For the full description of each interface and the runtime string values it reports, see
-[Lifecycle Interfaces](primitives.md#lifecycle-interfaces).
+[Lifecycle Interfaces](../../using-primitives/references/primitives.md#lifecycle-interfaces).
 
 | Category        | Generic type                  | Lifecycle interfaces                                                     | Use when                                               |
 | --------------- | ----------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------ |
@@ -107,8 +108,9 @@ interfaces. For the full description of each interface and the runtime string va
 | **Integration** | `generic.IntegrationResource` | `Operational`, `Graceful`, `Suspendable`, `Guardable`, `DataExtractable` | External-dependency objects (services, ingresses)      |
 
 In addition to the category-specific interfaces, every generic resource also satisfies
-[`concepts.Previewable`](primitives.md#lifecycle-interfaces), `concepts.MutationInspector`, `concepts.DataProducer`, and
-`concepts.DataConsumer`, and your wrapper exposes all four. They are covered in [Step 6](#6-implement-the-resource).
+[`concepts.Previewable`](../../using-primitives/references/primitives.md#lifecycle-interfaces),
+`concepts.MutationInspector`, `concepts.DataProducer`, and `concepts.DataConsumer`, and your wrapper exposes all four.
+They are covered in [Step 6](#6-implement-the-resource).
 
 The rest of the guide uses Workload as the primary example. The pattern is identical for the other categories, with
 fewer handlers to implement.
@@ -150,7 +152,8 @@ scope; the framework calls it between each registered mutation to maintain per-f
 
 Mutator methods **record intent** rather than modifying the object directly. The framework calls `Apply()` once, after
 all mutations have been recorded. This is the same plan-and-apply model the built-in primitives use; see
-[The Mutation System](primitives.md#the-mutation-system) for the rationale and the ordering guarantees.
+[The Mutation System](../../using-primitives/references/primitives.md#the-mutation-system) for the rationale and the
+ordering guarantees.
 
 ```go
 package messagequeue
@@ -320,7 +323,7 @@ the loop, so the same vocabulary describes a wrapper and a built-in workload.
     reimplementing the per-feature snapshot inside the generated `mutator.go`, which regeneration would erase.
 
     The consequence is the one the
-    [mutation ordering guideline](guidelines.md#mutation-ordering-and-container-name-dependencies) already warns about,
+    [mutation ordering guideline](../../structuring-operators/references/guidelines.md#mutation-ordering-and-container-name-dependencies) already warns about,
     only with a smaller blast radius: register name-specific helper calls **before** any call that renames a container,
     or use name-independent selectors such as `selectors.AllContainers()`. Within a single helper call the question does
     not arise, because each `ContainerEditor` is scoped to the container it was given.
@@ -594,8 +597,9 @@ inconsistency is intentional, pass the `component.SuppressGraceInconsistencyWarn
 ### Status constants reference
 
 These are the runtime **string values** each lifecycle status reports. They appear in the component's conditions and in
-golden snapshots, so use the exact strings. [Lifecycle Interfaces](primitives.md#lifecycle-interfaces) gives the
-authoritative interface-to-value mapping; the table here is the implementer's quick reference.
+golden snapshots, so use the exact strings.
+[Lifecycle Interfaces](../../using-primitives/references/primitives.md#lifecycle-interfaces) gives the authoritative
+interface-to-value mapping; the table here is the implementer's quick reference.
 
 | Category              | Status type                      | Constant                        | String value        |
 | --------------------- | -------------------------------- | ------------------------------- | ------------------- |
@@ -907,19 +911,19 @@ var _ concepts.MetricsIdentifiable = (*Resource)(nil)
     tests cannot render the resource. Every built-in resource delegates `Preview()` to its base; so must yours.
 
 `RegisteredMutations()` and `FiringSet()` satisfy `concepts.MutationInspector`. Nothing in the reconcile path calls
-them, but [version-matrix golden generation](testing.md) uses them to introspect which mutations a resource registers
-and which fire at a given version. Delegate both to the base, as shown.
+them, but [version-matrix golden generation](../../testing-operators/references/testing.md) uses them to introspect
+which mutations a resource registers and which fire at a given version. Delegate both to the base, as shown.
 
 Forward `ProducedData` and `ConsumedData` whenever the resource can take part in a component's data flow, which is
 always if your builder exposes `ExtractInto`, `WithDataGuard`, or `WithOptionalData`. They satisfy
 `concepts.DataProducer` and `concepts.DataConsumer`. Without them the component sees no declarations, so
-[build-time topology validation](component.md#build-time-validation) silently passes, `DataTopology()` omits the
-resource, and its cells are never cleared at the start of a reconcile.
+[build-time topology validation](../../building-components/references/component.md#build-time-validation) silently
+passes, `DataTopology()` omits the resource, and its cells are never cleared at the start of a reconcile.
 
 Forward `MetricsIdentifier` whenever your builder exposes `WithMetricsIdentifier`. It satisfies
 `concepts.MetricsIdentifiable`, which is how the framework reads the identifier at apply time. Without it the builder
 accepts an identifier and the framework silently labels the resource by kind instead. See
-[Metrics](component.md#metrics).
+[Metrics](../../building-components/references/component.md#metrics).
 
 Forward `RecordObservation` whenever the resource may be registered read-only and declares an extraction. The framework
 feeds the fetched cluster object back to the resource before extraction runs; without it, the extraction would see the
@@ -1003,8 +1007,8 @@ func DefaultSettings(version string) []messagequeue.Mutation {
 
 Mutations apply in registration order. When a mutation's `Feature` is nil or its gate reports enabled, its `Mutate`
 function runs; otherwise it is skipped. For the gating model (version gates, boolean `When` conditions, and how the two
-combine) see [Version-Gated Mutations](primitives.md#version-gated-mutations) and
-[Boolean-Gated Mutations](primitives.md#boolean-gated-mutations).
+combine) see [Version-Gated Mutations](../../using-primitives/references/primitives.md#version-gated-mutations) and
+[Boolean-Gated Mutations](../../using-primitives/references/primitives.md#boolean-gated-mutations).
 
 ---
 
@@ -1045,7 +1049,7 @@ func buildQueueComponent(owner *MyOperatorCR) (*component.Component, error) {
 ```
 
 For the component reconciliation lifecycle, status aggregation, and resource options such as `ReadOnly()`,
-`Auxiliary()`, and `BlockOnAbsence()`, see the [Component](component.md) page.
+`Auxiliary()`, and `BlockOnAbsence()`, see the [Component](../../building-components/references/component.md) page.
 
 ---
 
@@ -1144,10 +1148,10 @@ marshals rather than assuming: `json.Marshal` on the built desired state shows p
 ### Manage the kind through the unstructured primitives
 
 The other option removes the mismatch instead of correcting it. The
-[unstructured primitives](primitives.md#unstructured-primitives) take a `*unstructured.Unstructured` as their baseline,
-so the content map holds only the fields you put in it. No Go struct is marshalled, so no zero-value `status` appears,
-and the apply carries exactly the fields the operator declares. The cost is the typed API: mutations edit the content
-map through `editors.UnstructuredContentEditor` instead of typed setters.
+[unstructured primitives](../../using-primitives/references/primitives.md#unstructured-primitives) take a
+`*unstructured.Unstructured` as their baseline, so the content map holds only the fields you put in it. No Go struct is
+marshalled, so no zero-value `status` appears, and the apply carries exactly the fields the operator declares. The cost
+is the typed API: mutations edit the content map through `editors.UnstructuredContentEditor` instead of typed setters.
 
 Choose the decorator when the typed API is worth keeping and only a few paths are undeclared. Choose the unstructured
 primitives when the CRD's Go type and its schema diverge widely, or when the typed struct exists only to be marshalled.
@@ -1166,8 +1170,8 @@ func NewBuilder(mq *examplev1.MessageQueue) *Builder {
 }
 ```
 
-See [Cluster-Scoped Primitives](primitives.md#cluster-scoped-primitives) for the ownership and garbage-collection
-implications.
+See [Cluster-Scoped Primitives](../../using-primitives/references/primitives.md#cluster-scoped-primitives) for the
+ownership and garbage-collection implications.
 
 ---
 

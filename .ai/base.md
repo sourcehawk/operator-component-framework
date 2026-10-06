@@ -128,7 +128,8 @@ The repository ships a Claude Code plugin for framework consumers in `plugin/` (
 `.claude-plugin/marketplace.json`). Two rules keep it accurate:
 
 - Files under `plugin/skills/*/references/` are generated copies of `docs/` files. Never edit them by hand; edit the
-  source under `docs/` and run `make sync-plugin`.
+  source under `docs/` and run `make sync-plugin`. The sync rewrites each relative link for the plugin layout and fails
+  when a link in `plugin/` resolves to no file.
 - When changing public API behaviour, check whether the distilled guidance in the affected `plugin/skills/*/SKILL.md` is
   stale and update it in the same response.
 

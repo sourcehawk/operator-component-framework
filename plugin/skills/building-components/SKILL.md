@@ -8,7 +8,8 @@ description:
   ReconcileContext, how a controller writes the owner CR's status (including a status-only controller that manages no
   resources) and where observedGeneration is set, FlushStatus, guards, declared data cells, wiring metrics.NewRecorder
   (its controller name must match the controller-runtime controller name), the shipped Grafana dashboards and Prometheus
-  alert rules, and what an alert such as ManagedResourceNotConverging means.
+  alert rules, what an alert such as ManagedResourceNotConverging means, and when a controller's own code records an
+  event, writes a log line, sets a condition, or relies on a metric.
 ---
 
 # Building Components
@@ -219,6 +220,11 @@ are evaluated first, and the custom guard is consulted only once every guarded c
 or built from client-go on v0.22.x), an optional `Metrics` recorder, and `Owner` (the CRD instance that owns the
 component). Build one per reconcile from your controller and pass it into `comp.Reconcile(ctx, recCtx)`.
 
+The framework records `Created<Kind>`, `Updated<Kind>`, `ResourceDeleted`, and `ResourceOrphaned` events through that
+recorder. Before your controller records its own event or writes a log line, read "Signals from your own controller" in
+`references/observability.md`. An event marks a transition, never a reconcile: record one only when something changed,
+for example when `meta.SetStatusCondition` returns `true`.
+
 `Component.Reconcile` mutates the owner's status conditions only in memory. The controller persists them by calling
 `component.FlushStatus(ctx, recCtx, comps)` once per reconcile, typically deferred so conditions set on error paths are
 written. `FlushStatus` performs a single `Status().Update`, wrapped in `retry.RetryOnConflict`, that writes every
@@ -330,4 +336,6 @@ with `go doc`, `go doc` wins.
 - `references/observability.md`: the Grafana dashboards and Prometheus alert rules shipped for the metrics a
   `ReconcileContext.Metrics` recorder emits. Read when wiring `metrics.NewRecorder` (its controller name must match
   controller-runtime's controller name), rendering the dashboards and alerts for an operator, or explaining what an
-  alert such as `ManagedResourceNotConverging` means.
+  alert such as `ManagedResourceNotConverging` means. Also read it before a controller records its own events or log
+  lines: its section "Signals from your own controller" says which of a condition, an event, a log, and a metric reports
+  a fact.

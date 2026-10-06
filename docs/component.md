@@ -988,8 +988,9 @@ rate(ocf_resource_apply_total{operation="updated"}[5m])
 ```
 
 A resource whose `updated` rate never settles to zero is being rewritten on every reconcile even though nothing changed.
-Events report the same thing, but client-go's spam filter truncates them within seconds under exactly those conditions,
-which is why the counter exists.
+Events do not give this signal. Each event concerns one owner, the API server keeps events only for a limited time (one
+hour by default), and Prometheus cannot compute a rate or fire an alert from them. The counter gives the rate across all
+owners, which is why it exists.
 
 ### The resource identifier
 

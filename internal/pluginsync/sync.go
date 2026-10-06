@@ -108,7 +108,7 @@ func resolveCopies(docsDir string, docs []Copy) (map[string]string, error) {
 			if err != nil {
 				return nil, fmt.Errorf("expanding %s: %w", c.Source, err)
 			}
-			copies[filepath.ToSlash(rel)] = path.Join(c.Dest, path.Base(m))
+			copies[filepath.ToSlash(rel)] = path.Join(c.Dest, filepath.Base(m))
 		}
 	}
 	return copies, nil

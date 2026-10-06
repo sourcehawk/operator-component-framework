@@ -266,6 +266,191 @@ grace period is the exception: no watch event arrives when its grace period ends
 conditions are written before the error propagates, so the failure is visible in status even while controller-runtime
 backs off.
 
+Only `Reconcile` decides when to requeue. A helper or a sub-reconciler returns an error or a domain value, not a
+`reconcile.Result`. See
+[Give Each Controller Layer One Visible Responsibility](#give-each-controller-layer-one-visible-responsibility).
+
+## Give Each Controller Layer One Visible Responsibility
+
+A controller is a stack of layers: `Reconcile`, the sub-reconcilers and component-building functions it calls, and the
+helpers below them. The effects and the dependencies of each layer must be visible in its name and its signature. If
+they are not, a reader must open the caller and the callees of a layer to know when it runs and why it is correct. This
+guideline has three parts.
+
+### No hidden writes
+
+A helper that changes an in-memory object does not also persist it. The layer that owns the write decides when to
+persist. In a controller built on the framework, that layer is `Reconcile`. For status, it writes with its one deferred
+[`FlushStatus`](component.md#persisting-status-with-flushstatus). For any other write to the owner, such as a finalizer,
+`Reconcile` calls `Update` or `Patch` itself, after the helper changed the object. A function that changes an object it
+gets shows this in its name (`set`, `apply`, `mutate`) or in its doc comment.
+
+```go
+// BAD: markSchemaPending stages a condition and also writes the status. The
+// write is hidden from Reconcile, it adds a second status write to the
+// reconcile, and a test of the condition needs a client.
+func (r *WebAppReconciler) markSchemaPending(ctx context.Context, app *v1alpha1.WebApp) error {
+    meta.SetStatusCondition(app.GetStatusConditions(), metav1.Condition{
+        Type:    "SchemaReady",
+        Status:  metav1.ConditionFalse,
+        Reason:  "MigrationPending",
+        Message: "waiting for the schema migration",
+    })
+    return r.Status().Update(ctx, app)
+}
+
+// GOOD: setSchemaPending changes only the object it gets. The deferred
+// FlushStatus in Reconcile writes the condition with all the others.
+func setSchemaPending(app *v1alpha1.WebApp) {
+    meta.SetStatusCondition(app.GetStatusConditions(), metav1.Condition{
+        Type:    "SchemaReady",
+        Status:  metav1.ConditionFalse,
+        Reason:  "MigrationPending",
+        Message: "waiting for the schema migration",
+    })
+}
+```
+
+### Only the top level decides requeue
+
+Helpers and sub-reconcilers return an `error`, a sentinel error, or a domain value, such as the component they
+reconciled. Only `Reconcile` returns a `reconcile.Result`. If several layers return a result, `Reconcile` has to merge
+them. A merge that keeps one result and drops the other loses a requeue that a lower layer asked for.
+[Reconciler Error Handling and Requeueing](#reconciler-error-handling-and-requeueing) says when to requeue. This part
+says which layer decides.
+
+```go
+// BAD: each sub-reconciler decides its own requeue. Reconcile returns only the
+// result of the backend, so no reconcile grades the frontend when its grace
+// period ends.
+func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+    // ...
+    if res, err := r.reconcileFrontend(ctx, recCtx, app); err != nil {
+        return res, err
+    }
+    return r.reconcileBackend(ctx, recCtx, app)
+}
+
+func (r *WebAppReconciler) reconcileFrontend(
+    ctx context.Context, recCtx component.ReconcileContext, app *v1alpha1.WebApp,
+) (reconcile.Result, error) {
+    comp, err := buildFrontendComponent(app)
+    if err != nil {
+        return reconcile.Result{}, err
+    }
+    if err := comp.Reconcile(ctx, recCtx); err != nil {
+        return reconcile.Result{}, err
+    }
+    if remaining, ok := comp.GraceRemaining(app); ok {
+        return reconcile.Result{RequeueAfter: remaining}, nil
+    }
+    return reconcile.Result{}, nil
+}
+
+// GOOD: the components report their state, and Reconcile makes one requeue
+// decision for all of them.
+func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request) (res reconcile.Result, err error) {
+    // ... fetch the owner, build recCtx, defer FlushStatus, build comps
+
+    var firstErr error
+    for _, comp := range comps {
+        if rErr := comp.Reconcile(ctx, recCtx); rErr != nil && firstErr == nil {
+            firstErr = rErr
+        }
+    }
+    if firstErr != nil {
+        return reconcile.Result{}, firstErr
+    }
+    if remaining, ok := component.EarliestGraceRemaining(app, comps...); ok {
+        res.RequeueAfter = remaining
+    }
+    return res, nil
+}
+```
+
+Most waiting states need no requeue. The resource reports its state through its condition, and a watch event starts the
+next reconcile. If a lower layer finds a state that does need a requeue, it returns a sentinel error, such as
+`ErrSchemaPending`. `Reconcile` matches it with `errors.Is` and sets the delay:
+
+```go
+if errors.Is(err, ErrSchemaPending) {
+    return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+}
+```
+
+The decision and the delay stay in one place, and each lower layer stays testable without a `reconcile.Result`.
+
+### Each layer is correct on its own inputs
+
+A function does not depend on a check or a branch in its caller. It also does not depend on a side effect of a lower
+layer that the name and the signature of that layer do not show. Put the logic for one branch of a decision in the layer
+that makes the decision. As an alternative, give the decision to the lower layer as an explicit input, such as a
+parameter or a resolved field.
+
+A precondition in a doc comment states what a valid input is, for example "replicas is not negative". It does not state
+which branch the caller took. Such a comment does not make a dependency on the branch of the caller correct.
+
+Two shapes break this part:
+
+- **A hidden dependency.** The lower layer is correct only because its caller filtered the input. A change to the guard
+  in the upper layer breaks the lower layer, and no signature and no test shows the link. The example below shows this
+  shape.
+- **A duplicated decision.** The lower layer works out the decision of its caller again from the same fields. It is
+  correct on its own, but the decision now has two copies. When one copy changes, the two layers disagree.
+
+```go
+// BAD: frontendConfigMap is correct only because buildComponents sends an
+// external backend down another path. Call it from that path, or change the
+// check, and it points the frontend at a backend Service that does not exist.
+func buildComponents(app *v1alpha1.WebApp) ([]*component.Component, error) {
+    if app.Spec.Backend.ExternalURL != "" {
+        return buildExternalBackendComponents(app)
+    }
+    return buildInClusterComponents(app) // calls frontendConfigMap(app)
+}
+
+func frontendConfigMap(app *v1alpha1.WebApp) *corev1.ConfigMap {
+    return &corev1.ConfigMap{
+        ObjectMeta: metav1.ObjectMeta{Name: app.Name + "-frontend", Namespace: app.Namespace},
+        // the caller already handled an external backend, so the in-cluster Service is safe
+        Data: map[string]string{"BACKEND_URL": "http://" + app.Name + "-backend:8080"},
+    }
+}
+
+// GOOD: buildComponents owns the decision and gives its result to the layer
+// below, which is correct for each URL it gets.
+func buildComponents(app *v1alpha1.WebApp) ([]*component.Component, error) {
+    backendURL := "http://" + app.Name + "-backend:8080"
+    if app.Spec.Backend.ExternalURL != "" {
+        backendURL = app.Spec.Backend.ExternalURL
+    }
+    // ... build the frontend component from frontendConfigMap(app, backendURL)
+}
+
+// frontendConfigMap returns the frontend ConfigMap that points at backendURL.
+func frontendConfigMap(app *v1alpha1.WebApp, backendURL string) *corev1.ConfigMap {
+    return &corev1.ConfigMap{
+        ObjectMeta: metav1.ObjectMeta{Name: app.Name + "-frontend", Namespace: app.Namespace},
+        Data:       map[string]string{"BACKEND_URL": backendURL},
+    }
+}
+```
+
+The test has two questions. Can a different caller use this function and get the correct result? Can a reader follow the
+function without opening its caller? If one answer is no, the logic is in the wrong layer.
+
+**Red flags:**
+
+- A function named for a mutation (`set`, `apply`, `mutate`) also calls the API server.
+- A helper calls `Update`, `Patch`, or `Status().Update` on an object that its caller also writes.
+- A helper or a sub-reconciler returns a `reconcile.Result`.
+- `Reconcile` merges the results of several lower layers.
+- A comment says what the caller already checked, or when the function runs: "the caller already checked X", "this only
+  runs when suspended".
+- A sub-reconciler reads a spec or status field again to find the branch that its parent took.
+- A lower layer returns early for a case that an upper layer owns.
+- An upper layer relies on a side effect of a lower layer that the name and the signature of that layer do not show.
+
 ## Resource Registration Order Is Execution Order
 
 Resources reconcile in the exact order they are registered with `WithResource`. This is deliberate: guards and declared

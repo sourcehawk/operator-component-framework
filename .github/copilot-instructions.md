@@ -125,13 +125,16 @@ When updating documentation in markdown files, make sure to run `make fmt-md` fo
 ### Claude Code plugin
 
 The repository ships a Claude Code plugin for framework consumers in `plugin/` (marketplace manifest at
-`.claude-plugin/marketplace.json`). Two rules keep it accurate:
+`.claude-plugin/marketplace.json`). Three rules keep it accurate:
 
 - Files under `plugin/skills/*/references/` are generated copies of `docs/` files. Never edit them by hand; edit the
   source under `docs/` and run `make sync-plugin`. The sync rewrites each relative link for the plugin layout and fails
   when a link in `plugin/` resolves to no file.
 - When changing public API behaviour, check whether the distilled guidance in the affected `plugin/skills/*/SKILL.md` is
   stale and update it in the same response.
+- Do not add a `version` to `plugin/.claude-plugin/plugin.json` or to the marketplace entry. Claude Code caches a plugin
+  by that version, and without one it uses the commit. Consumers pin the marketplace `ref` to a framework tag, so the
+  commit makes each tag install its own plugin. A version that a release forgets to change keeps them on old skills.
 
 ### Examples
 

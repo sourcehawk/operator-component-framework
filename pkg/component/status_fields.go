@@ -29,9 +29,9 @@ type flushOptions struct {
 // Paths are relative to status: write "phase", not "status.phase". A path must
 // not name "conditions" or a field below it: condition ownership comes from the
 // components passed to [FlushStatus]. For a typed owner every path must resolve
-// to a field of the owner's Go type, so a misspelled path is an error rather
-// than a silent loss of ownership. FlushStatus validates the paths before it
-// writes and returns an error for an invalid one.
+// to exactly one field of the owner's Go type, so a misspelled or ambiguous path
+// is an error rather than a silent loss of ownership. FlushStatus validates the
+// paths before it writes and returns an error for an invalid one.
 //
 // The declaration takes effect only on a 409 conflict retry. An owned field
 // keeps the staged value, and a field the staged owner does not carry is
@@ -80,12 +80,8 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 		return nil
 	}
 
-	current, ok := jsonField(reflect.TypeOf(owner), "status")
-	if !ok {
-		return fmt.Errorf("owner type %T has no status field", owner)
-	}
-
-	for _, segment := range segments {
+	current := reflect.TypeOf(owner)
+	for _, segment := range append([]string{"status"}, segments...) {
 		current = indirectType(current)
 		// Below a map or an interface the schema is open, so any key is valid.
 		if current.Kind() == reflect.Map || current.Kind() == reflect.Interface {
@@ -95,23 +91,27 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 			return fmt.Errorf("cannot address %q below a field of type %s", segment, current)
 		}
 
-		next, found := jsonField(current, segment)
-		if !found {
+		candidates := jsonFields(current, segment)
+		switch len(candidates) {
+		case 0:
 			return fmt.Errorf("type %s has no field with JSON name %q", current, segment)
+		case 1:
+			current = candidates[0]
+		default:
+			// encoding/json picks one of several such fields by tag and depth
+			// rules. Rejecting the path keeps ownership from landing on a
+			// field other than the one that is encoded.
+			return fmt.Errorf("type %s has %d fields with JSON name %q, directly or through embedded structs",
+				current, len(candidates), segment)
 		}
-		current = next
 	}
 	return nil
 }
 
-// jsonField returns the type of the struct field that encodes under name,
-// following inlined and embedded structs the way encoding/json does.
-func jsonField(t reflect.Type, name string) (reflect.Type, bool) {
-	t = indirectType(t)
-	if t.Kind() != reflect.Struct {
-		return nil, false
-	}
-
+// jsonFields returns the type of every field with the JSON name name, declared
+// on t or on a struct that t embeds at any depth.
+func jsonFields(t reflect.Type, name string) []reflect.Type {
+	var found []reflect.Type
 	for i := range t.NumField() {
 		field := t.Field(i)
 		tag := field.Tag.Get("json")
@@ -120,20 +120,19 @@ func jsonField(t reflect.Type, name string) (reflect.Type, bool) {
 		}
 
 		fieldName, _, _ := strings.Cut(tag, ",")
-		if fieldName == "" && field.Anonymous {
-			if found, ok := jsonField(field.Type, name); ok {
-				return found, true
-			}
+		embedded := indirectType(field.Type)
+		if fieldName == "" && field.Anonymous && embedded.Kind() == reflect.Struct {
+			found = append(found, jsonFields(embedded, name)...)
 			continue
 		}
 		if fieldName == "" {
 			fieldName = field.Name
 		}
 		if fieldName == name {
-			return field.Type, true
+			found = append(found, field.Type)
 		}
 	}
-	return nil, false
+	return found
 }
 
 func indirectType(t reflect.Type) reflect.Type {
@@ -181,7 +180,7 @@ func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error 
 	delete(merged, "conditions")
 
 	for _, path := range owned {
-		value, found, err := unstructured.NestedFieldNoCopy(stagedStatus, path...)
+		value, found, err := lookupStatusField(stagedStatus, path)
 		if err != nil {
 			return fmt.Errorf("reading staged status field %q: %w", strings.Join(path, "."), err)
 		}
@@ -189,6 +188,10 @@ func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error 
 			unstructured.RemoveNestedField(merged, path...)
 			continue
 		}
+
+		// A nullable parent without omitempty encodes as null, and
+		// SetNestedField cannot descend through a null.
+		removeNullParent(merged, path)
 		if err := unstructured.SetNestedField(merged, value, path...); err != nil {
 			return fmt.Errorf("setting status field %q: %w", strings.Join(path, "."), err)
 		}
@@ -199,6 +202,38 @@ func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error 
 	}
 	stagedContent["status"] = merged
 	return fromUnstructuredContent(stagedContent, staged)
+}
+
+// lookupStatusField returns the value at path. A null parent counts as
+// absent, the same as a missing one.
+func lookupStatusField(status map[string]any, path []string) (any, bool, error) {
+	var current any = status
+	for i, segment := range path {
+		if current == nil {
+			return nil, false, nil
+		}
+
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil, false, fmt.Errorf("%q is not an object", strings.Join(path[:i], "."))
+		}
+
+		current, ok = object[segment]
+		if !ok {
+			return nil, false, nil
+		}
+	}
+	return current, true, nil
+}
+
+func removeNullParent(status map[string]any, path []string) {
+	for i := 1; i < len(path); i++ {
+		value, found, _ := lookupStatusField(status, path[:i])
+		if found && value == nil {
+			unstructured.RemoveNestedField(status, path[:i]...)
+			return
+		}
+	}
 }
 
 // toUnstructuredContent returns a copy of obj's content that the caller may

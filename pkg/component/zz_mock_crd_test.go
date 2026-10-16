@@ -41,6 +41,8 @@ type MockStatus struct {
 	// split status ownership between controllers by field and by nested path.
 	Phase   string             `json:"phase,omitempty"`
 	Summary *MockStatusSummary `json:"summary,omitempty"`
+	// Details lacks omitempty so tests can cover a parent the server holds as null.
+	Details *MockStatusSummary `json:"details"`
 }
 
 type MockStatusSummary struct {
@@ -107,6 +109,14 @@ var (
 												"total": {Type: "integer", Format: "int32"},
 											},
 										},
+										"details": {
+											Type:     "object",
+											Nullable: true,
+											Properties: map[string]apiextensionsv1.JSONSchemaProps{
+												"ready": {Type: "integer", Format: "int32"},
+												"total": {Type: "integer", Format: "int32"},
+											},
+										},
 										"conditions": {
 											Type: "array",
 											Items: &apiextensionsv1.JSONSchemaPropsOrArray{
@@ -150,6 +160,10 @@ func (m *MockOperatorCRD) DeepCopyInto(out *MockOperatorCRD) {
 	if m.Status.Summary != nil {
 		summary := *m.Status.Summary
 		out.Status.Summary = &summary
+	}
+	if m.Status.Details != nil {
+		details := *m.Status.Details
+		out.Status.Details = &details
 	}
 }
 

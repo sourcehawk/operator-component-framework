@@ -308,7 +308,7 @@ On a retry a declared field keeps the staged value, and every other non-conditio
 absence included. `WithOwnedStatusFields()` with no paths owns no non-condition field. Once declared, an undeclared
 staged field follows the server, so declare every field the controller writes, including `observedGeneration` when it is
 this controller's. `FlushStatus` returns an error without writing for an empty segment, a `conditions` path, or a path
-that is not a field of the owner's Go type.
+that does not resolve to exactly one field of the owner's Go type.
 
 **Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside
 `FlushStatus` puts two field managers on one conditions list, and because `FlushStatus` writes the full status the

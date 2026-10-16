@@ -959,7 +959,9 @@ controller that writes only conditions. Paths from several options are combined.
 - is empty or has an empty segment, such as `"summary..ready"`;
 - names `conditions` or a field below it, because conditions are owned through components;
 - does not resolve to a field of the owner's Go type, such as a misspelled name or a path below a scalar field. Below a
-  map field, any key is accepted.
+  map field, any key is accepted;
+- is ambiguous: a segment matches more than one field, because a struct declares the JSON name and also gets it from an
+  embedded struct, or gets it from two embedded structs.
 
 Without the option, `FlushStatus` keeps the staged value of every non-condition status field on a retry. That default
 keeps a controller's own `observedGeneration` write safe when it is the only writer of the status. Once you declare

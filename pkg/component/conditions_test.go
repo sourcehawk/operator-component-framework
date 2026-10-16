@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -958,6 +959,40 @@ func TestFlushStatusOwnedStatusFields(t *testing.T) {
 		assert.Equal(t, MockStatusSummary{Ready: 2, Total: 4}, *persisted.Status.Summary)
 	})
 
+	t.Run("sets an owned nested field below a parent the server holds as null", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t, &MockOperatorCRD{},
+			func(o *MockOperatorCRD) { o.Status.ObservedGeneration = 2 })
+
+		owner.Status.Details = &MockStatusSummary{Ready: 1}
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("details.ready"),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		require.NotNil(t, persisted.Status.Details)
+		assert.Equal(t, int32(1), persisted.Status.Details.Ready)
+		assert.Equal(t, int64(2), persisted.Status.ObservedGeneration)
+	})
+
+	t.Run("removes an owned nested field below a parent the staged owner holds as null", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t,
+			&MockOperatorCRD{Status: MockStatus{Details: &MockStatusSummary{Ready: 1}}},
+			func(o *MockOperatorCRD) { o.Status.ObservedGeneration = 2 })
+
+		owner.Status.Details = nil
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("details.ready"),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		if persisted.Status.Details != nil {
+			assert.Zero(t, persisted.Status.Details.Ready)
+		}
+		assert.Equal(t, int64(2), persisted.Status.ObservedGeneration)
+	})
+
 	t.Run("combines the paths of several options", func(t *testing.T) {
 		k8sClient, owner := readThenRace(t, &MockOperatorCRD{},
 			func(o *MockOperatorCRD) { o.Status.Summary = &MockStatusSummary{Total: 4} })
@@ -1007,6 +1042,71 @@ func TestFlushStatusOwnedStatusFields(t *testing.T) {
 				assert.Empty(t, persistedOf(t, k8sClient, owner).Status.Phase, "nothing is written")
 			})
 		}
+	})
+}
+
+// TestJSONFields covers how path validation finds a field through embedded
+// structs. More than one candidate makes the path ambiguous, which validation
+// rejects rather than guessing which field encoding/json encodes.
+func TestJSONFields(t *testing.T) {
+	type base struct {
+		Phase string `json:"phase"`
+	}
+	type otherBase struct {
+		Phase string `json:"phase"`
+	}
+	type phaseObject struct {
+		Ready bool `json:"ready"`
+	}
+
+	t.Run("finds a field of an embedded struct", func(t *testing.T) {
+		type status struct {
+			base
+		}
+
+		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase"))
+	})
+
+	t.Run("finds a field of a struct embedded by pointer", func(t *testing.T) {
+		type status struct {
+			*base
+		}
+
+		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase"))
+	})
+
+	// go vet rejects a struct literal that repeats a JSON name, so the
+	// ambiguous types are built at run time.
+	baseType := reflect.TypeOf(base{})
+	embed := func(name string, typ reflect.Type) reflect.StructField {
+		return reflect.StructField{Name: name, Type: typ, Anonymous: true}
+	}
+
+	t.Run("finds both a declared field and the embedded field it shadows", func(t *testing.T) {
+		status := reflect.StructOf([]reflect.StructField{
+			embed("Base", baseType),
+			{Name: "Phase", Type: reflect.TypeOf(phaseObject{}), Tag: `json:"phase"`},
+		})
+
+		assert.Len(t, jsonFields(status, "phase"), 2)
+	})
+
+	t.Run("finds the field of each embedded struct that provides the name", func(t *testing.T) {
+		status := reflect.StructOf([]reflect.StructField{
+			embed("Base", baseType),
+			embed("OtherBase", reflect.TypeOf(otherBase{})),
+		})
+
+		assert.Len(t, jsonFields(status, "phase"), 2)
+	})
+
+	t.Run("skips a field tagged to be ignored", func(t *testing.T) {
+		type status struct {
+			Phase  string `json:"-"`
+			Hidden string `json:"phase"`
+		}
+
+		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase"))
 	})
 }
 

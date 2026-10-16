@@ -232,6 +232,7 @@ func BlockOnForeignController() ResourceOption {
 //
 // Without this option or BlockOnForeignController, a deletion removes the
 // object by name, whoever owns it.
+//
 // Requires a managed resource that carries the owner reference: combining it
 // with ReadOnly or Unowned is a configuration error returned by Build. A
 // cluster-scoped resource of a namespace-scoped owner never carries the

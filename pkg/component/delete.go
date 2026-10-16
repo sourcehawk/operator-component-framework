@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -133,7 +132,7 @@ func deleteEntry(
 		return false, nil
 	}
 
-	if options.DeleteOnlyIfOwned && !slices.ContainsFunc(live.GetOwnerReferences(), referencesOwner(rec.Owner.GetUID())) {
+	if options.DeleteOnlyIfOwned && !ownedBy(live, rec.Owner.GetUID()) {
 		log.FromContext(ctx).Info(
 			"skipping deletion of a resource that does not reference the owner", "resource", resource.Identity(),
 		)

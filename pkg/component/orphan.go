@@ -81,6 +81,12 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 	return errors.Join(errs...)
 }
 
+// ownedBy reports whether obj carries an owner reference to the owner with
+// ownerUID, whether or not it is the controller reference.
+func ownedBy(obj client.Object, ownerUID types.UID) bool {
+	return slices.ContainsFunc(obj.GetOwnerReferences(), referencesOwner(ownerUID))
+}
+
 // referencesOwner matches an owner reference to the owner with ownerUID,
 // whether or not it is the controller reference.
 func referencesOwner(ownerUID types.UID) func(metav1.OwnerReference) bool {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -168,8 +167,7 @@ func suspendResource(
 		// The suspension apply would set the owner reference on an object the
 		// owner does not own, and the delete after it would then find the object
 		// owned. Skip the object before any write, as for another owner's object.
-		if entry.Options.DeleteOnlyIfOwned &&
-			!slices.ContainsFunc(existing.GetOwnerReferences(), referencesOwner(rec.Owner.GetUID())) {
+		if entry.Options.DeleteOnlyIfOwned && !ownedBy(existing, rec.Owner.GetUID()) {
 			log.FromContext(ctx).Info(
 				"skipping suspension of a resource that does not reference the owner", "resource", resource.Identity(),
 			)
@@ -179,9 +177,9 @@ func suspendResource(
 			}, nil
 		}
 
-		// Binds the apply to the object the check above saw. An object replaced
-		// or disowned in between would otherwise be taken over by the apply and
-		// then found owned by the delete.
+		// The apply carries the resourceVersion the check above saw. An object
+		// replaced or disowned in between would otherwise be taken over by the
+		// apply and then found owned by the delete.
 		if entry.Options.DeleteOnlyIfOwned {
 			applyOpts = append(applyOpts, withResourceVersion(existing.GetResourceVersion()))
 		}

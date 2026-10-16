@@ -467,6 +467,23 @@ func TestDeleteResources_DeleteOnlyIfOwned(t *testing.T) {
 
 		assert.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), &corev1.ConfigMap{}))
 	})
+
+	t.Run("keeps an object another owner claims after the read without failing when combined with BlockOnForeignController", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("claimed-combined", ownerRef("owner", "this-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(claimBeforeDelete(t, "claimed-combined")).Build()
+		entries := []reconcileEntry{{
+			Resource: res,
+			Options:  resourceOptions{Delete: true, DeleteOnlyIfOwned: true, BlockOnForeignController: true},
+		}}
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), entries))
+
+		got := &corev1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), got))
+		assert.Equal(t, "other-uid", string(got.OwnerReferences[0].UID))
+	})
 }
 
 // disownBeforeDelete returns interceptor funcs that remove every owner

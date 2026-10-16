@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -1012,6 +1013,40 @@ func TestFlushStatusOwnedStatusFields(t *testing.T) {
 		assert.Equal(t, int32(4), persisted.Status.Summary.Total)
 	})
 
+	t.Run("keeps owned conditions stored under a JSON name other than conditions", func(t *testing.T) {
+		// OperatorCRD reaches the conditions through GetStatusConditions, so
+		// their JSON name is the owner type's choice.
+		checksScheme := runtime.NewScheme()
+		checksScheme.AddKnownTypes(GroupVersion, &checksOwner{})
+		initial := &checksOwner{ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "default"}}
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(checksScheme).WithStatusSubresource(initial).WithObjects(initial).Build()
+
+		owner := &checksOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), owner))
+
+		other := &checksOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), other))
+		other.Status.Phase = "Running"
+		require.NoError(t, k8sClient.Status().Update(ctx, other))
+
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+			WithOwnedStatusFields(),
+		))
+
+		persisted := &checksOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), persisted))
+		found := meta.FindStatusCondition(persisted.Status.Checks, "InfraReady")
+		require.NotNil(t, found, "an owned condition must keep the staged value")
+		assert.Equal(t, "Healthy", found.Reason)
+		assert.Equal(t, "Running", persisted.Status.Phase)
+	})
+
 	t.Run("rejects an invalid path before writing", func(t *testing.T) {
 		for name, path := range map[string]string{
 			"empty":                "",
@@ -1064,7 +1099,7 @@ func TestJSONFields(t *testing.T) {
 			base
 		}
 
-		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase"))
+		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase", nil))
 	})
 
 	t.Run("finds a field of a struct embedded by pointer", func(t *testing.T) {
@@ -1072,7 +1107,7 @@ func TestJSONFields(t *testing.T) {
 			*base
 		}
 
-		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase"))
+		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase", nil))
 	})
 
 	// go vet rejects a struct literal that repeats a JSON name, so the
@@ -1088,7 +1123,7 @@ func TestJSONFields(t *testing.T) {
 			{Name: "Phase", Type: reflect.TypeOf(phaseObject{}), Tag: `json:"phase"`},
 		})
 
-		assert.Len(t, jsonFields(status, "phase"), 2)
+		assert.Len(t, jsonFields(status, "phase", nil), 2)
 	})
 
 	t.Run("finds the field of each embedded struct that provides the name", func(t *testing.T) {
@@ -1097,7 +1132,13 @@ func TestJSONFields(t *testing.T) {
 			embed("OtherBase", reflect.TypeOf(otherBase{})),
 		})
 
-		assert.Len(t, jsonFields(status, "phase"), 2)
+		assert.Len(t, jsonFields(status, "phase", nil), 2)
+	})
+
+	t.Run("does not recurse forever through a struct that embeds itself", func(t *testing.T) {
+		found := jsonFields(reflect.TypeOf(selfEmbedding{}), "phase", nil)
+
+		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, found)
 	})
 
 	t.Run("skips a field tagged to be ignored", func(t *testing.T) {
@@ -1106,8 +1147,43 @@ func TestJSONFields(t *testing.T) {
 			Hidden string `json:"phase"`
 		}
 
-		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase"))
+		assert.Equal(t, []reflect.Type{reflect.TypeOf("")}, jsonFields(reflect.TypeOf(status{}), "phase", nil))
 	})
+}
+
+// selfEmbedding is valid Go and valid encoding/json input: the embedded
+// pointer can stay nil while Phase is encoded.
+type selfEmbedding struct {
+	*selfEmbedding        //nolint:unused // read only by reflection
+	Phase          string `json:"phase"`
+}
+
+// checksOwner is an OperatorCRD whose conditions encode as "checks".
+type checksOwner struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Status checksStatus `json:"status,omitempty"`
+}
+
+type checksStatus struct {
+	Checks []metav1.Condition `json:"checks,omitempty"`
+	Phase  string             `json:"phase,omitempty"`
+}
+
+func (o *checksOwner) GetStatusConditions() *[]metav1.Condition {
+	return &o.Status.Checks
+}
+
+func (o *checksOwner) GetKind() string {
+	return "checksOwner"
+}
+
+func (o *checksOwner) DeepCopyObject() runtime.Object {
+	out := *o
+	o.ObjectMeta.DeepCopyInto(&out.ObjectMeta) //nolint:staticcheck // naming ObjectMeta keeps the copy readable
+	out.Status.Checks = slices.Clone(o.Status.Checks)
+	return &out
 }
 
 // decodingReader reads like the REST client: it decodes the server's JSON into

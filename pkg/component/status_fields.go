@@ -3,7 +3,9 @@ package component
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -91,7 +93,7 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 			return fmt.Errorf("cannot address %q below a field of type %s", segment, current)
 		}
 
-		candidates := jsonFields(current, segment)
+		candidates := jsonFields(current, segment, nil)
 		switch len(candidates) {
 		case 0:
 			return fmt.Errorf("type %s has no field with JSON name %q", current, segment)
@@ -109,8 +111,21 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 }
 
 // jsonFields returns the type of every field with the JSON name name, declared
-// on t or on a struct that t embeds at any depth.
-func jsonFields(t reflect.Type, name string) []reflect.Type {
+// on t or on a struct that t embeds at any depth. Pass nil for visiting.
+func jsonFields(t reflect.Type, name string, visiting map[reflect.Type]bool) []reflect.Type {
+	// A struct can embed itself through a pointer. visiting holds the structs
+	// on the current embedding chain, so such a chain ends instead of looping.
+	// It is copied per chain, so the same struct embedded twice side by side
+	// still counts twice toward ambiguity.
+	if visiting[t] {
+		return nil
+	}
+	visiting = maps.Clone(visiting)
+	if visiting == nil {
+		visiting = map[reflect.Type]bool{}
+	}
+	visiting[t] = true
+
 	var found []reflect.Type
 	for i := range t.NumField() {
 		field := t.Field(i)
@@ -122,7 +137,7 @@ func jsonFields(t reflect.Type, name string) []reflect.Type {
 		fieldName, _, _ := strings.Cut(tag, ",")
 		embedded := indirectType(field.Type)
 		if fieldName == "" && field.Anonymous && embedded.Kind() == reflect.Struct {
-			found = append(found, jsonFields(embedded, name)...)
+			found = append(found, jsonFields(embedded, name, visiting)...)
 			continue
 		}
 		if fieldName == "" {
@@ -155,6 +170,11 @@ func zeroStatus(obj OperatorCRD) error {
 // except for the owned paths, which keep the staged value. Conditions are left
 // as staged.
 func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error {
+	// GetStatusConditions decides where the conditions live, and their JSON
+	// name can be anything, so they are carried across the conversion through
+	// the accessor rather than by key.
+	conditions := slices.Clone(*staged.GetStatusConditions())
+
 	stagedContent, err := toUnstructuredContent(staged)
 	if err != nil {
 		return err
@@ -177,7 +197,6 @@ func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error 
 	if merged == nil {
 		merged = map[string]any{}
 	}
-	delete(merged, "conditions")
 
 	for _, path := range owned {
 		value, found, err := lookupStatusField(stagedStatus, path)
@@ -197,11 +216,13 @@ func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error 
 		}
 	}
 
-	if conditions, ok := stagedStatus["conditions"]; ok {
-		merged["conditions"] = conditions
-	}
 	stagedContent["status"] = merged
-	return fromUnstructuredContent(stagedContent, staged)
+	if err := fromUnstructuredContent(stagedContent, staged); err != nil {
+		return err
+	}
+
+	*staged.GetStatusConditions() = conditions
+	return nil
 }
 
 // lookupStatusField returns the value at path. A null parent counts as

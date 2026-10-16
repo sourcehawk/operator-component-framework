@@ -233,7 +233,8 @@ the list. This split lets a controller with several components stage several con
 them in one write, instead of racing a write per component.
 
 That `Status().Update` writes the **whole status subresource**, not only the conditions, so fetch the owner fresh at the
-top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones.
+top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones. With
+`WithOwnedStatusFields` the write is a merge patch of the declared fields and the conditions instead (see below).
 
 **Pass the components whose conditions this flush owns:** `component.FlushStatus(ctx, recCtx, comps)`. Their condition
 types are the owned set, so it cannot drift from what the components actually write.
@@ -249,11 +250,12 @@ old wider ownership, making a correctness fix opt-in and invisible.
 
 On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
 separate object through `ReconcileContext.APIReader` (set it from the manager's `GetAPIReader()`; the default `Client`
-reads from the informer cache, which can lag the conflicting write and return the same stale `resourceVersion`) and
-retries. From the server's copy the retry takes the `resourceVersion`, every condition whose type this flush does not
-own, and, only with `component.WithOwnedStatusFields`, every non-condition status field outside the declared paths.
-Everything else keeps the staged value. So without the option, every staged non-condition field survives a conflict,
-including the stale copy of a field another controller owns.
+reads from the informer cache, which can lag the conflicting write and return the same stale `resourceVersion`), takes
+that copy's `resourceVersion`, restores from it only the conditions whose type this flush does not own, and retries. No
+other status field is taken from the server. Two consequences: the status fields the flush writes keep their staged
+values, and a type this flush does not own keeps the server's value instead of the possibly stale copy the controller is
+holding, so another writer's concurrent update is not rolled back. Without `WithOwnedStatusFields` the flush writes
+every non-condition field, so a retry also writes back a stale copy of another controller's field.
 
 For unowned types the server is the source of truth, absence included. An unowned condition the server no longer carries
 is dropped rather than written back, so a condition another writer removed is not resurrected, and one the server has
@@ -304,11 +306,13 @@ dots for nested fields:
 component.FlushStatus(ctx, recCtx, comps, component.WithOwnedStatusFields("phase"))
 ```
 
-On a retry a declared field keeps the staged value, and every other non-condition field takes the server's value,
-absence included. `WithOwnedStatusFields()` with no paths owns no non-condition field. Once declared, an undeclared
-staged field follows the server, so declare every field the controller writes, including `observedGeneration` when it is
-this controller's. `FlushStatus` returns an error without writing for an empty segment, a `conditions` path, or a path
-that does not resolve to exactly one field of the owner's Go type.
+With the option, every attempt is a JSON merge patch of the status that holds only the staged `resourceVersion` (as a
+precondition), the declared fields (a field the staged owner does not carry is sent as `null` and removed), and the
+conditions. An undeclared field is never sent, so declare every field the controller writes, including
+`observedGeneration` when it is this controller's. `WithOwnedStatusFields()` with no paths owns no non-condition field.
+`FlushStatus` returns an error without writing for an empty segment, a path that overlaps the conditions, or a path
+below a non-object value. A misspelled path is not caught: a structural CRD schema prunes the unknown field, so that
+part of the write does nothing.
 
 **Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside
 `FlushStatus` puts two field managers on one conditions list, and because `FlushStatus` writes the full status the

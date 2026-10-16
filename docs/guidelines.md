@@ -192,8 +192,9 @@ and skips metric emission.
 
 When two controllers write the status of one CR, give each status field one owner, as with conditions. Each controller
 passes the components that own its conditions and declares its non-condition fields with
-[`WithOwnedStatusFields`](component.md#sharing-the-owners-status-with-another-controller). Without the declaration, a
-conflict retry writes the controller's stale copy of the other controller's fields back over newer values.
+[`WithOwnedStatusFields`](component.md#sharing-the-owners-status-with-another-controller), so its flush patches only
+those fields and the conditions. Without the declaration, the flush writes the whole status, and a conflict retry writes
+the controller's stale copy of the other controller's fields back over newer values.
 
 Building the component set from a pure resolver `(spec, version) -> []*component.Component` keeps the loop stable:
 enabling an optional feature changes which components the resolver returns without touching the reconcile loop.

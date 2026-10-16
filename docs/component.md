@@ -815,29 +815,27 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
 status subresource**, not only the conditions. Every status field the controller staged in memory is sent, and every
 field it did not stage is sent exactly as it stands on the in-memory object. Fetch the owner fresh at the top of each
 reconcile, so the fields nobody staged still hold current server state. An owner carried over from an earlier pass
-writes stale values back over newer ones.
+writes stale values back over newer ones. With
+[`WithOwnedStatusFields`](#sharing-the-owners-status-with-another-controller), the write is a merge patch of the
+declared fields and the conditions instead.
 
 On a 409 Conflict, for example when another writer updated the owner between the controller's `Get` and this call,
-`FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a **separate** object
-and retries. The staged owner is never replaced. From the server's copy, the retry takes:
-
-- the `resourceVersion`, so the retry targets the live object;
-- every condition whose type this flush does not own;
-- with [`WithOwnedStatusFields`](#sharing-the-owners-status-with-another-controller), every non-condition status field
-  outside the declared paths.
-
-Everything else keeps the staged value.
+`FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a **separate** object,
+takes that copy's `resourceVersion` so the retry targets the live object, restores from it only the conditions whose
+type this flush does not own, and retries. The staged owner is never replaced, and no other status field is taken from
+the server.
 
 That fetch goes through `ReconcileContext.APIReader` when it is set, and through `Client` otherwise. Set it from the
 manager's `GetAPIReader()`. The manager's default `Client` serves reads from the informer cache, which can lag the very
 write that caused the conflict and hand back the same stale `resourceVersion`, so a retry through the cache may conflict
 again until the cache catches up. A direct read sees the server as it is.
 
-Two things follow from that. A condition type this flush does not own keeps the server's value rather than the copy the
-controller happens to be holding, so a concurrent update by another writer is not rolled back. And without
-`WithOwnedStatusFields`, every non-condition status field keeps the staged value: a field the controller staged during
-the reconcile survives a conflict, and so does the stale copy of a field that another controller owns. When another
-controller writes non-condition fields of the same status, declare the fields this flush owns, as described in
+Two things follow from that. A status field that the flush writes keeps its staged value across a conflict, because the
+object holding it is the object that gets written. And a condition type this flush does not own keeps the server's value
+rather than the copy the controller happens to be holding, so a concurrent update by another writer is not rolled back.
+Without `WithOwnedStatusFields`, the flush writes every non-condition status field, so a retry also writes back the
+stale copy of a field that another controller changed after the fetch. When another controller writes non-condition
+fields of the same status, see
 [Sharing the owner's status with another controller](#sharing-the-owners-status-with-another-controller).
 
 Which types count as owned comes from the components passed to `FlushStatus`:
@@ -940,34 +938,39 @@ flushErr := component.FlushStatus(ctx, recCtx, comps, component.WithOwnedStatusF
 flushErr := component.FlushStatus(ctx, recCtx, comps, component.WithOwnedStatusFields("observedGeneration"))
 ```
 
-The declaration changes only the conflict retry. The first write sends the whole staged status, as without the option.
-When nothing changed on the server since the controller read the owner, that write succeeds, and the fields the
-controller did not stage still hold the values it read. On a retry:
+With the option, every attempt of `FlushStatus` is a JSON merge patch of the status instead of a `Status().Update`. The
+patch holds only:
 
-- A declared field keeps the staged value. If the staged owner does not carry the field, the retry removes it.
-- Every other non-condition status field takes the server's value. If the server does not carry the field, the retry
-  removes it. This is the same rule as for an unowned condition.
-- Conditions follow component ownership, as described above.
+- the staged owner's `metadata.resourceVersion`, as a precondition: the API server rejects the patch with a 409 when the
+  owner changed after the controller read it;
+- each declared field with the staged owner's value, or `null` when the staged owner does not carry the field, so the
+  server removes it;
+- the conditions list, with the owned conditions as staged and the unowned conditions as the server holds them.
+
+A field that the controller did not declare is never sent, on the first attempt or on a retry, so it cannot overwrite
+another writer's value. On a 409, `FlushStatus` refreshes the `resourceVersion` and the unowned conditions from the
+server, as described above, builds the patch again, and retries. After a successful write, the controller-runtime client
+decodes the server's response into the owner, so a value staged in a field that you did not declare does not survive in
+memory.
 
 Name each field by its JSON name under `status`, with dots between nested fields: `"observedGeneration"`,
-`"summary.ready"`. Do not include the `status.` prefix: `"status.phase"` is an error unless status has a field named
-`status`. `WithOwnedStatusFields()` with no paths declares that the flush owns no non-condition field, which fits a
-controller that writes only conditions. Paths from several options are combined.
+`"summary.ready"`. Do not include the `status.` prefix. `WithOwnedStatusFields()` with no paths declares that the flush
+owns no non-condition field, which fits a controller that writes only conditions. Paths from several options are
+combined. Declare every non-condition field that the controller writes, including `observedGeneration` when it is this
+controller's field: a field that you stage but do not declare is not written.
 
-`FlushStatus` validates each path before it writes and returns an error, with no write, when a path:
+`FlushStatus` returns an error, with no write, when a path:
 
 - is empty or has an empty segment, such as `"summary..ready"`;
-- names `conditions` or a field below it, because conditions are owned through components;
-- does not resolve to a field that the owner's Go type encodes in its JSON, such as a misspelled name, an unexported
-  field, a path below a scalar field, or a path below a type that encodes itself, such as `metav1.Time`. Below a map
-  field, any key is accepted;
-- is ambiguous: a segment matches more than one field, because a struct declares the JSON name and also gets it from an
-  embedded struct, or gets it from two embedded structs.
+- names the conditions, contains them, or lies below them, because conditions are owned through components.
+  `FlushStatus` finds the JSON path of the list that `GetStatusConditions` returns, so this holds whatever that field is
+  called;
+- runs below a field that the staged owner holds as a value that is not an object, such as `"phase.value"` when `phase`
+  is a string.
 
-Without the option, `FlushStatus` keeps the staged value of every non-condition status field on a retry. That default
-keeps a controller's own `observedGeneration` write safe when it is the only writer of the status. Once you declare
-fields, a staged field that you did not declare follows the server on a retry. So declare every field that the
-controller writes, including `observedGeneration` when it is this controller's field.
+The framework does not check a path against the CRD schema. A misspelled path, such as `"phsae"`, sends a field that the
+schema does not declare. With a structural schema the API server prunes that field, so that part of the write does
+nothing and `FlushStatus` returns no error. Check each path against the CRD type when you add it.
 
 ### Where the owner's observedGeneration is set
 

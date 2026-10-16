@@ -119,6 +119,50 @@ var _ = Describe("FlushStatus with WithOwnedStatusFields", func() {
 		Expect(live.Status.Phase).To(Equal("Accepted"))
 	})
 
+	It("leaves the server's state in memory, not undeclared staged values", func() {
+		owner := readThenRace(MockStatus{}, nil)
+
+		owner.Status.ObservedGeneration = 99 // undeclared, and absent on the server
+		owner.Status.Summary = &MockStatusSummary{Ready: 5}
+		owner.Status.Phase = "Accepted"
+
+		Expect(FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("phase"),
+		)).To(Succeed())
+
+		Expect(owner.Status.ObservedGeneration).To(BeZero())
+		Expect(owner.Status.Summary).To(BeNil())
+		Expect(owner.Status.Phase).To(Equal("Accepted"))
+	})
+
+	It("removes a child that the staged owner dropped from a wholly declared object", func() {
+		owner := readThenRace(MockStatus{Summary: &MockStatusSummary{Ready: 1, Total: 3}}, nil)
+
+		owner.Status.Summary = &MockStatusSummary{Ready: 2} // total cleared, so omitempty drops it
+
+		Expect(FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("summary"),
+		)).To(Succeed())
+
+		Expect(persisted(owner).Status.Summary).To(Equal(&MockStatusSummary{Ready: 2}))
+	})
+
+	It("removes a dropped child against the server's version after a conflict", func() {
+		owner := readThenRace(
+			MockStatus{Summary: &MockStatusSummary{Ready: 1}},
+			func(other *MockOperatorCRD) { other.Status.Summary.Total = 4 },
+		)
+
+		owner.Status.Summary = &MockStatusSummary{Ready: 2}
+
+		Expect(FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("summary"),
+		)).To(Succeed())
+
+		Expect(persisted(owner).Status.Summary).To(Equal(&MockStatusSummary{Ready: 2}),
+			"the declared object is the staged one, so the other writer's total is removed")
+	})
+
 	It("removes a declared field that the staged owner cleared", func() {
 		owner := readThenRace(MockStatus{Phase: "Pending", ObservedGeneration: 1}, func(other *MockOperatorCRD) {
 			other.Status.ObservedGeneration = 2

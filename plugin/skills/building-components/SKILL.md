@@ -307,12 +307,12 @@ component.FlushStatus(ctx, recCtx, comps, component.WithOwnedStatusFields("phase
 ```
 
 With the option, every attempt is a JSON merge patch of the status that holds only the staged `resourceVersion` (as a
-precondition), the declared fields (a field the staged owner does not carry is sent as `null` and removed), and the
-conditions. An undeclared field is never sent, so declare every field the controller writes, including
-`observedGeneration` when it is this controller's. `WithOwnedStatusFields()` with no paths owns no non-condition field.
-`FlushStatus` returns an error without writing for an empty segment, a path that overlaps the conditions, or a path
-below a non-object value. A misspelled path is not caught: a structural CRD schema prunes the unknown field, so that
-part of the write does nothing.
+precondition), the declared fields (a field the staged owner does not carry is sent as `null` and removed, and a
+declared object is owned whole, so its dropped children are removed too), and the conditions. An undeclared field is
+never sent, so declare every field the controller writes, including `observedGeneration` when it is this controller's.
+`WithOwnedStatusFields()` with no paths owns no non-condition field. `FlushStatus` returns an error without writing for
+an empty segment, a path that overlaps the conditions, or a path below a non-object value. A misspelled path is not
+caught: a structural CRD schema prunes the unknown field, so that part of the write does nothing.
 
 **Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside
 `FlushStatus` puts two field managers on one conditions list, and because `FlushStatus` writes the full status the

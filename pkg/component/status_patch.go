@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -41,10 +42,12 @@ const conditionsMarker = "ocf.sourcehawk.io/flush-status-conditions-marker"
 // separated by dots, for example "observedGeneration" or "summary.ready".
 // Paths are relative to status: write "phase", not "status.phase". A declared
 // field takes the staged owner's value, and a declared field that the staged
-// owner does not carry is removed on the server. Calling it with no paths
-// declares that the flush owns no non-condition status field, as for a
-// controller that writes only conditions. Paths from several options are
-// combined.
+// owner does not carry is removed on the server. A declared object is owned
+// whole: a child that the staged owner does not carry is removed too.
+//
+// Calling it with no paths declares that the flush owns no non-condition status
+// field, as for a controller that writes only conditions. Paths from several
+// options are combined.
 //
 // FlushStatus returns an error without writing when a path has an empty
 // segment, names the conditions, contains them, or lies below them; condition
@@ -83,9 +86,34 @@ func patchOwnedStatus(
 		return invalid(err)
 	}
 
-	// Build the first body before any write, so a path that cannot be read
-	// from the staged owner fails without touching the server.
-	body, err := ownedStatusPatch(rec.Owner, paths, conditionsPath)
+	staged, err := statusContent(rec.Owner)
+	if err != nil {
+		return invalid(err)
+	}
+
+	// Read every declared path before any request, so a path that cannot be
+	// read from the staged owner fails without touching the server.
+	declaresObject := false
+	for _, path := range paths {
+		value, err := valueAt(staged, path)
+		if err != nil {
+			return invalid(fmt.Errorf("owned status field %q: %w", strings.Join(path, "."), err))
+		}
+		if _, ok := value.(map[string]any); ok {
+			declaresObject = true
+		}
+	}
+
+	// A merge patch merges objects, so a declared object needs the server's
+	// version of it to send null for the children the staged owner dropped.
+	var server OperatorCRD
+	if declaresObject {
+		if server, err = refreshUnownedConditions(ctx, rec, ownedConditions); err != nil {
+			return err
+		}
+	}
+
+	body, err := ownedStatusPatch(rec.Owner, server, paths, conditionsPath)
 	if err != nil {
 		return invalid(err)
 	}
@@ -96,12 +124,13 @@ func patchOwnedStatus(
 			return patchErr
 		}
 
-		if refreshErr := refreshUnownedConditions(ctx, rec, ownedConditions); refreshErr != nil {
+		var refreshErr error
+		if server, refreshErr = refreshUnownedConditions(ctx, rec, ownedConditions); refreshErr != nil {
 			return refreshErr
 		}
 
 		var buildErr error
-		if body, buildErr = ownedStatusPatch(rec.Owner, paths, conditionsPath); buildErr != nil {
+		if body, buildErr = ownedStatusPatch(rec.Owner, server, paths, conditionsPath); buildErr != nil {
 			return buildErr
 		}
 		return patchErr
@@ -181,28 +210,32 @@ func isPrefix(prefix, path []string) bool {
 
 // ownedStatusPatch returns the merge patch body for the staged owner: its
 // resourceVersion as a precondition, each declared path with the staged value
-// or null, and the staged conditions.
-func ownedStatusPatch(owner OperatorCRD, paths [][]string, conditionsPath []string) ([]byte, error) {
-	data, err := json.Marshal(owner)
+// or null, and the staged conditions. Pass the server's copy when one is known.
+func ownedStatusPatch(owner, server OperatorCRD, paths [][]string, conditionsPath []string) ([]byte, error) {
+	staged, err := statusContent(owner)
 	if err != nil {
-		return nil, fmt.Errorf("encoding %T: %w", owner, err)
+		return nil, err
 	}
 
-	// json.Number re-encodes a number exactly as it was, so an int64 is not
-	// rounded through float64.
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	var content map[string]any
-	if err := decoder.Decode(&content); err != nil {
-		return nil, fmt.Errorf("decoding %T: %w", owner, err)
+	var serverStatus map[string]any
+	if server != nil {
+		if serverStatus, err = statusContent(server); err != nil {
+			return nil, err
+		}
 	}
-	staged, _ := content["status"].(map[string]any)
 
 	status := map[string]any{}
 	for _, path := range append(slices.Clone(paths), conditionsPath) {
-		value, err := stagedValue(staged, path)
+		value, err := valueAt(staged, path)
 		if err != nil {
 			return nil, fmt.Errorf("owned status field %q: %w", strings.Join(path, "."), err)
+		}
+
+		if object, ok := value.(map[string]any); ok && serverStatus != nil {
+			// A server value that is not an object is replaced whole, so
+			// there is nothing to remove.
+			current, _ := valueAt(serverStatus, path)
+			value = withRemovals(object, current)
 		}
 		setPatchValue(status, path, value)
 	}
@@ -214,10 +247,31 @@ func ownedStatusPatch(owner OperatorCRD, paths [][]string, conditionsPath []stri
 	return json.Marshal(patch)
 }
 
-// stagedValue returns the value at path in the staged status, or nil when the
-// staged owner does not carry it, which the patch sends as null to remove the
-// field. An absent or null parent counts as absent.
-func stagedValue(status map[string]any, path []string) (any, error) {
+// statusContent returns the status of obj as JSON values, or nil when obj has
+// no status.
+func statusContent(obj OperatorCRD) (map[string]any, error) {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("encoding %T: %w", obj, err)
+	}
+
+	// json.Number re-encodes a number exactly as it was, so an int64 is not
+	// rounded through float64.
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var content map[string]any
+	if err := decoder.Decode(&content); err != nil {
+		return nil, fmt.Errorf("decoding %T: %w", obj, err)
+	}
+
+	status, _ := content["status"].(map[string]any)
+	return status, nil
+}
+
+// valueAt returns the value at path in status, or nil when status does not
+// carry it, which the patch sends as null to remove the field. An absent or
+// null parent counts as absent.
+func valueAt(status map[string]any, path []string) (any, error) {
 	var current any = status
 	for i, segment := range path {
 		if current == nil {
@@ -231,6 +285,28 @@ func stagedValue(status map[string]any, path []string) (any, error) {
 		current = object[segment]
 	}
 	return current, nil
+}
+
+// withRemovals returns staged with null for each key that server holds and
+// staged does not, at any depth, so the merge patch removes it.
+func withRemovals(staged map[string]any, server any) map[string]any {
+	serverObject, ok := server.(map[string]any)
+	if !ok {
+		return staged
+	}
+
+	result := maps.Clone(staged)
+	for key, serverValue := range serverObject {
+		value, present := result[key]
+		if !present {
+			result[key] = nil
+			continue
+		}
+		if child, ok := value.(map[string]any); ok {
+			result[key] = withRemovals(child, serverValue)
+		}
+	}
+	return result
 }
 
 // setPatchValue sets value at path in the patch, creating parent objects. A

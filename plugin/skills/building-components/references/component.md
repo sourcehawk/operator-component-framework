@@ -947,7 +947,8 @@ patch holds only:
 - the staged owner's `metadata.resourceVersion`, as a precondition: the API server rejects the patch with a 409 when the
   owner changed after the controller read it;
 - each declared field with the staged owner's value, or `null` when the staged owner does not carry the field, so the
-  server removes it;
+  server removes it. A declared object is owned whole: `FlushStatus` reads the server's version of it and sends `null`
+  for each child that the staged owner does not carry, so a child that `omitempty` dropped is removed too;
 - the conditions list, with the owned conditions as staged and the unowned conditions as the server holds them.
 
 A field that the controller did not declare is never sent, on the first attempt or on a retry, so it cannot overwrite

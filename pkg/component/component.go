@@ -750,7 +750,7 @@ func FlushStatus(ctx context.Context, rec ReconcileContext, comps []*Component, 
 			if !apierrors.IsConflict(updateErr) {
 				return updateErr
 			}
-			if refreshErr := refreshUnownedConditions(ctx, rec, owned); refreshErr != nil {
+			if _, refreshErr := refreshUnownedConditions(ctx, rec, owned); refreshErr != nil {
 				return refreshErr
 			}
 			return updateErr
@@ -792,10 +792,13 @@ func ownedConditionTypes(comps []*Component) map[string]struct{} {
 // resourceVersion, so the retry targets the live object, and the value of every
 // condition type this flush does not own, so a concurrent update by another
 // writer is not overwritten by the copy this controller happens to be holding.
-func refreshUnownedConditions(ctx context.Context, rec ReconcileContext, owned map[string]struct{}) error {
+// It returns the server's copy it read.
+func refreshUnownedConditions(
+	ctx context.Context, rec ReconcileContext, owned map[string]struct{},
+) (OperatorCRD, error) {
 	server, ok := rec.Owner.DeepCopyObject().(OperatorCRD)
 	if !ok {
-		return fmt.Errorf("failed to deep copy owner of type %T", rec.Owner)
+		return nil, fmt.Errorf("failed to deep copy owner of type %T", rec.Owner)
 	}
 	// Clear the copy's conditions before the fetch. Decoding a response into a
 	// non-empty struct does not remove fields the response omits, so an owner
@@ -811,7 +814,7 @@ func refreshUnownedConditions(ctx context.Context, rec ReconcileContext, owned m
 		reader = rec.APIReader
 	}
 	if err := reader.Get(ctx, client.ObjectKeyFromObject(rec.Owner), server); err != nil {
-		return err
+		return nil, err
 	}
 
 	rec.Owner.SetResourceVersion(server.GetResourceVersion())
@@ -840,7 +843,7 @@ func refreshUnownedConditions(ctx context.Context, rec ReconcileContext, owned m
 		}
 		replaceStatusCondition(staged, cond)
 	}
-	return nil
+	return server, nil
 }
 
 // replaceStatusCondition sets cond by type, taking its value verbatim.

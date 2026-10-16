@@ -1,6 +1,8 @@
 package component
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -11,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 )
+
+var jsonMarshaler = reflect.TypeFor[json.Marshaler]()
 
 // FlushOption configures a [FlushStatus] call.
 type FlushOption func(*flushOptions)
@@ -31,8 +35,8 @@ type flushOptions struct {
 // Paths are relative to status: write "phase", not "status.phase". A path must
 // not name "conditions" or a field below it: condition ownership comes from the
 // components passed to [FlushStatus]. For a typed owner every path must resolve
-// to exactly one field of the owner's Go type, so a misspelled or ambiguous path
-// is an error rather than a silent loss of ownership. FlushStatus validates the
+// to exactly one field in the JSON of the owner's Go type, so a misspelled or
+// ambiguous path is an error rather than a silent loss of ownership. FlushStatus validates the
 // paths before it writes and returns an error for an invalid one.
 //
 // The declaration takes effect only on a 409 conflict retry. An owned field
@@ -83,8 +87,14 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 	}
 
 	current := reflect.TypeOf(owner)
-	for _, segment := range append([]string{"status"}, segments...) {
+	for i, segment := range append([]string{"status"}, segments...) {
 		current = indirectType(current)
+		// A type such as metav1.Time encodes itself, often as a string, so its
+		// Go fields say nothing about its JSON shape. The owner type itself is
+		// exempt: only its status is addressed.
+		if i > 0 && reflect.PointerTo(current).Implements(jsonMarshaler) {
+			return fmt.Errorf("cannot address %q below a field of type %s, which encodes itself", segment, current)
+		}
 		// Below a map or an interface the schema is open, so any key is valid.
 		if current.Kind() == reflect.Map || current.Kind() == reflect.Interface {
 			return nil
@@ -131,6 +141,12 @@ func jsonFields(t reflect.Type, name string, visiting map[reflect.Type]bool) []r
 		field := t.Field(i)
 		tag := field.Tag.Get("json")
 		if tag == "-" {
+			continue
+		}
+
+		// encoding/json skips unexported fields, except that the exported
+		// fields of an unexported embedded struct are promoted.
+		if !field.IsExported() && !field.Anonymous {
 			continue
 		}
 
@@ -185,17 +201,14 @@ func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error 
 		return err
 	}
 
-	stagedStatus, _, err := unstructured.NestedMap(stagedContent, "status")
+	stagedStatus, err := statusOf(stagedContent)
 	if err != nil {
 		return fmt.Errorf("reading staged status: %w", err)
 	}
 
-	merged, _, err := unstructured.NestedMap(serverContent, "status")
+	merged, err := statusOf(serverContent)
 	if err != nil {
 		return fmt.Errorf("reading server status: %w", err)
-	}
-	if merged == nil {
-		merged = map[string]any{}
 	}
 
 	for _, path := range owned {
@@ -257,30 +270,63 @@ func removeNullParent(status map[string]any, path []string) {
 	}
 }
 
+// statusOf returns the status map of content, which the caller may modify. A
+// status that is absent or null, as a nullable status without omitempty
+// encodes, is an empty map.
+func statusOf(content map[string]any) (map[string]any, error) {
+	status, ok := content["status"]
+	if !ok || status == nil {
+		return map[string]any{}, nil
+	}
+
+	object, ok := status.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("status is a %T, not an object", status)
+	}
+	return runtime.DeepCopyJSON(object), nil
+}
+
 // toUnstructuredContent returns a copy of obj's content that the caller may
-// modify. The converter hands back an unstructured object's own map.
+// modify. UnstructuredContent returns the object's own map, not a copy.
 func toUnstructuredContent(obj OperatorCRD) (map[string]any, error) {
 	if u, ok := obj.(runtime.Unstructured); ok {
 		return runtime.DeepCopyJSON(u.UnstructuredContent()), nil
 	}
 
-	content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+	// encoding/json, not runtime.DefaultUnstructuredConverter: the converter
+	// panics on a struct with an unexported field when it converts back.
+	// json.Number keeps int64 values exact.
+	data, err := json.Marshal(obj)
 	if err != nil {
-		return nil, fmt.Errorf("converting %T to unstructured: %w", obj, err)
+		return nil, fmt.Errorf("encoding %T: %w", obj, err)
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var content map[string]any
+	if err := decoder.Decode(&content); err != nil {
+		return nil, fmt.Errorf("decoding %T: %w", obj, err)
 	}
 	return content, nil
 }
 
 // fromUnstructuredContent replaces obj's content. Fields the content does not
-// carry are zeroed.
+// carry are zeroed, unexported fields included.
 func fromUnstructuredContent(content map[string]any, obj OperatorCRD) error {
 	if u, ok := obj.(runtime.Unstructured); ok {
 		u.SetUnstructuredContent(content)
 		return nil
 	}
 
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(content, obj); err != nil {
-		return fmt.Errorf("converting unstructured to %T: %w", obj, err)
+	data, err := json.Marshal(content)
+	if err != nil {
+		return fmt.Errorf("encoding content for %T: %w", obj, err)
+	}
+
+	// Decoding into a non-empty object keeps the fields the content omits.
+	reflect.ValueOf(obj).Elem().SetZero()
+	if err := json.Unmarshal(data, obj); err != nil {
+		return fmt.Errorf("decoding into %T: %w", obj, err)
 	}
 	return nil
 }

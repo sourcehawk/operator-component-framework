@@ -1047,6 +1047,53 @@ func TestFlushStatusOwnedStatusFields(t *testing.T) {
 		assert.Equal(t, "Running", persisted.Status.Phase)
 	})
 
+	t.Run("sets an owned field when the server holds the whole status as null", func(t *testing.T) {
+		nullScheme := runtime.NewScheme()
+		nullScheme.AddKnownTypes(GroupVersion, &nullableStatusOwner{})
+		initial := &nullableStatusOwner{ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "default"}}
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(nullScheme).WithStatusSubresource(initial).WithObjects(initial).Build()
+
+		owner := &nullableStatusOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), owner))
+
+		other := &nullableStatusOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), other))
+		other.Labels = map[string]string{"touched": "true"}
+		require.NoError(t, k8sClient.Update(ctx, other))
+
+		owner.Status = &checksStatus{Phase: "Accepted"}
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("phase"),
+		))
+
+		persisted := &nullableStatusOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), persisted))
+		require.NotNil(t, persisted.Status)
+		assert.Equal(t, "Accepted", persisted.Status.Phase)
+	})
+
+	t.Run("rejects a path that the status JSON does not contain", func(t *testing.T) {
+		for name, path := range map[string]string{
+			"unexported field":                 "internal",
+			"below a type that encodes itself": "lastSync.Time",
+			"unexported field of such a type":  "lastSync.wall",
+		} {
+			t.Run(name, func(t *testing.T) {
+				owner := &checksOwner{ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "default"}}
+				k8sClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+				err := FlushStatus(
+					ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields(path),
+				)
+
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), fmt.Sprintf("%q", path))
+			})
+		}
+	})
+
 	t.Run("rejects an invalid path before writing", func(t *testing.T) {
 		for name, path := range map[string]string{
 			"empty":                "",
@@ -1167,8 +1214,10 @@ type checksOwner struct {
 }
 
 type checksStatus struct {
-	Checks []metav1.Condition `json:"checks,omitempty"`
-	Phase  string             `json:"phase,omitempty"`
+	Checks   []metav1.Condition `json:"checks,omitempty"`
+	Phase    string             `json:"phase,omitempty"`
+	LastSync metav1.Time        `json:"lastSync,omitzero"`
+	internal string             //nolint:unused // read only by reflection
 }
 
 func (o *checksOwner) GetStatusConditions() *[]metav1.Condition {
@@ -1183,6 +1232,37 @@ func (o *checksOwner) DeepCopyObject() runtime.Object {
 	out := *o
 	o.ObjectMeta.DeepCopyInto(&out.ObjectMeta) //nolint:staticcheck // naming ObjectMeta keeps the copy readable
 	out.Status.Checks = slices.Clone(o.Status.Checks)
+	return &out
+}
+
+// nullableStatusOwner encodes a nil status as null, because the field has no
+// omitempty.
+type nullableStatusOwner struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Status *checksStatus `json:"status"`
+}
+
+func (o *nullableStatusOwner) GetStatusConditions() *[]metav1.Condition {
+	if o.Status == nil {
+		o.Status = &checksStatus{}
+	}
+	return &o.Status.Checks
+}
+
+func (o *nullableStatusOwner) GetKind() string {
+	return "nullableStatusOwner"
+}
+
+func (o *nullableStatusOwner) DeepCopyObject() runtime.Object {
+	out := *o
+	o.ObjectMeta.DeepCopyInto(&out.ObjectMeta) //nolint:staticcheck // naming ObjectMeta keeps the copy readable
+	if o.Status != nil {
+		status := *o.Status
+		status.Checks = slices.Clone(o.Status.Checks)
+		out.Status = &status
+	}
 	return &out
 }
 

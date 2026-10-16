@@ -148,19 +148,43 @@ var _ = Describe("FlushStatus with WithOwnedStatusFields", func() {
 	})
 
 	It("removes a dropped child against the server's version after a conflict", func() {
-		owner := readThenRace(
-			MockStatus{Summary: &MockStatusSummary{Ready: 1}},
-			func(other *MockOperatorCRD) { other.Status.Summary.Total = 4 },
-		)
+		owner := readThenRace(MockStatus{Summary: &MockStatusSummary{Ready: 1}}, nil)
+		// The competing write lands after FlushStatus read the server's copy
+		// and before its first patch, so that patch conflicts and the retry
+		// must compute the removals against the newer copy.
+		recording := &patchRecordingClient{Client: k8sClient, beforeFirstPatch: func() {
+			other := &MockOperatorCRD{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), other)).To(Succeed())
+			other.Status.Summary.Total = 4
+			Expect(k8sClient.Status().Update(ctx, other)).To(Succeed())
+		}}
 
 		owner.Status.Summary = &MockStatusSummary{Ready: 2}
+
+		Expect(FlushStatus(
+			ctx, ReconcileContext{Client: recording, Owner: owner}, nil, WithOwnedStatusFields("summary"),
+		)).To(Succeed())
+
+		Expect(recording.bodies).To(HaveLen(2), "the first patch must conflict and the retry must succeed")
+		Expect(persisted(owner).Status.Summary).To(Equal(&MockStatusSummary{Ready: 2}),
+			"the declared object is the staged one, so the other writer's total is removed")
+	})
+
+	It("keeps a staged unowned condition when a declared object needs the server's copy", func() {
+		owner := readThenRace(MockStatus{Summary: &MockStatusSummary{Ready: 1}}, nil)
+
+		owner.Status.Summary = &MockStatusSummary{Ready: 2}
+		// An owner-level aggregate, owned by no component and not yet on the server.
+		meta.SetStatusCondition(&owner.Status.Conditions, metav1.Condition{
+			Type: "Ready", Status: metav1.ConditionTrue, Reason: "AllReady",
+		})
 
 		Expect(FlushStatus(
 			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("summary"),
 		)).To(Succeed())
 
-		Expect(persisted(owner).Status.Summary).To(Equal(&MockStatusSummary{Ready: 2}),
-			"the declared object is the staged one, so the other writer's total is removed")
+		Expect(meta.FindStatusCondition(persisted(owner).Status.Conditions, "Ready")).NotTo(BeNil(),
+			"without a conflict the staged conditions are written as staged")
 	})
 
 	It("removes a declared field that the staged owner cleared", func() {
@@ -324,6 +348,8 @@ func TestParseOwnedStatusPaths(t *testing.T) {
 type patchRecordingClient struct {
 	client.Client
 	bodies [][]byte
+	// beforeFirstPatch, when set, runs once before the first patch is forwarded.
+	beforeFirstPatch func()
 }
 
 func (c *patchRecordingClient) Status() client.SubResourceWriter {
@@ -341,6 +367,9 @@ func (w *patchRecordingStatusWriter) Patch(
 	body, err := patch.Data(obj)
 	if err != nil {
 		return err
+	}
+	if w.parent.beforeFirstPatch != nil && len(w.parent.bodies) == 0 {
+		w.parent.beforeFirstPatch()
 	}
 	w.parent.bodies = append(w.parent.bodies, body)
 	return w.SubResourceWriter.Patch(ctx, obj, patch, opts...)

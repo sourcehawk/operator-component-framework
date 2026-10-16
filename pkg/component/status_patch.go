@@ -106,9 +106,11 @@ func patchOwnedStatus(
 
 	// A merge patch merges objects, so a declared object needs the server's
 	// version of it to send null for the children the staged owner dropped.
+	// Only read it here: refreshing would revert staged unowned conditions
+	// although nothing conflicted.
 	var server OperatorCRD
 	if declaresObject {
-		if server, err = refreshUnownedConditions(ctx, rec, ownedConditions); err != nil {
+		if server, err = readServerOwner(ctx, rec); err != nil {
 			return err
 		}
 	}

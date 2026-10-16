@@ -796,24 +796,8 @@ func ownedConditionTypes(comps []*Component) map[string]struct{} {
 func refreshUnownedConditions(
 	ctx context.Context, rec ReconcileContext, owned map[string]struct{},
 ) (OperatorCRD, error) {
-	server, ok := rec.Owner.DeepCopyObject().(OperatorCRD)
-	if !ok {
-		return nil, fmt.Errorf("failed to deep copy owner of type %T", rec.Owner)
-	}
-	// Clear the copy's conditions before the fetch. Decoding a response into a
-	// non-empty struct does not remove fields the response omits, so an owner
-	// with no conditions on the server would otherwise leave the staged
-	// conditions in place here and they would read as the server's.
-	*server.GetStatusConditions() = nil
-
-	// Read through APIReader when one is set: the manager's Client serves reads
-	// from the informer cache, which can lag the write that caused the conflict
-	// and return the same stale resourceVersion, defeating the retry.
-	reader := client.Reader(rec.Client)
-	if rec.APIReader != nil {
-		reader = rec.APIReader
-	}
-	if err := reader.Get(ctx, client.ObjectKeyFromObject(rec.Owner), server); err != nil {
+	server, err := readServerOwner(ctx, rec)
+	if err != nil {
 		return nil, err
 	}
 
@@ -842,6 +826,32 @@ func refreshUnownedConditions(
 			continue
 		}
 		replaceStatusCondition(staged, cond)
+	}
+	return server, nil
+}
+
+// readServerOwner returns the owner as the server holds it, read into a
+// separate object so the staged owner is left untouched.
+func readServerOwner(ctx context.Context, rec ReconcileContext) (OperatorCRD, error) {
+	server, ok := rec.Owner.DeepCopyObject().(OperatorCRD)
+	if !ok {
+		return nil, fmt.Errorf("failed to deep copy owner of type %T", rec.Owner)
+	}
+	// Clear the copy's conditions before the fetch. Decoding a response into a
+	// non-empty struct does not remove fields the response omits, so an owner
+	// with no conditions on the server would otherwise leave the staged
+	// conditions in place here and they would read as the server's.
+	*server.GetStatusConditions() = nil
+
+	// Read through APIReader when one is set: the manager's Client serves reads
+	// from the informer cache, which can lag the write that caused the conflict
+	// and return the same stale resourceVersion, defeating the retry.
+	reader := client.Reader(rec.Client)
+	if rec.APIReader != nil {
+		reader = rec.APIReader
+	}
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(rec.Owner), server); err != nil {
+		return nil, err
 	}
 	return server, nil
 }

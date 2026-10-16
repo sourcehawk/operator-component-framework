@@ -138,10 +138,10 @@ func suspendResource(
 	// skip Apply to avoid a create->delete churn loop on every reconcile.
 	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.
 	if suspendable.DeleteOnSuspend() {
-		existing, ok := object.DeepCopyObject().(client.Object)
-		if !ok {
+		existing, err := newEmptyObjectLike(object)
+		if err != nil {
 			return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
-				"failed to deep copy object of type %T", object,
+				"failed to prepare existence check for resource %s on suspension: %w", resource.Identity(), err,
 			)
 		}
 		// The ownership check below must not trust a cache that still shows an
@@ -150,7 +150,7 @@ func suspendResource(
 		if entry.Options.DeleteOnlyIfOwned && rec.APIReader != nil {
 			reader = rec.APIReader
 		}
-		err := reader.Get(ctx, client.ObjectKeyFromObject(object), existing)
+		err = reader.Get(ctx, client.ObjectKeyFromObject(object), existing)
 		if apierrors.IsNotFound(err) {
 			return concepts.SuspensionStatusWithReason{
 				Status: concepts.SuspensionStatusSuspended,

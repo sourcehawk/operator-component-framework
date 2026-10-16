@@ -187,6 +187,27 @@ var _ = Describe("DeleteOnlyIfOwned", func() {
 		Expect(after.ResourceVersion).To(Equal(before.ResourceVersion), "a kept object must not be written")
 	})
 
+	It("keeps an ownerless object on suspension when the desired object still carries the owner's reference", func() {
+		createConfigMap(false)
+		before := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, key(), before)).To(Succeed())
+		// The desired object keeps the owner reference that an earlier apply set,
+		// while the live object under the name is a user's replacement without it.
+		desired := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: namespace}}
+		Expect(controllerutil.SetControllerReference(owner, desired, scheme.Scheme)).To(Succeed())
+		res := &MockSuspendableResource{}
+		res.On("Object").Return(desired, nil)
+		res.On("Identity").Return("ConfigMap/" + cmName)
+		res.On("DeleteOnSuspend").Return(true)
+		comp := suspendedComponent(res)
+
+		Expect(comp.Reconcile(ctx, newTestReconcileContext(owner))).To(Succeed())
+
+		after := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, key(), after)).To(Succeed())
+		Expect(after.ResourceVersion).To(Equal(before.ResourceVersion), "a kept object must not be written")
+	})
+
 	It("reports Disabled for a disabled component feature gate whether or not the object is kept", func() {
 		createConfigMap(false)
 		comp, err := disabledComponentGate(desiredResource(), DeleteOnlyIfOwned())

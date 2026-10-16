@@ -946,7 +946,9 @@ patch holds only:
 - each declared field with the staged owner's value, or `null` when the staged owner does not carry the field but the
   server does, so the server removes it. A declared object is owned whole: the patch sends `null` for each child that
   the server stores and the staged owner does not carry, so a child that `omitempty` dropped is removed too;
-- the conditions list, with the owned conditions as staged and the unowned conditions as the server holds them.
+- the conditions list as staged. On the first attempt that includes any unowned condition the controller staged by hand,
+  such as an owner-level aggregate; the precondition makes the patch fail if the server changed after the read. After a
+  409, the unowned conditions are first refreshed from the server.
 
 To build the patch, each attempt first reads the owner's status through `APIReader` when it is set, and through `Client`
 otherwise. A cache-backed `Client` can return a stale status, so set `APIReader`. A field that the controller did not

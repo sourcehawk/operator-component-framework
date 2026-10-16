@@ -1,7 +1,7 @@
 package component
 
 import (
-	"bytes"
+	"encoding"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +12,13 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	kjson "sigs.k8s.io/json"
 )
 
-var jsonMarshaler = reflect.TypeFor[json.Marshaler]()
+var (
+	jsonMarshaler = reflect.TypeFor[json.Marshaler]()
+	textMarshaler = reflect.TypeFor[encoding.TextMarshaler]()
+)
 
 // FlushOption configures a [FlushStatus] call.
 type FlushOption func(*flushOptions)
@@ -92,7 +96,7 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 		// A type such as metav1.Time encodes itself, often as a string, so its
 		// Go fields say nothing about its JSON shape. The owner type itself is
 		// exempt: only its status is addressed.
-		if i > 0 && reflect.PointerTo(current).Implements(jsonMarshaler) {
+		if i > 0 && encodesItself(current) {
 			return fmt.Errorf("cannot address %q below a field of type %s, which encodes itself", segment, current)
 		}
 		// Below a map or an interface the schema is open, so any key is valid.
@@ -118,6 +122,11 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 		}
 	}
 	return nil
+}
+
+func encodesItself(t reflect.Type) bool {
+	pointer := reflect.PointerTo(t)
+	return pointer.Implements(jsonMarshaler) || pointer.Implements(textMarshaler)
 }
 
 // jsonFields returns the type of every field with the JSON name name, declared
@@ -293,18 +302,16 @@ func toUnstructuredContent(obj OperatorCRD) (map[string]any, error) {
 		return runtime.DeepCopyJSON(u.UnstructuredContent()), nil
 	}
 
-	// encoding/json, not runtime.DefaultUnstructuredConverter: the converter
-	// panics on a struct with an unexported field when it converts back.
-	// json.Number keeps int64 values exact.
+	// JSON, not runtime.DefaultUnstructuredConverter: the converter panics on
+	// a struct with an unexported field when it converts back. The decoder is
+	// the API machinery's own, which keeps integers as exact int64 values.
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return nil, fmt.Errorf("encoding %T: %w", obj, err)
 	}
 
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
 	var content map[string]any
-	if err := decoder.Decode(&content); err != nil {
+	if err := kjson.UnmarshalCaseSensitivePreserveInts(data, &content); err != nil {
 		return nil, fmt.Errorf("decoding %T: %w", obj, err)
 	}
 	return content, nil
@@ -325,7 +332,7 @@ func fromUnstructuredContent(content map[string]any, obj OperatorCRD) error {
 
 	// Decoding into a non-empty object keeps the fields the content omits.
 	reflect.ValueOf(obj).Elem().SetZero()
-	if err := json.Unmarshal(data, obj); err != nil {
+	if err := kjson.UnmarshalCaseSensitivePreserveInts(data, obj); err != nil {
 		return fmt.Errorf("decoding into %T: %w", obj, err)
 	}
 	return nil

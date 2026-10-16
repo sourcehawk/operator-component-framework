@@ -1074,11 +1074,41 @@ func TestFlushStatusOwnedStatusFields(t *testing.T) {
 		assert.Equal(t, "Accepted", persisted.Status.Phase)
 	})
 
+	t.Run("keeps a large integer in a dynamic status field exact across the retry", func(t *testing.T) {
+		const big = int64(1<<53 + 1) // the first integer a float64 cannot hold
+
+		checksScheme := runtime.NewScheme()
+		checksScheme.AddKnownTypes(GroupVersion, &checksOwner{})
+		initial := &checksOwner{ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "default"}}
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(checksScheme).WithStatusSubresource(initial).WithObjects(initial).Build()
+
+		owner := &checksOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), owner))
+
+		other := &checksOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), other))
+		other.Status.Extra = map[string]any{"big": big}
+		require.NoError(t, k8sClient.Status().Update(ctx, other))
+
+		owner.Status.Phase = "Accepted"
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("phase"),
+		))
+
+		persisted := &checksOwner{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), persisted))
+		assert.Equal(t, big, persisted.Status.Extra["big"])
+		assert.Equal(t, "Accepted", persisted.Status.Phase)
+	})
+
 	t.Run("rejects a path that the status JSON does not contain", func(t *testing.T) {
 		for name, path := range map[string]string{
-			"unexported field":                 "internal",
-			"below a type that encodes itself": "lastSync.Time",
-			"unexported field of such a type":  "lastSync.wall",
+			"below a type that encodes itself as text": "level.value",
+			"unexported field":                         "internal",
+			"below a type that encodes itself":         "lastSync.Time",
+			"unexported field of such a type":          "lastSync.wall",
 		} {
 			t.Run(name, func(t *testing.T) {
 				owner := &checksOwner{ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "default"}}
@@ -1217,7 +1247,24 @@ type checksStatus struct {
 	Checks   []metav1.Condition `json:"checks,omitempty"`
 	Phase    string             `json:"phase,omitempty"`
 	LastSync metav1.Time        `json:"lastSync,omitzero"`
+	Level    textLevel          `json:"level,omitzero"`
+	Extra    map[string]any     `json:"extra,omitempty"`
 	internal string             //nolint:unused // read only by reflection
+}
+
+// textLevel encodes as a JSON string through MarshalText, so its Value field
+// never appears in the JSON.
+type textLevel struct {
+	Value string `json:"value"`
+}
+
+func (l textLevel) MarshalText() ([]byte, error) {
+	return []byte(l.Value), nil
+}
+
+func (l *textLevel) UnmarshalText(text []byte) error {
+	l.Value = string(text)
+	return nil
 }
 
 func (o *checksOwner) GetStatusConditions() *[]metav1.Condition {
@@ -1232,6 +1279,9 @@ func (o *checksOwner) DeepCopyObject() runtime.Object {
 	out := *o
 	o.ObjectMeta.DeepCopyInto(&out.ObjectMeta) //nolint:staticcheck // naming ObjectMeta keeps the copy readable
 	out.Status.Checks = slices.Clone(o.Status.Checks)
+	if o.Status.Extra != nil {
+		out.Status.Extra = runtime.DeepCopyJSON(o.Status.Extra)
+	}
 	return &out
 }
 
@@ -1261,6 +1311,9 @@ func (o *nullableStatusOwner) DeepCopyObject() runtime.Object {
 	if o.Status != nil {
 		status := *o.Status
 		status.Checks = slices.Clone(o.Status.Checks)
+		if o.Status.Extra != nil {
+			status.Extra = runtime.DeepCopyJSON(o.Status.Extra)
+		}
 		out.Status = &status
 	}
 	return &out

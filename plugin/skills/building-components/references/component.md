@@ -946,16 +946,17 @@ patch holds only:
 
 - the staged owner's `metadata.resourceVersion`, as a precondition: the API server rejects the patch with a 409 when the
   owner changed after the controller read it;
-- each declared field with the staged owner's value, or `null` when the staged owner does not carry the field, so the
-  server removes it. A declared object is owned whole: `FlushStatus` reads the server's version of it and sends `null`
-  for each child that the staged owner does not carry, so a child that `omitempty` dropped is removed too;
+- each declared field with the staged owner's value, or `null` when the staged owner does not carry the field but the
+  server does, so the server removes it. A declared object is owned whole: the patch sends `null` for each child that
+  the server stores and the staged owner does not carry, so a child that `omitempty` dropped is removed too;
 - the conditions list, with the owned conditions as staged and the unowned conditions as the server holds them.
 
-A field that the controller did not declare is never sent, on the first attempt or on a retry, so it cannot overwrite
-another writer's value. On a 409, `FlushStatus` refreshes the `resourceVersion` and the unowned conditions from the
-server, as described above, builds the patch again, and retries. After a successful write, the controller-runtime client
-decodes the server's response into the owner, so a value staged in a field that you did not declare does not survive in
-memory.
+To build the patch, each attempt first reads the owner's status through `APIReader` when it is set, and through `Client`
+otherwise. A cache-backed `Client` can return a stale status, so set `APIReader`. A field that the controller did not
+declare is never sent, on the first attempt or on a retry, so it cannot overwrite another writer's value. On a 409,
+`FlushStatus` refreshes the `resourceVersion` and the unowned conditions from the server, as described above, builds the
+patch again, and retries. After a successful write, the controller-runtime client decodes the server's response into the
+owner, so a value staged in a field that you did not declare does not survive in memory.
 
 Name each field by its JSON name under `status`, with dots between nested fields: `"observedGeneration"`,
 `"summary.ready"`. Do not include the `status.` prefix. `WithOwnedStatusFields()` with no paths declares that the flush

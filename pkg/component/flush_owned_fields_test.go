@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -218,6 +220,33 @@ var _ = Describe("FlushStatus with WithOwnedStatusFields", func() {
 		Expect(persisted(owner).Status.Summary).To(Equal(&MockStatusSummary{Ready: 2, Total: 4}))
 	})
 
+	It("removes an explicitly stored zero child of a wholly declared object", func() {
+		owner := readThenRace(MockStatus{Summary: &MockStatusSummary{Ready: 1}}, nil)
+		// A typed write drops total: 0 through omitempty, so store it raw.
+		Expect(k8sClient.Status().Patch(ctx, owner, client.RawPatch(
+			types.MergePatchType, []byte(`{"status":{"summary":{"ready":1,"total":0}}}`),
+		))).To(Succeed())
+		Expect(rawStatus(ctx, owner)["summary"]).To(HaveKey("total"))
+
+		owner.Status.Summary = &MockStatusSummary{Ready: 2}
+
+		Expect(FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("summary"),
+		)).To(Succeed())
+
+		Expect(rawStatus(ctx, owner)["summary"]).To(Equal(map[string]any{"ready": int64(2)}))
+	})
+
+	It("leaves an absent parent absent when a declared child has nothing to remove", func() {
+		owner := readThenRace(MockStatus{Phase: "Pending"}, nil)
+
+		Expect(FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("summary.ready"),
+		)).To(Succeed())
+
+		Expect(rawStatus(ctx, owner)).NotTo(HaveKey("summary"))
+	})
+
 	It("lets owned conditions win and unowned conditions follow the server on a retry", func() {
 		owner := readThenRace(
 			MockStatus{Conditions: []metav1.Condition{
@@ -340,6 +369,62 @@ func TestParseOwnedStatusPaths(t *testing.T) {
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), `"`+path+`"`)
+		})
+	}
+}
+
+// rawStatus reads the owner's status as the server stores it, where a typed
+// read cannot tell a stored zero from an absent field.
+func rawStatus(ctx context.Context, owner *MockOperatorCRD) map[string]any {
+	GinkgoHelper()
+	live := &unstructured.Unstructured{}
+	live.SetGroupVersionKind(GroupVersion.WithKind("MockOperatorCRD"))
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(owner), live)).To(Succeed())
+	status, _ := live.Object["status"].(map[string]any)
+	return status
+}
+
+func TestOwnedStatusPatch(t *testing.T) {
+	owner := &MockOperatorCRD{Status: MockStatus{Summary: &MockStatusSummary{Ready: 2}}}
+	conditionsPath := []string{"conditions"}
+
+	statusOf := func(t *testing.T, body []byte) map[string]any {
+		t.Helper()
+		var patch map[string]any
+		require.NoError(t, json.Unmarshal(body, &patch))
+		status, _ := patch["status"].(map[string]any)
+		return status
+	}
+
+	t.Run("does not depend on the order of overlapping declarations", func(t *testing.T) {
+		server := map[string]any{"summary": map[string]any{"ready": int64(1)}}
+		forward, err := parseOwnedStatusPaths([]string{"summary", "summary.details.ready"}, conditionsPath)
+		require.NoError(t, err)
+		backward, err := parseOwnedStatusPaths([]string{"summary.details.ready", "summary"}, conditionsPath)
+		require.NoError(t, err)
+
+		forwardBody, err := ownedStatusPatch(owner, server, forward, conditionsPath)
+		require.NoError(t, err)
+		backwardBody, err := ownedStatusPatch(owner, server, backward, conditionsPath)
+		require.NoError(t, err)
+
+		assert.Equal(t, statusOf(t, forwardBody), statusOf(t, backwardBody))
+		assert.Equal(t, map[string]any{"ready": float64(2)}, statusOf(t, forwardBody)["summary"])
+	})
+
+	for name, server := range map[string]map[string]any{
+		"absent": {},
+		"null":   {"summary": nil},
+	} {
+		t.Run("sends nothing to remove below a parent the server holds as "+name, func(t *testing.T) {
+			stagedWithout := &MockOperatorCRD{}
+			paths, err := parseOwnedStatusPaths([]string{"summary.ready"}, conditionsPath)
+			require.NoError(t, err)
+
+			body, err := ownedStatusPatch(stagedWithout, server, paths, conditionsPath)
+			require.NoError(t, err)
+
+			assert.NotContains(t, statusOf(t, body), "summary")
 		})
 	}
 }

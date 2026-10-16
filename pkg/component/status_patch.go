@@ -12,9 +12,11 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 // FlushOption configures a [FlushStatus] call.
@@ -36,7 +38,9 @@ const conditionsMarker = "ocf.sourcehawk.io/flush-status-conditions-marker"
 // flush owns, for an owner whose status is shared with other writers. It turns
 // every write of [FlushStatus] into a JSON merge patch of the status that holds
 // only the declared fields and the conditions, so a field that another writer
-// owns is never sent, on the first attempt or on a retry.
+// owns is never sent, on the first attempt or on a retry. Each attempt first
+// reads the owner's status through rec.APIReader when set, and through
+// rec.Client otherwise; a cache-backed rec.Client can return a stale status.
 //
 // Each path names a field under status by its JSON name, with nested fields
 // separated by dots, for example "observedGeneration" or "summary.ready".
@@ -93,26 +97,15 @@ func patchOwnedStatus(
 
 	// Read every declared path before any request, so a path that cannot be
 	// read from the staged owner fails without touching the server.
-	declaresObject := false
 	for _, path := range paths {
-		value, err := valueAt(staged, path)
-		if err != nil {
+		if _, err := valueAt(staged, path); err != nil {
 			return invalid(fmt.Errorf("owned status field %q: %w", strings.Join(path, "."), err))
-		}
-		if _, ok := value.(map[string]any); ok {
-			declaresObject = true
 		}
 	}
 
-	// A merge patch merges objects, so a declared object needs the server's
-	// version of it to send null for the children the staged owner dropped.
-	// Only read it here: refreshing would revert staged unowned conditions
-	// although nothing conflicted.
-	var server OperatorCRD
-	if declaresObject {
-		if server, err = readServerOwner(ctx, rec); err != nil {
-			return err
-		}
+	server, err := readServerStatus(ctx, rec)
+	if err != nil {
+		return err
 	}
 
 	body, err := ownedStatusPatch(rec.Owner, server, paths, conditionsPath)
@@ -126,9 +119,15 @@ func patchOwnedStatus(
 			return patchErr
 		}
 
-		var refreshErr error
-		if server, refreshErr = refreshUnownedConditions(ctx, rec, ownedConditions); refreshErr != nil {
+		if refreshErr := refreshUnownedConditions(ctx, rec, ownedConditions); refreshErr != nil {
 			return refreshErr
+		}
+
+		// Read the status after the refresh, so it is at least as new as the
+		// resourceVersion the patch is guarded by.
+		var readErr error
+		if server, readErr = readServerStatus(ctx, rec); readErr != nil {
+			return readErr
 		}
 
 		var buildErr error
@@ -137,6 +136,25 @@ func patchOwnedStatus(
 		}
 		return patchErr
 	})
+}
+
+// readServerStatus returns the status that the server stores for the owner.
+// It reads into an unstructured object, because a typed read drops a stored
+// zero value that omitempty skips, and the patch must still remove it.
+func readServerStatus(ctx context.Context, rec ReconcileContext) (map[string]any, error) {
+	gvk, err := apiutil.GVKForObject(rec.Owner, rec.Client.Scheme())
+	if err != nil {
+		return nil, err
+	}
+
+	live := &unstructured.Unstructured{}
+	live.SetGroupVersionKind(gvk)
+	if err := liveReader(rec).Get(ctx, client.ObjectKeyFromObject(rec.Owner), live); err != nil {
+		return nil, err
+	}
+
+	status, _ := live.Object["status"].(map[string]any)
+	return status, nil
 }
 
 // conditionsJSONPath returns the JSON path under status of the list that
@@ -203,27 +221,33 @@ func parseOwnedStatusPaths(paths []string, conditionsPath []string) ([][]string,
 		}
 		parsed = append(parsed, segments)
 	}
-	return parsed, nil
+
+	// A declared ancestor writes its whole subtree. A descendant written into
+	// it as well would make the patch depend on the order of the paths.
+	var kept [][]string
+	for i, path := range parsed {
+		covered := slices.ContainsFunc(parsed[:i], func(other []string) bool { return isPrefix(other, path) }) ||
+			slices.ContainsFunc(parsed[i+1:], func(other []string) bool {
+				return len(other) < len(path) && isPrefix(other, path)
+			})
+		if !covered {
+			kept = append(kept, path)
+		}
+	}
+	return kept, nil
 }
 
 func isPrefix(prefix, path []string) bool {
 	return len(prefix) <= len(path) && slices.Equal(prefix, path[:len(prefix)])
 }
 
-// ownedStatusPatch returns the merge patch body for the staged owner: its
-// resourceVersion as a precondition, each declared path with the staged value
-// or null, and the staged conditions. Pass the server's copy when one is known.
-func ownedStatusPatch(owner, server OperatorCRD, paths [][]string, conditionsPath []string) ([]byte, error) {
+// ownedStatusPatch returns the merge patch body that takes each declared path
+// and the conditions from the server's status to the staged owner's, with the
+// staged resourceVersion as a precondition.
+func ownedStatusPatch(owner OperatorCRD, server map[string]any, paths [][]string, conditionsPath []string) ([]byte, error) {
 	staged, err := statusContent(owner)
 	if err != nil {
 		return nil, err
-	}
-
-	var serverStatus map[string]any
-	if server != nil {
-		if serverStatus, err = statusContent(server); err != nil {
-			return nil, err
-		}
 	}
 
 	status := map[string]any{}
@@ -233,11 +257,17 @@ func ownedStatusPatch(owner, server OperatorCRD, paths [][]string, conditionsPat
 			return nil, fmt.Errorf("owned status field %q: %w", strings.Join(path, "."), err)
 		}
 
-		if object, ok := value.(map[string]any); ok && serverStatus != nil {
-			// A server value that is not an object is replaced whole, so
-			// there is nothing to remove.
-			current, _ := valueAt(serverStatus, path)
-			value = withRemovals(object, current)
+		// A server value below a non-object parent counts as absent.
+		current, _ := valueAt(server, path)
+		switch typed := value.(type) {
+		case nil:
+			// A null below a parent the server does not hold as an object
+			// would create that parent, so remove only what is there.
+			if !holds(server, path) {
+				continue
+			}
+		case map[string]any:
+			value = withRemovals(typed, current)
 		}
 		setPatchValue(status, path, value)
 	}
@@ -247,6 +277,22 @@ func ownedStatusPatch(owner, server OperatorCRD, paths [][]string, conditionsPat
 		patch["metadata"] = map[string]any{"resourceVersion": resourceVersion}
 	}
 	return json.Marshal(patch)
+}
+
+// holds reports whether status has a key at path, below parents that are all
+// objects.
+func holds(status map[string]any, path []string) bool {
+	parent, err := valueAt(status, path[:len(path)-1])
+	if err != nil {
+		return false
+	}
+
+	object, ok := parent.(map[string]any)
+	if !ok {
+		return false
+	}
+	_, present := object[path[len(path)-1]]
+	return present
 }
 
 // statusContent returns the status of obj as JSON values, or nil when obj has

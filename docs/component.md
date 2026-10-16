@@ -126,7 +126,10 @@ resource counts as suspended. While no deletion is asked for, the option has no 
 
 The delete carries the observed UID and resourceVersion as preconditions. If the object changes, or a different object
 takes the name, between the read and the delete, the API server rejects the delete with a conflict. The component then
-keeps the object, logs the skip, and does not fail the reconcile. The next reconcile reads the object again.
+keeps the object, logs the skip, and does not fail the reconcile. The next reconcile reads the object again. A
+suspension with `DeleteOnSuspend()` binds its apply to the read in the same way, through the observed resourceVersion.
+If the object changes between the read and that apply, the API server rejects the apply. The component does not write
+the object, the resource reports `Suspending`, and the reconcile does not fail.
 
 The option composes with `BlockOnForeignController()`. With both options, the component keeps an object that another
 owner controls, even when the object also references this owner. A conflict on the delete then does not fail the

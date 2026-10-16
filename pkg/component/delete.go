@@ -49,8 +49,8 @@ func withDeletionReason(reason string) deleteOption {
 // For each successful deletion, a "ResourceDeleted" event is recorded on the owner object.
 // The opts parameter allows callers to customize the event message via functional options.
 //
-// Returns a joined error containing all encountered errors, or nil if all deletions
-// were successful or resulted in "Not Found" errors.
+// Returns the errors of all entries joined, or nil when no entry failed; an
+// entry left in place is not an error.
 func deleteResources(
 	ctx context.Context, rec ReconcileContext, entries []reconcileEntry, opts ...deleteOption,
 ) error {

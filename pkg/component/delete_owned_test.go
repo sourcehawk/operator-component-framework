@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -206,6 +207,43 @@ var _ = Describe("DeleteOnlyIfOwned", func() {
 		after := &corev1.ConfigMap{}
 		Expect(k8sClient.Get(ctx, key(), after)).To(Succeed())
 		Expect(after.ResourceVersion).To(Equal(before.ResourceVersion), "a kept object must not be written")
+	})
+
+	It("keeps an object disowned between the suspension read and the suspension apply", func() {
+		createConfigMap(true)
+		res := &MockSuspendableResource{}
+		res.On("Object").Return(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: namespace}}, nil)
+		res.On("Identity").Return("ConfigMap/" + cmName)
+		res.On("DeleteOnSuspend").Return(true)
+		res.On("Suspend").Return(nil)
+		res.On("Mutate", mock.Anything).Return(nil)
+		res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}, nil)
+		comp := suspendedComponent(res)
+
+		base, err := client.NewWithWatch(cfg, client.Options{Scheme: scheme.Scheme})
+		Expect(err).NotTo(HaveOccurred())
+		disownBeforeApply := interceptor.NewClient(base, interceptor.Funcs{
+			Patch: func(
+				ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption,
+			) error {
+				if obj.GetName() == cmName {
+					live := &corev1.ConfigMap{}
+					Expect(c.Get(ctx, key(), live)).To(Succeed())
+					live.OwnerReferences = nil
+					Expect(c.Update(ctx, live)).To(Succeed())
+				}
+				return c.Patch(ctx, obj, patch, opts...)
+			},
+		})
+		rec := newTestReconcileContext(owner)
+		rec.Client = disownBeforeApply
+
+		Expect(comp.Reconcile(ctx, rec)).To(Succeed())
+
+		after := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, key(), after)).To(Succeed())
+		Expect(after.OwnerReferences).To(BeEmpty(), "the suspension apply must not take over the disowned object")
+		Expect(comp.GetCondition(owner).Reason).To(Equal(string(Suspending)))
 	})
 
 	It("reports Disabled for a disabled component feature gate whether or not the object is kept", func() {

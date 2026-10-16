@@ -223,9 +223,12 @@ func BlockOnForeignController() ResourceOption {
 // The delete carries the observed UID and resourceVersion as preconditions.
 // An object that changes or is replaced between the read and the delete is
 // left in place and logged, and the reconcile does not fail; the next
-// reconcile reads the object again. Combined with BlockOnForeignController, an
-// object another owner controls is kept even when it also references this
-// owner, and a precondition conflict does not fail the reconcile.
+// reconcile reads the object again. When the object changes between the read
+// and the suspension apply with DeleteOnSuspend, the resource reports
+// Suspending and is not written, and the reconcile does not fail. Combined
+// with BlockOnForeignController, an object another owner controls is kept
+// even when it also references this owner, and a precondition conflict does
+// not fail the reconcile.
 //
 // Without this option or BlockOnForeignController, a deletion removes the
 // object by name, whoever owns it.

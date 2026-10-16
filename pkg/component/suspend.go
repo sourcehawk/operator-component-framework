@@ -134,6 +134,8 @@ func suspendResource(
 		}
 	}
 
+	var applyOpts []applyOption
+
 	// Short-circuit: if the resource should be deleted on suspend and already doesn't exist,
 	// skip Apply to avoid a create->delete churn loop on every reconcile.
 	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.
@@ -176,6 +178,13 @@ func suspendResource(
 				Reason: fmt.Sprintf("Resource %s does not reference the owner; nothing to suspend.", resource.Identity()),
 			}, nil
 		}
+
+		// Binds the apply to the object the check above saw. An object replaced
+		// or disowned in between would otherwise be taken over by the apply and
+		// then found owned by the delete.
+		if entry.Options.DeleteOnlyIfOwned {
+			applyOpts = append(applyOpts, withResourceVersion(existing.GetResourceVersion()))
+		}
 	}
 
 	// Create suspension mutation on resource (if any)
@@ -184,7 +193,16 @@ func suspendResource(
 	}
 
 	// Apply suspension mutation (if any)
-	_, err = applyResources(ctx, rec, []reconcileEntry{entry}, componentName, mapper)
+	_, err = applyResources(ctx, rec, []reconcileEntry{entry}, componentName, mapper, applyOpts...)
+	if entry.Options.DeleteOnlyIfOwned && apierrors.IsConflict(err) {
+		log.FromContext(ctx).Info(
+			"skipping suspension of a resource that changed after it was read", "resource", resource.Identity(),
+		)
+		return concepts.SuspensionStatusWithReason{
+			Status: concepts.SuspensionStatusSuspending,
+			Reason: fmt.Sprintf("Resource %s changed after it was read; suspension retries.", resource.Identity()),
+		}, nil
+	}
 	if err != nil {
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 			"failed to create or update resource %s on suspension: %w", resource.Identity(), err,

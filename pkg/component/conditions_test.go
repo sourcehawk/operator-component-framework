@@ -1103,8 +1103,49 @@ func TestFlushStatusOwnedStatusFields(t *testing.T) {
 		assert.Equal(t, "Accepted", persisted.Status.Phase)
 	})
 
+	t.Run("replaces only the status on a retry, keeping the owner's private state", func(t *testing.T) {
+		// OperatorCRD does not forbid private state, such as a cached pointer
+		// behind GetStatusConditions. decodingClient decodes into the object as
+		// the REST client does, where the fake client would zero it.
+		adapterScheme := runtime.NewScheme()
+		adapterScheme.AddKnownTypes(GroupVersion, &adapterOwner{})
+		initial := newAdapterOwner()
+		initial.ObjectMeta = metav1.ObjectMeta{Name: "test-owner", Namespace: "default"}
+		inner := fake.NewClientBuilder().
+			WithScheme(adapterScheme).WithStatusSubresource(initial).WithObjects(initial).Build()
+		k8sClient := decodingClient{Client: inner}
+
+		owner := newAdapterOwner()
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), owner))
+
+		other := newAdapterOwner()
+		require.NoError(t, inner.Get(ctx, client.ObjectKeyFromObject(initial), other))
+		other.Status.Phase = "Running"
+		require.NoError(t, inner.Status().Update(ctx, other))
+
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+			WithOwnedStatusFields(),
+		))
+
+		assert.Equal(t, "AdapterOwner", owner.GetKind())
+		assert.Same(t, &owner.Status.Checks, owner.GetStatusConditions())
+
+		persisted := newAdapterOwner()
+		require.NoError(t, inner.Get(ctx, client.ObjectKeyFromObject(initial), persisted))
+		assert.Equal(t, "Running", persisted.Status.Phase)
+		found := meta.FindStatusCondition(persisted.Status.Checks, "InfraReady")
+		require.NotNil(t, found)
+		assert.Equal(t, "Healthy", found.Reason)
+	})
+
 	t.Run("rejects a path that the status JSON does not contain", func(t *testing.T) {
 		for name, path := range map[string]string{
+			"unexported embedded scalar":               "code",
 			"below a type that encodes itself as text": "level.value",
 			"unexported field":                         "internal",
 			"below a type that encodes itself":         "lastSync.Time",
@@ -1244,13 +1285,16 @@ type checksOwner struct {
 }
 
 type checksStatus struct {
-	Checks   []metav1.Condition `json:"checks,omitempty"`
-	Phase    string             `json:"phase,omitempty"`
-	LastSync metav1.Time        `json:"lastSync,omitzero"`
-	Level    textLevel          `json:"level,omitzero"`
-	Extra    map[string]any     `json:"extra,omitempty"`
-	internal string             //nolint:unused // read only by reflection
+	Checks     []metav1.Condition `json:"checks,omitempty"`
+	Phase      string             `json:"phase,omitempty"`
+	LastSync   metav1.Time        `json:"lastSync,omitzero"`
+	Level      textLevel          `json:"level,omitzero"`
+	Extra      map[string]any     `json:"extra,omitempty"`
+	internal   string             //nolint:unused // read only by reflection
+	secretCode `json:"code"`      //nolint:unused // read only by reflection
 }
+
+type secretCode string //nolint:unused // embedded only to be found by reflection
 
 // textLevel encodes as a JSON string through MarshalText, so its Value field
 // never appears in the JSON.
@@ -1283,6 +1327,77 @@ func (o *checksOwner) DeepCopyObject() runtime.Object {
 		out.Status.Extra = runtime.DeepCopyJSON(o.Status.Extra)
 	}
 	return &out
+}
+
+// adapterOwner keeps private state that JSON cannot restore: the kind and a
+// cached pointer to its conditions.
+type adapterOwner struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Status checksStatus `json:"status,omitempty"`
+
+	kind       string
+	conditions *[]metav1.Condition
+}
+
+func newAdapterOwner() *adapterOwner {
+	o := &adapterOwner{kind: "AdapterOwner"}
+	o.conditions = &o.Status.Checks
+	return o
+}
+
+func (o *adapterOwner) GetStatusConditions() *[]metav1.Condition {
+	return o.conditions
+}
+
+func (o *adapterOwner) GetKind() string {
+	return o.kind
+}
+
+func (o *adapterOwner) DeepCopyObject() runtime.Object {
+	out := *o
+	o.ObjectMeta.DeepCopyInto(&out.ObjectMeta) //nolint:staticcheck // naming ObjectMeta keeps the copy readable
+	out.Status.Checks = slices.Clone(o.Status.Checks)
+	if o.Status.Extra != nil {
+		out.Status.Extra = runtime.DeepCopyJSON(o.Status.Extra)
+	}
+	out.conditions = &out.Status.Checks
+	return &out
+}
+
+// decodingClient reads and writes like the REST client: results decode into
+// the object passed in, which keeps fields the JSON does not carry.
+type decodingClient struct {
+	client.Client
+}
+
+func (c decodingClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	return decodingReader{Reader: c.Client}.Get(ctx, key, obj, opts...)
+}
+
+func (c decodingClient) Status() client.SubResourceWriter {
+	return decodingStatusWriter{SubResourceWriter: c.Client.Status()}
+}
+
+type decodingStatusWriter struct {
+	client.SubResourceWriter
+}
+
+func (w decodingStatusWriter) Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+	fresh, ok := obj.DeepCopyObject().(client.Object)
+	if !ok {
+		return fmt.Errorf("deep copy of %T is not a client.Object", obj)
+	}
+	if err := w.SubResourceWriter.Update(ctx, fresh, opts...); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(fresh)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, obj)
 }
 
 // nullableStatusOwner encodes a nil status as null, because the field has no

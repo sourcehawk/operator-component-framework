@@ -90,13 +90,18 @@ func validateStatusFieldPath(owner OperatorCRD, segments []string) error {
 		return nil
 	}
 
-	current := reflect.TypeOf(owner)
-	for i, segment := range append([]string{"status"}, segments...) {
+	ownerType := indirectType(reflect.TypeOf(owner))
+	index, ok := statusFieldIndex(ownerType)
+	if !ok {
+		return fmt.Errorf("type %s has no exported field with JSON name \"status\"", ownerType)
+	}
+
+	current := ownerType.Field(index).Type
+	for _, segment := range segments {
 		current = indirectType(current)
 		// A type such as metav1.Time encodes itself, often as a string, so its
-		// Go fields say nothing about its JSON shape. The owner type itself is
-		// exempt: only its status is addressed.
-		if i > 0 && encodesItself(current) {
+		// Go fields say nothing about its JSON shape.
+		if encodesItself(current) {
 			return fmt.Errorf("cannot address %q below a field of type %s, which encodes itself", segment, current)
 		}
 		// Below a map or an interface the schema is open, so any key is valid.
@@ -155,12 +160,12 @@ func jsonFields(t reflect.Type, name string, visiting map[reflect.Type]bool) []r
 
 		// encoding/json skips unexported fields, except that the exported
 		// fields of an unexported embedded struct are promoted.
-		if !field.IsExported() && !field.Anonymous {
+		embedded := indirectType(field.Type)
+		if !field.IsExported() && (!field.Anonymous || embedded.Kind() != reflect.Struct) {
 			continue
 		}
 
 		fieldName, _, _ := strings.Cut(tag, ",")
-		embedded := indirectType(field.Type)
 		if fieldName == "" && field.Anonymous && embedded.Kind() == reflect.Struct {
 			found = append(found, jsonFields(embedded, name, visiting)...)
 			continue
@@ -183,12 +188,7 @@ func indirectType(t reflect.Type) reflect.Type {
 }
 
 func zeroStatus(obj OperatorCRD) error {
-	content, err := toUnstructuredContent(obj)
-	if err != nil {
-		return err
-	}
-	delete(content, "status")
-	return fromUnstructuredContent(content, obj)
+	return setStatus(obj, nil)
 }
 
 // applyOwnedStatusFields sets on staged the non-condition status of server,
@@ -238,8 +238,7 @@ func applyOwnedStatusFields(staged, server OperatorCRD, owned [][]string) error 
 		}
 	}
 
-	stagedContent["status"] = merged
-	if err := fromUnstructuredContent(stagedContent, staged); err != nil {
+	if err := setStatus(staged, merged); err != nil {
 		return err
 	}
 
@@ -302,9 +301,8 @@ func toUnstructuredContent(obj OperatorCRD) (map[string]any, error) {
 		return runtime.DeepCopyJSON(u.UnstructuredContent()), nil
 	}
 
-	// JSON, not runtime.DefaultUnstructuredConverter: the converter panics on
-	// a struct with an unexported field when it converts back. The decoder is
-	// the API machinery's own, which keeps integers as exact int64 values.
+	// JSON is what the API server receives. The decoder is the API
+	// machinery's own, which keeps integers as exact int64 values.
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return nil, fmt.Errorf("encoding %T: %w", obj, err)
@@ -317,23 +315,64 @@ func toUnstructuredContent(obj OperatorCRD) (map[string]any, error) {
 	return content, nil
 }
 
-// fromUnstructuredContent replaces obj's content. Fields the content does not
-// carry are zeroed, unexported fields included.
-func fromUnstructuredContent(content map[string]any, obj OperatorCRD) error {
+// setStatus replaces the status of obj with status, or clears it when status
+// is nil. Nothing outside the status changes, so state that JSON cannot carry,
+// such as a cached pointer behind GetStatusConditions, survives.
+func setStatus(obj OperatorCRD, status map[string]any) error {
 	if u, ok := obj.(runtime.Unstructured); ok {
+		content := runtime.DeepCopyJSON(u.UnstructuredContent())
+		if status == nil {
+			delete(content, "status")
+		} else {
+			content["status"] = status
+		}
 		u.SetUnstructuredContent(content)
 		return nil
 	}
 
-	data, err := json.Marshal(content)
-	if err != nil {
-		return fmt.Errorf("encoding content for %T: %w", obj, err)
+	owner := reflect.ValueOf(obj).Elem()
+	index, ok := statusFieldIndex(owner.Type())
+	if !ok {
+		return fmt.Errorf("type %s has no exported field with JSON name \"status\"", owner.Type())
 	}
 
-	// Decoding into a non-empty object keeps the fields the content omits.
-	reflect.ValueOf(obj).Elem().SetZero()
-	if err := kjson.UnmarshalCaseSensitivePreserveInts(data, obj); err != nil {
-		return fmt.Errorf("decoding into %T: %w", obj, err)
+	field := owner.Field(index)
+	if status == nil {
+		field.SetZero()
+		return nil
 	}
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		return fmt.Errorf("encoding status for %T: %w", obj, err)
+	}
+
+	fresh := reflect.New(field.Type())
+	if err := kjson.UnmarshalCaseSensitivePreserveInts(data, fresh.Interface()); err != nil {
+		return fmt.Errorf("decoding status into %T: %w", obj, err)
+	}
+	field.Set(fresh.Elem())
 	return nil
+}
+
+func statusFieldIndex(t reflect.Type) (int, bool) {
+	if t.Kind() != reflect.Struct {
+		return 0, false
+	}
+
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" && !field.Anonymous {
+			name = field.Name
+		}
+		if name == "status" {
+			return i, true
+		}
+	}
+	return 0, false
 }

@@ -215,8 +215,10 @@ func BlockOnForeignController() ResourceOption {
 // otherwise. It deletes the object only when the object carries an owner
 // reference whose UID is the reconciling owner's; the reference need not be
 // the controller reference. Any other object is left in place with no write,
-// no event, and a log line. Use it when the resource name is one a user may
-// also create by hand.
+// no event, and a log line. During suspension with DeleteOnSuspend, an object
+// that this read finds without such an owner reference is not suspended either
+// and counts as suspended. Use it when the resource name is one a user may also
+// create by hand.
 //
 // The delete carries the observed UID and resourceVersion as preconditions.
 // An object that changes or is replaced between the read and the delete is
@@ -225,7 +227,8 @@ func BlockOnForeignController() ResourceOption {
 // object another owner controls is kept even when it also references this
 // owner, and a precondition conflict does not fail the reconcile.
 //
-// Without this option a deletion removes the object by name, whoever owns it.
+// Without this option or BlockOnForeignController, a deletion removes the
+// object by name, whoever owns it.
 // Requires a managed resource that carries the owner reference: combining it
 // with ReadOnly or Unowned is a configuration error returned by Build. A
 // cluster-scoped resource of a namespace-scoped owner never carries the

@@ -5,6 +5,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
+	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -137,6 +139,53 @@ var _ = Describe("DeleteOnlyIfOwned", func() {
 		Entry("DeleteWhen(true)", trigger(deleteWhen)),
 		Entry("a disabled component feature gate", trigger(disabledComponentGate)),
 	)
+
+	suspendedComponent := func(res Resource) *Component {
+		return &Component{
+			name:          "gated",
+			conditionType: "GatedReady",
+			suspended:     true,
+			reconcileResources: []reconcileEntry{{
+				Resource: res, Options: resourceOptions{DeleteOnlyIfOwned: true},
+			}},
+		}
+	}
+
+	It("deletes an owned object on suspension with DeleteOnSuspend", func() {
+		createConfigMap(true)
+		res := &MockSuspendableResource{}
+		res.On("Object").Return(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: namespace}}, nil)
+		res.On("Identity").Return("ConfigMap/" + cmName)
+		res.On("DeleteOnSuspend").Return(true)
+		res.On("Suspend").Return(nil)
+		res.On("Mutate", mock.Anything).Return(nil)
+		res.On("SuspensionStatus").Return(concepts.SuspensionStatusWithReason{Status: concepts.SuspensionStatusSuspended}, nil)
+
+		Expect(suspendedComponent(res).Reconcile(ctx, newTestReconcileContext(owner))).To(Succeed())
+
+		Expect(apierrors.IsNotFound(k8sClient.Get(ctx, key(), &corev1.ConfigMap{}))).To(BeTrue())
+	})
+
+	It("keeps an object without the owner's reference unchanged on suspension with DeleteOnSuspend", func() {
+		createConfigMap(false)
+		before := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, key(), before)).To(Succeed())
+		res := &MockSuspendableResource{}
+		res.On("Object").Return(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: namespace}}, nil)
+		res.On("Identity").Return("ConfigMap/" + cmName)
+		res.On("DeleteOnSuspend").Return(true)
+		// No Suspend, Mutate or SuspensionStatus expectation: reaching any of them
+		// means the suspension apply was about to adopt the user's object, after
+		// which the delete would find it owned.
+		comp := suspendedComponent(res)
+
+		Expect(comp.Reconcile(ctx, newTestReconcileContext(owner))).To(Succeed())
+
+		Expect(comp.GetCondition(owner).Reason).To(Equal(string(Suspended)))
+		after := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, key(), after)).To(Succeed())
+		Expect(after.ResourceVersion).To(Equal(before.ResourceVersion), "a kept object must not be written")
+	})
 
 	It("reports Disabled for a disabled component feature gate whether or not the object is kept", func() {
 		createConfigMap(false)

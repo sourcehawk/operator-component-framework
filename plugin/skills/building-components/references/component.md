@@ -108,9 +108,10 @@ owner claims the object between the read and the delete, the delete fails and th
 The option requires a managed resource. A combination with `ReadOnly()` is a build error.
 
 `DeleteOnlyIfOwned()` protects an object that the component did not create from a deletion. Without it, every deletion
-path removes the object by name, whoever created it. Use the option when the resource name is one that a user can also
-create by hand. For example, a component registers `<name>-app` as a ServiceAccount behind `GatedBy()`. When the gate is
-off and the user created their own `<name>-app`, the option keeps the object of the user.
+path removes the object by name, whoever created it. The only exception is an object that another owner controls, which
+`BlockOnForeignController()` keeps. Use the option when the resource name is one that a user can also create by hand.
+For example, a component registers `<name>-app` as a ServiceAccount behind `GatedBy()`. When the gate is off and the
+user created their own `<name>-app`, the option keeps the object of the user.
 
 When `Delete()`, `DeleteWhen()`, `GatedBy()`, a disabled component feature gate, or a suspension with
 `DeleteOnSuspend()` asks for a deletion, the component first reads the live object, through `ReconcileContext.APIReader`
@@ -120,8 +121,9 @@ sets this reference on each object that it applies, with two exceptions: an `Uno
 resource of a namespace-scoped owner. The option never deletes an object of the second kind, so do not use it there. If
 the object does not have the reference, the component does not write to the object and records no `ResourceDeleted`
 event. It logs the skip, and the reconcile does not fail. The resource does not contribute to the component condition.
-As with a deletion, a disabled component feature gate reports `Disabled`. While no deletion is asked for, the option has
-no effect.
+As with a deletion, a disabled component feature gate reports `Disabled`. During a suspension with `DeleteOnSuspend()`,
+the component also skips the suspension apply for such an object, because that apply would set the owner reference. The
+resource counts as suspended. While no deletion is asked for, the option has no effect.
 
 The delete carries the observed UID and resourceVersion as preconditions. If the object changes, or a different object
 takes the name, between the read and the delete, the API server rejects the delete with a conflict. The component then

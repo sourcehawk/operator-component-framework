@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
@@ -143,7 +144,13 @@ func suspendResource(
 				"failed to deep copy object of type %T", object,
 			)
 		}
-		err := rec.Client.Get(ctx, client.ObjectKeyFromObject(object), existing)
+		// The ownership check below must not trust a cache that still shows an
+		// earlier owned object under the name, so it reads like observeController.
+		var reader client.Reader = rec.Client
+		if entry.Options.DeleteOnlyIfOwned && rec.APIReader != nil {
+			reader = rec.APIReader
+		}
+		err := reader.Get(ctx, client.ObjectKeyFromObject(object), existing)
 		if apierrors.IsNotFound(err) {
 			return concepts.SuspensionStatusWithReason{
 				Status: concepts.SuspensionStatusSuspended,
@@ -154,6 +161,20 @@ func suspendResource(
 			return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 				"failed to check existence of resource %s on suspension: %w", resource.Identity(), err,
 			)
+		}
+
+		// The suspension apply would set the owner reference on an object the
+		// owner does not own, and the delete after it would then find the object
+		// owned. Skip the object before any write, as for another owner's object.
+		if entry.Options.DeleteOnlyIfOwned &&
+			!slices.ContainsFunc(existing.GetOwnerReferences(), referencesOwner(rec.Owner.GetUID())) {
+			log.FromContext(ctx).Info(
+				"skipping suspension of a resource that does not reference the owner", "resource", resource.Identity(),
+			)
+			return concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: fmt.Sprintf("Resource %s does not reference the owner; nothing to suspend.", resource.Identity()),
+			}, nil
 		}
 	}
 

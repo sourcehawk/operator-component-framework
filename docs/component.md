@@ -951,7 +951,9 @@ patch holds only:
   409, the unowned conditions are first refreshed from the server.
 
 To build the patch, each attempt first reads the owner's status through `APIReader` when it is set, and through `Client`
-otherwise. A cache-backed `Client` can return a stale status, so set `APIReader`. A field that the controller did not
+otherwise. A cache-backed `Client` can return a stale status, so set `APIReader`. When that read finds an owner with
+another UID, because the owner was deleted and recreated under the same name after the controller read it, `FlushStatus`
+returns an error and does not write, as `Status().Update` would refuse the write. A field that the controller did not
 declare is never sent, on the first attempt or on a retry, so it cannot overwrite another writer's value. On a 409,
 `FlushStatus` refreshes the `resourceVersion` and the unowned conditions from the server, as described above, builds the
 patch again, and retries. After a successful write, the controller-runtime client decodes the server's response into the

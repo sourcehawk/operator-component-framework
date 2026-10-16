@@ -153,6 +153,16 @@ func readServerStatus(ctx context.Context, rec ReconcileContext) (map[string]any
 		return nil, err
 	}
 
+	// Status().Update sends the uid and the API server rejects a mismatch. A
+	// merge patch does not, so a retry would patch an owner that was deleted
+	// and recreated under the same name, taking its resourceVersion.
+	if staged := rec.Owner.GetUID(); staged != "" && live.GetUID() != staged {
+		return nil, fmt.Errorf(
+			"owner %s was replaced: the server holds uid %s, the staged owner has uid %s",
+			client.ObjectKeyFromObject(rec.Owner), live.GetUID(), staged,
+		)
+	}
+
 	status, _ := live.Object["status"].(map[string]any)
 	return status, nil
 }

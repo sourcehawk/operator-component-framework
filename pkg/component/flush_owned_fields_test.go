@@ -247,6 +247,25 @@ var _ = Describe("FlushStatus with WithOwnedStatusFields", func() {
 		Expect(rawStatus(ctx, owner)).NotTo(HaveKey("summary"))
 	})
 
+	It("does not write into a replacement created under the same name", func() {
+		owner := readThenRace(MockStatus{Phase: "Pending"}, nil)
+
+		Expect(k8sClient.Delete(ctx, owner.DeepCopy())).To(Succeed())
+		replacement := &MockOperatorCRD{
+			ObjectMeta: metav1.ObjectMeta{Name: owner.Name, Namespace: owner.Namespace},
+		}
+		Expect(k8sClient.Create(ctx, replacement)).To(Succeed())
+		Expect(replacement.UID).NotTo(Equal(owner.UID))
+
+		owner.Status.Phase = "Accepted"
+
+		Expect(FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("phase"),
+		)).To(MatchError(ContainSubstring("was replaced")))
+
+		Expect(persisted(owner).Status.Phase).To(BeEmpty(), "the replacement must stay as it was created")
+	})
+
 	It("lets owned conditions win and unowned conditions follow the server on a retry", func() {
 		owner := readThenRace(
 			MockStatus{Conditions: []metav1.Condition{

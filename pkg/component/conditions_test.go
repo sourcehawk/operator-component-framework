@@ -1143,6 +1143,50 @@ func TestFlushStatusOwnedStatusFields(t *testing.T) {
 		assert.Equal(t, "Healthy", found.Reason)
 	})
 
+	t.Run("keeps a cached conditions pointer inside a pointer status valid", func(t *testing.T) {
+		adapterScheme := runtime.NewScheme()
+		adapterScheme.AddKnownTypes(GroupVersion, &pointerAdapterOwner{})
+		initial := newPointerAdapterOwner()
+		initial.ObjectMeta = metav1.ObjectMeta{Name: "test-owner", Namespace: "default"}
+		inner := fake.NewClientBuilder().
+			WithScheme(adapterScheme).WithStatusSubresource(initial).WithObjects(initial).Build()
+		k8sClient := decodingClient{Client: inner}
+
+		owner := newPointerAdapterOwner()
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), owner))
+
+		other := newPointerAdapterOwner()
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), other))
+		meta.SetStatusCondition(other.GetStatusConditions(), metav1.Condition{
+			Type: "ExternalReady", Status: metav1.ConditionTrue, Reason: "WrittenByOtherController",
+		})
+		other.Status.Phase = "Running"
+		require.NoError(t, k8sClient.Status().Update(ctx, other))
+
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx,
+			ReconcileContext{Client: k8sClient, APIReader: decodingReader{Reader: inner}, Owner: owner},
+			[]*Component{infraComponent(t)},
+			WithOwnedStatusFields(),
+		))
+
+		assert.Same(t, &owner.Status.Checks, owner.GetStatusConditions())
+
+		persisted := newPointerAdapterOwner()
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), persisted))
+		assert.Equal(t, "Running", persisted.Status.Phase)
+		infra := meta.FindStatusCondition(persisted.Status.Checks, "InfraReady")
+		require.NotNil(t, infra, "an owned condition must keep the staged value")
+		assert.Equal(t, "Healthy", infra.Reason)
+		external := meta.FindStatusCondition(persisted.Status.Checks, "ExternalReady")
+		require.NotNil(t, external, "an unowned condition must follow the server")
+		assert.Equal(t, "WrittenByOtherController", external.Reason)
+	})
+
 	t.Run("rejects a path that the status JSON does not contain", func(t *testing.T) {
 		for name, path := range map[string]string{
 			"unexported embedded scalar":               "code",
@@ -1362,6 +1406,44 @@ func (o *adapterOwner) DeepCopyObject() runtime.Object {
 	if o.Status.Extra != nil {
 		out.Status.Extra = runtime.DeepCopyJSON(o.Status.Extra)
 	}
+	out.conditions = &out.Status.Checks
+	return &out
+}
+
+// pointerAdapterOwner is adapterOwner with a pointer status: its cached
+// pointer reaches into the status struct the Status field points to.
+type pointerAdapterOwner struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Status *checksStatus `json:"status,omitempty"`
+
+	conditions *[]metav1.Condition
+}
+
+func newPointerAdapterOwner() *pointerAdapterOwner {
+	o := &pointerAdapterOwner{Status: &checksStatus{}}
+	o.conditions = &o.Status.Checks
+	return o
+}
+
+func (o *pointerAdapterOwner) GetStatusConditions() *[]metav1.Condition {
+	return o.conditions
+}
+
+func (o *pointerAdapterOwner) GetKind() string {
+	return "pointerAdapterOwner"
+}
+
+func (o *pointerAdapterOwner) DeepCopyObject() runtime.Object {
+	out := *o
+	o.ObjectMeta.DeepCopyInto(&out.ObjectMeta) //nolint:staticcheck // naming ObjectMeta keeps the copy readable
+	status := *o.Status
+	status.Checks = slices.Clone(o.Status.Checks)
+	if o.Status.Extra != nil {
+		status.Extra = runtime.DeepCopyJSON(o.Status.Extra)
+	}
+	out.Status = &status
 	out.conditions = &out.Status.Checks
 	return &out
 }

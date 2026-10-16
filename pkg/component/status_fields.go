@@ -336,9 +336,22 @@ func setStatus(obj OperatorCRD, status map[string]any) error {
 		return fmt.Errorf("type %s has no exported field with JSON name \"status\"", owner.Type())
 	}
 
-	field := owner.Field(index)
+	// Write through a non-nil status pointer instead of replacing it: a cached
+	// pointer into the status struct must keep reaching the struct that gets
+	// encoded.
+	target := owner.Field(index)
+	for target.Kind() == reflect.Pointer {
+		if target.IsNil() {
+			if status == nil {
+				return nil
+			}
+			target.Set(reflect.New(target.Type().Elem()))
+		}
+		target = target.Elem()
+	}
+
 	if status == nil {
-		field.SetZero()
+		target.SetZero()
 		return nil
 	}
 
@@ -347,11 +360,11 @@ func setStatus(obj OperatorCRD, status map[string]any) error {
 		return fmt.Errorf("encoding status for %T: %w", obj, err)
 	}
 
-	fresh := reflect.New(field.Type())
+	fresh := reflect.New(target.Type())
 	if err := kjson.UnmarshalCaseSensitivePreserveInts(data, fresh.Interface()); err != nil {
 		return fmt.Errorf("decoding status into %T: %w", obj, err)
 	}
-	field.Set(fresh.Elem())
+	target.Set(fresh.Elem())
 	return nil
 }
 

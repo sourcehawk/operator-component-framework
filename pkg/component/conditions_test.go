@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -795,4 +796,238 @@ func TestFlushStatusConflictOwnership(t *testing.T) {
 
 		assert.Zero(t, counting.gets, "the non-conflict path must not fetch the owner")
 	})
+}
+
+// TestFlushStatusOwnedStatusFields covers a status shared between controllers.
+// Each case reads the owner, lets a second writer update the status, and then
+// flushes, so the first update is a real 409 from a stale resourceVersion.
+func TestFlushStatusOwnedStatusFields(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	require.NoError(t, AddToScheme(scheme))
+
+	infraComponent := func(t *testing.T) *Component {
+		t.Helper()
+		comp, err := NewComponentBuilder().WithName("infra").WithConditionType("InfraReady").Build()
+		require.NoError(t, err)
+		return comp
+	}
+
+	// readThenRace creates the owner on a fake server, reads it as the
+	// controller would at the top of a reconcile, and then applies the second
+	// writer's status update on the server. The returned owner is stale.
+	readThenRace := func(
+		t *testing.T, initial *MockOperatorCRD, secondWriter func(*MockOperatorCRD),
+	) (client.Client, *MockOperatorCRD) {
+		t.Helper()
+		initial.ObjectMeta = metav1.ObjectMeta{Name: "test-owner", Namespace: "default", Generation: 2}
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).WithStatusSubresource(initial).WithObjects(initial).Build()
+
+		owner := &MockOperatorCRD{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), owner))
+
+		other := &MockOperatorCRD{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(initial), other))
+		secondWriter(other)
+		require.NoError(t, k8sClient.Status().Update(ctx, other))
+		return k8sClient, owner
+	}
+
+	persistedOf := func(t *testing.T, c client.Client, owner *MockOperatorCRD) *MockOperatorCRD {
+		t.Helper()
+		persisted := &MockOperatorCRD{}
+		require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(owner), persisted))
+		return persisted
+	}
+
+	t.Run("keeps a second writer's non-condition field across the conflict retry", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t, &MockOperatorCRD{Status: MockStatus{ObservedGeneration: 1}},
+			func(o *MockOperatorCRD) { o.Status.ObservedGeneration = 2 })
+
+		// This controller owns phase and InfraReady; observedGeneration belongs
+		// to the second writer and is still 1 on the stale owner.
+		owner.Status.Phase = "Accepted"
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+			WithOwnedStatusFields("phase"),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, int64(2), persisted.Status.ObservedGeneration,
+			"the retry must not roll back a field this flush does not own")
+		assert.Equal(t, "Accepted", persisted.Status.Phase, "an owned field keeps the staged value")
+		assert.NotNil(t, meta.FindStatusCondition(persisted.Status.Conditions, "InfraReady"),
+			"an owned condition keeps the staged value")
+		assert.Equal(t, int64(2), owner.Status.ObservedGeneration,
+			"the in-memory owner reflects what was written")
+	})
+
+	t.Run("owns no non-condition field when declared with no paths", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t, &MockOperatorCRD{Status: MockStatus{Phase: "Pending"}},
+			func(o *MockOperatorCRD) {
+				o.Status.ObservedGeneration = 2
+				o.Status.Phase = "Running"
+			})
+
+		owner.Status.ObservedGeneration = 99 // a stray write this flush does not own
+		applyStatusCondition(ReconcileContext{Owner: owner}, Condition{
+			Type: "InfraReady", Status: metav1.ConditionTrue, Reason: "Healthy",
+		})
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, []*Component{infraComponent(t)},
+			WithOwnedStatusFields(),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, int64(2), persisted.Status.ObservedGeneration)
+		assert.Equal(t, "Running", persisted.Status.Phase)
+		assert.Equal(t, "Healthy", meta.FindStatusCondition(persisted.Status.Conditions, "InfraReady").Reason)
+	})
+
+	t.Run("keeps every staged field when no fields are declared", func(t *testing.T) {
+		// Without the option the controller's own staged fields win, so an
+		// existing caller that stages observedGeneration does not lose it.
+		k8sClient, owner := readThenRace(t, &MockOperatorCRD{},
+			func(o *MockOperatorCRD) { o.Status.Phase = "Running" })
+
+		owner.Status.ObservedGeneration = 2
+
+		require.NoError(t, FlushStatus(ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, int64(2), persisted.Status.ObservedGeneration)
+		assert.Empty(t, persisted.Status.Phase, "with nothing declared the staged status is written as a whole")
+	})
+
+	t.Run("removes an owned field the staged owner cleared", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t, &MockOperatorCRD{Status: MockStatus{Phase: "Pending"}},
+			func(o *MockOperatorCRD) { o.Status.ObservedGeneration = 2 })
+
+		owner.Status.Phase = ""
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("phase"),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Empty(t, persisted.Status.Phase, "the staged owner is the source of truth for an owned field")
+		assert.Equal(t, int64(2), persisted.Status.ObservedGeneration)
+	})
+
+	t.Run("drops an unowned field the server no longer carries", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t, &MockOperatorCRD{Status: MockStatus{ObservedGeneration: 1}},
+			func(o *MockOperatorCRD) { o.Status.ObservedGeneration = 0 })
+
+		owner.Status.Phase = "Accepted"
+
+		// The REST client decodes a response into the object it is given, so a
+		// field the response omits keeps whatever that object held. The fake
+		// client replaces the object instead and would hide a stale value.
+		require.NoError(t, FlushStatus(
+			ctx,
+			ReconcileContext{Client: k8sClient, APIReader: decodingReader{Reader: k8sClient}, Owner: owner},
+			nil,
+			WithOwnedStatusFields("phase"),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Zero(t, persisted.Status.ObservedGeneration,
+			"the server is the source of truth for an unowned field, absence included")
+		assert.Equal(t, "Accepted", persisted.Status.Phase)
+	})
+
+	t.Run("owns a nested field by its dotted path", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t,
+			&MockOperatorCRD{Status: MockStatus{Summary: &MockStatusSummary{Ready: 1, Total: 3}}},
+			func(o *MockOperatorCRD) { o.Status.Summary.Total = 4 })
+
+		owner.Status.Summary.Ready = 2
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields("summary.ready"),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		require.NotNil(t, persisted.Status.Summary)
+		assert.Equal(t, MockStatusSummary{Ready: 2, Total: 4}, *persisted.Status.Summary)
+	})
+
+	t.Run("combines the paths of several options", func(t *testing.T) {
+		k8sClient, owner := readThenRace(t, &MockOperatorCRD{},
+			func(o *MockOperatorCRD) { o.Status.Summary = &MockStatusSummary{Total: 4} })
+
+		owner.Status.Phase = "Accepted"
+		owner.Status.ObservedGeneration = 2
+
+		require.NoError(t, FlushStatus(
+			ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil,
+			WithOwnedStatusFields("phase"), WithOwnedStatusFields("observedGeneration"),
+		))
+
+		persisted := persistedOf(t, k8sClient, owner)
+		assert.Equal(t, "Accepted", persisted.Status.Phase)
+		assert.Equal(t, int64(2), persisted.Status.ObservedGeneration)
+		require.NotNil(t, persisted.Status.Summary)
+		assert.Equal(t, int32(4), persisted.Status.Summary.Total)
+	})
+
+	t.Run("rejects an invalid path before writing", func(t *testing.T) {
+		for name, path := range map[string]string{
+			"empty":                "",
+			"empty segment":        "summary..ready",
+			"conditions":           "conditions",
+			"inside conditions":    "conditions.type",
+			"unknown field":        "observedGenration",
+			"prefixed with status": "status.phase",
+			"below a scalar":       "phase.value",
+			"unknown nested field": "summary.unknown",
+			"trailing separator":   "phase.",
+			"leading separator":    ".phase",
+		} {
+			t.Run(name, func(t *testing.T) {
+				owner := &MockOperatorCRD{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: "default"},
+				}
+				k8sClient := fake.NewClientBuilder().
+					WithScheme(scheme).WithStatusSubresource(owner).WithObjects(owner).Build()
+				owner.Status.Phase = "Accepted"
+
+				err := FlushStatus(
+					ctx, ReconcileContext{Client: k8sClient, Owner: owner}, nil, WithOwnedStatusFields(path),
+				)
+
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), fmt.Sprintf("%q", path))
+				assert.Empty(t, persistedOf(t, k8sClient, owner).Status.Phase, "nothing is written")
+			})
+		}
+	})
+}
+
+// decodingReader reads like the REST client: it decodes the server's JSON into
+// the object passed in, so fields the JSON omits are left as they were.
+type decodingReader struct {
+	client.Reader
+}
+
+func (r decodingReader) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	fresh, ok := obj.DeepCopyObject().(client.Object)
+	if !ok {
+		return fmt.Errorf("deep copy of %T is not a client.Object", obj)
+	}
+	if err := r.Reader.Get(ctx, key, fresh, opts...); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(fresh)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, obj)
 }

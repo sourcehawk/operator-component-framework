@@ -821,19 +821,27 @@ reconcile, so the fields nobody staged still hold current server state. An owner
 writes stale values back over newer ones.
 
 On a 409 Conflict, for example when another writer updated the owner between the controller's `Get` and this call,
-`FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a **separate** object,
-takes that copy's `resourceVersion` so the retry targets the live object, restores from it only the conditions whose
-type this flush does not own, and retries. The staged owner is never replaced.
+`FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a **separate** object
+and retries. The staged owner is never replaced. From the server's copy, the retry takes:
+
+- the `resourceVersion`, so the retry targets the live object;
+- every condition whose type this flush does not own;
+- with [`WithOwnedStatusFields`](#sharing-the-owners-status-with-another-controller), every non-condition status field
+  outside the declared paths.
+
+Everything else keeps the staged value.
 
 That fetch goes through `ReconcileContext.APIReader` when it is set, and through `Client` otherwise. Set it from the
 manager's `GetAPIReader()`. The manager's default `Client` serves reads from the informer cache, which can lag the very
 write that caused the conflict and hand back the same stale `resourceVersion`, so a retry through the cache may conflict
 again until the cache catches up. A direct read sees the server as it is.
 
-Two things follow from that. Non-condition status fields staged during the reconcile survive a conflict, because the
-object holding them is the object that gets written. And a condition type this flush does not own keeps the server's
-value rather than the copy the controller happens to be holding, so a concurrent update by another writer is not rolled
-back.
+Two things follow from that. A condition type this flush does not own keeps the server's value rather than the copy the
+controller happens to be holding, so a concurrent update by another writer is not rolled back. And without
+`WithOwnedStatusFields`, every non-condition status field keeps the staged value: a field the controller staged during
+the reconcile survives a conflict, and so does the stale copy of a field that another controller owns. When another
+controller writes non-condition fields of the same status, declare the fields this flush owns, as described in
+[Sharing the owner's status with another controller](#sharing-the-owners-status-with-another-controller).
 
 Which types count as owned comes from the components passed to `FlushStatus`:
 
@@ -920,6 +928,47 @@ Server-Side Apply is for managed resources, never for the owner's status subreso
 depends on which call runs last: the `Update` can overwrite the patched condition, or the patch can overwrite what the
 `Update` wrote. Keep every owner-status write on the `meta.SetStatusCondition` plus `FlushStatus` path.
 
+### Sharing the owner's status with another controller
+
+Sometimes two controllers write the status of one CR. For example, a status-only controller owns an `Accepted`
+condition, and a second controller owns a `Ready` condition and `status.observedGeneration`. Each controller still
+writes through `FlushStatus`. Condition ownership comes from the components passed to it. For non-condition fields, pass
+`component.WithOwnedStatusFields` with the fields that this controller writes:
+
+```go
+// In the status-only controller, which writes status.phase and no other non-condition field:
+flushErr := component.FlushStatus(ctx, recCtx, comps, component.WithOwnedStatusFields("phase"))
+
+// In the other controller, which writes status.observedGeneration:
+flushErr := component.FlushStatus(ctx, recCtx, comps, component.WithOwnedStatusFields("observedGeneration"))
+```
+
+The declaration changes only the conflict retry. The first write sends the whole staged status, as without the option.
+When nothing changed on the server since the controller read the owner, that write succeeds, and the fields the
+controller did not stage still hold the values it read. On a retry:
+
+- A declared field keeps the staged value. If the staged owner does not carry the field, the retry removes it.
+- Every other non-condition status field takes the server's value. If the server does not carry the field, the retry
+  removes it. This is the same rule as for an unowned condition.
+- Conditions follow component ownership, as described above.
+
+Name each field by its JSON name under `status`, with dots between nested fields: `"observedGeneration"`,
+`"summary.ready"`. Do not include the `status.` prefix: `"status.phase"` is an error unless status has a field named
+`status`. `WithOwnedStatusFields()` with no paths declares that the flush owns no non-condition field, which fits a
+controller that writes only conditions. Paths from several options are combined.
+
+`FlushStatus` validates each path before it writes and returns an error, with no write, when a path:
+
+- is empty or has an empty segment, such as `"summary..ready"`;
+- names `conditions` or a field below it, because conditions are owned through components;
+- does not resolve to a field of the owner's Go type, such as a misspelled name or a path below a scalar field. Below a
+  map field, any key is accepted.
+
+Without the option, `FlushStatus` keeps the staged value of every non-condition status field on a retry. That default
+keeps a controller's own `observedGeneration` write safe when it is the only writer of the status. Once you declare
+fields, a staged field that you did not declare follows the server on a retry. So declare every field that the
+controller writes, including `observedGeneration` when it is this controller's field.
+
 ### Where the owner's observedGeneration is set
 
 The framework sets `ObservedGeneration` on every **component condition** it writes, from `owner.GetGeneration()`. It
@@ -928,7 +977,9 @@ never writes `status.observedGeneration` on the owner itself. `OperatorCRD` requ
 
 An owner-level `status.observedGeneration` is the controller's own field. Assign it on the owner before `FlushStatus`
 runs, in the same staging step that writes the owner's own condition, and the single status write persists both. This
-applies to a status-only controller too, as in the validation-only example above.
+applies to a status-only controller too, as in the validation-only example above. When the status is
+[shared with another controller](#sharing-the-owners-status-with-another-controller), only the controller that owns
+`observedGeneration` assigns it, and that controller includes it in `WithOwnedStatusFields`.
 
 ```go
 app.Status.ObservedGeneration = app.Generation

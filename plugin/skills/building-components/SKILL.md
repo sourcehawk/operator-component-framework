@@ -249,11 +249,11 @@ old wider ownership, making a correctness fix opt-in and invisible.
 
 On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
 separate object through `ReconcileContext.APIReader` (set it from the manager's `GetAPIReader()`; the default `Client`
-reads from the informer cache, which can lag the conflicting write and return the same stale `resourceVersion`), takes
-that copy's `resourceVersion`, restores from it only the conditions whose type this flush does not own, and retries. Two
-consequences: non-condition status fields staged during the reconcile survive, and a type this flush does not own keeps
-the server's value instead of the possibly stale copy the controller is holding, so another writer's concurrent update
-is not rolled back.
+reads from the informer cache, which can lag the conflicting write and return the same stale `resourceVersion`) and
+retries. From the server's copy the retry takes the `resourceVersion`, every condition whose type this flush does not
+own, and, only with `component.WithOwnedStatusFields`, every non-condition status field outside the declared paths.
+Everything else keeps the staged value. So without the option, every staged non-condition field survives a conflict,
+including the stale copy of a field another controller owns.
 
 For unowned types the server is the source of truth, absence included. An unowned condition the server no longer carries
 is dropped rather than written back, so a condition another writer removed is not resurrected, and one the server has
@@ -294,6 +294,21 @@ return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext
     Client: r.Client, Owner: policy,
 }, nil) // nil: owns no component conditions; on a conflict this follows the server
 ```
+
+**A status shared with another controller needs `WithOwnedStatusFields`.** When a second controller writes non-condition
+fields of the same status, for example `observedGeneration`, a conflict retry without the option writes this
+controller's stale copy of those fields back. Declare the fields this flush writes, by JSON name under `status` with
+dots for nested fields:
+
+```go
+component.FlushStatus(ctx, recCtx, comps, component.WithOwnedStatusFields("phase"))
+```
+
+On a retry a declared field keeps the staged value, and every other non-condition field takes the server's value,
+absence included. `WithOwnedStatusFields()` with no paths owns no non-condition field. Once declared, an undeclared
+staged field follows the server, so declare every field the controller writes, including `observedGeneration` when it is
+this controller's. `FlushStatus` returns an error without writing for an empty segment, a `conditions` path, or a path
+that is not a field of the owner's Go type.
 
 **Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside
 `FlushStatus` puts two field managers on one conditions list, and because `FlushStatus` writes the full status the

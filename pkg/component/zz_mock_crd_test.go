@@ -37,6 +37,15 @@ type MockStatus struct {
 	// prove that FlushStatus preserves staged status fields the framework does
 	// not manage, including across a conflict retry.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// Phase and Summary are further non-condition status fields, so tests can
+	// split status ownership between controllers by field and by nested path.
+	Phase   string             `json:"phase,omitempty"`
+	Summary *MockStatusSummary `json:"summary,omitempty"`
+}
+
+type MockStatusSummary struct {
+	Ready int32 `json:"ready,omitempty"`
+	Total int32 `json:"total,omitempty"`
 }
 
 func (m *MockOperatorCRD) GetStatusConditions() *[]metav1.Condition {
@@ -90,6 +99,14 @@ var (
 									Type: "object",
 									Properties: map[string]apiextensionsv1.JSONSchemaProps{
 										"observedGeneration": {Type: "integer", Format: "int64"},
+										"phase":              {Type: "string"},
+										"summary": {
+											Type: "object",
+											Properties: map[string]apiextensionsv1.JSONSchemaProps{
+												"ready": {Type: "integer", Format: "int32"},
+												"total": {Type: "integer", Format: "int32"},
+											},
+										},
 										"conditions": {
 											Type: "array",
 											Items: &apiextensionsv1.JSONSchemaPropsOrArray{
@@ -129,6 +146,10 @@ func (m *MockOperatorCRD) DeepCopyInto(out *MockOperatorCRD) {
 		in, out := &m.Status.Conditions, &out.Status.Conditions
 		*out = make([]metav1.Condition, len(*in))
 		copy(*out, *in)
+	}
+	if m.Status.Summary != nil {
+		summary := *m.Status.Summary
+		out.Status.Summary = &summary
 	}
 }
 

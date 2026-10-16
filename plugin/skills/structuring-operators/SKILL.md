@@ -101,6 +101,9 @@ Consequences worth holding on to:
   them with `meta.RemoveStatusCondition` when a component is retired.
 - **Set the owner's `status.observedGeneration` yourself.** The framework stamps `ObservedGeneration` on component
   conditions only.
+- **A status shared by two controllers gives each field one owner.** Each controller declares its non-condition fields
+  with `FlushStatus(..., component.WithOwnedStatusFields("phase"))`, or a conflict retry rolls back the other
+  controller's newer values. Only the owner of `observedGeneration` sets it.
 
 Full behavior table and reference: `ocf:building-components`, and `references/guidelines.md`, "Derive the Owner's
 Aggregate Condition from Component Conditions", for the practice framing.

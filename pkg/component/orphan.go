@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -55,14 +57,8 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 				return getErr
 			}
 			refs := live.GetOwnerReferences()
-			kept := make([]metav1.OwnerReference, 0, len(refs))
-			for _, ref := range refs {
-				if ref.UID == ownerUID {
-					removed = true
-					continue
-				}
-				kept = append(kept, ref)
-			}
+			kept := slices.DeleteFunc(slices.Clone(refs), referencesOwner(ownerUID))
+			removed = len(kept) != len(refs)
 			if !removed {
 				return nil
 			}
@@ -83,4 +79,10 @@ func orphanResources(ctx context.Context, rec ReconcileContext, resources []Reso
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// referencesOwner matches an owner reference to the owner with ownerUID,
+// whether or not it is the controller reference.
+func referencesOwner(ownerUID types.UID) func(metav1.OwnerReference) bool {
+	return func(ref metav1.OwnerReference) bool { return ref.UID == ownerUID }
 }

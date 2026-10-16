@@ -53,11 +53,15 @@ if err != nil {
 Each `WithResource` call accepts `ResourceOption` values: `component.ReadOnly()`, `component.Delete()` /
 `component.DeleteWhen(cond)`, `component.GatedBy(gate)`, `component.OrphanWhen(cond)`, `component.Unowned()`,
 `component.Auxiliary()`, `component.BlockOnAbsence()`, `component.IgnoreIfAbsent()`,
-`component.BlockOnForeignController()`. With no options a resource is **Managed**: applied via Server-Side Apply,
-required for the condition. `ReadOnly()` is mutually exclusive with the deletion and gating options.
-`BlockOnForeignController()` reports `Blocked` and names the owner whose controller reference is on the live object,
-instead of applying over it. Register it on any resource that two custom resources can name. See
-`references/component.md` for the full option matrix and `IncludeWhen` vs. `GatedBy`.
+`component.BlockOnForeignController()`, `component.DeleteOnlyIfOwned()`. With no options a resource is **Managed**:
+applied via Server-Side Apply, required for the condition. `ReadOnly()` is mutually exclusive with the deletion and
+gating options. `BlockOnForeignController()` reports `Blocked` and names the owner whose controller reference is on the
+live object, instead of applying over it. Register it on any resource that two custom resources can name. A deletion
+(`Delete()`, `DeleteWhen()`, `GatedBy()`, a disabled component feature gate, `DeleteOnSuspend()`) removes the object by
+name, whoever created it. `DeleteOnlyIfOwned()` deletes it only when the live object carries the owner's owner
+reference, and leaves any other object unchanged with no event and no reconcile error. Register it on a resource whose
+name a user may also create by hand. It cannot combine with `ReadOnly()` or `Unowned()`. See `references/component.md`
+for the full option matrix and `IncludeWhen` vs. `GatedBy`.
 
 ## Registration order is execution order
 

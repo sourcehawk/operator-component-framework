@@ -115,6 +115,25 @@ func TestResolveResourceOptions(t *testing.T) {
 			want: resourceOptions{Unowned: true, BlockOnForeignController: true, ParticipationMode: ParticipationModeRequired},
 		},
 		{
+			name: "DeleteOnlyIfOwned sets flag",
+			opts: []ResourceOption{DeleteOnlyIfOwned()},
+			want: resourceOptions{DeleteOnlyIfOwned: true, ParticipationMode: ParticipationModeRequired},
+		},
+		{
+			name: "DeleteOnlyIfOwned with a disabled gate marks the resource for deletion",
+			opts: []ResourceOption{GatedBy(&disabledFeature{}), DeleteOnlyIfOwned()},
+			want: resourceOptions{Delete: true, DeleteOnlyIfOwned: true, ParticipationMode: ParticipationModeRequired},
+		},
+		{
+			name: "DeleteOnlyIfOwned alongside BlockOnForeignController",
+			opts: []ResourceOption{DeleteOnlyIfOwned(), BlockOnForeignController()},
+			want: resourceOptions{
+				DeleteOnlyIfOwned:        true,
+				BlockOnForeignController: true,
+				ParticipationMode:        ParticipationModeRequired,
+			},
+		},
+		{
 			name: "ReadOnly sets flag",
 			opts: []ResourceOption{ReadOnly()},
 			want: resourceOptions{ReadOnly: true, ParticipationMode: ParticipationModeRequired},
@@ -220,6 +239,16 @@ func TestResolveResourceOptions_ValidationErrors(t *testing.T) {
 			name:      "BlockOnForeignController with ReadOnly errors",
 			opts:      []ResourceOption{ReadOnly(), BlockOnForeignController()},
 			wantErrIs: "BlockOnForeignController is mutually exclusive with ReadOnly",
+		},
+		{
+			name:      "DeleteOnlyIfOwned with ReadOnly errors",
+			opts:      []ResourceOption{ReadOnly(), DeleteOnlyIfOwned()},
+			wantErrIs: "DeleteOnlyIfOwned is mutually exclusive with ReadOnly",
+		},
+		{
+			name:      "DeleteOnlyIfOwned with Unowned errors",
+			opts:      []ResourceOption{Unowned(), DeleteOnlyIfOwned()},
+			wantErrIs: "DeleteOnlyIfOwned is mutually exclusive with Unowned",
 		},
 		{
 			name:      "BlockOnAbsence without ReadOnly errors",

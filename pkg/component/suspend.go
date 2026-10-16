@@ -184,8 +184,8 @@ func suspendResource(
 	}
 
 	// Delete resource if it should be deleted. deleteEntry re-observes an entry
-	// registered with BlockOnForeignController, so an owner that claimed the
-	// object during the suspension apply keeps it.
+	// registered with BlockOnForeignController or DeleteOnlyIfOwned, so an owner
+	// that claimed the object during the suspension apply keeps it.
 	if suspendable.DeleteOnSuspend() {
 		deleted, err := deleteEntry(ctx, rec, entry, object)
 		if err != nil {

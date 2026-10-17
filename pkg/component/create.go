@@ -21,6 +21,24 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// applyConfig holds configuration for an applyResources call.
+type applyConfig struct {
+	resourceVersion string
+}
+
+// applyOption is a functional option for applyResources.
+type applyOption func(*applyConfig)
+
+// withResourceVersion makes the apply conditional: the API server rejects it
+// with a conflict when the live object no longer has resourceVersion, because it
+// changed or was replaced since it was read. An empty resourceVersion applies
+// unconditionally.
+func withResourceVersion(resourceVersion string) applyOption {
+	return func(cfg *applyConfig) {
+		cfg.resourceVersion = resourceVersion
+	}
+}
+
 // applyResource applies a single resource to the cluster using Server-Side Apply and
 // collects its converging status. It returns the converging result (nil for static
 // resources with no status interface) and any error encountered.
@@ -30,7 +48,7 @@ import (
 // status-collection sequence.
 func applyResource(
 	ctx context.Context, rec ReconcileContext, resource Resource, componentName string,
-	fieldOwner client.FieldOwner, mapper meta.RESTMapper, skipOwnerRef bool,
+	fieldOwner client.FieldOwner, mapper meta.RESTMapper, skipOwnerRef bool, resourceVersion string,
 ) (*reconcileResult, error) {
 	obj, err := resource.Object()
 	if err != nil {
@@ -86,6 +104,7 @@ func applyResource(
 	// server response (including these fields) because Mutate updates the internal
 	// pointer and Patch writes back into the same object.
 	clearServerFields(obj)
+	obj.SetResourceVersion(resourceVersion)
 
 	// Re-assert the GVK. A Mutate implementation that assigns the whole struct
 	// (*current = *desired) drops the TypeMeta set above, and SSA requires it.
@@ -247,15 +266,19 @@ const fieldManagerMaxLength = 128
 //     declares.
 func applyResources(
 	ctx context.Context, rec ReconcileContext, entries []reconcileEntry,
-	componentName string, mapper meta.RESTMapper,
+	componentName string, mapper meta.RESTMapper, opts ...applyOption,
 ) ([]reconcileResult, error) {
+	var cfg applyConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	fieldOwner := applyFieldOwner(rec.Owner, componentName)
 
 	var results []reconcileResult
 
 	for _, entry := range entries {
 		result, err := applyResource(
-			ctx, rec, entry.Resource, componentName, fieldOwner, mapper, entry.Options.Unowned,
+			ctx, rec, entry.Resource, componentName, fieldOwner, mapper, entry.Options.Unowned, cfg.resourceVersion,
 		)
 		if err != nil {
 			return nil, err
@@ -343,7 +366,7 @@ func reconcileResources(
 			result, err = readResource(ctx, rec, resource)
 		} else {
 			result, err = applyResource(
-				ctx, rec, resource, componentName, fieldOwner, mapper, entry.Options.Unowned,
+				ctx, rec, resource, componentName, fieldOwner, mapper, entry.Options.Unowned, "",
 			)
 		}
 		if err != nil {

@@ -172,8 +172,10 @@ cacheComp, err := component.NewComponentBuilder().
 ```
 
 A resource-level `component.GatedBy` does the same for one resource the component owns, deleting it once the gate turns
-off. For an optional resource the component does not own, such as a read-only Secret reference behind an optional spec
-field, use `IncludeWhen` instead, which omits the resource without ever deleting it.
+off. The delete is by name: when a user may create an object under the same name, add `component.DeleteOnlyIfOwned()` so
+only an object that carries the owner's owner reference is deleted. For an optional resource the component does not own,
+such as a read-only Secret reference behind an optional spec field, use `IncludeWhen` instead, which omits the resource
+without ever deleting it.
 
 `IncludeWhen` also covers the other optional case: **the cluster may not serve the kind at all**. A `ServiceMonitor`
 exists only where the Prometheus Operator is installed, and the same holds for cert-manager kinds and any other optional

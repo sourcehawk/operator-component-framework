@@ -42,12 +42,14 @@ func withDeletionReason(reason string) deleteOption {
 // live object is controlled by another owner: the object is not this
 // component's to delete, whichever path (a deletion flag, a disabled feature
 // gate, suspension) asked for it. The skip is logged with the controlling owner.
+// An entry registered with DeleteOnlyIfOwned is left in place, and logged,
+// when the live object does not carry an owner reference to the owner.
 //
 // For each successful deletion, a "ResourceDeleted" event is recorded on the owner object.
 // The opts parameter allows callers to customize the event message via functional options.
 //
-// Returns a joined error containing all encountered errors, or nil if all deletions
-// were successful or resulted in "Not Found" errors.
+// Returns the errors of all entries joined, or nil when no entry failed; an
+// entry left in place is not an error.
 func deleteResources(
 	ctx context.Context, rec ReconcileContext, entries []reconcileEntry, opts ...deleteOption,
 ) error {
@@ -92,22 +94,19 @@ func deleteResources(
 // reports whether a deletion happened. An object that is already gone is not
 // an error and reports false.
 //
-// For an entry registered with BlockOnForeignController the delete is bound to
-// what was observed: the live object is read first (through the API reader
-// when set), an absent object counts as deleted, an object another owner
-// controls is left in place and logged, and an object observed as safe is
-// deleted with its UID and resourceVersion as preconditions. An owner that
-// claims the object between the read and the delete therefore makes the delete
-// conflict instead of removing that owner's object; the error is returned so
-// the next reconcile observes the object again. Unlike a lost apply race, a
-// lost delete race is not repaired by the next reconcile, which is why the
-// delete carries the precondition and the apply does not.
+// For an entry registered with BlockOnForeignController or DeleteOnlyIfOwned
+// the delete is bound to what was observed: the live object is read first
+// (through the API reader when set), an absent object counts as deleted, an
+// object another owner controls (BlockOnForeignController) or that does not
+// reference the owner (DeleteOnlyIfOwned) is left in place and logged, and any
+// other object is deleted with its UID and resourceVersion as preconditions.
 func deleteEntry(
 	ctx context.Context, rec ReconcileContext, entry reconcileEntry, object client.Object,
 ) (bool, error) {
 	resource := entry.Resource
+	options := entry.Options
 
-	if !entry.Options.BlockOnForeignController {
+	if !options.BlockOnForeignController && !options.DeleteOnlyIfOwned {
 		if err := rec.Client.Delete(ctx, object); err != nil {
 			if apierrors.IsNotFound(err) {
 				return false, nil
@@ -124,7 +123,8 @@ func deleteEntry(
 	if live == nil {
 		return false, nil
 	}
-	if controller != nil {
+
+	if options.BlockOnForeignController && controller != nil {
 		log.FromContext(ctx).Info(
 			"skipping deletion of a resource another owner controls",
 			"resource", resource.Identity(), "controller", controller.Kind+" "+controller.Name,
@@ -132,15 +132,35 @@ func deleteEntry(
 		return false, nil
 	}
 
+	if options.DeleteOnlyIfOwned && !ownedBy(live, rec.Owner.GetUID()) {
+		log.FromContext(ctx).Info(
+			"skipping deletion of a resource that does not reference the owner", "resource", resource.Identity(),
+		)
+		return false, nil
+	}
+
+	// An owner that claims the object, or a user that replaces it, between the
+	// read and the delete makes the delete conflict instead of removing an
+	// object the checks above did not see. Unlike a lost apply race, a lost
+	// delete race is not repaired by the next reconcile, which is why the
+	// delete carries the precondition and the apply does not.
 	uid, resourceVersion := live.GetUID(), live.GetResourceVersion()
 	err = rec.Client.Delete(ctx, live, client.Preconditions{UID: &uid, ResourceVersion: &resourceVersion})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf(
-			"failed to delete resource %s as observed: %w", resource.Identity(), err,
+	switch {
+	case err == nil:
+		return true, nil
+	case apierrors.IsNotFound(err):
+		return false, nil
+	case options.DeleteOnlyIfOwned && apierrors.IsConflict(err):
+		// The object changed after it was read. Leaving it is the safe outcome
+		// and needs no retry: the next reconcile reads it again.
+		log.FromContext(ctx).Info(
+			"skipping deletion of a resource that changed after it was read", "resource", resource.Identity(),
 		)
+		return false, nil
+	default:
+		// BlockOnForeignController alone returns the conflict so the reconcile
+		// fails and the object is observed again on the retry.
+		return false, fmt.Errorf("failed to delete resource %s as observed: %w", resource.Identity(), err)
 	}
-	return true, nil
 }

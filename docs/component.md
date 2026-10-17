@@ -66,6 +66,7 @@ be passed without a guard.
 | `component.BlockOnAbsence()`                        | Read-only only: a NotFound records a blocked status and short-circuits the remaining resources                                                                                                                                          |
 | `component.IgnoreIfAbsent()`                        | Read-only only: a NotFound is silently ignored and last-known state is preserved                                                                                                                                                        |
 | `component.BlockOnForeignController()`              | Managed only: records a blocked status that names the owner whose controller reference is on the live object, then skips the apply and the remaining resources                                                                          |
+| `component.DeleteOnlyIfOwned()`                     | Managed only: a deletion removes the live object only when it carries an owner reference to the owner; any other object is left in place                                                                                                |
 | `component.SuppressGraceInconsistencyWarning()`     | Suppresses the grace/convergence inconsistency warning                                                                                                                                                                                  |
 
 A read-only resource is not owned by the component, so it is never deleted. `ReadOnly()` is mutually exclusive with
@@ -104,6 +105,36 @@ controlling owner.
 A delete of an object that the read found safe carries the observed UID and resourceVersion as preconditions. If another
 owner claims the object between the read and the delete, the delete fails and the next reconcile reads the object again.
 The option requires a managed resource. A combination with `ReadOnly()` is a build error.
+
+`DeleteOnlyIfOwned()` protects an object that the component did not create from a deletion. Without it, every deletion
+path removes the object by name, whoever created it. The only exception is an object that another owner controls, which
+`BlockOnForeignController()` keeps. Use the option when the resource name is one that a user can also create by hand.
+For example, a component registers `<name>-app` as a ServiceAccount behind `GatedBy()`. When the gate is off and the
+user created their own `<name>-app`, the option keeps the object of the user.
+
+When `Delete()`, `DeleteWhen()`, `GatedBy()`, a disabled component feature gate, or a suspension with
+`DeleteOnSuspend()` asks for a deletion, the component first reads the live object, through `ReconcileContext.APIReader`
+when it is set and `ReconcileContext.Client` otherwise. The component deletes the object only when the object has an
+owner reference with the UID of the owner. This reference does not have to be the controller reference. The component
+sets this reference on each object that it applies, with two exceptions: an `Unowned()` resource, and a cluster-scoped
+resource of a namespace-scoped owner. The option never deletes an object of the second kind, so do not use it there. If
+the object does not have the reference, the component does not write to the object and records no `ResourceDeleted`
+event. It logs the skip, and the reconcile does not fail. The resource does not contribute to the component condition.
+As with a deletion, a disabled component feature gate reports `Disabled`. During a suspension with `DeleteOnSuspend()`,
+the component also skips the suspension apply for such an object, because that apply would set the owner reference. The
+resource counts as suspended. While no deletion is asked for, the option has no effect.
+
+The delete carries the observed UID and resourceVersion as preconditions. If the object changes, or a different object
+takes the name, between the read and the delete, the API server rejects the delete with a conflict. The component then
+keeps the object, logs the skip, and does not fail the reconcile. The next reconcile reads the object again. A
+suspension with `DeleteOnSuspend()` binds its apply to the read in the same way, through the observed resourceVersion.
+If the object changes between the read and that apply, the API server rejects the apply. The component does not write
+the object, the resource reports `Suspending`, and the reconcile does not fail.
+
+The option composes with `BlockOnForeignController()`. With both options, the component keeps an object that another
+owner controls, even when the object also references this owner. A conflict on the delete then does not fail the
+reconcile. `DeleteOnlyIfOwned()` requires a managed resource that carries the owner reference. A combination with
+`ReadOnly()` or `Unowned()` is a build error.
 
 Options compose. Gate a resource and exclude it from health aggregation in one call:
 

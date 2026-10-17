@@ -525,3 +525,37 @@ func TestSuspendResource_BlockOnForeignController_DeleteOnSuspend(t *testing.T) 
 		assert.True(t, apierrors.IsNotFound(cli.Get(ctx, client.ObjectKeyFromObject(obj), &v1.ConfigMap{})))
 	})
 }
+
+func TestSuspendResource_DeleteOnlyIfOwned_DeleteOnSuspend(t *testing.T) {
+	ctx := t.Context()
+	scheme := setupScheme()
+
+	t.Run("decides ownership from the API reader when the cache still shows the object owned", func(t *testing.T) {
+		owner := setupTestOwner()
+		owner.UID = "this-uid"
+		res := &MockSuspendableResource{}
+		desired := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "recreated", Namespace: "default"}}
+		res.On("Object").Return(desired, nil)
+		res.On("Identity").Return("ConfigMap/recreated")
+		res.On("DeleteOnSuspend").Return(true)
+		// Suspend, Mutate and SuspensionStatus carry no expectations: reaching any of
+		// them means the apply was about to take over the user's object.
+
+		cached := desired.DeepCopy()
+		cached.OwnerReferences = []metav1.OwnerReference{{
+			APIVersion: GroupVersion.String(), Kind: "MockOperatorCRD", Name: owner.Name, UID: owner.UID,
+		}}
+		userCreated := desired.DeepCopy()
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, cached).Build()
+		apiReader := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, userCreated).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+		rec.APIReader = apiReader
+		entry := reconcileEntry{Resource: res, Options: resourceOptions{DeleteOnlyIfOwned: true}}
+
+		status, err := suspendResource(ctx, rec, entry, res, "test-component", testRESTMapper())
+
+		require.NoError(t, err)
+		assert.Equal(t, concepts.SuspensionStatusSuspended, status.Status)
+		assert.Contains(t, status.Reason, "does not reference the owner")
+	})
+}

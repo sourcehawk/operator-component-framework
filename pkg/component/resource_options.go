@@ -34,6 +34,7 @@ type resourceConfig struct {
 	blockOnAbsence                    bool
 	ignoreIfAbsent                    bool
 	blockOnForeignController          bool
+	deleteOnlyIfOwned                 bool
 	suppressGraceInconsistencyWarning bool
 }
 
@@ -79,6 +80,11 @@ type resourceOptions struct {
 	// paths (a deletion flag, a disabled feature gate, suspension) leave such an
 	// object in place. Mutually exclusive with ReadOnly.
 	BlockOnForeignController bool
+	// DeleteOnlyIfOwned applies to managed resources. When true, a deletion
+	// path deletes the live object only when it carries an owner reference
+	// with the reconciling owner's UID, and leaves any other object in place.
+	// Mutually exclusive with ReadOnly and Unowned.
+	DeleteOnlyIfOwned bool
 }
 
 // ReadOnly marks the resource as read-only: the component fetches its current
@@ -201,6 +207,40 @@ func BlockOnForeignController() ResourceOption {
 	return func(c *resourceConfig) { c.blockOnForeignController = true }
 }
 
+// DeleteOnlyIfOwned limits every deletion of the resource to an object the
+// owner owns. When Delete, DeleteWhen, GatedBy, a disabled component feature
+// gate, or suspension with DeleteOnSuspend asks for the resource to be
+// deleted, the component reads the live object, through
+// ReconcileContext.APIReader when set and the cached ReconcileContext.Client
+// otherwise. It deletes the object only when the object carries an owner
+// reference whose UID is the reconciling owner's; the reference need not be
+// the controller reference. Any other object is left in place with no write,
+// no event, and a log line. During suspension with DeleteOnSuspend, an object
+// that this read finds without such an owner reference is not suspended either
+// and counts as suspended. Use it when the resource name is one a user may also
+// create by hand.
+//
+// The delete carries the observed UID and resourceVersion as preconditions.
+// An object that changes or is replaced between the read and the delete is
+// left in place and logged, and the reconcile does not fail; the next
+// reconcile reads the object again. When the object changes between the read
+// and the suspension apply with DeleteOnSuspend, the resource reports
+// Suspending and is not written, and the reconcile does not fail. Combined
+// with BlockOnForeignController, an object another owner controls is kept
+// even when it also references this owner, and a precondition conflict does
+// not fail the reconcile.
+//
+// Without this option or BlockOnForeignController, a deletion removes the
+// object by name, whoever owns it.
+//
+// Requires a managed resource that carries the owner reference: combining it
+// with ReadOnly or Unowned is a configuration error returned by Build. A
+// cluster-scoped resource of a namespace-scoped owner never carries the
+// reference either, so the option never deletes it.
+func DeleteOnlyIfOwned() ResourceOption {
+	return func(c *resourceConfig) { c.deleteOnlyIfOwned = true }
+}
+
 // SuppressGraceInconsistencyWarning suppresses the warning log emitted when the
 // resource's grace handler returns Healthy while its convergence handler returns
 // non-healthy. Use this when the inconsistency is intentional.
@@ -239,6 +279,19 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 		return resourceOptions{}, errors.New(
 			"resource option BlockOnForeignController is mutually exclusive with ReadOnly; " +
 				"a read-only resource is never applied",
+		)
+	}
+
+	if c.deleteOnlyIfOwned && c.readOnly {
+		return resourceOptions{}, errors.New(
+			"resource option DeleteOnlyIfOwned is mutually exclusive with ReadOnly; " +
+				"a read-only resource is never deleted",
+		)
+	}
+	if c.deleteOnlyIfOwned && c.unowned {
+		return resourceOptions{}, errors.New(
+			"resource option DeleteOnlyIfOwned is mutually exclusive with Unowned; " +
+				"an unowned resource never carries the owner reference, so it would never be deleted",
 		)
 	}
 
@@ -314,5 +367,6 @@ func (c *resourceConfig) resolve() (resourceOptions, error) {
 		BlockOnAbsence:                    c.blockOnAbsence,
 		IgnoreIfAbsent:                    c.ignoreIfAbsent,
 		BlockOnForeignController:          c.blockOnForeignController,
+		DeleteOnlyIfOwned:                 c.deleteOnlyIfOwned,
 	}, nil
 }

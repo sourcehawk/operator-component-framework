@@ -133,17 +133,25 @@ func suspendResource(
 		}
 	}
 
+	var applyOpts []applyOption
+
 	// Short-circuit: if the resource should be deleted on suspend and already doesn't exist,
 	// skip Apply to avoid a create->delete churn loop on every reconcile.
 	// This check runs before Suspend() to avoid queuing a mutation that will never be applied.
 	if suspendable.DeleteOnSuspend() {
-		existing, ok := object.DeepCopyObject().(client.Object)
-		if !ok {
+		existing, err := newEmptyObjectLike(object)
+		if err != nil {
 			return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
-				"failed to deep copy object of type %T", object,
+				"failed to prepare existence check for resource %s on suspension: %w", resource.Identity(), err,
 			)
 		}
-		err := rec.Client.Get(ctx, client.ObjectKeyFromObject(object), existing)
+		// The ownership check below must not trust a cache that still shows an
+		// earlier owned object under the name, so it reads like observeController.
+		var reader client.Reader = rec.Client
+		if entry.Options.DeleteOnlyIfOwned && rec.APIReader != nil {
+			reader = rec.APIReader
+		}
+		err = reader.Get(ctx, client.ObjectKeyFromObject(object), existing)
 		if apierrors.IsNotFound(err) {
 			return concepts.SuspensionStatusWithReason{
 				Status: concepts.SuspensionStatusSuspended,
@@ -155,6 +163,26 @@ func suspendResource(
 				"failed to check existence of resource %s on suspension: %w", resource.Identity(), err,
 			)
 		}
+
+		// The suspension apply would set the owner reference on an object the
+		// owner does not own, and the delete after it would then find the object
+		// owned. Skip the object before any write, as for another owner's object.
+		if entry.Options.DeleteOnlyIfOwned && !ownedBy(existing, rec.Owner.GetUID()) {
+			log.FromContext(ctx).Info(
+				"skipping suspension of a resource that does not reference the owner", "resource", resource.Identity(),
+			)
+			return concepts.SuspensionStatusWithReason{
+				Status: concepts.SuspensionStatusSuspended,
+				Reason: fmt.Sprintf("Resource %s does not reference the owner; nothing to suspend.", resource.Identity()),
+			}, nil
+		}
+
+		// The apply carries the resourceVersion the check above saw. An object
+		// replaced or disowned in between would otherwise be taken over by the
+		// apply and then found owned by the delete.
+		if entry.Options.DeleteOnlyIfOwned {
+			applyOpts = append(applyOpts, withResourceVersion(existing.GetResourceVersion()))
+		}
 	}
 
 	// Create suspension mutation on resource (if any)
@@ -163,7 +191,16 @@ func suspendResource(
 	}
 
 	// Apply suspension mutation (if any)
-	_, err = applyResources(ctx, rec, []reconcileEntry{entry}, componentName, mapper)
+	_, err = applyResources(ctx, rec, []reconcileEntry{entry}, componentName, mapper, applyOpts...)
+	if entry.Options.DeleteOnlyIfOwned && apierrors.IsConflict(err) {
+		log.FromContext(ctx).Info(
+			"skipping suspension of a resource that changed after it was read", "resource", resource.Identity(),
+		)
+		return concepts.SuspensionStatusWithReason{
+			Status: concepts.SuspensionStatusSuspending,
+			Reason: fmt.Sprintf("Resource %s changed after it was read; suspension retries.", resource.Identity()),
+		}, nil
+	}
 	if err != nil {
 		return concepts.SuspensionStatusWithReason{}, fmt.Errorf(
 			"failed to create or update resource %s on suspension: %w", resource.Identity(), err,
@@ -184,8 +221,8 @@ func suspendResource(
 	}
 
 	// Delete resource if it should be deleted. deleteEntry re-observes an entry
-	// registered with BlockOnForeignController, so an owner that claimed the
-	// object during the suspension apply keeps it.
+	// registered with BlockOnForeignController or DeleteOnlyIfOwned, so an owner
+	// that claimed the object during the suspension apply keeps it.
 	if suspendable.DeleteOnSuspend() {
 		deleted, err := deleteEntry(ctx, rec, entry, object)
 		if err != nil {

@@ -701,10 +701,13 @@ comp, _ := component.NewComponentBuilder().
     Build()
 ```
 
-A disabled `GatedBy` gate deletes the resource on the next reconcile. For an optional resource the component does
-**not** own (a read-only Secret reference behind an optional spec field), use `IncludeWhen`, which omits the resource
-without ever deleting it. The [IncludeWhen vs. GatedBy](component.md#includewhen-vs-gatedby) section covers the
-distinction.
+A disabled `GatedBy` gate deletes the resource on the next reconcile. The delete is by name, so it also removes an
+object that a user created under that name. If users can create an object with the same name, for example a
+ServiceAccount that a user brings instead of the one the operator makes, also register the resource with
+[`component.DeleteOnlyIfOwned()`](component.md#resource-registration-options). The component then deletes only an object
+that carries the owner reference of the owner. For an optional resource the component does **not** own (a read-only
+Secret reference behind an optional spec field), use `IncludeWhen`, which omits the resource without ever deleting it.
+The [IncludeWhen vs. GatedBy](component.md#includewhen-vs-gatedby) section covers the distinction.
 
 ## Provide a User-Override Escape Hatch as the Last Mutation
 

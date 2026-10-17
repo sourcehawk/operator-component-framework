@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -294,4 +295,212 @@ func TestDeleteResources_BlockOnForeignController(t *testing.T) {
 		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), got))
 		assert.Equal(t, "other-uid", string(got.OwnerReferences[0].UID))
 	})
+}
+
+func TestDeleteResources_DeleteOnlyIfOwned(t *testing.T) {
+	ctx := t.Context()
+	scheme := setupScheme()
+	newOwner := func() *MockOperatorCRD {
+		return &MockOperatorCRD{ObjectMeta: metav1.ObjectMeta{Name: "owner", Namespace: "default", UID: "this-uid"}}
+	}
+	ownerRef := func(name string, uid string) metav1.OwnerReference {
+		return metav1.OwnerReference{APIVersion: GroupVersion.String(), Kind: "MockOperatorCRD", Name: name, UID: types.UID(uid)}
+	}
+	newResource := func(name string, refs ...metav1.OwnerReference) (*MockResource, *corev1.ConfigMap) {
+		obj := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", OwnerReferences: refs}}
+		res := &MockResource{}
+		res.On("Object").Return(obj, nil)
+		res.On("Identity").Return("ConfigMap/" + name)
+		return res, obj
+	}
+	ownedOnly := func(res Resource) []reconcileEntry {
+		return []reconcileEntry{{Resource: res, Options: resourceOptions{Delete: true, DeleteOnlyIfOwned: true}}}
+	}
+	countDeletes := func(deletes *int) interceptor.Funcs {
+		return interceptor.Funcs{
+			Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+				*deletes++
+				return c.Delete(ctx, obj, opts...)
+			},
+		}
+	}
+
+	t.Run("deletes an object that carries the owner's reference and records the deletion", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("owned", ownerRef("owner", "this-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+
+		require.NoError(t, deleteResources(ctx, rec, ownedOnly(res)))
+
+		assert.True(t, apierrors.IsNotFound(cli.Get(ctx, client.ObjectKeyFromObject(obj), &corev1.ConfigMap{})))
+		recorder, ok := rec.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+		assert.Len(t, recorder.recordedWithReason("ResourceDeleted"), 1)
+	})
+
+	t.Run("deletes an object whose owner reference is not the controller reference", func(t *testing.T) {
+		owner := newOwner()
+		controller := ownerRef("other", "other-uid")
+		controller.Controller = ptr.To(true)
+		res, obj := newResource("co-owned", controller, ownerRef("owner", "this-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).Build()
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), ownedOnly(res)))
+
+		assert.True(t, apierrors.IsNotFound(cli.Get(ctx, client.ObjectKeyFromObject(obj), &corev1.ConfigMap{})))
+	})
+
+	t.Run("deletes with the observed UID and resourceVersion as preconditions", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("preconditions", ownerRef("owner", "this-uid"))
+		var preconditions *metav1.Preconditions
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					deleteOpts := &client.DeleteOptions{}
+					deleteOpts.ApplyOptions(opts)
+					preconditions = deleteOpts.Preconditions
+					return c.Delete(ctx, obj, opts...)
+				},
+			}).Build()
+		live := &corev1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), live))
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), ownedOnly(res)))
+
+		require.NotNil(t, preconditions)
+		require.NotNil(t, preconditions.UID)
+		require.NotNil(t, preconditions.ResourceVersion)
+		assert.Equal(t, live.UID, *preconditions.UID)
+		assert.Equal(t, live.ResourceVersion, *preconditions.ResourceVersion)
+	})
+
+	t.Run("keeps an object without the owner's reference and writes nothing", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("user-created")
+		deletes := 0
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(countDeletes(&deletes)).Build()
+		before := &corev1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), before))
+		rec := setupReconcileContext(scheme, owner, cli)
+
+		require.NoError(t, deleteResources(ctx, rec, ownedOnly(res)))
+
+		assert.Equal(t, 0, deletes)
+		after := &corev1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), after))
+		assert.Equal(t, before.ResourceVersion, after.ResourceVersion)
+		recorder, ok := rec.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+		assert.Empty(t, recorder.recorded(), "a kept object must not be reported as deleted")
+	})
+
+	t.Run("keeps an object that only another owner references", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("other-owned", ownerRef("other", "other-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).Build()
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), ownedOnly(res)))
+
+		assert.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), &corev1.ConfigMap{}))
+	})
+
+	t.Run("treats an absent object as deleted without calling Delete", func(t *testing.T) {
+		owner := newOwner()
+		res, _ := newResource("absent")
+		deletes := 0
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).
+			WithInterceptorFuncs(countDeletes(&deletes)).Build()
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), ownedOnly(res)))
+
+		assert.Equal(t, 0, deletes)
+	})
+
+	t.Run("keeps an object that changed after it was read without failing", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("changed", ownerRef("owner", "this-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(disownBeforeDelete(t, "changed")).Build()
+		rec := setupReconcileContext(scheme, owner, cli)
+
+		require.NoError(t, deleteResources(ctx, rec, ownedOnly(res)))
+
+		got := &corev1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), got))
+		assert.Empty(t, got.OwnerReferences)
+		recorder, ok := rec.EventRecorder.(*spyRecorder)
+		require.True(t, ok)
+		assert.Empty(t, recorder.recorded())
+	})
+
+	t.Run("still reports a delete failure that is not a precondition conflict", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("forbidden", ownerRef("owner", "this-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error {
+					return apierrors.NewForbidden(corev1.Resource("configmaps"), "forbidden", errors.New("denied"))
+				},
+			}).Build()
+
+		err := deleteResources(ctx, setupReconcileContext(scheme, owner, cli), ownedOnly(res))
+
+		require.Error(t, err)
+		assert.True(t, apierrors.IsForbidden(err))
+	})
+
+	t.Run("keeps an object another owner controls when combined with BlockOnForeignController", func(t *testing.T) {
+		owner := newOwner()
+		controller := ownerRef("other", "other-uid")
+		controller.Controller = ptr.To(true)
+		res, obj := newResource("foreign", controller, ownerRef("owner", "this-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).Build()
+		entries := []reconcileEntry{{
+			Resource: res,
+			Options:  resourceOptions{Delete: true, DeleteOnlyIfOwned: true, BlockOnForeignController: true},
+		}}
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), entries))
+
+		assert.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), &corev1.ConfigMap{}))
+	})
+
+	t.Run("keeps an object another owner claims after the read without failing when combined with BlockOnForeignController", func(t *testing.T) {
+		owner := newOwner()
+		res, obj := newResource("claimed-combined", ownerRef("owner", "this-uid"))
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner, obj.DeepCopy()).
+			WithInterceptorFuncs(claimBeforeDelete(t, "claimed-combined")).Build()
+		entries := []reconcileEntry{{
+			Resource: res,
+			Options:  resourceOptions{Delete: true, DeleteOnlyIfOwned: true, BlockOnForeignController: true},
+		}}
+
+		require.NoError(t, deleteResources(ctx, setupReconcileContext(scheme, owner, cli), entries))
+
+		got := &corev1.ConfigMap{}
+		require.NoError(t, cli.Get(ctx, client.ObjectKeyFromObject(obj), got))
+		assert.Equal(t, "other-uid", string(got.OwnerReferences[0].UID))
+	})
+}
+
+// disownBeforeDelete returns interceptor funcs that remove every owner
+// reference from the named object at the moment it is about to be deleted,
+// reproducing a change between the read that found the object owned and the
+// delete.
+func disownBeforeDelete(t *testing.T, name string) interceptor.Funcs {
+	t.Helper()
+	return interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			if obj.GetName() == name {
+				live := obj.DeepCopyObject().(client.Object)
+				require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(obj), live))
+				live.SetOwnerReferences(nil)
+				require.NoError(t, c.Update(ctx, live))
+			}
+			return c.Delete(ctx, obj, opts...)
+		},
+	}
 }

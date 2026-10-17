@@ -148,24 +148,20 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req reconcile.Request)
         Scheme:        r.Scheme,
         EventRecorder: r.EventRecorder,
         Metrics:       r.Metrics,
-        APIReader:     r.APIReader, // direct reads on a status conflict
+        APIReader:     r.APIReader, // direct reads of live objects
         Owner:         app,
     }
-    // Persist all staged conditions exactly once, even on the error path. comps is
-    // declared first so the closure sees whatever the resolver returns, and
-    // FlushStatus derives the condition types it owns from those components.
-    var comps []*component.Component
+    // Persist all staged conditions exactly once, even on the error path.
     defer func() {
-        if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
+        if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
             err = flushErr
         }
     }()
 
-    built, buildErr := buildComponents(app)
-    if buildErr != nil {
-        return reconcile.Result{}, buildErr
+    comps, err := buildComponents(app)
+    if err != nil {
+        return reconcile.Result{}, err
     }
-    comps = built
 
     var firstErr error
     for _, comp := range comps {
@@ -235,21 +231,13 @@ particular, and metrics, dashboards, and downstream automation key on the reason
 different prose, and leave the reason alone.
 
 **Remove the conditions of components you retire.** `Aggregate` reads only the components you pass it, and
-[`FlushStatus`](component.md#persisting-status-with-flushstatus) merges conditions by type and never prunes, so a
-component the controller has stopped building leaves its last condition on the owner indefinitely. The aggregate ignores
-it, and users still see it in `kubectl describe`. Delete it explicitly when you retire a component:
+[`FlushStatus`](component.md#persisting-status-with-flushstatus) writes the owner's conditions as they are and never
+prunes them, so a component the controller has stopped building leaves its last condition on the owner indefinitely. The
+aggregate ignores it, and users still see it in `kubectl describe`. Delete it explicitly when you retire a component:
 
 ```go
 meta.RemoveStatusCondition(owner.GetStatusConditions(), "OldComponentReady")
 ```
-
-Ownership decides whether that removal survives a conflict. `FlushStatus` owns exactly the condition types of the
-components you pass it, and on a 409 it takes the server's value for every unowned type. If the retired component is
-already absent from the slice when its condition is removed, the type is unowned, the conflict refresh puts the
-condition back, and the removal lands only on a later, conflict-free pass. To make it land on the first pass, retire in
-two steps: keep building the component and passing it to `FlushStatus` for the release that runs
-`meta.RemoveStatusCondition`, so its type stays owned and the removal is what gets written, and delete the component in
-the release after. Either way the condition disappears; the two-step form makes it deterministic.
 
 ## Reconciler Error Handling and Requeueing
 
@@ -265,6 +253,11 @@ grace period is the exception: no watch event arrives when its grace period ends
 [`GraceRemaining`](component.md#requeue-when-the-grace-period-ends). Because `FlushStatus` is deferred, the owner's
 conditions are written before the error propagates, so the failure is visible in status even while controller-runtime
 backs off.
+
+A 409 Conflict from `FlushStatus` reaches `Reconcile` the same way. It means that another writer updated the owner after
+the controller read it. Nothing was written, and the next reconcile reads the current owner and computes its status
+again. To requeue a conflict without a logged reconciler error, see
+[Requeue on a conflict without a reconcile error](component.md#requeue-on-a-conflict-without-a-reconcile-error).
 
 Only `Reconcile` decides when to requeue. A helper or a sub-reconciler returns an error or a domain value, not a
 `reconcile.Result`. See

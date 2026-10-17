@@ -31,8 +31,9 @@ type E2EReconciler struct {
 	Scheme        *runtime.Scheme
 	EventRecorder events.EventRecorder
 	Metrics       component.MetricsRecorder
-	// APIReader serves the conflict-path refetch in FlushStatus with a direct
-	// read, so the retry sees the live owner rather than the informer cache.
+	// APIReader reads straight from the API server. The component reads live
+	// objects through it for resources registered with BlockOnForeignController
+	// or DeleteOnlyIfOwned.
 	APIReader client.Reader
 
 	mu                 sync.RWMutex
@@ -136,7 +137,7 @@ func (r *E2EReconciler) Reconcile(ctx context.Context, req reconcile.Request) (_
 		Owner:         owner,
 	}
 	defer func() {
-		if flushErr := component.FlushStatus(ctx, recCtx, []*component.Component{comp}); flushErr != nil && err == nil {
+		if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
 			err = flushErr
 		}
 	}()

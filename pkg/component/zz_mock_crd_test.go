@@ -34,8 +34,7 @@ type MockOperatorCRDList struct {
 type MockStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// ObservedGeneration is a non-condition status field. It exists so tests can
-	// prove that FlushStatus preserves staged status fields the framework does
-	// not manage, including across a conflict retry.
+	// prove that FlushStatus never rolls back a status field another writer set.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 

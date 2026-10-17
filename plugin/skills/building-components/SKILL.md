@@ -230,46 +230,27 @@ recorder. Before your controller records its own event or writes a log line, rea
 for example when `meta.SetStatusCondition` returns `true`.
 
 `Component.Reconcile` mutates the owner's status conditions only in memory. The controller persists them by calling
-`component.FlushStatus(ctx, recCtx, comps)` once per reconcile, typically deferred so conditions set on error paths are
-written. `FlushStatus` performs a single `Status().Update`, wrapped in `retry.RetryOnConflict`, that writes every
-condition currently staged on the owner, merging by condition type via `meta.SetStatusCondition` rather than replacing
-the list. This split lets a controller with several components stage several conditions in one reconcile and persist
-them in one write, instead of racing a write per component.
+`component.FlushStatus(ctx, recCtx)` once per reconcile, typically deferred so conditions set on error paths are
+written. `FlushStatus` performs a single `Status().Update` that writes the conditions currently staged on the owner.
+This split lets a controller with several components stage several conditions in one reconcile and persist them in one
+write, instead of racing a write per component.
 
-That `Status().Update` writes the **whole status subresource**, not only the conditions, so fetch the owner fresh at the
-top of every reconcile: an owner carried over from an earlier pass writes stale values back over newer ones.
+That `Status().Update` writes the **whole status subresource**, not only the conditions, and the API server accepts it
+only while the owner's `resourceVersion` matches the stored object. Fetch the owner fresh at the top of every reconcile:
+an owner carried over from an earlier pass holds an old `resourceVersion`, so its flush can only conflict.
 
-**Pass the components whose conditions this flush owns:** `component.FlushStatus(ctx, recCtx, comps)`. Their condition
-types are the owned set, so it cannot drift from what the components actually write.
-
-**You own exactly what you pass, and nothing else.** A controller that manages no components passes `nil`; `nil` and an
-empty slice behave identically and own no condition types at all. Ownership is by condition type, not by who staged the
-condition, so a hand-staged condition is owned only if its type belongs to a passed component; an aggregate or a
-validation-only CRD's single condition is not, and on a conflict it follows the server and the next reconcile stages it
-again.
-
-The parameter is required, not variadic: a variadic would let existing calls keep compiling while silently retaining the
-old wider ownership, making a correctness fix opt-in and invisible.
-
-On a 409 conflict `FlushStatus` keeps the staged owner as the object it writes. It fetches the server's copy into a
-separate object through `ReconcileContext.APIReader` (set it from the manager's `GetAPIReader()`; the default `Client`
-reads from the informer cache, which can lag the conflicting write and return the same stale `resourceVersion`), takes
-that copy's `resourceVersion`, restores from it only the conditions whose type this flush does not own, and retries. Two
-consequences: non-condition status fields staged during the reconcile survive, and a type this flush does not own keeps
-the server's value instead of the possibly stale copy the controller is holding, so another writer's concurrent update
-is not rolled back.
-
-For unowned types the server is the source of truth, absence included. An unowned condition the server no longer carries
-is dropped rather than written back, so a condition another writer removed is not resurrected, and one the server has
-never held (a first aggregate write) is dropped for the same reason and staged again next reconcile.
-
-Declare the component slice before the deferred call, so the closure observes every component built during the
-reconcile:
+**A conflict is returned, not retried.** When another writer updated the owner after the controller read it,
+`FlushStatus` writes nothing and returns the 409 error (`apierrors.IsConflict` is `true`). Return it from `Reconcile`:
+controller-runtime requeues with rate limiting, and the next reconcile reads the current owner and recomputes. Because a
+stale write never lands, a status field or condition another controller set is never rolled back, so two controllers can
+share one owner's status without declaring which fields each owns. Condition metrics are recorded only after a
+successful write. To requeue a conflict without a logged reconciler error, check `apierrors.IsConflict` in the deferred
+call and return `reconcile.Result{RequeueAfter: time.Second}` with a `nil` error (not the deprecated `Requeue`); see
+"Requeue on a conflict without a reconcile error" in `references/component.md`.
 
 ```go
-var comps []*component.Component
 defer func() {
-    if flushErr := component.FlushStatus(ctx, recCtx, comps); flushErr != nil && err == nil {
+    if flushErr := component.FlushStatus(ctx, recCtx); flushErr != nil && err == nil {
         err = flushErr
     }
 }()
@@ -278,7 +259,7 @@ comp, err := buildComponent(owner)
 if err != nil {
     return err
 }
-comps = append(comps, comp)
+return comp.Reconcile(ctx, recCtx)
 ```
 
 ## One write path for the owner's status
@@ -296,7 +277,7 @@ meta.SetStatusCondition(policy.GetStatusConditions(), metav1.Condition{
 policy.Status.ObservedGeneration = policy.Generation // owner-level field, see below
 return reconcile.Result{}, component.FlushStatus(ctx, component.ReconcileContext{
     Client: r.Client, Owner: policy,
-}, nil) // nil: owns no component conditions; on a conflict this follows the server
+})
 ```
 
 **Server-side apply is for managed resources, never for the owner's status subresource.** An SSA status patch alongside

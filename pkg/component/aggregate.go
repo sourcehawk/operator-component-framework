@@ -51,8 +51,8 @@ import (
 //     and therefore counts as ready, for the same reason.
 //   - Only the components passed in are considered. A component the controller
 //     has stopped building leaves a stale condition on the owner that Aggregate
-//     ignores but users still see, because [FlushStatus] merges conditions by type
-//     and never prunes.
+//     ignores but users still see, because [FlushStatus] writes the conditions on
+//     the owner as they are and never prunes them.
 //
 // The returned [Condition] is a plain struct. A caller that wants different prose
 // can adjust the Message before staging it:

@@ -52,7 +52,7 @@ var _ = Describe("Component Reconciler", func() {
 	// that the returned condition reflects the persisted state, including
 	// error conditions set via fail().
 	getOwnerCondition := func() Condition {
-		Expect(FlushStatus(ctx, recCtx, []*Component{comp})).To(Succeed())
+		Expect(FlushStatus(ctx, recCtx)).To(Succeed())
 		updatedOwner := &MockOperatorCRD{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: owner.Name, Namespace: namespace}, updatedOwner)).To(Succeed())
 		return comp.GetCondition(updatedOwner)
@@ -977,7 +977,7 @@ var _ = Describe("Component Reconciler", func() {
 			// transition time that the next reconcile reads.
 			remaining, ok := c.GraceRemaining(owner)
 			Expect(ok).To(BeTrue())
-			Expect(FlushStatus(ctx, recCtx, []*Component{c})).To(Succeed())
+			Expect(FlushStatus(ctx, recCtx)).To(Succeed())
 
 			time.Sleep(remaining)
 

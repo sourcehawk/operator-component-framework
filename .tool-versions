@@ -1,5 +1,5 @@
-golang 1.27.2
+golang 1.27.3
 golangci-lint 2.15.0
 nodejs 25.9.0
 kind 0.33.0
-python 3.15.0
+python 3.15.2

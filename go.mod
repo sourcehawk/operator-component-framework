@@ -1,6 +1,6 @@
 module github.com/sourcehawk/operator-component-framework
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
@@ -19,6 +19,7 @@ require (
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
+	sigs.k8s.io/structured-merge-diff/v7 v7.0.1
 	sigs.k8s.io/yaml v1.6.0
 )
 

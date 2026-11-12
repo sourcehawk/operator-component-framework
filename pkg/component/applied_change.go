@@ -2,6 +2,8 @@ package component
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,29 +19,42 @@ import (
 //
 // Only the fields that manager owns before or after the apply are compared, so
 // a write by another manager between the read and the apply, such as a
-// finalizer, label or annotation, does not count as a change. A changed owned
-// field and an owned field the apply removed both count.
+// finalizer, label or annotation, does not count as a change. A write that sets
+// a field inside an empty object that manager owns, such as emptyDir: {}, does
+// count.
 //
-// When before carries no managedFields, as when the cache strips them, or the
-// response holds no apply entry for manager, the owned fields cannot be known.
-// The whole object is then compared instead, apart from status, managedFields,
-// resourceVersion, generation and TypeMeta, and a concurrent write by another
-// manager does count as a change.
+// When the owned fields cannot be known, the whole object is compared instead,
+// apart from status, managedFields, resourceVersion, generation and TypeMeta,
+// and a concurrent write by another manager does count as a change. That is the
+// case when before carries no managedFields, as when the cache strips them, when
+// the response holds no apply entry for manager, and when the two entries were
+// recorded at different API versions.
 func appliedObjectChanged(before, after client.Object, manager string) (bool, error) {
-	afterOwned, found, err := appliedFieldSet(after, manager)
-	if err != nil {
-		return false, err
-	}
+	afterEntry, found := appliedEntry(after, manager)
 	if !found || len(before.GetManagedFields()) == 0 {
 		return wholeObjectChanged(before, after)
 	}
 
 	// No entry for manager before the apply means it owned nothing yet, as when
 	// it adopts an object another client created.
-	beforeOwned, _, err := appliedFieldSet(before, manager)
+	beforeOwned := &fieldpath.Set{}
+	if beforeEntry, found := appliedEntry(before, manager); found {
+		// Paths are expressed in the version of their entry. A conversion
+		// between versions can rename a field, and a path from the other version
+		// would then find nothing in either object.
+		if beforeEntry.APIVersion != afterEntry.APIVersion {
+			return wholeObjectChanged(before, after)
+		}
+		var err error
+		if beforeOwned, err = decodeFieldSet(beforeEntry); err != nil {
+			return false, err
+		}
+	}
+	afterOwned, err := decodeFieldSet(afterEntry)
 	if err != nil {
 		return false, err
 	}
+	owned := afterOwned.Union(beforeOwned)
 
 	beforeContent, err := runtime.DefaultUnstructuredConverter.ToUnstructured(before)
 	if err != nil {
@@ -55,7 +70,7 @@ func appliedObjectChanged(before, after client.Object, manager string) (bool, er
 	// Iterate rather than a range over Set.All: All ignores the result of yield,
 	// so leaving the loop early panics.
 	changed := false
-	afterOwned.Union(beforeOwned).Leaves().Iterate(func(path fieldpath.Path) {
+	owned.Leaves().Iterate(func(path fieldpath.Path) {
 		if changed {
 			return
 		}
@@ -63,26 +78,36 @@ func appliedObjectChanged(before, after client.Object, manager string) (bool, er
 		afterValue, afterFound := lookupFieldPath(afterContent, path)
 		changed = beforeFound != afterFound || !equality.Semantic.DeepEqual(beforeValue, afterValue)
 	})
-	return changed, nil
+	if changed {
+		return true, nil
+	}
+
+	// A lookup by key finds a list item wherever it sits, so the comparison of
+	// values above does not see a reorder. The order of some lists, such as
+	// init containers, changes what the object does.
+	return ownedListOrderChanged(owned, nil, beforeContent, afterContent), nil
 }
 
-// appliedFieldSet returns the fields that manager owns on obj through Server-Side
-// Apply to the main resource. found is false when obj has no such entry.
-func appliedFieldSet(obj client.Object, manager string) (set *fieldpath.Set, found bool, err error) {
-	set = &fieldpath.Set{}
+// appliedEntry returns the managedFields entry of manager's Server-Side Apply
+// to the main resource of obj.
+func appliedEntry(obj client.Object, manager string) (metav1.ManagedFieldsEntry, bool) {
 	for _, entry := range obj.GetManagedFields() {
-		if entry.Manager != manager || entry.Operation != metav1.ManagedFieldsOperationApply || entry.Subresource != "" {
-			continue
+		if entry.Manager == manager && entry.Operation == metav1.ManagedFieldsOperationApply && entry.Subresource == "" {
+			return entry, true
 		}
-		if entry.FieldsV1 == nil {
-			return set, true, nil
-		}
-		if err := set.FromJSON(entry.FieldsV1.GetRawReader()); err != nil {
-			return nil, false, fmt.Errorf("failed to decode managed fields of %q: %w", manager, err)
-		}
-		return set, true, nil
 	}
-	return set, false, nil
+	return metav1.ManagedFieldsEntry{}, false
+}
+
+func decodeFieldSet(entry metav1.ManagedFieldsEntry) (*fieldpath.Set, error) {
+	set := &fieldpath.Set{}
+	if entry.FieldsV1 == nil {
+		return set, nil
+	}
+	if err := set.FromJSON(entry.FieldsV1.GetRawReader()); err != nil {
+		return nil, fmt.Errorf("failed to decode managed fields of %q: %w", entry.Manager, err)
+	}
+	return set, nil
 }
 
 // lookupFieldPath returns the value at path in the unstructured content, and
@@ -90,58 +115,103 @@ func appliedFieldSet(obj client.Object, manager string) (set *fieldpath.Set, fou
 func lookupFieldPath(content map[string]any, path fieldpath.Path) (any, bool) {
 	var current any = content
 	for _, element := range path {
-		var found bool
 		switch {
 		case element.FieldName != nil:
 			fields, ok := current.(map[string]any)
 			if !ok {
 				return nil, false
 			}
-			current, found = fields[*element.FieldName]
-		case element.Key != nil:
-			current, found = findListItem(current, func(item any) bool {
-				fields, ok := item.(map[string]any)
-				if !ok {
-					return false
-				}
-				for _, key := range *element.Key {
-					field, ok := fields[key.Name]
-					if !ok || !value.Equals(value.NewValueInterface(field), key.Value) {
-						return false
-					}
-				}
-				return true
-			})
-		case element.Value != nil:
-			current, found = findListItem(current, func(item any) bool {
-				return value.Equals(value.NewValueInterface(item), *element.Value)
-			})
+			if current, ok = fields[*element.FieldName]; !ok {
+				return nil, false
+			}
 		case element.Index != nil:
 			items, ok := current.([]any)
 			if !ok || *element.Index < 0 || *element.Index >= len(items) {
 				return nil, false
 			}
-			current, found = items[*element.Index], true
-		}
-		if !found {
-			return nil, false
+			current = items[*element.Index]
+		default:
+			items, _ := current.([]any)
+			index, ok := listItemIndex(items, element)
+			if !ok {
+				return nil, false
+			}
+			current = items[index]
 		}
 	}
 	return current, true
 }
 
-// findListItem returns the first item of the list for which match is true.
-func findListItem(list any, match func(any) bool) (any, bool) {
-	items, ok := list.([]any)
-	if !ok {
-		return nil, false
-	}
-	for _, item := range items {
-		if match(item) {
-			return item, true
+// listItemIndex returns the position in items of the item that a Key or Value
+// path element selects.
+func listItemIndex(items []any, element fieldpath.PathElement) (int, bool) {
+	index := slices.IndexFunc(items, func(item any) bool {
+		if element.Value != nil {
+			return value.Equals(value.NewValueInterface(item), *element.Value)
+		}
+		if element.Key == nil {
+			return false
+		}
+		fields, ok := item.(map[string]any)
+		if !ok {
+			return false
+		}
+		for _, key := range *element.Key {
+			field, ok := fields[key.Name]
+			if !ok || !value.Equals(value.NewValueInterface(field), key.Value) {
+				return false
+			}
+		}
+		return true
+	})
+	return index, index >= 0
+}
+
+// ownedListOrderChanged reports whether the owned items of any list in owned,
+// below prefix, are in a different relative order before and after. Items that
+// only other managers own are left out, so another manager inserting an item
+// does not count.
+func ownedListOrderChanged(owned *fieldpath.Set, prefix fieldpath.Path, before, after map[string]any) bool {
+	var items fieldpath.PathElementSet
+	collect := func(element fieldpath.PathElement) {
+		if element.Key != nil || element.Value != nil {
+			items.Insert(element)
 		}
 	}
-	return nil, false
+	owned.Members.Iterate(collect)
+	owned.Children.Iterate(collect)
+	if items.Size() > 1 && !slices.Equal(ownedItemOrder(&items, prefix, before), ownedItemOrder(&items, prefix, after)) {
+		return true
+	}
+
+	changed := false
+	owned.Children.Iterate(func(element fieldpath.PathElement) {
+		if changed {
+			return
+		}
+		child, _ := owned.Children.Get(element)
+		changed = ownedListOrderChanged(child, append(prefix.Copy(), element), before, after)
+	})
+	return changed
+}
+
+// ownedItemOrder returns the items of the list at prefix that are in owned, in
+// the order the list holds them. Owned items the list does not hold are left
+// out: the comparison of values already reports them.
+func ownedItemOrder(owned *fieldpath.PathElementSet, prefix fieldpath.Path, content map[string]any) []string {
+	list, _ := lookupFieldPath(content, prefix)
+	items, _ := list.([]any)
+	positions := map[int]string{}
+	owned.Iterate(func(element fieldpath.PathElement) {
+		if index, ok := listItemIndex(items, element); ok {
+			positions[index] = element.String()
+		}
+	})
+	order := make([]string, 0, len(positions))
+	for _, index := range slices.Sorted(maps.Keys(positions)) {
+		order = append(order, positions[index])
+	}
+	return order
 }
 
 // wholeObjectChanged compares the two objects on everything apart from status,

@@ -128,4 +128,44 @@ var _ = Describe("Apply classification with a concurrent writer", func() {
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: deploymentName, Namespace: namespace}, live)).To(Succeed())
 		Expect(live.Finalizers).To(ContainElement("other.example.com/cleanup"))
 	})
+
+	It("records an Updated event when only the order of owned containers changes", func() {
+		withContainers := func(names ...string) func() client.Object {
+			return func() client.Object {
+				deployment := buildDeployment("app:1", 8080)().(*appsv1.Deployment)
+				deployment.Spec.Template.Spec.Containers = nil
+				for _, name := range names {
+					deployment.Spec.Template.Spec.Containers = append(
+						deployment.Spec.Template.Spec.Containers,
+						corev1.Container{Name: name, Image: name + ":1"},
+					)
+				}
+				return deployment
+			}
+		}
+		res := &objectOperationRecordingResource{build: withContainers("first", "second")}
+		comp := &Component{
+			name:               "web",
+			conditionType:      "WebReady",
+			reconcileResources: []reconcileEntry{{Resource: res}},
+		}
+		rec := newTestReconcileContext(owner)
+
+		Expect(comp.Reconcile(ctx, rec)).To(Succeed())
+
+		res.build = withContainers("second", "first")
+		Expect(comp.Reconcile(ctx, rec)).To(Succeed())
+		Expect(comp.Reconcile(ctx, rec)).To(Succeed())
+
+		Expect(res.operations).To(Equal([]concepts.ConvergingOperation{
+			concepts.ConvergingOperationCreated,
+			concepts.ConvergingOperationUpdated,
+			concepts.ConvergingOperationNone,
+		}))
+
+		live := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: deploymentName, Namespace: namespace}, live)).To(Succeed())
+		Expect(live.Spec.Template.Spec.Containers).To(HaveLen(2))
+		Expect(live.Spec.Template.Spec.Containers[0].Name).To(Equal("second"))
+	})
 })

@@ -289,3 +289,90 @@ func TestLookupFieldPath(t *testing.T) {
 		})
 	}
 }
+
+func TestOwnedListOrderChanged(t *testing.T) {
+	containers := func(names ...string) map[string]any {
+		items := make([]any, 0, len(names))
+		for _, name := range names {
+			items = append(items, map[string]any{"name": name})
+		}
+		return map[string]any{"spec": map[string]any{"containers": items}}
+	}
+	owned := fieldpath.NewSet(
+		fieldpath.MakePathOrDie("spec", "containers", fieldpath.KeyByFields("name", "first")),
+		fieldpath.MakePathOrDie("spec", "containers", fieldpath.KeyByFields("name", "second")),
+	)
+
+	tests := []struct {
+		name   string
+		before map[string]any
+		after  map[string]any
+		want   bool
+	}{
+		{
+			name:   "same order",
+			before: containers("first", "second"),
+			after:  containers("first", "second"),
+			want:   false,
+		},
+		{
+			name:   "owned items swapped",
+			before: containers("first", "second"),
+			after:  containers("second", "first"),
+			want:   true,
+		},
+		{
+			name:   "item of another manager inserted between owned items",
+			before: containers("first", "second"),
+			after:  containers("first", "sidecar", "second"),
+			want:   false,
+		},
+		{
+			name:   "item of another manager moved ahead of owned items",
+			before: containers("first", "sidecar", "second"),
+			after:  containers("sidecar", "first", "second"),
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, ownedListOrderChanged(owned, nil, tt.before, tt.after))
+		})
+	}
+}
+
+func TestAppliedObjectChanged_ComparesWholeObjectWhenEntryVersionsDiffer(t *testing.T) {
+	const manager = "test-manager"
+	entry := func(apiVersion, fields string) metav1.ManagedFieldsEntry {
+		raw := &metav1.FieldsV1{}
+		raw.SetRawString(fields)
+		return metav1.ManagedFieldsEntry{
+			Manager:    manager,
+			Operation:  metav1.ManagedFieldsOperationApply,
+			APIVersion: apiVersion,
+			FieldsType: "FieldsV1",
+			FieldsV1:   raw,
+		}
+	}
+
+	// The entry before the apply was recorded at an older version, where the
+	// field had another name. The apply removes the field.
+	before := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:          "converted",
+			ManagedFields: []metav1.ManagedFieldsEntry{entry("v1beta1", `{"f:data":{"f:oldName":{}}}`)},
+		},
+		Data: map[string]string{"newName": "value"},
+	}
+	after := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:          "converted",
+			ManagedFields: []metav1.ManagedFieldsEntry{entry("v1", `{"f:metadata":{"f:name":{}}}`)},
+		},
+	}
+
+	changed, err := appliedObjectChanged(before, after, manager)
+	require.NoError(t, err)
+	assert.True(t, changed)
+}

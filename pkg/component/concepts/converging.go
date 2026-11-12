@@ -22,20 +22,21 @@ import (
 // adds between the read and the apply, is not a change.
 //
 // The owned fields come from the object's managedFields. When the read returns
-// none, as with a cache that strips them, the framework compares the whole
-// object apart from the status subresource, managedFields, resourceVersion and
-// generation, and a write by another field manager in that window does count
-// as a change.
+// none, as with a cache that strips them, when the apply response holds no
+// apply entry for the component's field manager, or when the component's
+// entries before and after the apply have different API versions, the framework
+// compares the whole object apart from the status subresource, managedFields,
+// resourceVersion and generation. A write by another field manager in that
+// window then does count as a change. It also counts when it sets a field inside
+// an empty object that the component applies, such as emptyDir: {}.
 type ConvergingOperation string
 
 const (
 	// ConvergingOperationCreated indicates that the resource did not exist before
 	// the apply and was created by it.
 	ConvergingOperationCreated ConvergingOperation = "Created"
-	// ConvergingOperationUpdated indicates that the resource existed and the apply
-	// changed it: a field the component's field manager owns, such as a label,
-	// an annotation, an owner reference, or a field of the spec or data, was set
-	// to a new value, added, or removed.
+	// ConvergingOperationUpdated indicates that the resource existed and the
+	// comparison described on ConvergingOperation found a change.
 	ConvergingOperationUpdated ConvergingOperation = "Updated"
 	// ConvergingOperationNone indicates that the apply left the existing resource
 	// unchanged, or that the resource was only read (read-only resources).

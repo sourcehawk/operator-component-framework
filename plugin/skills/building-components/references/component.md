@@ -389,12 +389,24 @@ except where the owner is namespace-scoped and the resource is cluster-scoped (s
 [Cluster-scoped resources](#cluster-scoped-resources)).
 
 Each apply is classified as `Created`, `Updated` or `None` by comparing the object observed before the patch (read
-through the client, usually the informer cache) with the API server's response to it, ignoring `status`,
-`managedFields`, `resourceVersion` and `generation`. The classification is passed to the resource's status handler as
-its `concepts.ConvergingOperation` and drives the `Created<Kind>` and `Updated<Kind>` events recorded on the owner;
-`None` records no event. Because it compares observed cluster state rather than the desired object before and after
-mutation, a steady-state reconcile reports `None` regardless of whether the operator rebuilds its components on every
-reconcile or keeps them across reconciles.
+through the client, usually the informer cache) with the API server's response to it. The comparison covers only the
+fields that the component's field manager owns before or after the apply, as recorded in `managedFields`. An owned field
+that gets a new value, is added, or is removed makes the apply `Updated`. So do owned list items, such as containers,
+that change their order. A write by another field manager does not, so a finalizer, label or annotation that another
+controller adds between the read and the apply is not reported as an update of the component. The classification is
+passed to the resource's status handler as its `concepts.ConvergingOperation` and drives the `Created<Kind>` and
+`Updated<Kind>` events recorded on the owner; `None` records no event. Because it compares observed cluster state rather
+than the desired object before and after mutation, a steady-state reconcile reports `None` regardless of whether the
+operator rebuilds its components on every reconcile or keeps them across reconciles.
+
+The owned fields are not known in three cases: the read returns no `managedFields`, for example because the manager's
+cache strips them with `cache.TransformStripManagedFields`, the apply response holds no apply entry for the component's
+field manager, or the entries of the component before and after the apply have different API versions, as after the
+operator moves to a new version of a custom resource. The comparison then covers the whole object except `status`,
+`managedFields`, `resourceVersion` and `generation`, and a write by another controller in that window is reported as
+`Updated`. The same false `Updated` occurs when the component applies an empty object, such as `emptyDir: {}`, and
+another controller sets a field inside it in that window. The component owns such an object as one value, so a field
+that another controller adds inside it counts as a change to that value.
 
 ### Previewing desired state
 

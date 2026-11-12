@@ -13,21 +13,30 @@ import (
 //
 // The framework derives it by comparing the object observed before the
 // Server-Side Apply (read through the client, usually the informer cache) with
-// the API server's response to it, ignoring the status
-// subresource, managedFields, resourceVersion and generation. The classification
-// therefore reflects whether the applied desired state changed the object, not
-// how the desired object was constructed: operators that rebuild their desired
-// objects on every reconcile and operators that keep them across reconciles get
-// the same result.
+// the API server's response to it, on the fields the component's field manager
+// owns before or after the apply. The classification therefore reflects whether
+// the applied desired state changed the object, not how the desired object was
+// constructed: operators that rebuild their desired objects on every reconcile
+// and operators that keep them across reconciles get the same result. A write
+// by another field manager, such as a finalizer or label another controller
+// adds between the read and the apply, is not a change.
+//
+// The owned fields come from the object's managedFields. When the read returns
+// none, as with a cache that strips them, when the apply response holds no
+// apply entry for the component's field manager, or when the component's
+// entries before and after the apply have different API versions, the framework
+// compares the whole object apart from the status subresource, managedFields,
+// resourceVersion and generation. A write by another field manager in that
+// window then does count as a change. It also counts when it sets a field inside
+// an empty object that the component applies, such as emptyDir: {}.
 type ConvergingOperation string
 
 const (
 	// ConvergingOperationCreated indicates that the resource did not exist before
 	// the apply and was created by it.
 	ConvergingOperationCreated ConvergingOperation = "Created"
-	// ConvergingOperationUpdated indicates that the resource existed and the apply
-	// changed it: its labels, annotations, owner references, spec or data differ
-	// from what was observed before the apply.
+	// ConvergingOperationUpdated indicates that the resource existed and the
+	// comparison described on ConvergingOperation found a change.
 	ConvergingOperationUpdated ConvergingOperation = "Updated"
 	// ConvergingOperationNone indicates that the apply left the existing resource
 	// unchanged, or that the resource was only read (read-only resources).

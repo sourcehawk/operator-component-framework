@@ -395,7 +395,20 @@ func (r *objectOperationRecordingResource) GraceStatus() (concepts.GraceStatusWi
 	return concepts.GraceStatusWithReason{Status: concepts.GraceStatusHealthy}, nil
 }
 
+// TestApplyResource_ConvergingOperation runs every case twice: once where the
+// client returns managedFields, so only the fields the component owns are
+// compared, and once where it strips them, as a cache with a managedFields
+// transform does, so the whole object is compared.
 func TestApplyResource_ConvergingOperation(t *testing.T) {
+	t.Run("with managedFields", func(t *testing.T) {
+		testApplyResourceConvergingOperation(t, true)
+	})
+	t.Run("without managedFields", func(t *testing.T) {
+		testApplyResourceConvergingOperation(t, false)
+	})
+}
+
+func testApplyResourceConvergingOperation(t *testing.T, returnManagedFields bool) {
 	const namespace = "test-namespace"
 
 	newEnv := func(t *testing.T) (ReconcileContext, client.Client) {
@@ -404,7 +417,11 @@ func TestApplyResource_ConvergingOperation(t *testing.T) {
 		owner := &MockOperatorCRD{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-owner", Namespace: namespace, UID: "owner-uid"},
 		}
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).WithStatusSubresource(owner).Build()
+		builder := fake.NewClientBuilder().WithScheme(scheme).WithObjects(owner).WithStatusSubresource(owner)
+		if returnManagedFields {
+			builder = builder.WithReturnManagedFields()
+		}
+		fakeClient := builder.Build()
 		return setupReconcileContext(scheme, owner, fakeClient), fakeClient
 	}
 

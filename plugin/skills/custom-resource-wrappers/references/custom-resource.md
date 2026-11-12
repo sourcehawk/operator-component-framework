@@ -363,12 +363,13 @@ seen the spec just applied.
 The converge and operational status handlers also receive a `concepts.ConvergingOperation` that says what the apply did:
 `Created` when the object did not exist before, `Updated` when the apply changed an existing object, and `None` when it
 left the object as it was. The framework decides this by comparing the object observed before the Server-Side Apply
-(read through the client, usually the informer cache) with the API server's response, ignoring `status`,
-`managedFields`, `resourceVersion` and `generation`. It does not depend on how the desired object was built, so a
-wrapper reports `None` on a steady-state reconcile whether the operator keeps its resources across reconciles or
-rebuilds them each pass. Use the operation to distinguish `Creating` from `Updating` while `status.observedGeneration`
-lags, as the example below does; do not use it as a change detector for anything the apply cannot see, such as external
-state.
+(read through the client, usually the informer cache) with the API server's response, on the fields that the component's
+field manager owns. A write by another controller, such as a finalizer it adds, is not an update. See
+[Reconciliation Lifecycle](../../building-components/references/component.md#reconciliation-lifecycle) for the case
+where the read carries no `managedFields`. It does not depend on how the desired object was built, so a wrapper reports
+`None` on a steady-state reconcile whether the operator keeps its resources across reconciles or rebuilds them each
+pass. Use the operation to distinguish `Creating` from `Updating` while `status.observedGeneration` lags, as the example
+below does; do not use it as a change detector for anything the apply cannot see, such as external state.
 
 Three handlers are outside that guarantee. The **guard** runs before the resource is applied, which is its whole
 purpose, so it sees the desired object rather than the server's response. The suspension **mutation** handler takes the

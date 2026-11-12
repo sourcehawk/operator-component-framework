@@ -11,7 +11,6 @@ import (
 	"github.com/sourcehawk/operator-component-framework/internal/scope"
 	"github.com/sourcehawk/operator-component-framework/pkg/component/concepts"
 	"github.com/sourcehawk/operator-component-framework/pkg/recording"
-	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -132,7 +131,7 @@ func applyResource(
 	// feature mutations are always added relative to the freshly built object.
 	convergingOperation := concepts.ConvergingOperationCreated
 	if objectExists {
-		changed, err := appliedObjectChanged(existing, obj)
+		changed, err := appliedObjectChanged(existing, obj, string(fieldOwner))
 		if err != nil {
 			return nil, applyFailed(rec, labels, fmt.Errorf(
 				"failed to compare applied state of resource %s: %w", resource.Identity(), err,
@@ -514,64 +513,6 @@ func newEmptyObjectLike(obj client.Object) (client.Object, error) {
 	}
 	empty.GetObjectKind().SetGroupVersionKind(obj.GetObjectKind().GroupVersionKind())
 	return empty, nil
-}
-
-// appliedObjectChanged reports whether a Server-Side Apply changed the object,
-// by comparing the object observed before the patch (read through the client,
-// usually the informer cache) with the API server's response to it.
-//
-// The comparison ignores fields that change without the desired state changing:
-// the status subresource (written by other controllers), managedFields and
-// resourceVersion (bookkeeping the server touches on any write), generation
-// (derived from the compared content) and TypeMeta (present or absent depending
-// on how the object was decoded). Everything else, including labels,
-// annotations, owner references and the object's spec or data, counts.
-//
-// It does not rely on resourceVersion because concurrent status writes bump it
-// without touching the desired state, and because fake clients bump it on
-// every apply, even a no-op one.
-func appliedObjectChanged(before, after client.Object) (bool, error) {
-	beforeContent, err := comparableContent(before)
-	if err != nil {
-		return false, err
-	}
-	afterContent, err := comparableContent(after)
-	if err != nil {
-		return false, err
-	}
-	return !equality.Semantic.DeepEqual(beforeContent, afterContent), nil
-}
-
-// comparableContent renders an object as an unstructured map with the fields
-// appliedObjectChanged ignores removed. It copies the top-level and metadata
-// maps before deleting keys so the object itself is never mutated (for
-// *unstructured.Unstructured, ToUnstructured returns the object's own content).
-func comparableContent(obj client.Object) (map[string]any, error) {
-	converted, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	if err != nil {
-		return nil, err
-	}
-
-	content := make(map[string]any, len(converted))
-	for k, v := range converted {
-		content[k] = v
-	}
-	delete(content, "apiVersion")
-	delete(content, "kind")
-	delete(content, "status")
-
-	if rawMetadata, ok := content["metadata"].(map[string]any); ok {
-		metadata := make(map[string]any, len(rawMetadata))
-		for k, v := range rawMetadata {
-			metadata[k] = v
-		}
-		delete(metadata, "managedFields")
-		delete(metadata, "resourceVersion")
-		delete(metadata, "generation")
-		content["metadata"] = metadata
-	}
-
-	return content, nil
 }
 
 // clearServerFields removes metadata fields that the API server populates on
